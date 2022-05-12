@@ -367,7 +367,7 @@ def optimize_chain(chain, en_func, grad_func, update_func, k=0.1, dist_id=0.1, g
     else: print("Chain did not converge...")
     
     print(f"final chain (PEB): {new_chain}")
-    for i in range(len(chain_current)-1):
+    for i in range(len(new_chain)-1):
         print(f"dist {i}-{i+1}: {dist(new_chain[i], new_chain[i+1])}")
     return new_chain
 
@@ -380,13 +380,13 @@ fs = 14
 # vars for sim
 nsteps = 100
 dr=.01
-k=1
+k=30
 dist_id = .5
 
-nimages = 20
+nimages = 21
 
-en_func = toy_potential_3
-grad_func = toy_grad_3
+en_func = toy_potential_2
+grad_func = toy_grad_2
 
 
 # set up plot for potential
@@ -410,8 +410,8 @@ cbar = f.colorbar(cs)
 # chain = np.sort([np.random.uniform(-1, 1, size=2) for n in range(nimages)])
 # chain = np.linspace((min_val, max_val), (max_val, min_val), nimages)
 # chain = np.linspace((min_val, min_val), (max_val, max_val), nimages)
-# chain = np.linspace((-3.7933036307483574, -3.103697226077475), (3, 2), nimages)
-chain = np.linspace((-1.3, 0), (1.5, -3), nimages)
+chain = np.linspace((-3.7933036307483574, -3.103697226077475), (3, 2), nimages)
+# chain = np.linspace((-1.3, 0), (1.5, -3), nimages)
 # chain = [(-2,-.1),(0,2),(2,.1)]
 print(chain)
 
@@ -458,15 +458,34 @@ y = x.reshape(-1,1)
 
 
 # h = en_func(x, y)
-h = toy_potential_3(x, y)
+h = en_func(x, y)
 cs = plt.contourf(x, x, h)
 cbar = f.colorbar(cs)
-points_x = [point[0] for point in chain_current]
-points_y = [point[1] for point in chain_current]
-plt.scatter(points_x, points_y, c='white')
-print(chain_current)
+points_x = [point[0] for point in opt_chain_neb]
+points_y = [point[1] for point in opt_chain_neb]
+plt.plot(points_x, points_y, 'o--', c='white', label='neb')
+
+
+points_x = [point[0] for point in opt_chain_peb]
+points_y = [point[1] for point in opt_chain_peb]
+plt.plot(points_x, points_y, 'x--', c='white', label='peb')
+
+points_x = [point[0] for point in chain]
+points_y = [point[1] for point in chain]
+plt.plot(points_x, points_y, '*--', c='white', label='original')
+
+plt.legend()
+print(opt_chain_neb)
 plt.show()
 # -
+ens = [en_func(x[0], x[1]) for x in opt_chain_neb]
+ens_peb = [en_func(x[0], x[1]) for x in opt_chain_peb]
+ens_orig = [en_func(x[0], x[1]) for x in chain]
+plt.plot(ens, label='neb')
+plt.plot(ens_peb, label='peb')
+plt.plot(ens_orig, label='orig')
+plt.legend()
+
 
 
 
