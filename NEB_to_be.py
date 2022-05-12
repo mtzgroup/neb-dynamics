@@ -79,11 +79,30 @@ def toy_grad_2(x, y):
     return dx, dy
 
 
-def spring_grad(x, y, neighs, k=0.1, ideal_distance=0.5, en_func=toy_potential, grad_func=toy_grad):
-    pe_grad = grad_func(x, y)
-    # pe_grad = 0
-    
 
+def spring_grad(x, y, neighs, k=0.1, ideal_distance=0.5, en_func=toy_potential, grad_func=toy_grad):
+    
+    # pe_grad = 0
+
+    
+    
+    if len(neighs)==1:
+        vec_tan_path = neighs[0] - np.array([x,y])
+        
+        
+    elif len(neighs)==2:
+        vec_tan_path = np.array(neighs[1]) - np.array(neighs[0])
+    else: 
+        raise ValueError("Wtf are you doing.")
+        
+    unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
+    # print(f"{unit_tan_path=}")
+    
+    
+    
+    pe_grad = grad_func(x, y)
+    pe_grad_nudged_const = np.dot(pe_grad, unit_tan_path)
+    pe_grad_nudged = pe_grad - pe_grad_nudged_const*unit_tan_path
     
     grads_neighs = []
     for neigh in neighs:
@@ -95,6 +114,7 @@ def spring_grad(x, y, neighs, k=0.1, ideal_distance=0.5, en_func=toy_potential, 
         force_y = -k*(dist_y - ideal_distance)
         # print(f"\t{force_x=} {force_y=}")
         
+        
         if (neigh_x > x): 
             force_x*= -1
         
@@ -102,15 +122,23 @@ def spring_grad(x, y, neighs, k=0.1, ideal_distance=0.5, en_func=toy_potential, 
             force_y*= -1
 
         
-            
+        force_spring = np.array([force_x, force_y])
+        force_spring_nudged_const = np.dot(force_spring, unit_tan_path**2)
+        force_spring_nudged = force_spring - force_spring_nudged_const*unit_tan_path
         
-        grads_neighs.append((force_x, force_y))
+        
+        grads_neighs.append(force_spring_nudged)
     
     # print(f"\t{grads_neighs=}")
         
     tot_grads_neighs = np.sum(grads_neighs, axis=0)
+    
+    
+    
+    
+    
     # print(f"{tot_grads_neighs}")
-    return tot_grads_neighs - pe_grad
+    return tot_grads_neighs - pe_grad_nudged
 
 # x = np.linspace(start=0,stop=4, num=10)
 # y = x.reshape(-1,1)
@@ -178,13 +206,13 @@ def update_points_spring(chain, dr,  en_func, grad_func, k=1, ideal_dist=0.5):
 # ### NB:
 # For top left to bottom right, k=25, idealdist=10
 
-# +
+# + tags=[]
 np.random.seed(1)
 fs = 14
 # vars for sim
-nsteps = 1000
+nsteps = 2000
 dr=.01
-nimages = 9
+nimages = 20
 
 en_func = toy_potential_2
 grad_func = toy_grad_2
@@ -200,7 +228,7 @@ x = np.linspace(start=min_val,stop=max_val, num=num)
 y = x.reshape(-1,1)
 
 
-h = toy_potential_2(x, y)
+h = en_func(x, y)
 cs = plt.contourf(x, x, h)
 cbar = f.colorbar(cs)
 
@@ -209,8 +237,8 @@ cbar = f.colorbar(cs)
 
 # # set up points
 # chain = np.sort([np.random.uniform(-1, 1, size=2) for n in range(nimages)])
-chain = np.linspace((min_val, max_val), (max_val, min_val), nimages)
-# chain = np.linspace((-3.7933036307483574, -3.103697226077475), (3, 2), nimages)
+# chain = np.linspace((min_val, max_val), (max_val, min_val), nimages)
+chain = np.linspace((-3.7933036307483574, -3.103697226077475), (3, 2), nimages)
 # chain = [(-2,-.1),(0,2),(2,.1)]
 print(chain)
 
@@ -223,10 +251,10 @@ plt.plot([(point[0]) for point in chain],[(point[1]) for point in chain], '^--',
 chain_current = chain.copy()
 print(f"{chain_current=}\n")
 for step in range(nsteps):
-    new_chain = update_points_spring(chain_current, dr, k=10, ideal_dist=.5, en_func=en_func, grad_func=grad_func)
+    new_chain = update_points_spring(chain_current, dr, k=1, ideal_dist=.1, en_func=en_func, grad_func=grad_func)
     # [plt.scatter(point[0], point[1], c='white') for point in chain_current]
     chain_current = new_chain
-plt.plot([point[0] for point in chain_current],[point[1] for point in chain_current], 'o--', c='white', label='final path (PEB)')
+plt.plot([point[0] for point in chain_current],[point[1] for point in chain_current], 'o--', c='white', label='final path (NEB)')
 print(f"final chain: {chain_current}")
 for i in range(len(chain_current)-1):
     print(f"dist {i}-{i+1}: {dist(chain_current[i], chain_current[i+1])}")
@@ -248,7 +276,7 @@ x = np.linspace(start=min_val,stop=max_val, num=num)
 y = x.reshape(-1,1)
 
 
-h = toy_potential_2(x, y)
+h = en_func(x, y)
 cs = plt.contourf(x, x, h)
 cbar = f.colorbar(cs)
 points_x = [point[0] for point in chain_current]
