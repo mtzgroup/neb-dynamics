@@ -1,0 +1,20 @@
+name: neb
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - numpy
+  - pandas
+  - matplotlib
+  - jupyterlab
+  - jupytext
+  - mypy
+  - pip
+  - pydantic
+  - python=3.9.7
+  - rdkit
+  - yaml
+  - ipywidgets
+  - pip:
+    - tqdm
+    - black
