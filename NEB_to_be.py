@@ -1,17 +1,3 @@
-# ---
-# jupyter:
-#   jupytext:
-#     text_representation:
-#       extension: .py
-#       format_name: light
-#       format_version: '1.5'
-#       jupytext_version: 1.13.8
-#   kernelspec:
-#     display_name: Python 3 (ipykernel)
-#     language: python
-#     name: python3
-# ---
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -265,6 +251,10 @@ def update_points_spring_neb(chain, dr, en_func, grad_func, k=1, ideal_dist=0.5)
         else:
             neighs = [chain[i - 1], chain[i + 1]]
         grad_x, grad_y = spring_grad_neb(p_x, p_y, neighs=neighs, k=k, ideal_distance=ideal_dist, grad_func=grad_func, en_func=en_func)
+        
+        
+        
+        
         # print(f"{grad_x=} {grad_y=}")
         p_new = (p_x + (grad_x * dr), p_y + (grad_y * dr))
 
