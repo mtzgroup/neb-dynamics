@@ -76,11 +76,14 @@ def toy_potential_2(x, y):
     return (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
 
 
+# + tags=[]
 def toy_grad_2(x, y):
     dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
     dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
     return dx, dy
 
+
+# -
 
 def toy_potential_3(x, y):
     return -np.absolute(np.sin(x) * np.cos(y) * np.exp(np.absolute(1 - (np.sqrt(x**2 + y**2) / np.pi))))
@@ -372,7 +375,7 @@ cbar = f.colorbar(cs)
 chain = np.linspace((-3.7933036307483574, -3.103697226077475), (3, 2), nimages)
 # chain = np.linspace((-1.3, 0), (1.5, -3), nimages)
 # chain = [(-2,-.1),(0,2),(2,.1)]
-print(chain)
+# print(chain)
 
 
 plt.plot([(point[0]) for point in chain], [(point[1]) for point in chain], "^--", c="white", label="original")
@@ -437,3 +440,7 @@ plt.plot(ens, label="neb")
 plt.plot(ens_peb, label="peb")
 plt.plot(ens_orig, label="orig")
 plt.legend()
+
+
+
+
