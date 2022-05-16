@@ -15,7 +15,8 @@ dependencies:
   - rdkit
   - yaml
   - ipywidgets
+  - ipympl
+  - nb_conda_kernels
   - pip:
     - tqdm
     - black
-    - ipympl
