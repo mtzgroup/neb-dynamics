@@ -125,6 +125,8 @@ def spring_grad_neb(view, k=0.1, ideal_distance=0.5, en_func=toy_potential, grad
     pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
 
     grads_neighs = []
+    force_springs = []
+    
     for neigh in neighs:
         neigh_x, neigh_y = neigh
         dist_x = np.abs(neigh_x - x)
@@ -141,6 +143,9 @@ def spring_grad_neb(view, k=0.1, ideal_distance=0.5, en_func=toy_potential, grad
             force_y *= -1
 
         force_spring = np.array([force_x, force_y])
+        force_springs.append(force_spring)
+        
+        
         force_spring_nudged_const = np.dot(force_spring, unit_tan_path)
         force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
 
@@ -149,9 +154,25 @@ def spring_grad_neb(view, k=0.1, ideal_distance=0.5, en_func=toy_potential, grad
     # print(f"\t{grads_neighs=}")
 
     tot_grads_neighs = np.sum(grads_neighs, axis=0)
+    
+    
+    
+    
+    ### ANTI-KINK FORCE
+    force_springs = np.sum(force_springs, axis=0)
+    
+    vec_2_to_1 = view[2] - view[1]
+    vec_1_to_0 = view[1] - view[0]
+    cos_phi = np.dot(vec_2_to_1,vec_1_to_0)/(np.linalg.norm(vec_2_to_1)*np.linalg.norm(vec_1_to_0))
+    # print(f"{cos_phi=}")
+    f_phi = 0.5*(1 + np.cos(np.pi*cos_phi))
+    
+    proj_force_springs = force_springs - np.dot(force_springs, unit_tan_path)*unit_tan_path
+    
 
     # print(f"{tot_grads_neighs}")
-    return pe_grad_nudged - tot_grads_neighs 
+    # return pe_grad_nudged - tot_grads_neighs 
+    return (pe_grad_nudged - tot_grads_neighs)  + f_phi*(proj_force_springs)
 
 
 def spring_grad(view, k=0.1, ideal_distance=0.5, en_func=toy_potential, grad_func=toy_grad):
@@ -276,7 +297,8 @@ def ArmijoLineSearch(f, xk, pk, gfk, phi0, alpha0, rho=0.5, c1=1e-4):
     return alpha0, phi_a0
 
 
-# +
+# -
+
 def update_points_spring_neb(chain, dr, en_func, grad_func, k=1, ideal_dist=0.5):
     
     chain_copy = np.zeros_like(chain)
@@ -302,8 +324,8 @@ def update_points_spring_neb(chain, dr, en_func, grad_func, k=1, ideal_dist=0.5)
         # print(f"\t{np.linalg.norm([grad_x_scaled,grad_y_scaled])}")
         
         
-#         dr, _ = ArmijoLineSearch(f=en_func, xk=chain[i], gfk=np.array([grad_x, grad_y]), 
-#                                  phi0=en_func(chain[i]), alpha0=.01, pk=-1*np.array([grad_x, grad_y]))
+        dr, _ = ArmijoLineSearch(f=en_func, xk=chain[i], gfk=np.array([grad_x, grad_y]), 
+                                 phi0=en_func(chain[i]), alpha0=.1, pk=-1*np.array([grad_x, grad_y]))
         
         # print(f"{dr=}")
         # print(f"{grad_x=} {grad_y=}")
@@ -315,8 +337,6 @@ def update_points_spring_neb(chain, dr, en_func, grad_func, k=1, ideal_dist=0.5)
 
     return chain_copy
 
-
-# -
 
 def _check_en_converged(chain_prev, chain_new, en_func, en_thre):
     for i in range(1, len(chain_prev) - 1):
@@ -351,6 +371,7 @@ def optimize_chain(chain, en_func, grad_func, update_func, k=0.1, grad_thre=0.01
     chain_previous = chain.copy()
     
     dist_id = np.linalg.norm(np.array(chain[-1]) - np.array(chain[0]))/len(chain)
+    # dist_id=0.5
 
     # print(f"{chain_previous=}\n")
     chain_traj = []
@@ -387,11 +408,11 @@ def optimize_chain(chain, en_func, grad_func, update_func, k=0.1, grad_thre=0.01
 np.random.seed(1)
 fs = 14
 # vars for sim
-nsteps = 200
+nsteps = 1000
 dr = .01
-k = 1
+k = 10
 
-nimages = 16
+nimages = 15
 
 end_point = (3.00002182, 1.99995542)
 start_point = (-3.77928812, -3.28320392)
@@ -496,7 +517,7 @@ chain = np.linspace(start_point, end_point , nimages)
 chain
 
 # + tags=[]
-final_chain, all_chains = optimize_chain(chain=chain, en_func=en_func, grad_func=grad_func, en_thre=0.01, grad_thre=0.01, update_func=update_points_spring_neb, max_steps=200,k=10)
+final_chain, all_chains = optimize_chain(chain=chain, en_func=en_func, grad_func=grad_func, en_thre=0.01, grad_thre=0.01, update_func=update_points_spring_neb, max_steps=nsteps,k=k)
 # final_chain_peb, all_chains_peb = optimize_chain(chain=chain, en_func=en_func, grad_func=grad_func, en_thre=0.01, grad_thre=0.01, update_func=update_points_spring, max_steps=nsteps,k=k)
 
 # +
