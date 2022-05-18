@@ -31,7 +31,9 @@ def main():
             chain=chain,
             grad_func=toy_grad_2,
             en_func=toy_potential_2,
-            k=10
+            k=10,
+            max_steps=1000,
+            grad_thre=0.01
     )
 
 

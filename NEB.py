@@ -57,7 +57,8 @@ class neb:
             view = chain[i - 1 : i + 2]
 
             grad = self.spring_grad_neb(
-                view, k=k, ideal_distance=ideal_dist, grad_func=grad_func
+                view, k=k, ideal_distance=ideal_dist, grad_func=grad_func,
+                en_func=en_func
             )
 
 
@@ -78,12 +79,34 @@ class neb:
 
         return chain_copy
 
-    def spring_grad_neb(self, view, grad_func, k, ideal_distance):
+    def _create_tangent_path(self, view, en_func):
+        en_2 = en_func(view[2])
+        en_1 = en_func(view[1])
+        en_0 = en_func(view[0])
+
+        if en_2 > en_1 and en_1 > en_0:
+            return view[2] - view[1]
+        elif en_2 < en_1 and en_1 < en_2:
+            return view[1] - view[0]
+        
+        else:
+            deltaV_max = max(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
+            deltaV_min = min(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
+
+            if en_2 > en_0:
+                tan_vec = (view[2] - view[1])*deltaV_max + (view[1] - view[0])*deltaV_min
+            elif en_2 < en_0:
+                tan_vec = (view[2] - view[1])*deltaV_min + (view[1] - view[0])*deltaV_max
+            else:
+                print("Chain must have blown up in covergence. Check step size.")
+            return tan_vec
+    def spring_grad_neb(self, view, grad_func, k, ideal_distance, en_func):
 
         neighs = view[[0, 2]]
         # neighs = [view[2]]
 
-        vec_tan_path = neighs[1] - neighs[0]
+        vec_tan_path = self._create_tangent_path(view, en_func=en_func)
+        # vec_tan_path = neighs[1] - neighs[0]
         # unit_vec_tan_path_1 = (view[2] - view[1])/np.linalg.norm((view[2] - view[1]))
         # unit_vec_tan_path_2 = (view[1] - view[0])/np.linalg.norm((view[1] - view[0]))
         # vec_tan_path = view[2] - view[1]
@@ -102,13 +125,9 @@ class neb:
             dist = np.abs(neigh - view[1])
             force_spring = -k*(dist - ideal_distance)
 
-
-            # anywhere that the coordinate is past the current point
-            # that force must be reversed (i.e. we calculated it would
-            # be attractive, but because of the relative position it would
-            # be repulsive)
-            bools = neigh > view[1]
-            force_spring[bools] *= -1
+            direction = np.dot((neigh - view[1]),force_spring)
+            if direction < 0:
+                force_spring*=-1
 
             force_springs.append(force_spring)
 
@@ -122,7 +141,9 @@ class neb:
         tot_grads_neighs = np.sum(grads_neighs, axis=0)
 
         ### ANTI-KINK FORCE
+        
         force_springs = np.sum(force_springs, axis=0)
+        
 
         vec_2_to_1 = view[2] - view[1]
         vec_1_to_0 = view[1] - view[0]
@@ -155,12 +176,12 @@ class neb:
             node_prev = chain_prev[i]
             node_new = chain_new[i]
 
-            delta_grad_x, delta_grad_y = np.abs(
+            delta_grad = np.abs(
                 grad_func(node_new) - grad_func(node_prev)
             )
             
 
-            if (delta_grad_x > grad_thre) or (delta_grad_y > grad_thre):
+            if True in delta_grad > grad_thre:
                 return False
         return True
 

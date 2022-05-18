@@ -7,7 +7,7 @@ from ALS_xtb import ArmijoLineSearch
 @dataclass
 class neb:
     def optimize_chain(
-        self, chain, grad_func, en_func, k, en_thre=0.01, grad_thre=0.01, max_steps=1000
+        self, chain, grad_func, en_func, k, en_thre=0.0005, grad_thre=0.0005, max_steps=1000
     ):
 
         chain_traj = []
@@ -18,6 +18,7 @@ class neb:
         chain_previous = chain.copy()
 
         while nsteps < max_steps:
+            print(f"--->On step {nsteps}")
             new_chain = self.update_chain(
                 chain=chain_previous,
                 k=k,
@@ -56,11 +57,11 @@ class neb:
         for i in range(1, len(chain) - 1):
             print(f"updating node {i}...")
             view = chain[i - 1 : i + 2]
-
+            # print(f"{view=}")
             grad = self.spring_grad_neb(
-                view, k=k, ideal_distance=ideal_dist, grad_func=grad_func
+                view, k=k, ideal_distance=ideal_dist, grad_func=grad_func, en_func=en_func
             )
-
+            print(f"{grad=}")
             dr = 0.01
 
             # dr, _ = ArmijoLineSearch(
@@ -71,8 +72,11 @@ class neb:
             #     alpha0=1,
             #     pk=-1 * grad,
             # )
-
+            
+            
+            # print(f"{chain[i].coords=}//{grad}//{dr}")
             coords_new = chain[i].coords - grad * dr
+            # print(f"{i}===={coords_new=}")
             p_new = TDStructure.from_coords_symbs(coords=coords_new, 
                         symbs=chain[i].symbols, tot_charge=chain[i].charge,
                         tot_spinmult=chain[i].spinmult)
@@ -81,19 +85,45 @@ class neb:
 
         return chain_copy
 
-    def spring_grad_neb(self, view, grad_func, k, ideal_distance):
+
+    def _create_tangent_path(self, view, en_func):
+        en_2 = en_func(view[2])
+        en_1 = en_func(view[1])
+        en_0 = en_func(view[0])
+
+        if en_2 > en_1 and en_1 > en_0:
+            return view[2].coords - view[1].coords
+        elif en_2 < en_1 and en_1 < en_2:
+            return view[1].coords - view[0].coords
+        
+        else:
+            deltaV_max = max(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
+            deltaV_min = min(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
+
+            if en_2 > en_0:
+                tan_vec = (view[2].coords - view[1].coords)*deltaV_max + (view[1].coords - view[0].coords)*deltaV_min
+            elif en_2 < en_0:
+                tan_vec = (view[2].coords - view[1].coords)*deltaV_min + (view[1].coords - view[0].coords)*deltaV_max
+            else:
+                print("Chain must have blown up in covergence. Check step size.")
+            return tan_vec
+
+    def spring_grad_neb(self, view, grad_func, k, ideal_distance, en_func):
 
         neighs = view[[0, 2]]
         # neighs = [view[2]]
-
-        vec_tan_path = neighs[1].coords - neighs[0].coords
+        # print(f"{neighs=}")
+        # print(f"{neighs[1].coords=}//{neighs[0].coords}")
+        vec_tan_path = self._create_tangent_path(view, en_func=en_func)
+        # vec_tan_path = neighs[1].coords - neighs[0].coords
         # vec_tan_path = view[2] - view[1]
 
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
-        print(f"{unit_tan_path=}")
+        print(f"{vec_tan_path=}//{unit_tan_path=}")
 
         pe_grad = grad_func(view[1])
+        print(f"{pe_grad=}")
         
         pe_grad_nudged_const = np.sum(pe_grad * unit_tan_path, axis=1).reshape(-1,1)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
@@ -103,15 +133,15 @@ class neb:
 
         for neigh in neighs:
             dist = np.abs(neigh.coords - view[1].coords)
-            force_spring = -k*(dist - ideal_distance)
+            force_spring = -k*(dist - ideal_distance) # magnitude tells me if it's attractive or repulsive
 
 
-            # anywhere that the coordinate is past the current point
-            # that force must be reversed (i.e. we calculated it would
-            # be attractive, but because of the relative position it would
-            # be repulsive)
-            bools = neigh.coords > view[1].coords
-            force_spring[bools] *= -1
+            # check if force vector is pointing towards neighbor
+            direction = np.sum((neigh.coords - view[1].coords)*force_spring, axis=1).reshape(-1,1)
+            direction[direction < 0]*= -1 
+                
+            
+
 
             force_springs.append(force_spring)
 
@@ -119,25 +149,33 @@ class neb:
             force_spring_nudged = (
                 force_spring - force_spring_nudged_const * unit_tan_path
             )
+            
 
             grads_neighs.append(force_spring_nudged)
 
         tot_grads_neighs = np.sum(grads_neighs, axis=0)
 
         ### ANTI-KINK FORCE
+        # print(f"{force_springs=}")
         force_springs = np.sum(force_springs, axis=0)
+        # print(f"{force_springs=}")
 
         vec_2_to_1 = view[2].coords - view[1].coords
         vec_1_to_0 = view[1].coords - view[0].coords
         cos_phi = np.sum(vec_2_to_1*vec_1_to_0, axis=1).reshape(-1,1) / (
             np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0)
         )
-
+        
         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
 
         proj_force_springs = (
             force_springs - np.sum(force_springs*unit_tan_path, axis=1).reshape(-1,1) * unit_tan_path
         )
+        
+
+
+        print(f"{pe_grad_nudged=} {tot_grads_neighs=} {f_phi=} {proj_force_springs=}")
+
 
         return (pe_grad_nudged - tot_grads_neighs) + f_phi * (proj_force_springs)
 
@@ -158,12 +196,12 @@ class neb:
             node_prev = chain_prev[i]
             node_new = chain_new[i]
 
-            delta_grad_x, delta_grad_y = np.abs(
+            delta_grad = np.abs(
                 grad_func(node_new) - grad_func(node_prev)
             )
             
 
-            if (delta_grad_x > grad_thre) or (delta_grad_y > grad_thre):
+            if True in delta_grad > grad_thre:
                 return False
         return True
 
