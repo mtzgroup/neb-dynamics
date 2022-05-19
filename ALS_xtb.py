@@ -85,7 +85,7 @@ def ArmijoLineSearch(struct, grad, t, alpha, beta, f):
         
             en_struct_prime = f(struct_prime)
         except:
-            t*= 0.1
+            t*= 0.5
             struct_prime = TDStructure.from_coords_symbs(
                 coords=struct.coords - t*grad,
                 symbs=struct.symbols,

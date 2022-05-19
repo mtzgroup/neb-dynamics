@@ -60,7 +60,9 @@ class neb:
         
 
         for i in range(1, len(chain) - 1):
-            if nodes_converged[i] == True: continue
+            if nodes_converged[i] == True: 
+                chain_copy[i] = chain[i]
+                continue
             
             print(f"updating node {i}...")
             view = chain[i - 1 : i + 2]
