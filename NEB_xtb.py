@@ -62,16 +62,12 @@ class neb:
                 view, k=k, ideal_distance=ideal_dist, grad_func=grad_func, en_func=en_func
             )
             print(f"{grad=}")
-            dr = 0.01
+            # dr = 0.01
 
-            # dr, _ = ArmijoLineSearch(
-            #     f=en_func,
-            #     xk=chain[i],
-            #     gfk=grad,
-            #     phi0=en_func(chain[i]),
-            #     alpha0=1,
-            #     pk=-1 * grad,
-            # )
+            dr  = ArmijoLineSearch(
+                struct=chain[i], grad=grad, t=1, alpha=0.3, beta=0.8, f=en_func
+            )
+            # print(f"---> got {dr=}")
             
             
             # print(f"{chain[i].coords=}//{grad}//{dr}")
@@ -125,7 +121,7 @@ class neb:
         pe_grad = grad_func(view[1])
         print(f"{pe_grad=}")
         
-        pe_grad_nudged_const = np.sum(pe_grad * unit_tan_path, axis=1).reshape(-1,1)
+        pe_grad_nudged_const = np.sum(pe_grad*unit_tan_path, axis=1).reshape(-1,1) # Nx1 matrix 
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
 
         grads_neighs = []
@@ -135,10 +131,13 @@ class neb:
             dist = np.abs(neigh.coords - view[1].coords)
             force_spring = -k*(dist - ideal_distance) # magnitude tells me if it's attractive or repulsive
 
-
             # check if force vector is pointing towards neighbor
-            direction = np.sum((neigh.coords - view[1].coords)*force_spring, axis=1).reshape(-1,1)
-            direction[direction < 0]*= -1 
+            direction = np.sum((neigh.coords - view[1].coords)*force_spring, 
+                        axis=1)
+
+            # print(f"{direction=} {direction.shape=}")
+            # print(f"{force_spring=} {force_spring.shape=}")
+            force_spring[direction < 0]*= -1 
                 
             
 
@@ -146,9 +145,7 @@ class neb:
             force_springs.append(force_spring)
 
             force_spring_nudged_const = np.sum(force_spring*unit_tan_path, axis=1).reshape(-1,1)
-            force_spring_nudged = (
-                force_spring - force_spring_nudged_const * unit_tan_path
-            )
+            force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
             
 
             grads_neighs.append(force_spring_nudged)

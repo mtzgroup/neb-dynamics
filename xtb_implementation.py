@@ -40,9 +40,6 @@ def enablePrint():
 
 
 # +
-# blockPrint()
-
-# +
 def grad_func(tdstruct):
 
     
@@ -62,6 +59,8 @@ def grad_func(tdstruct):
 grad_func(struct)
 # -
 
+blockPrint()
+
 # # NEB
 
 from NEB_xtb import neb
@@ -77,7 +76,7 @@ foo2 = np.array([[3,2,1]])
 np.tensordot(foo1, foo2)
 # -
 
-opt_chain, opt_chain_traj = neb().optimize_chain(chain=traj,grad_func=grad_func,en_func=en_func,k=10)
+opt_chain, opt_chain_traj = neb().optimize_chain(chain=traj,grad_func=grad_func,en_func=en_func,k=10, max_steps=100)
 
 opt_chain_ens = [en_func(s) for s in opt_chain]
 
@@ -85,35 +84,9 @@ plt.plot(list(range(len(original_chain_ens))),original_chain_ens,'x--', label='o
 plt.plot(list(range(len(original_chain_ens))), opt_chain_ens, 'o',label='neb')
 plt.legend()
 
-s = traj[6]
+out = Trajectory(opt_chain)
 
 
-# +
-coords = s.coords
-atomic_numbers = s.atomic_numbers
-
-# blockPrint()
-calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
-                 charge=s.charge, uhf=s.spinmult-1)
-res = calc.singlepoint()
-grad = res.get_gradient()
-
-# -
-
-res.get_energy()
-
-foo = [grad_func(s) for s in traj]
-
-list(enumerate(foo))
-
-# +
-# s.write_to_disk(data_dir/"wtf.xyz")
-
-# +
-# foo = TDStructure.from_fp(data_dir/'wtf.xyz')
-
-# +
-# s.coords
-# -
+out.write_trajectory(data_dir/'pdda_neb_100_steps.xyz')
 
 
