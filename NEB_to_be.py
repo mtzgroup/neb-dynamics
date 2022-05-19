@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -668,4 +669,3 @@ x_foo = c[:, 0]
 y_foo = c[:, 1]
 
 plt.plot(x_foo, y_foo)
-# -

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from retropaths.abinitio.tdstructure import TDStructure
 import numpy as np
+from xtb.interface import Calculator
+from xtb.utils import get_method
 from ALS_xtb import ArmijoLineSearch
 
 
@@ -18,7 +20,7 @@ class neb:
         chain_previous = chain.copy()
 
         while nsteps < max_steps:
-            print(f"--->On step {nsteps}")
+            # print(f"--->On step {nsteps}")
             new_chain = self.update_chain(
                 chain=chain_previous,
                 k=k,
@@ -61,7 +63,7 @@ class neb:
             grad = self.spring_grad_neb(
                 view, k=k, ideal_distance=ideal_dist, grad_func=grad_func, en_func=en_func
             )
-            print(f"{grad=}")
+            # print(f"{grad=}")
             # dr = 0.01
 
             dr  = ArmijoLineSearch(
@@ -80,6 +82,33 @@ class neb:
             chain_copy[i] = p_new
 
         return chain_copy
+
+    def en_func(self, tdstruct):
+        coords = tdstruct.coords_bohr
+        atomic_numbers = tdstruct.atomic_numbers
+        
+        calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
+                        charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
+        res = calc.singlepoint()
+
+        return res.get_energy()
+    
+    def grad_func(self, tdstruct):
+
+        coords = tdstruct.coords_bohr
+        atomic_numbers = tdstruct.atomic_numbers
+
+        # blockPrint()
+        calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
+                        charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
+        res = calc.singlepoint()
+        grad = res.get_gradient()
+
+        
+        # enablePrint()
+        return grad
+
+
 
 
     def _create_tangent_path(self, view, en_func):
@@ -116,10 +145,10 @@ class neb:
 
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
-        print(f"{vec_tan_path=}//{unit_tan_path=}")
+        # print(f"{vec_tan_path=}//{unit_tan_path=}")
 
         pe_grad = grad_func(view[1])
-        print(f"{pe_grad=}")
+        # print(f"{pe_grad=}")
         
         pe_grad_nudged_const = np.sum(pe_grad*unit_tan_path, axis=1).reshape(-1,1) # Nx1 matrix 
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
@@ -171,7 +200,7 @@ class neb:
         
 
 
-        print(f"{pe_grad_nudged=} {tot_grads_neighs=} {f_phi=} {proj_force_springs=}")
+        # print(f"{pe_grad_nudged=} {tot_grads_neighs=} {f_phi=} {proj_force_springs=}")
 
 
         return (pe_grad_nudged - tot_grads_neighs) + f_phi * (proj_force_springs)
