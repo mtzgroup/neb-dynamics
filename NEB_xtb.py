@@ -4,6 +4,7 @@ import numpy as np
 from xtb.interface import Calculator
 from xtb.utils import get_method
 from ALS_xtb import ArmijoLineSearch
+from xtb.libxtb import VERBOSITY_MUTED
 
 
 @dataclass
@@ -18,6 +19,7 @@ class neb:
             chain
         )
         chain_previous = chain.copy()
+        nodes_converged = np.zeros(len(chain))
 
         while nsteps < max_steps:
             # print(f"--->On step {nsteps}")
@@ -26,19 +28,20 @@ class neb:
                 k=k,
                 en_func=en_func,
                 grad_func=grad_func,
-                ideal_dist=ideal_dist
+                ideal_dist=ideal_dist,
+                nodes_converged=nodes_converged
             )
 
             chain_traj.append(new_chain)
-
-            if self._chain_converged(
+            nodes_converged = self._chain_converged(
                 chain_previous=chain_previous,
                 new_chain=new_chain,
                 en_func=en_func,
                 en_thre=en_thre,
                 grad_func=grad_func,
                 grad_thre=grad_thre,
-            ):
+            )
+            if False not in nodes_converged:
                 print("Chain converged!")
                 return new_chain, chain_traj
 
@@ -48,7 +51,7 @@ class neb:
         print("Chain did not converge...")
         return new_chain, chain_traj
 
-    def update_chain(self, chain, k, en_func, grad_func, ideal_dist):
+    def update_chain(self, chain, k, en_func, grad_func, ideal_dist,nodes_converged):
 
         chain_copy = np.zeros_like(chain)
         chain_copy[0] = chain[0]
@@ -57,24 +60,25 @@ class neb:
         
 
         for i in range(1, len(chain) - 1):
+            if nodes_converged[i] == True: continue
+            
             print(f"updating node {i}...")
             view = chain[i - 1 : i + 2]
             # print(f"{view=}")
             grad = self.spring_grad_neb(
                 view, k=k, ideal_distance=ideal_dist, grad_func=grad_func, en_func=en_func
             )
-            # print(f"{grad=}")
             # dr = 0.01
 
             dr  = ArmijoLineSearch(
                 struct=chain[i], grad=grad, t=1, alpha=0.3, beta=0.8, f=en_func
             )
-            # print(f"---> got {dr=}")
             
             
-            # print(f"{chain[i].coords=}//{grad}//{dr}")
+            
+            
             coords_new = chain[i].coords - grad * dr
-            # print(f"{i}===={coords_new=}")
+            
             p_new = TDStructure.from_coords_symbs(coords=coords_new, 
                         symbs=chain[i].symbols, tot_charge=chain[i].charge,
                         tot_spinmult=chain[i].spinmult)
@@ -89,6 +93,8 @@ class neb:
         
         calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
                         charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
+
+        calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
 
         return res.get_energy()
@@ -101,6 +107,7 @@ class neb:
         # blockPrint()
         calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
                         charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
+        calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
         grad = res.get_gradient()
 
@@ -136,19 +143,11 @@ class neb:
     def spring_grad_neb(self, view, grad_func, k, ideal_distance, en_func):
 
         neighs = view[[0, 2]]
-        # neighs = [view[2]]
-        # print(f"{neighs=}")
-        # print(f"{neighs[1].coords=}//{neighs[0].coords}")
+        
         vec_tan_path = self._create_tangent_path(view, en_func=en_func)
-        # vec_tan_path = neighs[1].coords - neighs[0].coords
-        # vec_tan_path = view[2] - view[1]
-
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
-        # print(f"{vec_tan_path=}//{unit_tan_path=}")
-
         pe_grad = grad_func(view[1])
-        # print(f"{pe_grad=}")
         
         pe_grad_nudged_const = np.sum(pe_grad*unit_tan_path, axis=1).reshape(-1,1) # Nx1 matrix 
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
@@ -164,8 +163,7 @@ class neb:
             direction = np.sum((neigh.coords - view[1].coords)*force_spring, 
                         axis=1)
 
-            # print(f"{direction=} {direction.shape=}")
-            # print(f"{force_spring=} {force_spring.shape=}")
+            # flip vectors that weren't pointing towards neighbor
             force_spring[direction < 0]*= -1 
                 
             
@@ -206,16 +204,19 @@ class neb:
         return (pe_grad_nudged - tot_grads_neighs) + f_phi * (proj_force_springs)
 
     def _check_en_converged(self, chain_prev, chain_new, en_func, en_thre):
+        bools = np.ones(len(chain_new)) 
         for i in range(1, len(chain_prev) - 1):
             node_prev = chain_prev[i]
             node_new = chain_new[i]
 
             delta_e = np.abs(en_func(node_new) - en_func(node_prev))
             if delta_e > en_thre:
-                return False
-        return True
+                bools[i] = 0
+                
+        return bools
 
     def _check_grad_converged(self, chain_prev, chain_new, grad_func, grad_thre):
+        bools = np.ones(len(chain_new)) 
         for i in range(
             1, len(chain_prev) - 1
         ):  
@@ -228,12 +229,15 @@ class neb:
             
 
             if True in delta_grad > grad_thre:
-                return False
-        return True
+                bools[i] = 0
+        return bools
 
     def _chain_converged(
         self, chain_previous, new_chain, en_func, en_thre, grad_func, grad_thre
     ):
+        """
+        returns list of bools saying whether a node has converged
+        """
 
         en_converged = self._check_en_converged(
             chain_prev=chain_previous,
@@ -247,5 +251,5 @@ class neb:
             grad_func=grad_func,
             grad_thre=grad_thre,
         )
-
-        return en_converged and grad_converged
+        
+        return en_converged*grad_converged

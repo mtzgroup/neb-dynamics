@@ -14,7 +14,7 @@ def main():
     original_chain_ens = [n.en_func(s) for s in traj]
 
     opt_chain, opt_chain_traj = n.optimize_chain(
-        chain=traj, grad_func=n.grad_func, en_func=n.en_func, k=10, max_steps=1
+        chain=traj, grad_func=n.grad_func, en_func=n.en_func, k=10, max_steps=5
     )
 
     opt_chain_ens = [n.en_func(s) for s in opt_chain]
