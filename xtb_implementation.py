@@ -11,6 +11,7 @@ data_dir = Path("./example_cases/")
 # traj = Trajectory.from_xyz(data_dir/'diels_alder.xyz')
 traj = Trajectory.from_xyz(data_dir/'PDDA_geodesic.xyz')
 
+
 struct = traj[0]
 
 
@@ -52,10 +53,6 @@ def grad_func(tdstruct):
 
 grad_func(struct)
 
-# +
-# blockPrint()
-# -
-
 # # NEB
 
 from NEB_xtb import neb
@@ -71,6 +68,9 @@ foo2 = np.array([[3,2,1]])
 np.tensordot(foo1, foo2)
 # -
 
+# #### start time: 1045am
+# #### end time: <=11:22am
+
 opt_chain, opt_chain_traj = neb().optimize_chain(chain=traj,grad_func=grad_func,en_func=en_func,k=10, max_steps=1000)
 
 opt_chain_ens = [en_func(s) for s in opt_chain]
@@ -82,6 +82,6 @@ plt.legend()
 out = Trajectory(opt_chain)
 
 
-out.write_trajectory(data_dir/'pdda_neb_1000_steps_att2.xyz')
+out.write_trajectory(data_dir/'pdda_neb_1000_steps_k_10.xyz')
 
 

@@ -72,7 +72,7 @@ def ArmijoLineSearch(struct, grad, t, alpha, beta, f):
     condition = (en_struct - (en_struct_prime + alpha*t*(np.linalg.norm(grad)**2) ) < 0)
     
         
-    while condition  and count<max_steps:
+    while condition and count<max_steps:
         t *= beta
         count+=1
         
