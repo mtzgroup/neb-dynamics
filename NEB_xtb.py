@@ -5,7 +5,9 @@ from xtb.interface import Calculator
 from xtb.utils import get_method
 from ALS_xtb import ArmijoLineSearch
 from xtb.libxtb import VERBOSITY_MUTED
-
+from ase.optimize.lbfgs import LBFGS
+from ase.atoms import Atoms
+from xtb.ase.calculator import XTB
 
 @dataclass
 class neb:
@@ -117,6 +119,26 @@ class neb:
         # enablePrint()
         return grad
 
+
+    def opt_func(self, tdstruct):
+        coords = tdstruct.coords_bohr
+
+        atoms = Atoms(
+                symbols = list(tdstruct.symbols),
+                positions = coords,
+            )
+
+        atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1)
+        opt = LBFGS(atoms)
+        opt.run(fmax=0.1)
+
+        opt_struct = TDStructure.from_coords_symbs(
+            coords=atoms.positions*0.529177,
+            symbs=tdstruct.symbols,
+            tot_charge=tdstruct.charge,
+            tot_spinmult=tdstruct.spinmult)
+
+        return opt_struct
 
 
 

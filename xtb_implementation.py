@@ -1,3 +1,4 @@
+# +
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
@@ -6,6 +7,11 @@ from retropaths.abinitio.tdstructure import TDStructure
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+
+from ase.optimize.lbfgs import LBFGS
+from ase.atoms import Atoms
+from xtb.ase.calculator import XTB
+# -
 
 data_dir = Path("./example_cases/")
 # traj = Trajectory.from_xyz(data_dir/'diels_alder.xyz')
@@ -32,6 +38,33 @@ en_func(struct)
 
 
 # -
+
+def opt_func(tdstruct):
+    tdstruct = struct
+    coords = tdstruct.coords_bohr
+    atomic_numbers = tdstruct.atomic_numbers
+
+    atoms = Atoms(
+            symbols = tdstruct.symbols,
+            positions = tdstruct.coords,
+        )
+
+    atoms.calc = XTB(method="GFN2-xTB", solvent="water", accuracy=0.1)
+    calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
+                         charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
+    calc.set_verbosity(VERBOSITY_MUTED)
+    opt = LBFGS(atoms)
+    opt.run(fmax=0.1)
+
+    opt_struct = TDStructure.from_coords_symbs(
+        coords=atoms.positions*0.529177,
+        symbs=tdstruct.symbols,
+        tot_charge=tdstruct.charge,
+        tot_spinmult=tdstruct.spinmult)
+
+    return opt_struct
+opt_func(struct)
+
 
 def grad_func(tdstruct):
 
