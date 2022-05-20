@@ -8,16 +8,16 @@ from xtb.libxtb import VERBOSITY_MUTED
 
 
 @dataclass
-class neb:
+class neb: 
     def optimize_chain(
         self, chain, grad_func, en_func, k, en_thre=0.0005, grad_thre=0.0005, max_steps=1000
     ):
 
         chain_traj = []
         nsteps = 0
-        ideal_dist = np.linalg.norm(np.array(chain[-1].coords) - np.array(chain[0].coords)) / len(
-            chain
-        )
+        # ideal_dist = np.linalg.norm(np.array(chain[-1].coords) - np.array(chain[0].coords)) / len(
+        #     chain
+        # )
         chain_previous = chain.copy()
         nodes_converged = np.zeros(len(chain))
 
@@ -28,7 +28,7 @@ class neb:
                 k=k,
                 en_func=en_func,
                 grad_func=grad_func,
-                ideal_dist=ideal_dist,
+                # ideal_dist=ideal_dist,
                 nodes_converged=nodes_converged
             )
 
@@ -51,7 +51,7 @@ class neb:
         print("Chain did not converge...")
         return new_chain, chain_traj
 
-    def update_chain(self, chain, k, en_func, grad_func, ideal_dist,nodes_converged):
+    def update_chain(self, chain, k, en_func, grad_func,nodes_converged):
 
         chain_copy = np.zeros_like(chain)
         chain_copy[0] = chain[0]
@@ -68,7 +68,9 @@ class neb:
             view = chain[i - 1 : i + 2]
             # print(f"{view=}")
             grad = self.spring_grad_neb(
-                view, k=k, ideal_distance=ideal_dist, grad_func=grad_func, en_func=en_func
+                view, k=k,
+                # ideal_distance=ideal_dist, 
+                grad_func=grad_func, en_func=en_func
             )
             # dr = 0.01
 
@@ -142,7 +144,7 @@ class neb:
                 print("Chain must have blown up in covergence. Check step size.")
             return tan_vec
 
-    def spring_grad_neb(self, view, grad_func, k, ideal_distance, en_func):
+    def spring_grad_neb(self, view, grad_func, k, en_func):
 
         neighs = view[[0, 2]]
         
@@ -157,27 +159,27 @@ class neb:
         grads_neighs = []
         force_springs = []
 
-        for neigh in neighs:
-            dist = np.abs(neigh.coords - view[1].coords)
-            force_spring = -k*(dist - ideal_distance) # magnitude tells me if it's attractive or repulsive
+        # for neigh in neighs:
+        # dist = np.abs(neigh.coords - view[1].coords)
+        # force_spring = -k*(dist - ideal_distance) # magnitude tells me if it's attractive or repulsive
+        force_spring = -k*(np.abs(view[2].coords - view[1].coords) - np.abs(view[1].coords - view[0].coords)) # magnitude tells me if it's attractive or repulsive
+        # check if force vector is pointing towards neighbor
+        direction = np.sum((view[2].coords - view[1].coords)*force_spring, 
+                    axis=1)
 
-            # check if force vector is pointing towards neighbor
-            direction = np.sum((neigh.coords - view[1].coords)*force_spring, 
-                        axis=1)
-
-            # flip vectors that weren't pointing towards neighbor
-            force_spring[direction < 0]*= -1 
-                
+        # flip vectors that weren't pointing towards neighbor
+        force_spring[direction < 0]*= -1 
             
+        
 
 
-            force_springs.append(force_spring)
+        force_springs.append(force_spring)
 
-            force_spring_nudged_const = np.sum(force_spring*unit_tan_path, axis=1).reshape(-1,1)
-            force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
-            
+        force_spring_nudged_const = np.sum(force_spring*unit_tan_path, axis=1).reshape(-1,1)
+        force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
+        
 
-            grads_neighs.append(force_spring_nudged)
+        grads_neighs.append(force_spring_nudged)
 
         tot_grads_neighs = np.sum(grads_neighs, axis=0)
 
