@@ -12,9 +12,9 @@ class neb:
 
         chain_traj = []
         nsteps = 0
-        ideal_dist = np.linalg.norm(np.array(chain[-1]) - np.array(chain[0])) / len(
-            chain
-        )
+        # ideal_dist = np.linalg.norm(np.array(chain[-1]) - np.array(chain[0])) / len(
+        #     chain
+        # )
         chain_previous = chain.copy()
 
         while nsteps < max_steps:
@@ -22,8 +22,8 @@ class neb:
                 chain=chain_previous,
                 k=k,
                 en_func=en_func,
-                grad_func=grad_func,
-                ideal_dist=ideal_dist
+                grad_func=grad_func
+                # ideal_dist=ideal_dist
             )
 
             chain_traj.append(new_chain)
@@ -45,7 +45,7 @@ class neb:
         print("Chain did not converge...")
         return new_chain, chain_traj
 
-    def update_chain(self, chain, k, en_func, grad_func, ideal_dist):
+    def update_chain(self, chain, k, en_func, grad_func):
 
         chain_copy = np.zeros_like(chain)
         chain_copy[0] = chain[0]
@@ -57,7 +57,9 @@ class neb:
             view = chain[i - 1 : i + 2]
 
             grad = self.spring_grad_neb(
-                view, k=k, ideal_distance=ideal_dist, grad_func=grad_func,
+                view, k=k, 
+                # ideal_distance=ideal_dist, 
+                grad_func=grad_func,
                 en_func=en_func
             )
 
@@ -100,7 +102,7 @@ class neb:
             else:
                 print("Chain must have blown up in covergence. Check step size.")
             return tan_vec
-    def spring_grad_neb(self, view, grad_func, k, ideal_distance, en_func):
+    def spring_grad_neb(self, view, grad_func, k, en_func):
 
         neighs = view[[0, 2]]
         # neighs = [view[2]]
@@ -121,22 +123,20 @@ class neb:
         grads_neighs = []
         force_springs = []
 
-        for neigh in neighs:
-            dist = np.abs(neigh - view[1])
-            force_spring = -k*(dist - ideal_distance)
+        force_spring = -k*(np.abs(view[2] - view[1]) -  np.abs(view[1] - view[0]))
 
-            direction = np.dot((neigh - view[1]),force_spring)
-            if direction < 0:
-                force_spring*=-1
+        direction = np.dot((view[2] - view[1]),force_spring)
+        if direction < 0:
+            force_spring*=-1
 
-            force_springs.append(force_spring)
+        force_springs.append(force_spring)
 
-            force_spring_nudged_const = np.dot(force_spring, unit_tan_path)
-            force_spring_nudged = (
-                force_spring - force_spring_nudged_const * unit_tan_path
-            )
+        force_spring_nudged_const = np.dot(force_spring, unit_tan_path)
+        force_spring_nudged = (
+            force_spring - force_spring_nudged_const * unit_tan_path
+        )
 
-            grads_neighs.append(force_spring_nudged)
+        grads_neighs.append(force_spring_nudged)
 
         tot_grads_neighs = np.sum(grads_neighs, axis=0)
 
