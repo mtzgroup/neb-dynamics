@@ -12,9 +12,9 @@ class neb:
 
         chain_traj = []
         nsteps = 0
-        ideal_dist = np.linalg.norm(np.array(chain[-1]) - np.array(chain[0])) / len(
-            chain
-        )
+        # ideal_dist = np.linalg.norm(np.array(chain[-1]) - np.array(chain[0])) / len(
+        #     chain
+        # )
         chain_previous = chain.copy()
 
         while nsteps < max_steps:
@@ -22,8 +22,8 @@ class neb:
                 chain=chain_previous,
                 k=k,
                 en_func=en_func,
-                grad_func=grad_func,
-                ideal_dist=ideal_dist
+                grad_func=grad_func
+                # ideal_dist=ideal_dist
             )
 
             chain_traj.append(new_chain)
@@ -45,7 +45,7 @@ class neb:
         print("Chain did not converge...")
         return new_chain, chain_traj
 
-    def update_chain(self, chain, k, en_func, grad_func, ideal_dist):
+    def update_chain(self, chain, k, en_func, grad_func):
 
         chain_copy = np.zeros_like(chain)
         chain_copy[0] = chain[0]
@@ -57,7 +57,9 @@ class neb:
             view = chain[i - 1 : i + 2]
 
             grad = self.spring_grad_neb(
-                view, k=k, ideal_distance=ideal_dist, grad_func=grad_func,
+                view, k=k, 
+                # ideal_distance=ideal_dist, 
+                grad_func=grad_func,
                 en_func=en_func
             )
 
