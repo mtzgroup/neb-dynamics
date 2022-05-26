@@ -5,9 +5,11 @@ from xtb.interface import Calculator
 from xtb.utils import get_method
 from ALS_xtb import ArmijoLineSearch
 from xtb.libxtb import VERBOSITY_MUTED
-from ase.optimize.lbfgs import LBFGS
-from ase.atoms import Atoms
-from xtb.ase.calculator import XTB
+
+
+
+ANGSTROM_TO_BOHR = 1.88973
+BOHR_TO_ANGSTROMS = 1/ANGSTROM_TO_BOHR
 
 @dataclass
 class neb: 
@@ -122,26 +124,68 @@ class neb:
         return grad
 
 
-    def opt_func(self, tdstruct):
-        coords = tdstruct.coords_bohr
+    
+    def opt_func(self, tdstruct, en_func, grad_func, en_thre=0.0001, grad_thre=0.0001, maxsteps=5000):
+        # coords = tdstruct.coords_bohr
 
-        atoms = Atoms(
-                symbols = list(tdstruct.symbols),
-                positions = coords,
+        # atoms = Atoms(
+        #         symbols = tdstruct.symbols.tolist(),
+        #         positions = coords,
+        #     )
+
+        # atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1)
+        # opt = LBFGS(atoms)
+        # opt.run(fmax=0.1)
+
+        # opt_struct = TDStructure.from_coords_symbs(
+        #     coords=atoms.positions*0.529177,
+        #     symbs=tdstruct.symbols,
+        #     tot_charge=tdstruct.charge,
+        #     tot_spinmult=tdstruct.spinmult)
+
+        # return opt_struct
+
+        e0 = en_func(tdstruct)
+        g0 = grad_func(tdstruct)
+        dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=1, alpha=0.3, beta=0.8, f=en_func)
+        print(f"DR -->{dr}")
+        count = 0
+
+        coords1 = tdstruct.coords_bohr - dr*g0
+        tdstruct_prime = TDStructure.from_coords_symbs(
+            coords=coords1*BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols,
+            tot_charge=tdstruct.charge,
+            tot_spinmult=tdstruct.spinmult
+        )
+
+
+        e1 = en_func(tdstruct_prime)
+        g1 = grad_func(tdstruct_prime)
+
+        struct_conv = (np.abs(e1-e0) < en_thre) and False not in (np.abs(g1-g0) < grad_thre).flatten()
+
+        while not struct_conv and count < maxsteps:
+            count+=1
+
+            e0 = e1
+            g0 = g1
+            
+            dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=1, alpha=0.3, beta=0.8, f=en_func)
+            coords1 = tdstruct.coords_bohr - dr*g0
+            tdstruct_prime = TDStructure.from_coords_symbs(
+                coords=coords1*BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols,
+                tot_charge=tdstruct.charge,
+                tot_spinmult=tdstruct.spinmult
             )
 
-        atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1)
-        opt = LBFGS(atoms)
-        opt.run(fmax=0.1)
 
-        opt_struct = TDStructure.from_coords_symbs(
-            coords=atoms.positions*0.529177,
-            symbs=tdstruct.symbols,
-            tot_charge=tdstruct.charge,
-            tot_spinmult=tdstruct.spinmult)
+            e1 = en_func(tdstruct_prime)
+            g1 = grad_func(tdstruct_prime)
 
-        return opt_struct
-
+            struct_conv = (np.abs(e1-e0) < en_thre) and False not in (np.abs(g1-g0) < grad_thre).flatten()
+            
+        print(f"Converged --> {struct_conv} in {count} steps")
+        return tdstruct_prime
 
 
     def _create_tangent_path(self, view, en_func):

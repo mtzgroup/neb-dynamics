@@ -5,12 +5,19 @@ from xtb.utils import get_method
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.abinitio.tdstructure import TDStructure
 from pathlib import Path
+from NEB_xtb import neb
 import numpy as np
 import matplotlib.pyplot as plt
+from ALS_xtb import ArmijoLineSearch
 
 from ase.optimize.lbfgs import LBFGS
 from ase.atoms import Atoms
 from xtb.ase.calculator import XTB
+
+# +
+
+ANGSTROM_TO_BOHR = 1.88973
+BOHR_TO_ANGSTROMS = 1/ANGSTROM_TO_BOHR
 # -
 
 data_dir = Path("./example_cases/")
@@ -20,71 +27,71 @@ traj = Trajectory.from_xyz(data_dir/'PDDA_geodesic.xyz')
 
 struct = traj[0]
 
+n = neb()
+n.en_func(struct)
+
+
+
+struct.charge
+
+struct.spinmult
 
 # +
-def en_func(tdstruct):
-    coords = tdstruct.coords_bohr
-    atomic_numbers = tdstruct.atomic_numbers
-    
-    calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
-                     charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
-    calc.set_verbosity(VERBOSITY_MUTED)
-    res = calc.singlepoint()
-    
-    return res.get_energy()
-    
-
-en_func(struct)
+tdstruct=struct
+en_func = n.en_func
+grad_func = n.grad_func
+en_thre=0.0001
+grad_thre=0.0001
+maxsteps=1000
 
 
-# -
+e0 = en_func(tdstruct)
+g0 = grad_func(tdstruct)
 
-def opt_func(tdstruct):
-    tdstruct = struct
-    coords = tdstruct.coords_bohr
-    atomic_numbers = tdstruct.atomic_numbers
 
-    atoms = Atoms(
-            symbols = tdstruct.symbols,
-            positions = tdstruct.coords,
-        )
+dr=0.1
+# dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=0.01, alpha=0.3, beta=0.8, f=en_func)
 
-    atoms.calc = XTB(method="GFN2-xTB", solvent="water", accuracy=0.1)
-    calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
-                         charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
-    calc.set_verbosity(VERBOSITY_MUTED)
-    opt = LBFGS(atoms)
-    opt.run(fmax=0.1)
+count = 0
 
-    opt_struct = TDStructure.from_coords_symbs(
-        coords=atoms.positions*0.529177,
-        symbs=tdstruct.symbols,
+coords1 = tdstruct.coords_bohr - dr*g0
+tdstruct_prime = TDStructure.from_coords_symbs(
+    coords=coords1*BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols,
+    tot_charge=tdstruct.charge,
+    tot_spinmult=tdstruct.spinmult
+)
+
+
+e1 = en_func(tdstruct_prime)
+g1 = grad_func(tdstruct_prime)
+
+struct_conv = (np.abs(e1-e0) < en_thre) and False not in (np.abs(g1-g0) < grad_thre).flatten()
+print(f"DR -->{dr}")
+while not struct_conv and count < maxsteps:
+    count+=1
+
+    e0 = e1
+    g0 = g1
+
+    dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=0.5, alpha=0.3, beta=0.8, f=en_func)
+    coords1 = tdstruct.coords_bohr - dr*g0
+    tdstruct_prime = TDStructure.from_coords_symbs(
+        coords=coords1*BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols,
         tot_charge=tdstruct.charge,
-        tot_spinmult=tdstruct.spinmult)
-
-    return opt_struct
-opt_func(struct)
+        tot_spinmult=tdstruct.spinmult
+    )
 
 
-def grad_func(tdstruct):
+    e1 = en_func(tdstruct_prime)
+    g1 = grad_func(tdstruct_prime)
 
-    
-    coords = tdstruct.coords_bohr
-    atomic_numbers = tdstruct.atomic_numbers
+    struct_conv = (np.abs(e1-e0) < en_thre) and False not in (np.abs(g1-g0) < grad_thre).flatten()
 
-    # blockPrint()
-    calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords,
-                     charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
+print(f"Converged --> {struct_conv} in {count} steps")
 
-    calc.set_verbosity(VERBOSITY_MUTED)
-    res = calc.singlepoint()
-    grad = res.get_gradient()
-
-    
-    # enablePrint()
-    return grad
-
-grad_func(struct)
+# +
+# n.opt_func(tdstruct=struct,en_func=n.en_func,grad_func=n.grad_func)
+# -
 
 # # NEB
 
