@@ -55,7 +55,7 @@ class neb:
         print("Chain did not converge...")
         return new_chain, chain_traj
 
-    def update_chain(self, chain, k, en_func, grad_func,nodes_converged):
+    def update_chain(self, chain, k, en_func, grad_func, nodes_converged):
 
         chain_copy = np.zeros_like(chain)
         chain_copy[0] = chain[0]
@@ -85,7 +85,8 @@ class neb:
             
             
             
-            coords_new = chain[i].coords - grad * dr
+            coords_new_bohr = chain[i].coords_bohr - grad * dr
+            coords_new = coords_new_bohr*BOHR_TO_ANGSTROMS
             
             p_new = TDStructure.from_coords_symbs(coords=coords_new, 
                         symbs=chain[i].symbols, tot_charge=chain[i].charge,
@@ -117,11 +118,8 @@ class neb:
                         charge=tdstruct.charge, uhf=tdstruct.spinmult-1)
         calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
-        grad = res.get_gradient()
 
-        
-        # enablePrint()
-        return grad
+        return res.get_gradient()
 
 
     

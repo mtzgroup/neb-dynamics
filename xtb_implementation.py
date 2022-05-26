@@ -22,10 +22,36 @@ BOHR_TO_ANGSTROMS = 1/ANGSTROM_TO_BOHR
 
 data_dir = Path("./example_cases/")
 # traj = Trajectory.from_xyz(data_dir/'diels_alder.xyz')
-traj = Trajectory.from_xyz(data_dir/'PDDA_geodesic.xyz')
+# traj = Trajectory.from_xyz(data_dir/'PDDA_geodesic.xyz')
+traj = Trajectory.from_xyz(data_dir/"Claisen-Rearrangement_geodesic.xyz")
 
 
-struct = traj[0]
+struct = traj[5]
+
+struct.write_to_disk(data_dir/'orig.xyz')
+
+f(struct)
+
+# +
+t=1
+grad = n.grad_func(struct)
+f = n.en_func
+
+new_coords_bohr = struct.coords_bohr - t*grad
+new_coords = new_coords_bohr*BOHR_TO_ANGSTROMS
+
+struct_prime = TDStructure.from_coords_symbs(
+            coords=new_coords,
+            symbs=struct.symbols,
+            tot_charge=struct.charge,
+            tot_spinmult=struct.spinmult)
+    
+en_struct_prime = f(struct_prime)
+# -
+
+en_struct_prime
+
+struct_prime.write_to_disk(data_dir/'wtf.xyz')
 
 n = neb()
 n.en_func(struct)
@@ -49,8 +75,8 @@ e0 = en_func(tdstruct)
 g0 = grad_func(tdstruct)
 
 
-dr=0.1
-# dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=0.01, alpha=0.3, beta=0.8, f=en_func)
+# dr=0.1
+dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=1, alpha=0.3, beta=0.8, f=en_func)
 
 count = 0
 

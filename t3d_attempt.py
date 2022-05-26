@@ -96,7 +96,7 @@ n = neb()
         
 #     print(f"Converged --> {struct_conv} in {count} steps")
 #     return tdstruct_prime
-        
+
 
 # +
 rn = "Claisen-Rearrangement"
@@ -139,10 +139,14 @@ plt.plot(ens, label='geodesic')
 plt.scatter(list(range(len(opt_chain_energies))), opt_chain_energies, label='neb', color='orange')
 plt.legend()
 
-traj.write_trajectory(out_dir/f"{rn}_geodesic_opt_2.xyz")
+# +
+# traj.write_trajectory(out_dir/f"{rn}_geodesic_opt_2.xyz")
 
-opt_traj = Trajectory(opt_chain[0])
+# +
+# opt_traj = Trajectory(opt_chain[0])
 
-opt_traj.write_trajectory(out_dir/f"{rn}_neb_opt_2.xyz")
+# +
+# opt_traj.write_trajectory(out_dir/f"{rn}_neb_opt_2.xyz")
+# -
 
 
