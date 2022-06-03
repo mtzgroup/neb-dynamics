@@ -95,26 +95,14 @@ class neb:
             deltaV_max = max(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
             deltaV_min = min(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
 
-            if en_2 > en_0:
+            if en_2 > en_0: 
                 tan_vec = (view[2] - view[1])*deltaV_max + (view[1] - view[0])*deltaV_min
             elif en_2 < en_0:
                 tan_vec = (view[2] - view[1])*deltaV_min + (view[1] - view[0])*deltaV_max
-            else:
-                print("Chain must have blown up in covergence. Check step size.")
             return tan_vec
     def spring_grad_neb(self, view, grad_func, k, en_func):
-
-        neighs = view[[0, 2]]
-        # neighs = [view[2]]
-
         vec_tan_path = self._create_tangent_path(view, en_func=en_func)
-        # vec_tan_path = neighs[1] - neighs[0]
-        # unit_vec_tan_path_1 = (view[2] - view[1])/np.linalg.norm((view[2] - view[1]))
-        # unit_vec_tan_path_2 = (view[1] - view[0])/np.linalg.norm((view[1] - view[0]))
-        # vec_tan_path = view[2] - view[1]
-
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
-        # unit_tan_path = 0.5*(unit_vec_tan_path_1 + unit_vec_tan_path_2)
 
         pe_grad = grad_func(view[1])
         pe_grad_nudged_const = np.dot(pe_grad, unit_tan_path)

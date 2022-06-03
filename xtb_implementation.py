@@ -10,9 +10,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ALS_xtb import ArmijoLineSearch
 
-from ase.optimize.lbfgs import LBFGS
-from ase.atoms import Atoms
-from xtb.ase.calculator import XTB
+# from ase.optimize.lbfgs import LBFGS
+# from ase.atoms import Atoms
+# from xtb.ase.calculator import XTB
 
 # +
 
@@ -23,7 +23,7 @@ BOHR_TO_ANGSTROMS = 1/ANGSTROM_TO_BOHR
 data_dir = Path("./example_cases/")
 # traj = Trajectory.from_xyz(data_dir/'diels_alder.xyz')
 # traj = Trajectory.from_xyz(data_dir/'PDDA_geodesic.xyz')
-traj = Trajectory.from_xyz(data_dir/"Claisen-Rearrangement_geodesic.xyz")
+# traj = Trajectory.from_xyz(data_dir/"Claisen-Rearrangement_geodesic.xyz")
 
 
 struct = traj[5]
@@ -149,5 +149,11 @@ out = Trajectory(opt_chain)
 
 
 out.write_trajectory(data_dir/'pdda_neb_1000_steps_k_10.xyz')
+
+# # Figure
+
+n = neb()
+
+Trajectory.from_xyz(data_dir/"pdda_neb_1000_steps_k_10.xyz")
 
 
