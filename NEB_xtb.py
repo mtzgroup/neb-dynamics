@@ -204,8 +204,7 @@ class neb:
                 tan_vec = (view[2].coords - view[1].coords)*deltaV_max + (view[1].coords - view[0].coords)*deltaV_min
             elif en_2 < en_0:
                 tan_vec = (view[2].coords - view[1].coords)*deltaV_min + (view[1].coords - view[0].coords)*deltaV_max
-            else:
-                print("Chain must have blown up in covergence. Check step size.")
+            
             return tan_vec
 
     def spring_grad_neb(self, view, grad_func, k, en_func):

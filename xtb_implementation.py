@@ -197,4 +197,10 @@ out = Trajectory(opt_chain)
 
 out.write_trajectory(data_dir/'pdda_neb_1000_steps_k_10_corrected.xyz')
 
+# # Figure
+
+n = neb()
+
+Trajectory.from_xyz(data_dir/"pdda_neb_1000_steps_k_10.xyz")
+
 
