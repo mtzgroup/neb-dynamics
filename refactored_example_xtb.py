@@ -8,7 +8,8 @@ from pathlib import Path
 def main():
     data_dir = Path("./example_cases/")
     # traj = Trajectory.from_xyz(data_dir/'diels_alder.xyz')
-    traj = Trajectory.from_xyz(data_dir / "PDDA_geodesic.xyz")
+    # traj = Trajectory.from_xyz(data_dir / "PDDA_geodesic.xyz")
+    traj = Trajectory.from_xyz()
     n = neb()
 
     original_chain_ens = [n.en_func(s) for s in traj]

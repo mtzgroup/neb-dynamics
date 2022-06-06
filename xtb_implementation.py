@@ -10,9 +10,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ALS_xtb import ArmijoLineSearch
 
-# from ase.optimize.lbfgs import LBFGS
-# from ase.atoms import Atoms
-# from xtb.ase.calculator import XTB
+from retropaths.abinitio.geodesic_input import GeodesicInput
+
+from ase.optimize.lbfgs import LBFGS
+from ase.atoms import Atoms
+from xtb.ase.calculator import XTB
 
 # +
 
@@ -22,36 +24,38 @@ BOHR_TO_ANGSTROMS = 1/ANGSTROM_TO_BOHR
 
 data_dir = Path("./example_cases/")
 # traj = Trajectory.from_xyz(data_dir/'diels_alder.xyz')
-# traj = Trajectory.from_xyz(data_dir/'PDDA_geodesic.xyz')
+traj = Trajectory.from_xyz(data_dir/'PDDA_geodesic.xyz')
 # traj = Trajectory.from_xyz(data_dir/"Claisen-Rearrangement_geodesic.xyz")
 
 
 struct = traj[5]
 
-struct.write_to_disk(data_dir/'orig.xyz')
-
-f(struct)
+# +
+# struct.write_to_disk(data_dir/'orig.xyz')
 
 # +
-t=1
-grad = n.grad_func(struct)
-f = n.en_func
+# n = neb()
+# t=1
+# grad = n.grad_func(struct)
+# f = n.en_func
 
-new_coords_bohr = struct.coords_bohr - t*grad
-new_coords = new_coords_bohr*BOHR_TO_ANGSTROMS
+# new_coords_bohr = struct.coords_bohr - t*grad
+# new_coords = new_coords_bohr*BOHR_TO_ANGSTROMS
 
-struct_prime = TDStructure.from_coords_symbs(
-            coords=new_coords,
-            symbs=struct.symbols,
-            tot_charge=struct.charge,
-            tot_spinmult=struct.spinmult)
+# struct_prime = TDStructure.from_coords_symbs(
+#             coords=new_coords,
+#             symbs=struct.symbols,
+#             tot_charge=struct.charge,
+#             tot_spinmult=struct.spinmult)
     
-en_struct_prime = f(struct_prime)
+# en_struct_prime = f(struct_prime)
+
+# +
+# en_struct_prime
+
+# +
+# struct_prime.write_to_disk(data_dir/'wtf.xyz')
 # -
-
-en_struct_prime
-
-struct_prime.write_to_disk(data_dir/'wtf.xyz')
 
 n = neb()
 n.en_func(struct)
@@ -123,7 +127,16 @@ print(f"Converged --> {struct_conv} in {count} steps")
 
 from NEB_xtb import neb
 
-original_chain_ens = [en_func(s) for s in traj]
+n = neb()
+
+start = TDStructure.from_fp(data_dir/'root_opt.xyz')
+
+end = TDStructure.from_fp(data_dir/'end_opt.xyz')
+
+gi = GeodesicInput.from_endpoints(initial=start, final=end)
+traj = gi.run(nimages=31, friction=0.01)
+
+original_chain_ens = [n.en_func(s) for s in traj]
 
 plt.plot(original_chain_ens)
 
@@ -137,18 +150,52 @@ np.tensordot(foo1, foo2)
 # #### start time: 1045am
 # #### end time: <=11:22am
 
-opt_chain, opt_chain_traj = neb().optimize_chain(chain=traj,grad_func=grad_func,en_func=en_func,k=10, max_steps=1000)
+opt_chain, opt_chain_traj = n.optimize_chain(chain=traj,grad_func=n.grad_func,en_func=n.en_func,k=10, max_steps=1000)
 
-opt_chain_ens = [en_func(s) for s in opt_chain]
+# +
+# start_pdda, end_pdda = opt_chain[0], opt_chain[-1]
 
-plt.plot(list(range(len(original_chain_ens))),original_chain_ens,'x--', label='orig')
-plt.plot(list(range(len(original_chain_ens))), opt_chain_ens, 'o',label='neb')
-plt.legend()
+# +
+# start_pdda.write_to_disk(data_dir/"root_pdda.xyz")
+
+# +
+# end_pdda.write_to_disk(data_dir/'end_pdda.xyz')
+# -
+
+opt_chain_ens = [n.en_func(s) for s in opt_chain]
+
+ref_traj = Trajectory.from_xyz(data_dir/'ref_neb_pdda.xyz')
+ref_ens = [n.en_func(s) for s in ref_traj]
+
+plt.scatter(list(range(len(ref_ens))), ref_ens)
+
+original_chain_ens_scaled = 627.5*np.array(original_chain_ens)
+original_chain_ens_scaled -= original_chain_ens_scaled[0]
+
+opt_chain_ens_scaled = 627.5*np.array(opt_chain_ens)
+opt_chain_ens_scaled -= opt_chain_ens_scaled[0]
+
+s=8
+fs = 22
+f, ax = plt.subplots(figsize=(1.618*s, s))
+plt.plot(list(range(len(original_chain_ens))),original_chain_ens_scaled,'x--', label='orig')
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.plot(list(range(len(original_chain_ens))), opt_chain_ens_scaled, 'o--',label='neb')
+plt.ylabel("Relative energy (kcal/mol)",fontsize=fs+5)
+# plt.plot(list(range(len(ref_ens))), ref_ens, 'o--',label='neb reference')
+plt.legend(fontsize=fs)
+
+opt_chain_ens_scaled[7]
+
+opt_chain_ens_scaled[21]
+
+opt_chain_ens_scaled[25]
 
 out = Trajectory(opt_chain)
 
 
-out.write_trajectory(data_dir/'pdda_neb_1000_steps_k_10.xyz')
+out.write_trajectory(data_dir/'pdda_neb_1000_steps_k_10_corrected.xyz')
 
 # # Figure
 
