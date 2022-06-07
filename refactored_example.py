@@ -1,11 +1,11 @@
 from NEB import neb
 import numpy as np
 import matplotlib.pyplot as plt
-
+from retropaths.helper_functions import psave
 
 
 def main():
-    nimages = 15
+    nimages = 25
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
     
@@ -27,6 +27,7 @@ def main():
     
     
     chain = np.linspace(start_point, end_point, nimages)
+    n = neb()
     new_chain, chain_traj = neb().optimize_chain(
             chain=chain,
             grad_func=toy_grad_2,
@@ -61,7 +62,9 @@ def main():
 
     points_x = [point[0] for point in new_chain]
     points_y = [point[1] for point in new_chain]
+    # plt.plot([toy_potential_2(point) for point in new_chain])
     plt.plot(points_x, points_y, "o--", c="white", label="NEB")
+    psave(new_chain, "new_chain.p")
     plt.show()
 if __name__=="__main__":
     main()

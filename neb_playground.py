@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from NEB import neb
+from retropaths.helper_functions import pload
 
 
 # # Define potentials
@@ -201,11 +202,13 @@ def grad_y(
 #         ((J_AB**2) / ((1 + a) ** 2))
 # + ((J_BC**2) / ((1 + b) ** 2))
 
+
 # + ((J_AC**2) / ((1 + c) ** 2))
 #     )
 #     result_Js_2 = (
 #         ((J_AB * J_BC) / ((1 + a) * (1 + b)))
 # + ((J_AC * J_BC) / ((1 + c) * (1 + b)))
+
 
 # + ((J_AB * J_AC) / ((1 + a) * (1 + c)))
 #     )
@@ -576,3 +579,157 @@ x_foo = c[:, 0]
 y_foo = c[:, 1]
 
 plt.plot(x_foo, y_foo)
+# -
+
+# # Points redistributions and shit
+
+orig_chain = pload("new_chain.p")
+chain = orig_chain
+
+# +
+# chain=np.array([[-3.77928812, -3.28320392],
+#        [-3.66424971, -2.99277951],
+#        [-3.4288167 , -2.21595732],
+#        [-3.26213644, -1.41244935],
+#        [-3.14727529, -0.6506947 ],
+#        [-3.03797399,  0.26355227],
+#        [-2.89784718,  1.63926439],
+#        [-1.34842391,  3.23292859],
+#        [-0.4675266 ,  2.94281472],
+#        [ 0.26723079,  2.8615556 ],
+#        [ 1.00139512,  2.7672409 ],
+#        [ 1.90783469,  2.59743021],
+#        [ 2.81266988,  2.20352924],
+#        [ 3.16778457,  1.60701931],
+#        [ 3.00002182,  1.99995542]])
+# -
+
+plt.plot(chain[:,0], chain[:,1])
+
+
+def _get_vectors(chain, i):
+    view = chain[i-1:i+2]
+    vec1 = view[1] - view[0]
+    vec2 = view[2] - view[1]
+    return vec1, vec2
+
+
+def _check_converged(chain):
+    dps = []
+    for i in range(1, len(chain)-1):
+        vec1, vec2 = _get_vectors(chain, i)
+        dps.append(np.dot(vec1, vec2) > 0)
+    
+    return all(dps)
+
+
+
+# +
+not_converged = True
+count = 0
+points_removed = []
+while not_converged:
+    print(f"on count {count}...")
+    new_chain = []
+    for i in range(len(chain)):
+        if i==0 or i==len(chain)-1:
+            new_chain.append(chain[i])
+            continue
+
+        vec1, vec2 = _get_vectors(chain, i)
+        # print(np.dot(vec1, vec2))
+        if np.dot(vec1, vec2) > 0:
+            new_chain.append(chain[i])
+        else: 
+            points_removed.append(chain[i])
+    
+    new_chain = np.array(new_chain)
+    if _check_converged(new_chain):
+        not_converged=False
+    chain = new_chain.copy()
+    count+=1
+            
+        
+
+
+
+# -
+
+# new_chain = np.array(new_chain)
+plt.scatter(new_chain[:,0], new_chain[:,1])
+
+points_removed = np.array(points_removed)
+plt.scatter(points_removed[:,0], points_removed[:, 1])
+
+len(points_removed)
+
+len(new_chain)
+
+# # Redistribution
+
+from retropaths.helper_functions import pairwise
+direction = np.array([ b-a for a, b in pairwise(new_chain)])
+
+distances = np.linalg.norm(direction, axis=1)
+tot_dist = np.sum(distances)
+tot_dist
+
+cum = np.cumsum(distances) # cumulative sum
+cum = np.insert(cum, 0, 0)
+cum
+
+
+# + tags=[]
+def dioboia(num, cum, new_chain):
+    for ii, ((aaa, china), (bbb, chainb)) in enumerate(pairwise(zip(cum, new_chain))):
+        # print(f"{aaa=} {num=} {bbb=}")
+        if aaa < num < bbb:
+            direction = (chainb-china)
+            distance = np.linalg.norm(direction)
+            percentage = (num-aaa)/(bbb-aaa)
+            point = china + (direction*percentage)
+            # print(f"\n\n{num=} -> {ii=}\n{aaa=}\n{bbb=}\n{percentage=:.2%}\n{china=}\n{chainb=}\n{distance=}\n{point=}\n")
+            return point
+        
+
+distributed_chain = []
+for num in np.linspace(0, tot_dist, len(new_chain)):
+    foobar = dioboia(num, cum, new_chain)
+    # print(num, foobar)
+    distributed_chain.append(foobar)
+# -
+
+cum
+
+
+
+distributed_chain[0] = new_chain[0]
+distributed_chain[-1] = new_chain[-1]
+
+distributed_chain
+
+# new_chain = np.array(new_chain)
+
+
+distributed_chain = np.array(distributed_chain)
+plt.plot(new_chain[:,0], new_chain[:,1])
+plt.scatter(distributed_chain[:,0], distributed_chain[:,1])
+
+from NEB import neb
+
+n = neb()
+
+foo, footer = n.optimize_chain(
+chain=distributed_chain,
+    grad_func=toy_grad_2,
+    en_func=toy_potential_2,
+    k=10,
+)
+
+plt.scatter(foo[:,0], foo[:,1])
+
+plt.plot([toy_potential_2(p) for p in foo])
+
+
+
+

@@ -32,11 +32,15 @@ random.seed(1)
 
 from retropaths.helper_functions import pload
 
-foo = pload(rxn_file)
+# +
+# foo = pload(rxn_file)
 
-foo["Chan-Rearrangement"].draw()
+# +
+# foo["Chan-Rearrangement"].draw()
 
-[print(r) for r in foo]
+# +
+# [print(r) for r in foo]
+# -
 
 n = neb()
 
@@ -94,24 +98,36 @@ n = neb()
 
 
 # +
+rn = "Chan-Rearrangement"
+inps = Inputs(rxn_name=rn, reaction_file=rxn_file)
+
+
+struct = TDStructure.from_rxn_name(rn, data_folder=rxn_file.parent)
+rs = RootStructure(root=struct, 
+                master_path=out_dir, 
+                rxn_args=inps, 
+                trajectory=Trajectory(traj_array=[]))
+
+
+# +
 tdstruct=rs.pseudoaligned
 en_func=n.en_func
 grad_func=n.grad_func
 
-coords = tdstruct.coords_bohr
+coords = tdstruct.coords
 
 atoms = Atoms(
-        symbols = tdstruct.symbols.tolist(),
-        positions = coords,
-        charges = tdstruct.charge,
+        symbols=tdstruct.symbols.tolist(),
+        positions=coords
+        # charges=0.0,
     )
 
-atoms.calc = XTB(method="GFN2-xTB", accuracy=.1)
+atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1)
 opt = LBFGS(atoms)
 opt.run(fmax=0.1)
 
 opt_struct = TDStructure.from_coords_symbs(
-    coords=atoms.positions*BOHR_TO_ANGSTROMS,
+    coords=atoms.positions,
     symbs=tdstruct.symbols,
     tot_charge=tdstruct.charge,
     tot_spinmult=tdstruct.spinmult)

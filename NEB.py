@@ -6,15 +6,21 @@ from ALS import ArmijoLineSearch
 @dataclass
 class neb:
     def optimize_chain(
-        self, chain, grad_func, en_func, k, en_thre=0.01, grad_thre=0.01, max_steps=1000
+        self, 
+        chain, 
+        grad_func, 
+        en_func, 
+        k, 
+        redistribute=True,
+        en_thre=0.001,
+        grad_thre=0.001, 
+        max_steps=1000
     ):
 
 
         chain_traj = []
         nsteps = 0
-        # ideal_dist = np.linalg.norm(np.array(chain[-1]) - np.array(chain[0])) / len(
-        #     chain
-        # )
+
         chain_previous = chain.copy()
 
         while nsteps < max_steps:
@@ -22,8 +28,8 @@ class neb:
                 chain=chain_previous,
                 k=k,
                 en_func=en_func,
-                grad_func=grad_func
-                # ideal_dist=ideal_dist
+                grad_func=grad_func,
+                redistribute=redistribute
             )
 
             chain_traj.append(new_chain)
@@ -37,6 +43,7 @@ class neb:
                 grad_thre=grad_thre,
             ):
                 print("Chain converged!")
+                print(f"{new_chain=}")
                 return new_chain, chain_traj
 
             chain_previous = new_chain.copy()
@@ -45,7 +52,8 @@ class neb:
         print("Chain did not converge...")
         return new_chain, chain_traj
 
-    def update_chain(self, chain, k, en_func, grad_func):
+
+    def update_chain(self, chain, k, en_func, grad_func, redistribute):
 
         chain_copy = np.zeros_like(chain)
         chain_copy[0] = chain[0]
