@@ -3,9 +3,37 @@ import numpy as np
 import matplotlib.pyplot as plt
 from retropaths.helper_functions import psave
 
+def plot_func(new_chain, orig_chain, en_func):
+    min_val = -4
+    max_val = 4
+    num = 10
+    fig = 10
+    f, ax = plt.subplots(figsize=(1.18 * fig, fig))
+    x = np.linspace(start=min_val, stop=max_val, num=num)
+    y = x.reshape(-1, 1)
+
+
+    h = en_func([x, y])
+    cs = plt.contourf(x, x, h)
+    cbar = f.colorbar(cs)
+    plt.plot(
+        [(point[0]) for point in orig_chain],
+        [(point[1]) for point in orig_chain],
+        "^--",
+        c="white",
+        label="original",
+    )
+
+    points_x = [point[0] for point in new_chain]
+    points_y = [point[1] for point in new_chain]
+    # plt.plot([toy_potential_2(point) for point in new_chain])
+    plt.plot(points_x, points_y, "o--", c="white", label="NEB")
+    psave(new_chain, "new_chain.p")
+    plt.show()
+
 
 def main():
-    nimages = 20
+    nimages = 50
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
     
@@ -40,32 +68,24 @@ def main():
     new_chain = n.remove_chain_folding(chain=new_chain)
     new_chain = n.redistribute_chain(chain=new_chain)
 
+    plot_func(new_chain=new_chain, orig_chain=chain, en_func=toy_potential_2)
 
-    min_val = -4
-    max_val = 4
-    num = 10
-    fig = 10
-    f, ax = plt.subplots(figsize=(1.18 * fig, fig))
-    x = np.linspace(start=min_val, stop=max_val, num=num)
-    y = x.reshape(-1, 1)
-
-
-    h = toy_potential_2([x, y])
-    cs = plt.contourf(x, x, h)
-    cbar = f.colorbar(cs)
-    plt.plot(
-        [(point[0]) for point in chain],
-        [(point[1]) for point in chain],
-        "^--",
-        c="white",
-        label="original",
+    new_chain, chain_traj = n.optimize_chain(
+            chain=chain,
+            grad_func=toy_grad_2,
+            en_func=toy_potential_2,
+            k=10,
+            max_steps=1000,
+            grad_thre=0.01
     )
 
-    points_x = [point[0] for point in new_chain]
-    points_y = [point[1] for point in new_chain]
-    # plt.plot([toy_potential_2(point) for point in new_chain])
-    plt.plot(points_x, points_y, "o--", c="white", label="NEB")
-    psave(new_chain, "new_chain.p")
-    plt.show()
+    plot_func(new_chain=new_chain, orig_chain=chain, en_func=toy_potential_2)
+    
+
+    new_chain = n.remove_chain_folding(chain=new_chain)
+    new_chain = n.redistribute_chain(chain=new_chain)
+
+    plot_func(new_chain=new_chain, orig_chain=chain, en_func=toy_potential_2)
+
 if __name__=="__main__":
     main()
