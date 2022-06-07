@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from NEB import neb
-from neb_dynamics.helper_functions import psave
+from helper_functions import psave
 
 
 def plot_func(new_chain, orig_chain, en_func):
@@ -16,7 +16,7 @@ def plot_func(new_chain, orig_chain, en_func):
 
     h = en_func([x, y])
     cs = plt.contourf(x, x, h)
-    cbar = f.colorbar(cs)
+    _ = f.colorbar(cs)
     plt.plot(
         [(point[0]) for point in orig_chain],
         [(point[1]) for point in orig_chain],

@@ -77,6 +77,10 @@ def make_copy(obmol):
 
     for bond in openbabel.OBMolBondIter(obmol):
         copy_obmol.AddBond(bond)
+
+    copy_obmol.SetTotalCharge(obmol.GetTotalCharge())
+    copy_obmol.SetTotalSpinMultiplicity(obmol.GetTotalSpinMultiplicity())
+
     return copy_obmol
 
 
@@ -95,9 +99,7 @@ def obmol_to_coords(obmol):
 
 
 def obmol_to_symbs(obmol):
-    return [
-        atomic_number_to_symbol(atom.atomicnum) for atom in pybel.Molecule(obmol).atoms
-    ]
+    return [atomic_number_to_symbol(atom.atomicnum) for atom in pybel.Molecule(obmol).atoms]
 
 
 def add_charges(input_mol, charges_list):
@@ -222,7 +224,23 @@ def output_obmol_to_file(obmol, file_path):
     outfile.write(out_mol)
 
 
-def obmol_from_coords(coords, symbols):
+def obmol_from_coords(coords, symbols, charge=0, spinmult=1):
+    obmol = openbabel.OBMol()
+    obmol.SetTotalCharge(charge)
+    obmol.SetTotalSpinMultiplicity(spinmult)
+    for i in range(len(coords)):
+        x, y, z = coords[i]
+        atom_symbol = symbols[i]
+
+        atom_number = symbol_to_atomic_number(atom_symbol)
+        atom = openbabel.OBAtom()
+        atom.SetVector(x, y, z)
+        atom.SetAtomicNum(atom_number)
+        obmol.AddAtom(atom)
+    return obmol
+
+
+def obmol_from_coords_and_reference(coords, symbols, reference):
     obmol = openbabel.OBMol()
     for i in range(len(coords)):
         x, y, z = coords[i]
@@ -233,4 +251,8 @@ def obmol_from_coords(coords, symbols):
         atom.SetVector(x, y, z)
         atom.SetAtomicNum(atom_number)
         obmol.AddAtom(atom)
+
+    for bond in openbabel.OBMolBondIter(reference):
+        obmol.AddBond(bond)
+
     return obmol

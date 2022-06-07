@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from ALS import ArmijoLineSearch
-from neb_dynamics.helper_functions import pairwise
+from helper_functions import pairwise
 
 
 @dataclass
@@ -45,7 +45,7 @@ class neb:
         chain_copy[-1] = chain[-1]
 
         for i in range(1, len(chain) - 1):
-            view = chain[i - 1 : i + 2]
+            view = chain[i - 1: i + 2]
 
             grad = self.spring_grad_neb(
                 view,
@@ -118,7 +118,7 @@ class neb:
 
         tot_grads_neighs = np.sum(grads_neighs, axis=0)
 
-        ### ANTI-KINK FORCE
+        # ANTI-KINK FORCE
 
         force_springs = np.sum(force_springs, axis=0)
 
@@ -231,7 +231,7 @@ class neb:
                 return point
 
     def _get_vectors(self, chain, i):
-        view = chain[i - 1 : i + 2]
+        view = chain[i - 1: i + 2]
         vec1 = view[1] - view[0]
         vec2 = view[2] - view[1]
         return vec1, vec2
