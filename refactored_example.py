@@ -5,7 +5,7 @@ from retropaths.helper_functions import psave
 
 
 def main():
-    nimages = 25
+    nimages = 20
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
     
@@ -28,7 +28,7 @@ def main():
     
     chain = np.linspace(start_point, end_point, nimages)
     n = neb()
-    new_chain, chain_traj = neb().optimize_chain(
+    new_chain, chain_traj = n.optimize_chain(
             chain=chain,
             grad_func=toy_grad_2,
             en_func=toy_potential_2,
@@ -37,7 +37,8 @@ def main():
             grad_thre=0.01
     )
 
-
+    new_chain = n.remove_chain_folding(chain=new_chain)
+    new_chain = n.redistribute_chain(chain=new_chain)
 
 
     min_val = -4

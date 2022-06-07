@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from retropaths.helper_functions import pairwise
 import numpy as np
 from ALS import ArmijoLineSearch
 
@@ -199,3 +200,78 @@ class neb:
         )
 
         return en_converged and grad_converged
+
+
+    def remove_chain_folding(self, chain):
+        not_converged = True
+        count = 0
+        points_removed = []
+        while not_converged:
+            # print(f"on count {count}...")
+            new_chain = []
+            for i in range(len(chain)):
+                if i==0 or i==len(chain)-1:
+                    new_chain.append(chain[i])
+                    continue
+
+                vec1, vec2 = self._get_vectors(chain, i)
+                if np.dot(vec1, vec2) > 0:
+                    new_chain.append(chain[i])
+                else: 
+                    points_removed.append(chain[i])
+            
+            new_chain = np.array(new_chain)
+            if self._check_dot_product_converged(new_chain):
+                not_converged=False
+            chain = new_chain.copy()
+            count+=1
+        return chain
+    
+    def redistribute_chain(self, chain):
+        direction = np.array([ b-a for a, b in pairwise(chain)])
+        distances = np.linalg.norm(direction, axis=1)
+        tot_dist = np.sum(distances)
+        cumsum = np.cumsum(distances) # cumulative sum
+        cumsum = np.insert(cumsum, 0, 0)
+        
+        distributed_chain = []
+        for num in np.linspace(0, tot_dist, len(chain)):
+            foobar = self.redistribution_helper(num=num, cum=cumsum, new_chain=chain)
+            # print(num, foobar)
+            distributed_chain.append(foobar)
+
+        distributed_chain[0] = chain[0]
+        distributed_chain[-1] = chain[-1]
+
+        return np.array(distributed_chain)
+
+    def redistribution_helper(self, num, cum, new_chain):
+        """
+        num: the distance from first node to return output point to
+        cum: cumulative sums
+        new_chain: chain that we are considering
+
+        """
+
+        for ii, ((cum_sum_init, point_start), (cum_sum_end, point_end)) in enumerate(pairwise(zip(cum, new_chain))):
+            
+            if cum_sum_init < num < cum_sum_end:
+                direction = (point_end-point_start)
+                percentage = (num-cum_sum_init)/(cum_sum_end-cum_sum_init)
+                point = point_start + (direction*percentage)
+                
+                return point
+
+    def _get_vectors(self, chain, i):
+        view = chain[i-1:i+2]
+        vec1 = view[1] - view[0]
+        vec2 = view[2] - view[1]
+        return vec1, vec2
+    
+    def _check_dot_product_converged(self, chain):
+        dps = []
+        for i in range(1, len(chain)-1):
+            vec1, vec2 = self._get_vectors(chain, i)
+            dps.append(np.dot(vec1, vec2) > 0)
+        
+        return all(dps)
