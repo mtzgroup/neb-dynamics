@@ -1,5 +1,5 @@
 import numpy as np
-from retropaths.abinitio.tdstructure import TDStructure
+from tdstructure import TDStructure
 
 ANGSTROM_TO_BOHR = 1.88973
 BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR

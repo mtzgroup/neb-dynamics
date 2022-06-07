@@ -17,6 +17,8 @@ dependencies:
   - ipywidgets
   - ipympl
   - nb_conda_kernels
+  - xtb-python
+  - openbabel
   - pip:
     - tqdm
     - black

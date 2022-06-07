@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 import numpy as np
-from retropaths.abinitio.tdstructure import TDStructure
+from tdstructure import TDStructure
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
@@ -15,7 +15,6 @@ BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR
 @dataclass
 class neb:
     def optimize_chain(self, chain, grad_func, en_func, k, en_thre=0.0005, grad_thre=0.0005, max_steps=1000):
-
         chain_traj = []
         nsteps = 0
         # ideal_dist = np.linalg.norm(np.array(chain[-1].coords) - np.array(chain[0].coords)) / len(
@@ -61,12 +60,12 @@ class neb:
         chain_copy[-1] = chain[-1]
 
         for i in range(1, len(chain) - 1):
-            if nodes_converged[i] == True:
+            if nodes_converged[i]:
                 chain_copy[i] = chain[i]
                 continue
 
             print(f"updating node {i}...")
-            view = chain[i - 1 : i + 2]
+            view = chain[i - 1: i + 2]
             # print(f"{view=}")
             grad = self.spring_grad_neb(
                 view,
@@ -186,7 +185,7 @@ class neb:
 
     def spring_grad_neb(self, view, grad_func, k, en_func):
 
-        neighs = view[[0, 2]]
+        # neighs = view[[0, 2]]
 
         vec_tan_path = self._create_tangent_path(view, en_func=en_func)
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
@@ -218,7 +217,7 @@ class neb:
 
         tot_grads_neighs = np.sum(grads_neighs, axis=0)
 
-        ### ANTI-KINK FORCE
+        # ANTI-KINK FORCE
         # print(f"{force_springs=}")
         force_springs = np.sum(force_springs, axis=0)
         # print(f"{force_springs=}")

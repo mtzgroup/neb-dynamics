@@ -1,7 +1,6 @@
 import multiprocessing as mp
 
 import numpy as np
-from foobar import double, howmany_within_range
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 
