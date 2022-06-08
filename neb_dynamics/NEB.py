@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Callable
 
@@ -12,14 +14,19 @@ class Node:
     coords: np.array
     grad_func: Callable[[np.array], np.array]
     en_func: Callable[[np.array], float]
+    dot_func: Callable[[np.array, np.array], float]
 
     @property
-    def energy(self):
+    def energy(self) -> float:
         return self.en_func(self.coords)
 
     @property
-    def gradient(self):
+    def gradient(self) -> np.array:
         return self.grad_func(self.coords)
+
+    @staticmethod
+    def dot_product(coord1: np.array, coord2: np.array) -> float:
+        return self.dot_func(coord1, coord2)
 
     def displacement(self, grad):
         phi0 = self.energy
@@ -37,7 +44,6 @@ class Node:
 class Chain:
     nodes: list[Node]
     k: float
-
 
     def __getitem__(self, index):
         return self.nodes.__getitem__(index)
@@ -182,7 +188,7 @@ class NEB:
                     new_chain.append(current_node)
                 else:
                     points_removed.append(current_node)
-            
+
             new_chain = np.array(new_chain)
             if self._check_dot_product_converged(new_chain):
                 not_converged = False
