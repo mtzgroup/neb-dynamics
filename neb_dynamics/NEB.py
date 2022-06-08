@@ -38,6 +38,10 @@ class Chain:
     nodes: list[Node]
     k: float
 
+
+    def __getitem__(self, index):
+        return self.nodes.__getitem__(index)
+
     def copy(self):
         raise NotImplementedError
 
@@ -158,6 +162,42 @@ class NEB:
         delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
         return np.all(delta_grad < self.grad_thre)
 
+    def _chain_converged(self, chain_prev: Chain, chain_new: Chain):
+        return self._check_en_converged(chain_prev=chain_prev, chain_new=chain_new) and \
+            self._check_grad_converged(chain_prev=chain_prev, chain_new=chain_new)
+
+    def remove_chain_folding(self, chain: Chain):
+        not_converged = True
+        count = 0
+        points_removed = []
+        while not_converged:
+            # print(f"on count {count}...")
+            new_chain = []
+            new_chain.append(chain[0])
+            for prev_node, current_node, next_node in chain.iter_triplets():
+                vec1 = current_node.coords - prev_node.coords
+                vec2 = next_node.coords - current_node.coords
+
+                if np.dot(vec1, vec2) > 0:
+                    new_chain.append(current_node)
+                else:
+                    points_removed.append(current_node)
+            
+            new_chain = np.array(new_chain)
+            if self._check_dot_product_converged(new_chain):
+                not_converged = False
+            chain = new_chain.copy()
+            count += 1
+        return chain
+
+    def _check_dot_product_converged(self, chain: Chain):
+        dps = []
+        for prev_node, current_node, next_node in chain.iter_triplets():
+            vec1 = current_node.coords - prev_node.coords
+            vec2 = next_node.coords - current_node.coords
+            dps.append(np.dot(vec1, vec2) > 0)
+
+        return all(dps)
 
 @dataclass
 class neb:
