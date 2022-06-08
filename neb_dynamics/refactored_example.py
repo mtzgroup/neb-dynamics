@@ -1,11 +1,54 @@
+
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 import numpy as np
 
-from NEB import neb
+from neb_dynamics.NEB import Chain, NEB, AlessioError
 from helper_functions import psave
 
 
-def plot_func(new_chain, orig_chain, en_func):
+def animate_func(neb_obj: NEB):
+    n_nodes = len(neb_obj.initial_chain.nodes)
+    en_func = neb_obj.initial_chain[0].en_func
+    chain_traj = neb_obj.chain_trajectory
+    plt.style.use("seaborn-pastel")
+
+    figsize = 5
+
+    f, ax = plt.subplots(figsize=(1.18 * figsize, figsize))
+    x = np.linspace(start=-4, stop=4, num=n_nodes)
+    y = x.reshape(-1, 1)
+
+
+    # h = en_func(x, y)
+    h = en_func([x, y])
+    cs = plt.contourf(x, x, h)
+    cbar = f.colorbar(cs, ax=ax)
+    (line,) = ax.plot([], [], lw=3)
+
+
+    def init():
+        line.set_data([], [])
+        return (line,)
+
+
+    def animate(chain):
+
+        x = chain[:, 0]
+        y = chain[:, 1]
+        line.set_data(x, y)
+        return (line,)
+
+
+    anim = FuncAnimation(fig=f, func=animate, frames=np.array([chain.coordinates for chain in chain_traj]), blit=True, repeat_delay=1000, interval=200)
+    plt.show()
+
+def plot_func(neb_obj: NEB):
+
+    en_func = neb_obj.initial_chain[0].en_func
+    orig_chain = neb_obj.initial_chain
+    new_chain = neb_obj.optimized
+
     min_val = -4
     max_val = 4
     num = 10
@@ -18,23 +61,23 @@ def plot_func(new_chain, orig_chain, en_func):
     cs = plt.contourf(x, x, h)
     _ = f.colorbar(cs)
     plt.plot(
-        [(point[0]) for point in orig_chain],
-        [(point[1]) for point in orig_chain],
+        [(node.coords[0]) for node in orig_chain],
+        [(node.coords[1]) for node in orig_chain],
         "^--",
         c="white",
         label="original",
     )
 
-    points_x = [point[0] for point in new_chain]
-    points_y = [point[1] for point in new_chain]
+    points_x = [node.coords[0] for node in new_chain]
+    points_y = [node.coords[1] for node in new_chain]
     # plt.plot([toy_potential_2(point) for point in new_chain])
     plt.plot(points_x, points_y, "o--", c="white", label="NEB")
-    psave(new_chain, "new_chain.p")
+    # psave(new_chain, "new_chain.p")
     plt.show()
 
 
 def main():
-    nimages = 50
+    nimages = 10
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
 
@@ -48,24 +91,19 @@ def main():
         dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
         return np.array([dx, dy])
 
-    chain = np.linspace(start_point, end_point, nimages)
-    n = neb()
-    new_chain, chain_traj = n.optimize_chain(chain=chain, grad_func=toy_grad_2, en_func=toy_potential_2, k=10, max_steps=1000, grad_thre=0.01)
+    coords = np.linspace(start_point, end_point, nimages)
+    chain = Chain.from_list_of_coords(k=10, list_of_coords=coords,
+                    grad_func=toy_grad_2, en_func=toy_potential_2,
+                    dot_func=np.dot)
+    
+    print(f"{coords=}")
 
-    new_chain = n.remove_chain_folding(chain=new_chain)
-    new_chain = n.redistribute_chain(chain=new_chain)
-
-    plot_func(new_chain=new_chain, orig_chain=chain, en_func=toy_potential_2)
-
-    new_chain, chain_traj = n.optimize_chain(chain=chain, grad_func=toy_grad_2, en_func=toy_potential_2, k=10, max_steps=1000, grad_thre=0.01)
-
-    plot_func(new_chain=new_chain, orig_chain=chain, en_func=toy_potential_2)
-
-    new_chain = n.remove_chain_folding(chain=new_chain)
-    new_chain = n.redistribute_chain(chain=new_chain)
-
-    plot_func(new_chain=new_chain, orig_chain=chain, en_func=toy_potential_2)
-
+    n = NEB(initial_chain=chain)
+    
+    n.optimize_chain()
+    
+    plot_func(n)
+    animate_func(n)
 
 if __name__ == "__main__":
     main()
