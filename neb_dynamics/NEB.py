@@ -2,25 +2,52 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from email import message
-from typing import Callable, List
+from typing import Callable, List, Protocol
 
 import numpy as np
 
 from ALS import ArmijoLineSearch
+from errors import AlessioError, NoneConvergedException
 from helper_functions import pairwise
 
-@dataclass
-class NoneConvergedException(Exception):
-    trajectory: list[Chain]
-    message: str
 
 @dataclass
-class AlessioError(Exception):
-    message: str
+class Node(Protocol):
+    coords: np.array
+    grad_func: Callable[[np.array], np.array]
+    en_func: Callable[[np.array], float]
+    dot_func: Callable[[np.array, np.array], float]
 
+    @property
+    def energy(self) -> float:
+        return self.en_func(self.coords)
 
+    @property
+    def gradient(self) -> np.array:
+        return self.grad_func(self.coords)
+
+    # @staticmethod
+    # def dot_product(self, coord1: np.array, coord2: np.array) -> float:
+    #     return self.dot_func(coord1, coord2)
+
+    def displacement(self, grad):
+        phi0 = self.energy
+        dr, _ = ArmijoLineSearch(
+            f=self.en_func,
+            xk=self.coords,
+            pk=-1 * grad,
+            gfk=grad,
+            phi0=phi0,
+        )
+        return dr
+
+    def update_coords(self, vector):
+        new_coords = self.coords + vector
+        new_node = Node(coords=new_coords, grad_func=self.grad_func, 
+                                en_func=self.en_func, dot_func=self.dot_func)
+        return new_node
 @dataclass
-class Node:
+class Node2D:
     coords: np.array
     grad_func: Callable[[np.array], np.array]
     en_func: Callable[[np.array], float]
@@ -57,7 +84,7 @@ class Node:
 
 @dataclass
 class Chain:
-    nodes: list[Node]
+    nodes: List[Node]
     k: float
 
     def __getitem__(self, index):
@@ -183,7 +210,7 @@ class NEB:
 
         while nsteps < self.max_steps:
             new_chain = self.update_chain(chain=chain_previous)
-            print(f"{new_chain.coordinates=}")
+            # print(f"{new_chain.coordinates=}")
             chain_traj.append(new_chain)
 
             if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
