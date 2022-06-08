@@ -60,40 +60,40 @@ class Chain:
     def displacements(self):
         return [node.displacement(grad) for node, grad in zip(self.nodes, self.gradients)]
 
-    def _create_tangent_path(self, a: Node, b: Node, c: Node):
-        en_2 = c.energy
-        en_1 = b.energy
-        en_0 = a.energy
+    def _create_tangent_path(self, prev_node: Node, current_node: Node, next_node: Node):
+        en_2 = next_node.energy
+        en_1 = current_node.energy
+        en_0 = prev_node.energy
 
         if en_2 > en_1 and en_1 > en_0:
-            return c.coords - b.coords
+            return next_node.coords - current_node.coords
         elif en_2 < en_1 and en_1 < en_2:
-            return b.coords - a.coords
+            return current_node.coords - prev_node.coords
 
         else:
             deltaV_max = max(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
             deltaV_min = min(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
 
             if en_2 > en_0:
-                tan_vec = (c.coords - b.coords) * deltaV_max + (b.coords - a.coords) * deltaV_min
+                tan_vec = (next_node.coords - current_node.coords) * deltaV_max + (current_node.coords - prev_node.coords) * deltaV_min
             elif en_2 < en_0:
-                tan_vec = (c.coords - b.coords) * deltaV_min + (b.coords - a.coords) * deltaV_max
+                tan_vec = (next_node.coords - current_node.coords) * deltaV_min + (current_node.coords - prev_node.coords) * deltaV_max
             return tan_vec
 
-    def spring_grad_neb(self, a: Node, b: Node, c: Node):
-        vec_tan_path = self._create_tangent_path(a, b, c)
+    def spring_grad_neb(self, prev_node: Node, current_node: Node, next_node: Node):
+        vec_tan_path = self._create_tangent_path(prev_node, current_node, next_node)
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
-        pe_grad = b.gradient
+        pe_grad = current_node.gradient
         pe_grad_nudged_const = np.dot(pe_grad, unit_tan_path)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
 
         grads_neighs = []
         force_springs = []
 
-        force_spring = -self.k * (np.abs(c.coords - b.coords) - np.abs(b.coords - a.coords))
+        force_spring = -self.k * (np.abs(next_node.coords - current_node.coords) - np.abs(current_node.coords - prev_node.coords))
 
-        direction = np.dot((c.coords - b.coords), force_spring)
+        direction = np.dot((next_node.coords - current_node.coords), force_spring)
         if direction < 0:
             force_spring *= -1
 
@@ -109,8 +109,8 @@ class Chain:
         # ANTI-KINK FORCE
         force_springs = np.sum(force_springs, axis=0)
 
-        vec_2_to_1 = c.coords - b.coords
-        vec_1_to_0 = b.coords - a.coords
+        vec_2_to_1 = next_node.coords - current_node.coords
+        vec_1_to_0 = current_node.coords - prev_node.coords
         cos_phi = np.dot(vec_2_to_1, vec_1_to_0) / (np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0))
 
         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
