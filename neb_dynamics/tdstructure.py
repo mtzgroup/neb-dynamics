@@ -13,7 +13,6 @@ class TDStructure:
     """
     this is the object that will contains all the info for a single Three D structure
 
-    this all exists within the container of a data folder, which is unique to a reaction
     """
 
     molecule_obmol: openbabel.OBMol
