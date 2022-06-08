@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def ArmijoLineSearch(f, xk, pk, gfk, phi0, alpha0, rho=0.5, c1=1e-4):
+def ArmijoLineSearch(f, xk, pk, gfk, phi0, alpha0=0.01, rho=0.5, c1=1e-4):
     """Minimize over alpha, the function ``f(xₖ + αpₖ)``.
     α > 0 is assumed to be a descent direction.
 
@@ -31,8 +31,6 @@ def ArmijoLineSearch(f, xk, pk, gfk, phi0, alpha0, rho=0.5, c1=1e-4):
     """
     derphi0 = np.dot(gfk, pk)
     phi_a0 = f(xk + alpha0 * pk)
-    #     print(f"{phi_a0=}")
-    #     print(f"\t{phi0 + c1*alpha0*derphi0}")
 
     while not phi_a0 <= phi0 + c1 * alpha0 * derphi0:
         alpha0 = alpha0 * rho

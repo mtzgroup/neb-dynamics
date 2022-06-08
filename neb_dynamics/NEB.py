@@ -1,9 +1,162 @@
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 
 from ALS import ArmijoLineSearch
 from helper_functions import pairwise
+
+
+@dataclass
+class Node:
+    coords: np.array
+    grad_func: Callable[[np.array], np.array]
+    en_func: Callable[[np.array], float]
+
+    @property
+    def energy(self):
+        return self.en_func(self.coords)
+
+    @property
+    def gradient(self):
+        return self.grad_func(self.coords)
+
+    def displacement(self, grad):
+        phi0 = self.energy
+        dr, _ = ArmijoLineSearch(
+            f=self.en_func,
+            xk=self.coords,
+            pk=-1 * grad,
+            gfk=grad,
+            phi0=phi0,
+        )
+        return dr
+
+
+@dataclass
+class Chain:
+    nodes: list[Node]
+    k: float
+
+    def copy(self):
+        raise NotImplementedError
+
+    def iter_triplets(self):
+        raise NotImplementedError
+
+    @property
+    def energies(self):
+        return [node.energy() for node in self.nodes]
+
+    @property
+    def gradients(self):
+        grads = []
+        for a, b, c in self.iter_triplets:
+            grad = self.spring_grad_neb((a, b, c))
+            grads.append(grad)
+        return grads
+
+    @property
+    def displacements(self):
+        return [node.displacement(grad) for node, grad in zip(self.nodes, self.gradients)]
+
+    def _create_tangent_path(self, a: Node, b: Node, c: Node):
+        en_2 = c.energy
+        en_1 = b.energy
+        en_0 = a.energy
+
+        if en_2 > en_1 and en_1 > en_0:
+            return c.coords - b.coords
+        elif en_2 < en_1 and en_1 < en_2:
+            return b.coords - a.coords
+
+        else:
+            deltaV_max = max(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
+            deltaV_min = min(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
+
+            if en_2 > en_0:
+                tan_vec = (c.coords - b.coords) * deltaV_max + (b.coords - a.coords) * deltaV_min
+            elif en_2 < en_0:
+                tan_vec = (c.coords - b.coords) * deltaV_min + (b.coords - a.coords) * deltaV_max
+            return tan_vec
+
+    def spring_grad_neb(self, a: Node, b: Node, c: Node):
+        vec_tan_path = self._create_tangent_path(a, b, c)
+        unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
+
+        pe_grad = b.gradient
+        pe_grad_nudged_const = np.dot(pe_grad, unit_tan_path)
+        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
+
+        grads_neighs = []
+        force_springs = []
+
+        force_spring = -self.k * (np.abs(c.coords - b.coords) - np.abs(b.coords - a.coords))
+
+        direction = np.dot((c.coords - b.coords), force_spring)
+        if direction < 0:
+            force_spring *= -1
+
+        force_springs.append(force_spring)
+
+        force_spring_nudged_const = np.dot(force_spring, unit_tan_path)
+        force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
+
+        grads_neighs.append(force_spring_nudged)
+
+        tot_grads_neighs = np.sum(grads_neighs, axis=0)
+
+        # ANTI-KINK FORCE
+        force_springs = np.sum(force_springs, axis=0)
+
+        vec_2_to_1 = c.coords - b.coords
+        vec_1_to_0 = b.coords - a.coords
+        cos_phi = np.dot(vec_2_to_1, vec_1_to_0) / (np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0))
+
+        f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
+
+        proj_force_springs = force_springs - np.dot(force_springs, unit_tan_path) * unit_tan_path
+
+        return (pe_grad_nudged - tot_grads_neighs) + f_phi * (proj_force_springs)
+
+
+@dataclass
+class NEB:
+    initial_chain: Chain
+    redistribute: bool = True
+    en_thre: float = 0.001
+    grad_thre: float = 0.001
+    max_steps: float = 1000
+
+    def optimize_chain(self):
+        chain_traj = []
+        nsteps = 0
+        chain_previous = self.initial_chain.copy()
+
+        while nsteps < self.max_steps:
+            new_chain = self.update_chain(chain=chain_previous)
+            chain_traj.append(new_chain)
+
+            if self._chain_converged(chain_previous=chain_previous, new_chain=new_chain):
+                print(f"Chain converged!\n{new_chain=}")
+                return new_chain, chain_traj
+
+            chain_previous = new_chain.copy()
+            nsteps += 1
+
+        print(f"Chain did not converge at step {nsteps}")
+        return new_chain, chain_traj
+
+    def update_chain(self, chain):
+        return chain + chain.gradients * chain.displacements
+
+    def _check_en_converged(self, chain_prev: Chain, chain_new: Chain):
+        differences = np.abs(chain_new.energies - chain_prev.energies)
+        return np.all(differences < self.en_thre)
+
+    def _check_grad_converged(self, chain_prev: Chain, chain_new: Chain):
+        delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
+        return np.all(delta_grad < self.grad_thre)
 
 
 @dataclass
