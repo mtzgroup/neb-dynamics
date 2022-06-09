@@ -1,9 +1,10 @@
 
+from platform import node
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
 
-from neb_dynamics.NEB import Chain, NEB
+from neb_dynamics.NEB import Chain, NEB, Node2D
 
 
 def animate_func(neb_obj: NEB):
@@ -73,22 +74,14 @@ def plot_func(neb_obj: NEB):
 
 
 def main():
-    nimages = 10
+    nimages = 20
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
 
 
 
     coords = np.linspace(start_point, end_point, nimages)
-    chain = Chain.from_list_of_coords(k=10, list_of_coords=coords,
-                                      grad_func=toy_grad_2, en_func=toy_potential_2,
-                                      dot_func=np.dot)
-
-    chain = Chain.from_list_of_coords(k=10, 
-                                      list_of_coords=tds,
-                                      grad_func=toy_grad_2, 
-                                      en_func=toy_potential_2,
-                                      dot_func=np.dot)
+    chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node2D)
 
     print(f"{coords=}")
 
