@@ -9,6 +9,7 @@ import numpy as np
 import ALS
 import ALS_xtb
 from helper_functions import pairwise
+from neb_dynamics.ALS_xtb import ANGSTROM_TO_BOHR
 from neb_dynamics.tdstructure import TDStructure
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
@@ -114,15 +115,21 @@ class Node3D(Node):
     def coords(self):
         return self.tdstructure
 
+
+    @property
+    def coords(self):
+        return self.tdstructure.coords
+
+
     @cached_property
     def _create_calculation_object(self):
-        coords = self.coords.coords_bohr
-        atomic_numbers = self.coords.atomic_numbers
+        coords = self.tdstructure.coords_bohr
+        atomic_numbers = self.tdstructure.atomic_numbers
         calc = Calculator(get_method("GFN2-xTB"),
                           numbers=np.array(atomic_numbers),
                           positions=coords,
-                          charge=self.coords.charge,
-                          uhf=self.coords.spinmult - 1)
+                          charge=self.tdstructure.charge,
+                          uhf=self.tdstructure.spinmult - 1)
         calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
         return res
