@@ -32,6 +32,9 @@ class Trajectory:
     def __len__(self):
         return len(self.traj_array)
 
+    def to_list(self):
+        return self.traj_array.tolist()
+
     @classmethod
     def from_xyz(cls, file_path, tot_charge=0, tot_spinmult=1):
 

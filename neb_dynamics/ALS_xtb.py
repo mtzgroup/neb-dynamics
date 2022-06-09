@@ -16,7 +16,6 @@ def _attempt_step(struct, grad, t, f):
 
         en_struct_prime = f(struct_prime)
 
-        failed_so_far = False
     except:
         t *= 0.1
         new_coords_bohr = struct.coords_bohr - t * grad
@@ -25,7 +24,7 @@ def _attempt_step(struct, grad, t, f):
         struct_prime = TDStructure.from_coords_symbs(coords=new_coords, symbs=struct.symbols, tot_charge=struct.charge, tot_spinmult=struct.spinmult)
 
         en_struct_prime, t = _attempt_step(struct_prime, grad, t, f)
-    # print("t_final:",t)
+    print("t_final:",t)
     return en_struct_prime, t
 
 

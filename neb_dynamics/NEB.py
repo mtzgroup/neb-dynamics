@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, cache
 from platform import node
 from typing import List, Protocol
 
@@ -82,8 +82,9 @@ class Node2D(Node):
     def gradient(self) -> np.array:
         return self.grad_func(self.coords)
 
+    @staticmethod
     def dot_function(self, other: Node2D) -> float:
-        return np.dot(self.coords, other.coords)
+        return np.dot(self, other)
 
     def displacement(self, grad):
         phi0 = self.energy
@@ -118,15 +119,45 @@ class Node3D(Node):
     def energy(self):
         return self._create_calculation_object.get_energy()
 
+    ## i want to cache the result of this but idk how caching works
+    def run_xtb_calc(tdstruct):
+        coords = tdstruct.coords_bohr
+        atomic_numbers = tdstruct.atomic_numbers
+        calc = Calculator(get_method("GFN2-xTB"),
+                          numbers=np.array(atomic_numbers),
+                          positions=coords,
+                          charge=tdstruct.charge,
+                          uhf=tdstruct.spinmult - 1)
+        calc.set_verbosity(VERBOSITY_MUTED)
+        res = calc.singlepoint()
+        return res
+
+
+    @staticmethod
+    def grad_func(coords):
+        res = Node3D.run_xtb_calc(coords)
+        return res.get_gradient()
+
+    
+    @staticmethod
+    def en_func(coords):
+        res = Node3D.run_xtb_calc(coords)
+        return res.get_energy()
+
+
     @property
     def gradient(self):
         return self._create_calculation_object.get_gradient()
 
-    def dot_function(self, other: Node3D) -> float:
-        return np.tensordot(self.coords, other.coords)
+    @staticmethod
+    def dot_function(first: np.array, second: np.array) -> float:
+        # return np.tensordot(first, second, axes=2)
+        
+        return np.sum(first*second, axis=1).reshape(-1,1)
 
     def displacement(self, grad):
-        dr, _ = ALS_xtb.ArmijoLineSearch(struct=self.coords, grad=grad, t=1, alpha=0.3, beta=0.8, f=self.en_func)
+        print(f"{grad.shape=}")
+        dr = ALS_xtb.ArmijoLineSearch(struct=self.coords, grad=grad, t=1, alpha=0.3, beta=0.8, f=self.en_func)
         return dr
 
 
@@ -204,7 +235,7 @@ class Chain:
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
         pe_grad = current_node.gradient
-        pe_grad_nudged_const = np.dot(pe_grad, unit_tan_path)
+        pe_grad_nudged_const = current_node.dot_function(pe_grad, unit_tan_path)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
 
         grads_neighs = []
@@ -212,13 +243,13 @@ class Chain:
 
         force_spring = -self.k * (np.abs(next_node.coords - current_node.coords) - np.abs(current_node.coords - prev_node.coords))
 
-        direction = np.dot((next_node.coords - current_node.coords), force_spring)
+        direction = np.sum(current_node.dot_function((next_node.coords - current_node.coords), force_spring))
         if direction < 0:
             force_spring *= -1
 
         force_springs.append(force_spring)
 
-        force_spring_nudged_const = np.dot(force_spring, unit_tan_path)
+        force_spring_nudged_const = current_node.dot_function(force_spring, unit_tan_path)
         force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
 
         grads_neighs.append(force_spring_nudged)
@@ -230,11 +261,11 @@ class Chain:
 
         vec_2_to_1 = next_node.coords - current_node.coords
         vec_1_to_0 = current_node.coords - prev_node.coords
-        cos_phi = np.dot(vec_2_to_1, vec_1_to_0) / (np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0))
+        cos_phi = current_node.dot_function(vec_2_to_1, vec_1_to_0) / (np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0))
 
         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
 
-        proj_force_springs = force_springs - np.dot(force_springs, unit_tan_path) * unit_tan_path
+        proj_force_springs = force_springs - current_node.dot_function(force_springs, unit_tan_path) * unit_tan_path
 
         return (pe_grad_nudged - tot_grads_neighs) + f_phi * (proj_force_springs)
 
@@ -273,6 +304,7 @@ class NEB:
             raise NoneConvergedException(trajectory=chain_traj, msg=f"Chain did not converge at step {nsteps}")
 
     def update_chain(self, chain: Chain) -> Chain:
+        print(f"{chain.gradients.shape=} {chain.displacements.shape=}")
         new_chain_coordinates = chain.coordinates - chain.gradients * chain.displacements
         new_chain = Chain.from_list_of_coords(k=chain.k, list_of_coords=new_chain_coordinates, node_class=type(chain[0]))
         return new_chain
