@@ -100,7 +100,10 @@ class Node2D(Node):
 
 @dataclass
 class Node3D(Node):
-    coords: TDStructure
+    coords: TDStructure ### chain methods depend on node having np.array coordinates. this is bad.
+                        ### need to think about this better. For instance, look at chain.displacements
+                        ### and look at chain.update_chain. They require that displacements and chain.coordiantes
+                        ### be the same dimension as the gradients. 
 
     @cached_property
     def _create_calculation_object(self):
