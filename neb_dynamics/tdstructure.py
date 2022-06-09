@@ -18,11 +18,6 @@ class TDStructure:
 
     molecule_obmol: openbabel.OBMol
 
-
-    def __sub__(self, other) -> np.array:
-        diff_coords = self.coords - other.coords
-        return diff_coords
-
     @property
     def coords(self):
         return np.array(

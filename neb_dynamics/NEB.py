@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property, cache
-from platform import node
-from typing import List, Protocol
+from functools import cached_property
+from typing import List
 
 import numpy as np
 
@@ -23,44 +22,53 @@ class NoneConvergedException(Exception):
     trajectory: list[Chain]
     message: str
 
+
 @dataclass
 class AlessioError(Exception):
     message: str
 
 
 class Node(ABC):
+
     @abstractmethod
     def en_func(coords):
-        pass
+        ...
 
     @abstractmethod
     def grad_func(coords):
-        pass
+        ...
 
     @property
     @abstractmethod
     def energy(self):
-        pass
+        ...
 
     @property
     @abstractmethod
     def gradient(self):
-        pass
+        ...
 
+    @property
+    @abstractmethod
+    def coords(self):
+        ...
 
     @abstractmethod
     def dot_function(self, other):
-        pass
+        ...
 
     @abstractmethod
     def displacement(self, grad):
-        pass
-
+        ...
 
 
 @dataclass
 class Node2D(Node):
-    coords: np.array
+    pair_of_coordinates: np.array
+
+    @property
+    def coords(self):
+        return self.pair_of_coordinates
 
     @staticmethod
     def en_func(coords):
@@ -69,7 +77,7 @@ class Node2D(Node):
 
     @staticmethod
     def grad_func(coords):
-        x,y = coords
+        x, y = coords
         dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
         dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
         return np.array([dx, dy])
@@ -100,10 +108,11 @@ class Node2D(Node):
 
 @dataclass
 class Node3D(Node):
-    coords: TDStructure ### chain methods depend on node having np.array coordinates. this is bad.
-                        ### need to think about this better. For instance, look at chain.displacements
-                        ### and look at chain.update_chain. They require that displacements and chain.coordiantes
-                        ### be the same dimension as the gradients. 
+    tdstructure: TDStructure
+
+    @property
+    def coords(self):
+        return self.tdstructure
 
     @cached_property
     def _create_calculation_object(self):
@@ -122,7 +131,7 @@ class Node3D(Node):
     def energy(self):
         return self._create_calculation_object.get_energy()
 
-    ## i want to cache the result of this but idk how caching works
+    # i want to cache the result of this but idk how caching works
     def run_xtb_calc(tdstruct):
         coords = tdstruct.coords_bohr
         atomic_numbers = tdstruct.atomic_numbers
@@ -135,18 +144,15 @@ class Node3D(Node):
         res = calc.singlepoint()
         return res
 
-
     @staticmethod
     def grad_func(coords):
         res = Node3D.run_xtb_calc(coords)
         return res.get_gradient()
 
-    
     @staticmethod
     def en_func(coords):
         res = Node3D.run_xtb_calc(coords)
         return res.get_energy()
-
 
     @property
     def gradient(self):
@@ -155,8 +161,8 @@ class Node3D(Node):
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
         # return np.tensordot(first, second, axes=2)
-        
-        return np.sum(first*second, axis=1).reshape(-1,1)
+
+        return np.sum(first*second, axis=1).reshape(-1, 1)
 
     def displacement(self, grad):
         print(f"{grad.shape=}")
