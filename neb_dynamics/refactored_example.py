@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import numpy as np
 
-from neb_dynamics.NEB import Chain, NEB, AlessioError
-from helper_functions import psave
+from neb_dynamics.NEB import Chain, NEB
 
 
 def animate_func(neb_obj: NEB):
@@ -19,18 +18,15 @@ def animate_func(neb_obj: NEB):
     x = np.linspace(start=-4, stop=4, num=n_nodes)
     y = x.reshape(-1, 1)
 
-
     # h = en_func(x, y)
     h = en_func([x, y])
     cs = plt.contourf(x, x, h)
-    cbar = f.colorbar(cs, ax=ax)
+    _ = f.colorbar(cs, ax=ax)
     (line,) = ax.plot([], [], lw=3)
-
 
     def init():
         line.set_data([], [])
         return (line,)
-
 
     def animate(chain):
 
@@ -39,9 +35,9 @@ def animate_func(neb_obj: NEB):
         line.set_data(x, y)
         return (line,)
 
-
-    anim = FuncAnimation(fig=f, func=animate, frames=np.array([chain.coordinates for chain in chain_traj]), blit=True, repeat_delay=1000, interval=200)
+    _ = FuncAnimation(fig=f, func=animate, frames=np.array([chain.coordinates for chain in chain_traj]), blit=True, repeat_delay=1000, interval=200)
     plt.show()
+
 
 def plot_func(neb_obj: NEB):
 
@@ -53,7 +49,7 @@ def plot_func(neb_obj: NEB):
     max_val = 4
     num = 10
     fig = 10
-    f, ax = plt.subplots(figsize=(1.18 * fig, fig))
+    f, _ = plt.subplots(figsize=(1.18 * fig, fig))
     x = np.linspace(start=min_val, stop=max_val, num=num)
     y = x.reshape(-1, 1)
 
@@ -81,29 +77,28 @@ def main():
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
 
-    def toy_potential_2(inp):
-        x, y = inp
-        return (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
 
-    def toy_grad_2(inp):
-        x, y = inp
-        dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
-        dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
-        return np.array([dx, dy])
 
     coords = np.linspace(start_point, end_point, nimages)
     chain = Chain.from_list_of_coords(k=10, list_of_coords=coords,
-                    grad_func=toy_grad_2, en_func=toy_potential_2,
-                    dot_func=np.dot)
-    
+                                      grad_func=toy_grad_2, en_func=toy_potential_2,
+                                      dot_func=np.dot)
+
+    chain = Chain.from_list_of_coords(k=10, 
+                                      list_of_coords=tds,
+                                      grad_func=toy_grad_2, 
+                                      en_func=toy_potential_2,
+                                      dot_func=np.dot)
+
     print(f"{coords=}")
 
     n = NEB(initial_chain=chain)
-    
+
     n.optimize_chain()
-    
+
     plot_func(n)
     animate_func(n)
+
 
 if __name__ == "__main__":
     main()

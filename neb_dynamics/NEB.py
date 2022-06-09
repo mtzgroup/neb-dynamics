@@ -1,86 +1,88 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from email import message
-from typing import Callable, List, Protocol
+from functools import cached_property
+from typing import List, Protocol
 
 import numpy as np
 
-from ALS import ArmijoLineSearch
-from errors import AlessioError, NoneConvergedException
+import ALS
+import ALS_xtb
+from errors import NoneConvergedException
 from helper_functions import pairwise
+from neb_dynamics.tdstructure import TDStructure
+from xtb.interface import Calculator
+from xtb.libxtb import VERBOSITY_MUTED
+from xtb.utils import get_method
 
 
-@dataclass
-class Node(Protocol):
-    coords: np.array
-    grad_func: Callable[[np.array], np.array]
-    en_func: Callable[[np.array], float]
-    dot_func: Callable[[np.array, np.array], float]
-
-    @property
-    def energy(self) -> float:
-        return self.en_func(self.coords)
-
-    @property
-    def gradient(self) -> np.array:
-        return self.grad_func(self.coords)
-
-    # @staticmethod
-    # def dot_product(self, coord1: np.array, coord2: np.array) -> float:
-    #     return self.dot_func(coord1, coord2)
-
-    def displacement(self, grad):
-        phi0 = self.energy
-        dr, _ = ArmijoLineSearch(
-            f=self.en_func,
-            xk=self.coords,
-            pk=-1 * grad,
-            gfk=grad,
-            phi0=phi0,
-        )
-        return dr
-
-    def update_coords(self, vector):
-        new_coords = self.coords + vector
-        new_node = Node(coords=new_coords, grad_func=self.grad_func, 
-                                en_func=self.en_func, dot_func=self.dot_func)
-        return new_node
 @dataclass
 class Node2D:
-    coords: np.array
-    grad_func: Callable[[np.array], np.array]
-    en_func: Callable[[np.array], float]
-    dot_func: Callable[[np.array, np.array], float]
+    geom: np.array
+
+    @staticmethod
+    def en_func(geom):
+        x, y = geom
+        return (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
 
     @property
     def energy(self) -> float:
-        return self.en_func(self.coords)
+        return self.en_func(self.geom)
 
     @property
     def gradient(self) -> np.array:
-        return self.grad_func(self.coords)
+        x, y = self.geom
+        dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
+        dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
+        return np.array([dx, dy])
 
-    # @staticmethod
-    # def dot_product(self, coord1: np.array, coord2: np.array) -> float:
-    #     return self.dot_func(coord1, coord2)
+    def dot_function(self, other: Node2D) -> float:
+        return np.dot(self.geom, other.geom)
 
     def displacement(self, grad):
         phi0 = self.energy
-        dr, _ = ArmijoLineSearch(
+        dr, _ = ALS.ArmijoLineSearch(
             f=self.en_func,
-            xk=self.coords,
+            xk=self.geom,
             pk=-1 * grad,
             gfk=grad,
             phi0=phi0,
         )
         return dr
 
-    def update_coords(self, vector):
-        new_coords = self.coords + vector
-        new_node = Node(coords=new_coords, grad_func=self.grad_func, 
-                                en_func=self.en_func, dot_func=self.dot_func)
-        return new_node
+
+@dataclass
+class Node3D:
+    geom: TDStructure
+
+    @cached_property
+    def _create_calculation_object(self):
+        coords = self.geom.coords_bohr
+        atomic_numbers = self.geom.atomic_numbers
+        calc = Calculator(get_method("GFN2-xTB"),
+                          numbers=np.array(atomic_numbers),
+                          positions=coords,
+                          charge=self.geom.charge,
+                          uhf=self.geom.spinmult - 1)
+        calc.set_verbosity(VERBOSITY_MUTED)
+        res = calc.singlepoint()
+        return res
+
+    @property
+    def energy(self):
+        return self._create_calculation_object.get_energy()
+
+    @property
+    def gradient(self):
+        return self._create_calculation_object.get_gradient()
+
+    def dot_function(self, other: Node3D) -> float:
+        return np.tensordot(self.geom, other.geom)
+
+    def displacement(self, grad):
+        dr, _ = ALS_xtb.ArmijoLineSearch(struct=self.geom, grad=grad, t=1, alpha=0.3, beta=0.8, f=self.en_func)
+        return dr
+
 
 @dataclass
 class Chain:
@@ -95,8 +97,8 @@ class Chain:
         return chain_copy
 
     def iter_triplets(self):
-        for i in range(1, len(self.nodes)-1):
-            yield self.nodes[i-1:i+2]
+        for i in range(1, len(self.nodes) - 1):
+            yield self.nodes[i - 1: i + 2]
 
     @classmethod
     def from_list_of_coords(cls, k, list_of_coords: List, grad_func, en_func, dot_func) -> Chain:
@@ -115,9 +117,9 @@ class Chain:
             grads.append(grad)
 
         zero = np.zeros_like(grad)
-        grads.insert(0,zero)
+        grads.insert(0, zero)
         grads.append(zero)
-        
+
         return np.array(grads)
 
     @property
@@ -126,7 +128,7 @@ class Chain:
 
     @property
     def displacements(self):
-        return np.array([node.displacement(grad) for node, grad in zip(self.nodes, self.gradients)]).reshape(-1,1)
+        return np.array([node.displacement(grad) for node, grad in zip(self.nodes, self.gradients)]).reshape(-1, 1)
 
     def _create_tangent_path(self, prev_node: Node, current_node: Node, next_node: Node):
         en_2 = next_node.energy
@@ -148,7 +150,6 @@ class Chain:
 
             else:
                 raise ValueError("Something catastrophic happened. Check chain traj.")
-                
 
             return tan_vec
 
@@ -227,13 +228,7 @@ class NEB:
 
     def update_chain(self, chain: Chain) -> Chain:
         new_chain_coordinates = chain.coordinates - chain.gradients * chain.displacements
-        new_chain = Chain.from_list_of_coords(
-            k=chain.k,
-            list_of_coords=new_chain_coordinates,
-            grad_func=chain[0].grad_func,
-            en_func=chain[0].en_func,
-            dot_func=chain[0].dot_func
-            )
+        new_chain = Chain.from_list_of_coords(k=chain.k, list_of_coords=new_chain_coordinates, grad_func=chain[0].grad_func, en_func=chain[0].en_func, dot_func=chain[0].dot_func)
         return new_chain
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
@@ -245,8 +240,7 @@ class NEB:
         return np.all(delta_grad < self.grad_thre)
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-        return self._check_en_converged(chain_prev=chain_prev, chain_new=chain_new) and \
-            self._check_grad_converged(chain_prev=chain_prev, chain_new=chain_new)
+        return self._check_en_converged(chain_prev=chain_prev, chain_new=chain_new) and self._check_grad_converged(chain_prev=chain_prev, chain_new=chain_new)
 
     def remove_chain_folding(self, chain: Chain) -> Chain:
         not_converged = True
@@ -282,7 +276,6 @@ class NEB:
 
         return all(dps)
 
-
     def redistribute_chain(self, chain) -> Chain:
         direction = np.array([next_node.coords - current_node.coords for current_node, next_node in pairwise(chain)])
         distances = np.linalg.norm(direction, axis=1)
@@ -313,14 +306,14 @@ class NEB:
             if cum_sum_init < num < cum_sum_end:
                 direction = node_end.coords - node_start.coords
                 percentage = (num - cum_sum_init) / (cum_sum_end - cum_sum_init)
-                
-                new_node = node_start.update_coords(vector=direction*percentage)
-                
+
+                new_node = node_start.update_coords(vector=direction * percentage)
+
                 new_coords = node_start.coords + (direction * percentage)
-                new_node = Node(coords=new_coords, grad_func=node_start.grad_func, 
-                                en_func=node_start.en_func, dot_func=node_start.dot_func)
+                new_node = Node(coords=new_coords, grad_func=node_start.grad_func, en_func=node_start.en_func, dot_func=node_start.dot_func)
 
                 return new_node
+
 
 # @dataclass
 # class neb:
