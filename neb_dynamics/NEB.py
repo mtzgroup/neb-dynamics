@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import List
-
-
-from copy import deepcopy
 
 import numpy as np
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
-
 
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.tdstructure import TDStructure
@@ -111,7 +107,7 @@ class Node2D(Node):
         from neb_dynamics import ALS
 
         dr = ALS.ArmijoLineSearch(
-            f=self.en_func, node=self, grad=grad, t=1, alpha=0.3, beta=0.8
+            node=self.copy()
         )
         return dr
 
@@ -259,9 +255,6 @@ class Chain:
             [node.displacement(grad) for node, grad in zip(self.nodes, grads)]
         ).reshape(*correct_dimensions)
 
-    def replace_node(self, new_node: Node, index: int):
-        self.nodes[index] = new_node
-
     def _create_tangent_path(
         self, prev_node: Node, current_node: Node, next_node: Node
     ):
@@ -312,8 +305,8 @@ class Chain:
                 (next_node.coords - current_node.coords), force_spring
             )
         )
-        if direction < 0:
-            force_spring *= -1
+        # if direction < 0:
+        #     force_spring *= -1
 
         force_springs.append(force_spring)
 
@@ -354,33 +347,33 @@ class NEB:
     max_steps: float = 1000
 
     optimized: Chain = None
-    chain_trajectory: list[Chain] = None
+    chain_trajectory: list[Chain] = field(default_factory=list)
 
     def optimize_chain(self):
-        chain_traj = []
+        
         nsteps = 0
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps:
             new_chain = self.update_chain(chain=chain_previous)
-            print(
-                f"step {nsteps} || coords ∆ {chain_previous.coordinates - new_chain.coordinates}"
-            )
+            # print(
+            #     f"step {nsteps} || coords ∆ {chain_previous.coordinates - new_chain.coordinates}"
+            # )
             # print(f"{new_chain.coordinates=}")
-            chain_traj.append(new_chain)
+            self.chain_trajectory.append(new_chain)
 
             if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
                 print(f"Chain converged!\n{new_chain=}")
                 self.optimized = new_chain
-                self.chain_trajectory = chain_traj
+                self.chain_trajectory = self.chain_trajectory
                 break
             chain_previous = new_chain.copy()
             nsteps += 1
 
         if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
-            self.chain_trajectory = chain_traj
+            self.chain_trajectory = self.chain_trajectory
             raise NoneConvergedException(
-                trajectory=chain_traj, msg=f"Chain did not converge at step {nsteps}", obj=self
+                trajectory=self.chain_trajectory, msg=f"Chain did not converge at step {nsteps}", obj=self
             )
 
     def update_chain(self, chain: Chain) -> Chain:

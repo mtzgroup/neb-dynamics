@@ -10,6 +10,11 @@ from neb_dynamics.NEB import NEB, Chain, Node2D, Node3D, NoneConvergedException
 from neb_dynamics.trajectory import Trajectory
 
 
+def sorry_func(inp):
+    
+    x, y = inp
+    return (x ** 2 + y - 11) ** 2 + (x + y ** 2 - 7) ** 2
+
 def animate_func(neb_obj: NEB):
     n_nodes = len(neb_obj.initial_chain.nodes)
     en_func = neb_obj.initial_chain[0].en_func
@@ -23,7 +28,7 @@ def animate_func(neb_obj: NEB):
     y = x.reshape(-1, 1)
 
     # h = en_func(x, y)
-    h = en_func([x, y])
+    h = sorry_func([x, y])
     cs = plt.contourf(x, x, h)
     _ = f.colorbar(cs, ax=ax)
     (line,) = ax.plot([], [], lw=3)
@@ -57,7 +62,7 @@ def plot_func(neb_obj: NEB):
     x = np.linspace(start=min_val, stop=max_val, num=num)
     y = x.reshape(-1, 1)
 
-    h = en_func([x, y])
+    h = sorry_func([x, y])
     cs = plt.contourf(x, x, h)
     _ = f.colorbar(cs)
     plt.plot(
@@ -84,20 +89,20 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 20
+    nimages = 200
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
 
 
     coords = np.linspace(start_point, end_point, nimages)
     chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node2D)
-    n = NEB(initial_chain=chain, max_steps=10)
+    n = NEB(initial_chain=chain, max_steps=1000)
     try: 
         n.optimize_chain()
     except NoneConvergedException as e:
         n = e
     
-    # plot_2D(n)
+    plot_func(n)
     animate_func(n)
 
     # fp = Path("./example_cases/DA_geodesic_opt.xyz")
