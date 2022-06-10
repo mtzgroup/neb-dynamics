@@ -193,7 +193,7 @@ class Node3D(Node):
 
         # print(f"{grad.shape=}")
         dr = ALS_xtb.ArmijoLineSearch(
-            node=self, grad=grad, t=1, alpha=0.3, beta=0.8, f=self.en_func
+            node=self, alpha0=0.01, rho=0.5, c1=1e-4
         )
         return dr
 
@@ -364,7 +364,7 @@ class NEB:
         while nsteps < self.max_steps:
             new_chain = self.update_chain(chain=chain_previous)
             # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
-            print(f"step {nsteps}")
+            print(f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}")
             
             self.chain_trajectory.append(new_chain)
 
