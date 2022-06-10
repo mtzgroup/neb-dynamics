@@ -1,12 +1,14 @@
 # TODO: Jan, you have a big problem. TDStructures **need** to have charge and multiplicity information to be
 # initialized. Otherwise you have serious energy calculation issues with TCCloud. Fix this.
 
-import OBH
-from pathlib import Path
 from dataclasses import dataclass
-from tdstructure import TDStructure
-from fileio import read_xyz, write_xyz
+from pathlib import Path
+
 import numpy as np
+
+from neb_dynamics import OBH
+from neb_dynamics.fileio import read_xyz, write_xyz
+from neb_dynamics.tdstructure import TDStructure
 
 
 @dataclass
@@ -31,6 +33,9 @@ class Trajectory:
 
     def __len__(self):
         return len(self.traj_array)
+
+    def to_list(self):
+        return self.traj_array.tolist()
 
     @classmethod
     def from_xyz(cls, file_path, tot_charge=0, tot_spinmult=1):

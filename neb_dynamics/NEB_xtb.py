@@ -98,17 +98,7 @@ class neb:
 
         return res.get_energy()
 
-    def grad_func(self, tdstruct):
 
-        coords = tdstruct.coords_bohr
-        atomic_numbers = tdstruct.atomic_numbers
-
-        # blockPrint()
-        calc = Calculator(get_method("GFN2-xTB"), numbers=np.array(atomic_numbers), positions=coords, charge=tdstruct.charge, uhf=tdstruct.spinmult - 1)
-        calc.set_verbosity(VERBOSITY_MUTED)
-        res = calc.singlepoint()
-
-        return res.get_gradient()
 
     def opt_func(self, tdstruct, en_func, grad_func, en_thre=0.0001, grad_thre=0.0001, maxsteps=5000):
         # coords = tdstruct.coords_bohr
