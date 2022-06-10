@@ -1,27 +1,32 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import cached_property
 from typing import List
 
-import numpy as np
 
-import ALS
-import ALS_xtb
-from helper_functions import pairwise
-from neb_dynamics.ALS_xtb import ANGSTROM_TO_BOHR
-from neb_dynamics.tdstructure import TDStructure
+from copy import deepcopy
+
+import numpy as np
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
-from abc import ABC, abstractmethod
+
+from neb_dynamics.helper_functions import pairwise
+from neb_dynamics.tdstructure import TDStructure
+
+ANGSTROM_TO_BOHR = 1.88973
+BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR
 
 
 @dataclass
 class NoneConvergedException(Exception):
     trajectory: list[Chain]
-    message: str
+    msg: str
+
+    obj: NEB
 
 
 @dataclass
@@ -30,7 +35,6 @@ class AlessioError(Exception):
 
 
 class Node(ABC):
-
     @abstractmethod
     def en_func(coords):
         ...
@@ -42,6 +46,10 @@ class Node(ABC):
     @property
     @abstractmethod
     def energy(self):
+        ...
+
+    @abstractmethod
+    def copy(self):
         ...
 
     @property
@@ -62,6 +70,10 @@ class Node(ABC):
     def displacement(self, grad):
         ...
 
+    @abstractmethod
+    def update_coords(self, coords):
+        ...
+
 
 @dataclass
 class Node2D(Node):
@@ -72,39 +84,43 @@ class Node2D(Node):
         return self.pair_of_coordinates
 
     @staticmethod
-    def en_func(coords):
-        x, y = coords
-        return (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
+    def en_func(node: Node2D):
+        x, y = node.coords
+        return (x ** 2 + y - 11) ** 2 + (x + y ** 2 - 7) ** 2
 
     @staticmethod
-    def grad_func(coords):
-        x, y = coords
-        dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
-        dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
+    def grad_func(node: Node2D):
+        x, y = node.coords
+        dx = 2 * (x ** 2 + y - 11) * (2 * x) + 2 * (x + y ** 2 - 7)
+        dy = 2 * (x ** 2 + y - 11) + 2 * (x + y ** 2 - 7) * (2 * y)
         return np.array([dx, dy])
 
     @property
     def energy(self) -> float:
-        return self.en_func(self.coords)
+        return self.en_func(self)
 
     @property
     def gradient(self) -> np.array:
-        return self.grad_func(self.coords)
+        return self.grad_func(self)
 
     @staticmethod
     def dot_function(self, other: Node2D) -> float:
         return np.dot(self, other)
 
     def displacement(self, grad):
-        phi0 = self.energy
-        dr, _ = ALS.ArmijoLineSearch(
-            f=self.en_func,
-            xk=self.coords,
-            pk=-1 * grad,
-            gfk=grad,
-            phi0=phi0,
+        from neb_dynamics import ALS
+
+        dr = ALS.ArmijoLineSearch(
+            f=self.en_func, node=self, grad=grad, t=1, alpha=0.3, beta=0.8
         )
         return dr
+
+    def copy(self):
+        return Node2D(self.pair_of_coordinates)
+
+    def update_coords(self, coords: np.array):
+        self.pair_of_coordinates = coords
+        return Node2D(self.pair_of_coordinates)
 
 
 @dataclass
@@ -113,23 +129,20 @@ class Node3D(Node):
 
     @property
     def coords(self):
-        return self.tdstructure
-
-
-    @property
-    def coords(self):
         return self.tdstructure.coords
-
 
     @cached_property
     def _create_calculation_object(self):
+        # print("_create_calc obj ", type(self.tdstructure))
         coords = self.tdstructure.coords_bohr
         atomic_numbers = self.tdstructure.atomic_numbers
-        calc = Calculator(get_method("GFN2-xTB"),
-                          numbers=np.array(atomic_numbers),
-                          positions=coords,
-                          charge=self.tdstructure.charge,
-                          uhf=self.tdstructure.spinmult - 1)
+        calc = Calculator(
+            get_method("GFN2-xTB"),
+            numbers=np.array(atomic_numbers),
+            positions=coords,
+            charge=self.tdstructure.charge,
+            uhf=self.tdstructure.spinmult - 1,
+        )
         calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
         return res
@@ -140,25 +153,30 @@ class Node3D(Node):
 
     # i want to cache the result of this but idk how caching works
     def run_xtb_calc(tdstruct):
+        # print("runxtb calc", type(tdstruct))
         coords = tdstruct.coords_bohr
         atomic_numbers = tdstruct.atomic_numbers
-        calc = Calculator(get_method("GFN2-xTB"),
-                          numbers=np.array(atomic_numbers),
-                          positions=coords,
-                          charge=tdstruct.charge,
-                          uhf=tdstruct.spinmult - 1)
+        calc = Calculator(
+            get_method("GFN2-xTB"),
+            numbers=np.array(atomic_numbers),
+            positions=coords,
+            charge=tdstruct.charge,
+            uhf=tdstruct.spinmult - 1,
+        )
         calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
         return res
 
     @staticmethod
-    def grad_func(coords):
-        res = Node3D.run_xtb_calc(coords)
+    def grad_func(node: Node3D):
+        tdstruct = node.tdstructure
+        res = Node3D.run_xtb_calc(tdstruct)
         return res.get_gradient()
 
     @staticmethod
-    def en_func(coords):
-        res = Node3D.run_xtb_calc(coords)
+    def en_func(node: Node3D):
+        tdstruct = node.tdstructure
+        res = Node3D.run_xtb_calc(tdstruct)
         return res.get_energy()
 
     @property
@@ -169,12 +187,23 @@ class Node3D(Node):
     def dot_function(first: np.array, second: np.array) -> float:
         # return np.tensordot(first, second, axes=2)
 
-        return np.sum(first*second, axis=1).reshape(-1, 1)
+        return np.sum(first * second, axis=1).reshape(-1, 1)
 
     def displacement(self, grad):
-        print(f"{grad.shape=}")
-        dr = ALS_xtb.ArmijoLineSearch(struct=self.coords, grad=grad, t=1, alpha=0.3, beta=0.8, f=self.en_func)
+        from neb_dynamics import ALS_xtb
+
+        # print(f"{grad.shape=}")
+        dr = ALS_xtb.ArmijoLineSearch(
+            node=self, grad=grad, t=1, alpha=0.3, beta=0.8, f=self.en_func
+        )
         return dr
+
+    def update_coords(self, coords: np.array) -> None:
+        self.tdstructure.update_coords(coords=coords)
+        return Node3D(self.tdstructure)
+
+    def copy(self):
+        return Node3D(tdstructure=self.tdstructure.copy())
 
 
 @dataclass
@@ -186,12 +215,13 @@ class Chain:
         return self.nodes.__getitem__(index)
 
     def copy(self):
-        chain_copy = Chain(nodes=self.nodes, k=self.k)
+        list_of_nodes = [node.copy() for node in self.nodes]
+        chain_copy = Chain(nodes=list_of_nodes, k=self.k)
         return chain_copy
 
     def iter_triplets(self):
         for i in range(1, len(self.nodes) - 1):
-            yield self.nodes[i - 1: i + 2]
+            yield self.nodes[i - 1 : i + 2]
 
     @classmethod
     def from_list_of_coords(cls, k, list_of_coords: List, node_class: Node) -> Chain:
@@ -217,13 +247,24 @@ class Chain:
 
     @property
     def coordinates(self) -> np.array:
+
         return np.array([node.coords for node in self.nodes])
 
     @property
     def displacements(self):
-        return np.array([node.displacement(grad) for node, grad in zip(self.nodes, self.gradients)]).reshape(-1, 1)
 
-    def _create_tangent_path(self, prev_node: Node, current_node: Node, next_node: Node):
+        grads = self.gradients
+        correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(grads.shape)]
+        return np.array(
+            [node.displacement(grad) for node, grad in zip(self.nodes, grads)]
+        ).reshape(*correct_dimensions)
+
+    def replace_node(self, new_node: Node, index: int):
+        self.nodes[index] = new_node
+
+    def _create_tangent_path(
+        self, prev_node: Node, current_node: Node, next_node: Node
+    ):
         en_2 = next_node.energy
         en_1 = current_node.energy
         en_0 = prev_node.energy
@@ -237,9 +278,13 @@ class Chain:
             deltaV_min = min(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
 
             if en_2 > en_0:
-                tan_vec = (next_node.coords - current_node.coords) * deltaV_max + (current_node.coords - prev_node.coords) * deltaV_min
+                tan_vec = (next_node.coords - current_node.coords) * deltaV_max + (
+                    current_node.coords - prev_node.coords
+                ) * deltaV_min
             elif en_2 < en_0:
-                tan_vec = (next_node.coords - current_node.coords) * deltaV_min + (current_node.coords - prev_node.coords) * deltaV_max
+                tan_vec = (next_node.coords - current_node.coords) * deltaV_min + (
+                    current_node.coords - prev_node.coords
+                ) * deltaV_max
 
             else:
                 raise ValueError("Something catastrophic happened. Check chain traj.")
@@ -257,15 +302,24 @@ class Chain:
         grads_neighs = []
         force_springs = []
 
-        force_spring = -self.k * (np.abs(next_node.coords - current_node.coords) - np.abs(current_node.coords - prev_node.coords))
+        force_spring = -self.k * (
+            np.abs(next_node.coords - current_node.coords)
+            - np.abs(current_node.coords - prev_node.coords)
+        )
 
-        direction = np.sum(current_node.dot_function((next_node.coords - current_node.coords), force_spring))
+        direction = np.sum(
+            current_node.dot_function(
+                (next_node.coords - current_node.coords), force_spring
+            )
+        )
         if direction < 0:
             force_spring *= -1
 
         force_springs.append(force_spring)
 
-        force_spring_nudged_const = current_node.dot_function(force_spring, unit_tan_path)
+        force_spring_nudged_const = current_node.dot_function(
+            force_spring, unit_tan_path
+        )
         force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
 
         grads_neighs.append(force_spring_nudged)
@@ -277,11 +331,16 @@ class Chain:
 
         vec_2_to_1 = next_node.coords - current_node.coords
         vec_1_to_0 = current_node.coords - prev_node.coords
-        cos_phi = current_node.dot_function(vec_2_to_1, vec_1_to_0) / (np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0))
+        cos_phi = current_node.dot_function(vec_2_to_1, vec_1_to_0) / (
+            np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0)
+        )
 
         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
 
-        proj_force_springs = force_springs - current_node.dot_function(force_springs, unit_tan_path) * unit_tan_path
+        proj_force_springs = (
+            force_springs
+            - current_node.dot_function(force_springs, unit_tan_path) * unit_tan_path
+        )
 
         return (pe_grad_nudged - tot_grads_neighs) + f_phi * (proj_force_springs)
 
@@ -304,6 +363,9 @@ class NEB:
 
         while nsteps < self.max_steps:
             new_chain = self.update_chain(chain=chain_previous)
+            print(
+                f"step {nsteps} || coords ∆ {chain_previous.coordinates - new_chain.coordinates}"
+            )
             # print(f"{new_chain.coordinates=}")
             chain_traj.append(new_chain)
 
@@ -317,12 +379,17 @@ class NEB:
 
         if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
             self.chain_trajectory = chain_traj
-            raise NoneConvergedException(trajectory=chain_traj, msg=f"Chain did not converge at step {nsteps}")
+            raise NoneConvergedException(
+                trajectory=chain_traj, msg=f"Chain did not converge at step {nsteps}", obj=self
+            )
 
     def update_chain(self, chain: Chain) -> Chain:
-        print(f"{chain.gradients.shape=} {chain.displacements.shape=}")
-        new_chain_coordinates = chain.coordinates - chain.gradients * chain.displacements
-        new_chain = Chain.from_list_of_coords(k=chain.k, list_of_coords=new_chain_coordinates, node_class=type(chain[0]))
+        new_chain_coordinates = (
+            chain.coordinates - chain.gradients * chain.displacements
+        )
+        new_chain = chain.copy()
+        for node, new_coords in zip(new_chain.nodes, new_chain_coordinates):
+            node.update_coords(new_coords)
         return new_chain
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
@@ -331,17 +398,20 @@ class NEB:
 
     def _check_grad_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
-        return np.all(delta_grad < self.grad_thre)
+        mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])
+        return np.all(delta_grad < self.grad_thre) and np.all(mag_grad < self.grad_thre)
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-        return self._check_en_converged(chain_prev=chain_prev, chain_new=chain_new) and self._check_grad_converged(chain_prev=chain_prev, chain_new=chain_new)
+        return self._check_en_converged(
+            chain_prev=chain_prev, chain_new=chain_new
+        ) and self._check_grad_converged(chain_prev=chain_prev, chain_new=chain_new)
 
     def remove_chain_folding(self, chain: Chain) -> Chain:
         not_converged = True
         count = 0
         points_removed = []
         while not_converged:
-            # print(f"on count {count}...")
+            print(f"on count {count}...")
             new_chain = []
             new_chain.append(chain[0])
 
@@ -371,7 +441,12 @@ class NEB:
         return all(dps)
 
     def redistribute_chain(self, chain) -> Chain:
-        direction = np.array([next_node.coords - current_node.coords for current_node, next_node in pairwise(chain)])
+        direction = np.array(
+            [
+                next_node.coords - current_node.coords
+                for current_node, next_node in pairwise(chain)
+            ]
+        )
         distances = np.linalg.norm(direction, axis=1)
         tot_dist = np.sum(distances)
         cumsum = np.cumsum(distances)  # cumulative sum
@@ -395,7 +470,9 @@ class NEB:
 
         """
 
-        for ii, ((cum_sum_init, node_start), (cum_sum_end, node_end)) in enumerate(pairwise(zip(cum, chain))):
+        for ii, ((cum_sum_init, node_start), (cum_sum_end, node_end)) in enumerate(
+            pairwise(zip(cum, chain))
+        ):
 
             if cum_sum_init < num < cum_sum_end:
                 direction = node_end.coords - node_start.coords
@@ -404,7 +481,12 @@ class NEB:
                 new_node = node_start.update_coords(vector=direction * percentage)
 
                 new_coords = node_start.coords + (direction * percentage)
-                new_node = Node(coords=new_coords, grad_func=node_start.grad_func, en_func=node_start.en_func, dot_func=node_start.dot_func)
+                new_node = Node(
+                    coords=new_coords,
+                    grad_func=node_start.grad_func,
+                    en_func=node_start.en_func,
+                    dot_func=node_start.dot_func,
+                )
 
                 return new_node
 

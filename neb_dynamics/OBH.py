@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from openbabel import openbabel, pybel
-from elements import ElementData
+from neb_dynamics.elements import ElementData
 
 
 def get_bond_between_atoms(mol, atom1_id, atom2_id):

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 
-from neb_dynamics.NEB import NEB, Chain, Node2D, Node3D
+from neb_dynamics.NEB import NEB, Chain, Node2D, Node3D, NoneConvergedException
 from neb_dynamics.trajectory import Trajectory
 
 
@@ -78,7 +78,7 @@ def plot_func(neb_obj: NEB):
 
 def plot_2D(neb_obj: NEB):
     opt_chain = neb_obj.optimized
-    ens = [opt_chain[0].en_func(node.coords) for node in opt_chain]
+    ens = [opt_chain[0].en_func(node) for node in opt_chain]
 
     plt.plot(ens)
     plt.show()
@@ -89,21 +89,26 @@ def main():
     start_point = (-3.77928812, -3.28320392)
 
 
-    # coords = np.linspace(start_point, end_point, nimages)
-    # chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node2D)
-    # n = NEB(initial_chain=chain)
-    # n.optimize_chain()
-
+    coords = np.linspace(start_point, end_point, nimages)
+    chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node2D)
+    n = NEB(initial_chain=chain, max_steps=10)
+    try: 
+        n.optimize_chain()
+    except NoneConvergedException as e:
+        n = e
+    
     # plot_2D(n)
+    animate_func(n)
 
-    fp = Path("./example_cases/DA_geodesic_opt.xyz")
+    # fp = Path("./example_cases/DA_geodesic_opt.xyz")
 
-    traj = Trajectory.from_xyz(fp)
-    coords = traj.to_list()
-    chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
-    n = NEB(initial_chain=chain)
-    n.optimize_chain()
-    plot_2D(n)
+    # traj = Trajectory.from_xyz(fp)
+    # coords = traj.to_list()
+    # chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
+    # n = NEB(initial_chain=chain)
+
+    # n.optimize_chain()
+    # plot_2D(n)
 
 
 
