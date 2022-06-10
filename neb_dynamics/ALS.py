@@ -3,7 +3,7 @@ import numpy as np
 from neb_dynamics.NEB import Node2D
 
 
-def ArmijoLineSearch(node: Node2D, alpha0=0.01, rho=0.5, c1=1e-4):
+def ArmijoLineSearch(node: Node2D, grad: np.array, alpha0=1, rho=0.8, c1=0.0001):
     """Minimize over alpha, the function ``f(xₖ + αpₖ)``.
     α > 0 is assumed to be a descent direction.
 
@@ -34,11 +34,11 @@ def ArmijoLineSearch(node: Node2D, alpha0=0.01, rho=0.5, c1=1e-4):
     phi0 = node.energy
 
     # derphi0 = np.dot(gfk, pk)
-    pk = -1 * node.gradient
-    derphi0 = np.dot(node.gradient, pk)
+    pk = -1 * grad
+    derphi0 = np.dot(grad, pk)
 
     # new_coords = xk + alpha0 * pk
-    new_coords = node.coords + alpha0*derphi0
+    new_coords = node.coords + alpha0*pk
 
     new_node = Node2D(new_coords)
 
@@ -46,7 +46,7 @@ def ArmijoLineSearch(node: Node2D, alpha0=0.01, rho=0.5, c1=1e-4):
 
     while not phi_a0 <= phi0 + c1 * alpha0 * derphi0:
         # print(f"{phi0=}")
-        alpha0 = alpha0 * rho
+        alpha0 *= rho
         new_coords = node.coords + alpha0 * pk
         new_node = Node2D(new_coords)
 
@@ -78,23 +78,23 @@ def ArmijoLineSearch(node: Node2D, alpha0=0.01, rho=0.5, c1=1e-4):
 
 # def ArmijoLineSearch(node: Node2D, grad, t, alpha, beta, f):
 
-    max_steps = 10
-    count = 0
+    # max_steps = 10
+    # count = 0
     
-    en_node_prime, t = _attempt_step(node=node, grad=grad, t=t, f=f)
+    # en_node_prime, t = _attempt_step(node=node, grad=grad, t=t, f=f)
 
-    en_node = f(node)
-    condition = en_node - (en_node_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+    # en_node = f(node)
+    # condition = en_node - (en_node_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
 
-    while condition and count < max_steps:
-        t *= beta
-        count += 1
+    # while condition and count < max_steps:
+    #     t *= beta
+    #     count += 1
 
-        en_node_prime, t = _attempt_step(node=node, grad=grad, t=t, f=f)
+    #     en_node_prime, t = _attempt_step(node=node, grad=grad, t=t, f=f)
 
-        en_node = f(node)
+    #     en_node = f(node)
 
-        condition = en_node - (en_node_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+    #     condition = en_node - (en_node_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
 
-        # print(f"{t=} {count=}")
-    return t
+    #     # print(f"{t=} {count=}")
+    # return t

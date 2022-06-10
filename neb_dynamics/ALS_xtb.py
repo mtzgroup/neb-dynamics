@@ -10,7 +10,7 @@ ANGSTROM_TO_BOHR = 1.88973
 BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR
 
 
-def ArmijoLineSearch(node: Node3D, alpha0=0.01, rho=0.5, c1=1e-4):
+def ArmijoLineSearch(node: Node3D, grad, alpha0=0.01, rho=0.5, c1=1e-4):
     """Minimize over alpha, the function ``f(xₖ + αpₖ)``.
     α > 0 is assumed to be a descent direction.
 
@@ -41,8 +41,8 @@ def ArmijoLineSearch(node: Node3D, alpha0=0.01, rho=0.5, c1=1e-4):
     phi0 = node.energy
 
     # derphi0 = np.dot(gfk, pk)
-    pk = -1 * node.gradient
-    derphi0 = np.sum(node.dot_function(node.gradient, pk))
+    pk = -1 * grad
+    derphi0 = np.sum(node.dot_function(grad, pk))
 
     # new_coords = xk + alpha0 * pk
     new_coords = node.coords + alpha0*derphi0

@@ -105,12 +105,13 @@ class Node2D(Node):
     def dot_function(self, other: Node2D) -> float:
         return np.dot(self, other)
 
-    def displacement(self, grad):
+    def displacement(self, grad: np.array):
         from neb_dynamics import ALS
-
+        print(f"input grad: {grad}")
         dr = ALS.ArmijoLineSearch(
-            node=self.copy()
+            node=self.copy(), grad=grad
         )
+        print(f"\toutput dr: {dr}")
         return dr
 
     def copy(self):
@@ -130,7 +131,7 @@ class Node3D(Node):
     def coords(self):
         return self.tdstructure.coords
 
-    @cached_property
+    @property
     def _create_calculation_object(self):
         # print("_create_calc obj ", type(self.tdstructure))
         coords = self.tdstructure.coords_bohr
@@ -146,7 +147,7 @@ class Node3D(Node):
         res = calc.singlepoint()
         return res
 
-    @cached_property
+    @property
     def energy(self):
         return self._create_calculation_object.get_energy()
 
@@ -193,7 +194,7 @@ class Node3D(Node):
 
         # print(f"{grad.shape=}")
         dr = ALS_xtb.ArmijoLineSearch(
-            node=self, alpha0=0.01, rho=0.5, c1=1e-4
+            node=self, grad=grad, alpha0=0.01, rho=0.5, c1=1e-4
         )
         return dr
 
