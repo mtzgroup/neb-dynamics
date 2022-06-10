@@ -305,8 +305,8 @@ class Chain:
                 (next_node.coords - current_node.coords), force_spring
             )
         )
-        # if direction < 0:
-        #     force_spring *= -1
+        if direction < 0:
+            force_spring *= -1
 
         force_springs.append(force_spring)
 
@@ -356,10 +356,8 @@ class NEB:
 
         while nsteps < self.max_steps:
             new_chain = self.update_chain(chain=chain_previous)
-            # print(
-            #     f"step {nsteps} || coords ∆ {chain_previous.coordinates - new_chain.coordinates}"
-            # )
-            # print(f"{new_chain.coordinates=}")
+            print(f"step {nsteps}")
+            
             self.chain_trajectory.append(new_chain)
 
             if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
