@@ -107,11 +107,11 @@ class Node2D(Node):
 
     def displacement(self, grad: np.array):
         from neb_dynamics import ALS
-        print(f"input grad: {grad}")
+        # print(f"input grad: {grad}")
         dr = ALS.ArmijoLineSearch(
             node=self.copy(), grad=grad
         )
-        print(f"\toutput dr: {dr}")
+        # print(f"\toutput dr: {dr}")
         return dr
 
     def copy(self):
@@ -179,7 +179,7 @@ class Node3D(Node):
         res = Node3D.run_xtb_calc(tdstruct)
         return res.get_energy()
 
-    @cached_property
+    @property
     def gradient(self):
         return self._create_calculation_object.get_gradient()
 
@@ -190,11 +190,11 @@ class Node3D(Node):
         return np.sum(first * second, axis=1).reshape(-1, 1)
 
     def displacement(self, grad):
-        from neb_dynamics import ALS_xtb
+        from neb_dynamics import ALS
 
         # print(f"{grad.shape=}")
-        dr = ALS_xtb.ArmijoLineSearch(
-            node=self, grad=grad, alpha0=0.01, rho=0.5, c1=1e-4
+        dr = ALS.ArmijoLineSearch(
+            node=self, grad=grad, alpha0=0.01, rho=0.8, c1=1e-4
         )
         return dr
 
@@ -258,10 +258,15 @@ class Chain:
     def displacements(self):
 
         grads = self.gradients
+        
         correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(grads.shape)]
-        return np.array(
+        disp =  np.array(
             [node.displacement(grad) for node, grad in zip(self.nodes, grads)]
         ).reshape(*correct_dimensions)
+
+
+        # print(f"{grads=} {disp=}")
+        return disp
 
     def _create_tangent_path(
         self, prev_node: Node, current_node: Node, next_node: Node
@@ -311,7 +316,7 @@ class Chain:
         direction = np.sum(
             current_node.dot_function(
                 (next_node.coords - current_node.coords), force_spring
-            )
+            ),axis=0
         )
         if direction < 0:
             force_spring *= -1
@@ -352,38 +357,40 @@ class NEB:
     redistribute: bool = True
     en_thre: float = 0.001
     grad_thre: float = 0.001
+    mag_grad_thre: float = 0.01
     max_steps: float = 1000
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
 
     def optimize_chain(self):
-        
-        nsteps = 0
-        chain_previous = self.initial_chain.copy()
+        try:
+            nsteps = 0
+            chain_previous = self.initial_chain.copy()
 
-        while nsteps < self.max_steps:
-            new_chain = self.update_chain(chain=chain_previous)
-            # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
-            print(f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}")
-            
-            self.chain_trajectory.append(new_chain)
+            while nsteps < self.max_steps:
+                new_chain = self.update_chain(chain=chain_previous)
+                # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
+                print(f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}")
+                
+                self.chain_trajectory.append(new_chain)
 
-            if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
-                print(f"Chain converged!\n{new_chain=}")
-                self.optimized = new_chain
-                self.chain_trajectory = self.chain_trajectory
-                break
-            chain_previous = new_chain.copy()
-            nsteps += 1
+                if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
+                    print(f"Chain converged!\n{new_chain=}")
+                    self.optimized = new_chain
+                    return
+                chain_previous = new_chain.copy()
+                nsteps += 1
 
-        if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
-            self.chain_trajectory = self.chain_trajectory
+            if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
+                raise NoneConvergedException(
+                    trajectory=self.chain_trajectory, msg=f"Chain did not converge at step {nsteps}", obj=self
+                )
+        except:
             raise NoneConvergedException(
-                trajectory=self.chain_trajectory, msg=f"Chain did not converge at step {nsteps}", obj=self
-            )
+                    trajectory=self.chain_trajectory, msg=f"Chain did not converge at step {nsteps}", obj=self)
 
-    def update_chain(self, chain: Chain) -> Chain:
+    def update_chain(fself, chain: Chain) -> Chain:
         new_chain_coordinates = (
             chain.coordinates - chain.gradients * chain.displacements
         )
@@ -411,10 +418,10 @@ class NEB:
         mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])
 
         delta_converged = np.where(delta_grad < self.grad_thre)
-        mag_converged = np.where(mag_grad < self.grad_thre)
+        mag_converged = np.where(mag_grad < self.mag_grad_thre)
 
 
-        return (np.all(delta_grad < self.grad_thre) and np.all(mag_grad < self.grad_thre), np.intersect1d(delta_converged[0], mag_converged[0]))
+        return (np.all(delta_grad < self.grad_thre) and np.all(mag_grad < self.mag_grad_thre), np.intersect1d(delta_converged[0], mag_converged[0]))
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         en_bool, en_converged_indices = self._check_en_converged(
