@@ -89,7 +89,7 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    # nimages = 10
+    # nimages = 200
     # end_point = (3.00002182, 1.99995542)
     # start_point = (-3.77928812, -3.28320392)
 

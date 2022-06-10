@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import cached_property
+from itertools import chain
 from typing import List
 
 import numpy as np
@@ -74,6 +75,7 @@ class Node(ABC):
 @dataclass
 class Node2D(Node):
     pair_of_coordinates: np.array
+    converged: bool = False
 
     @property
     def coords(self):
@@ -112,7 +114,7 @@ class Node2D(Node):
         return dr
 
     def copy(self):
-        return Node2D(self.pair_of_coordinates)
+        return Node2D(pair_of_coordinates=self.pair_of_coordinates, converged=self.converged)
 
     def update_coords(self, coords: np.array):
         self.pair_of_coordinates = coords
@@ -122,6 +124,7 @@ class Node2D(Node):
 @dataclass
 class Node3D(Node):
     tdstructure: TDStructure
+    converged: bool = False
 
     @property
     def coords(self):
@@ -143,7 +146,7 @@ class Node3D(Node):
         res = calc.singlepoint()
         return res
 
-    @property
+    @cached_property
     def energy(self):
         return self._create_calculation_object.get_energy()
 
@@ -175,7 +178,7 @@ class Node3D(Node):
         res = Node3D.run_xtb_calc(tdstruct)
         return res.get_energy()
 
-    @property
+    @cached_property
     def gradient(self):
         return self._create_calculation_object.get_gradient()
 
@@ -199,7 +202,7 @@ class Node3D(Node):
         return Node3D(self.tdstructure)
 
     def copy(self):
-        return Node3D(tdstructure=self.tdstructure.copy())
+        return Node3D(tdstructure=self.tdstructure.copy(), converged=self.converged)
 
 
 @dataclass
@@ -232,10 +235,14 @@ class Chain:
     def gradients(self) -> np.array:
         grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
-            grad = self.spring_grad_neb(prev_node, current_node, next_node)
-            grads.append(grad)
+            if not current_node.converged:
+                grad = self.spring_grad_neb(prev_node, current_node, next_node)
+                grads.append(grad)
+            else: 
+                grads.append(np.zeros_like(current_node.gradient))
+                
 
-        zero = np.zeros_like(grad)
+        zero = np.zeros_like(current_node.gradient)
         grads.insert(0, zero)
         grads.append(zero)
 
@@ -356,6 +363,7 @@ class NEB:
 
         while nsteps < self.max_steps:
             new_chain = self.update_chain(chain=chain_previous)
+            # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
             print(f"step {nsteps}")
             
             self.chain_trajectory.append(new_chain)
@@ -383,19 +391,44 @@ class NEB:
             node.update_coords(new_coords)
         return new_chain
 
+    def _update_node_convergence(self, chain: Chain, indices: np.array) -> None:
+        for ind in indices:
+            node = chain[ind]
+            node.converged = True
+        
+
+
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
-        return np.all(differences < self.en_thre)
+
+        indices_converged = np.where(differences < self.en_thre)
+        
+        return np.all(differences < self.en_thre), indices_converged[0]
 
     def _check_grad_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
         mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])
-        return np.all(delta_grad < self.grad_thre) and np.all(mag_grad < self.grad_thre)
+
+        delta_converged = np.where(delta_grad < self.grad_thre)
+        mag_converged = np.where(mag_grad < self.grad_thre)
+
+
+        return (np.all(delta_grad < self.grad_thre) and np.all(mag_grad < self.grad_thre), np.intersect1d(delta_converged[0], mag_converged[0]))
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-        return self._check_en_converged(
+        en_bool, en_converged_indices = self._check_en_converged(
             chain_prev=chain_prev, chain_new=chain_new
-        ) and self._check_grad_converged(chain_prev=chain_prev, chain_new=chain_new)
+        )
+        
+        grad_bool, grad_converged_indices = self._check_grad_converged(chain_prev=chain_prev, chain_new=chain_new)
+
+        converged_node_indices = np.intersect1d(en_converged_indices, grad_converged_indices)
+
+        print(f"\t{len(converged_node_indices)} nodes have converged")
+
+        self._update_node_convergence(chain=chain_new, indices=converged_node_indices)
+
+        return en_bool and grad_bool
 
     def remove_chain_folding(self, chain: Chain) -> Chain:
         not_converged = True
