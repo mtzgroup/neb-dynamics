@@ -110,7 +110,7 @@ class Node2D(Node):
 
         # print(f"input grad: {grad}")
         if not self.converged:
-            dr = ALS.ArmijoLineSearch(alpha0=.01, node=self.copy(), grad=grad, rho=0.8, c1=1e-4)
+            dr = ALS.ArmijoLineSearch(alpha0=.01, node=self.copy(), grad=grad, rho=0.5, c1=1e-7)
             # print(f"\toutput dr: {dr}")
             return dr
         else:
@@ -250,6 +250,13 @@ class Chain:
         grads.append(zero)
 
         return np.array(grads)
+
+    @property
+    def grad_normalizations(self):
+        norms = np.array([[np.linalg.norm(grad)]*len(grad) for grad in self.gradients])
+        norms[norms == 0] = 1
+
+        return norms
 
     @property
     def coordinates(self) -> np.array:
@@ -405,7 +412,7 @@ class NEB:
 
     def update_chain(fself, chain: Chain) -> Chain:
         new_chain_coordinates = (
-            chain.coordinates - chain.gradients * chain.displacements
+            chain.coordinates - chain.gradients  * chain.displacements 
         )
         new_chain = chain.copy()
         for node, new_coords in zip(new_chain.nodes, new_chain_coordinates):
