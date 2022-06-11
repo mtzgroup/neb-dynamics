@@ -1,57 +1,49 @@
 import numpy as np
 
-from neb_dynamics.NEB import Node2D
+from neb_dynamics.NEB import Node
 
 
-def ArmijoLineSearch(node: Node2D, alpha0=0.01, rho=0.5, c1=1e-4):
-    """Minimize over alpha, the function ``f(xₖ + αpₖ)``.
-    α > 0 is assumed to be a descent direction.
-
-    Parameters
-    --------------------
-    f : callable
-        Function to be minimized.
-    xk : array
-        Current point.
-    gfk : array
-        Gradient of `f` at point `xk`.
-    phi0 : float
-        Value of `f` at point `xk`.
-    alpha0 : scalar
-        Value of `alpha` at the start of the optimization.
-    rho : float, optional
-        Value of alpha shrinkage factor.
-    c1 : float, optional
-        Value to control stopping criterion.
-
-    Returns
-    --------------------
-    alpha : scalar
-        Value of `alpha` at the end of the optimization.
-    phi : float
-        Value of `f` at the new point `x_{k+1}`.
+def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
     """
+    alpha0: step size
+    rho: factor by which to decrease step size
+    c1: convergence criterion
+    
+    """
+    count_max = 10
+    
+    new_node = node.copy()
+    
     phi0 = node.energy
 
+    
     # derphi0 = np.dot(gfk, pk)
-    pk = -1 * node.gradient
-    derphi0 = np.dot(node.gradient, pk)
+    pk = -1 * grad / np.linalg.norm(grad)
+    derphi0 = np.sum(node.dot_function(grad, pk))
 
+    # print(f"{derphi0=}")
     # new_coords = xk + alpha0 * pk
-    new_coords = node.coords + alpha0*derphi0
+    new_coords = node.coords + alpha0*pk
+    new_node.update_coords(new_coords)
 
-    new_node = Node2D(new_coords)
-
+    
     phi_a0 = new_node.energy
 
-    while not phi_a0 <= phi0 + c1 * alpha0 * derphi0:
+    count = 0
+    while not phi_a0 <= phi0 + c1 * alpha0 * derphi0 and count < count_max:
+    # while not phi_a0 <= phi0 - alpha0*np.linalg.norm(grad)**2 and count < count_max:
         # print(f"{phi0=}")
-        alpha0 = alpha0 * rho
+        alpha0 *= rho
         new_coords = node.coords + alpha0 * pk
-        new_node = Node2D(new_coords)
+
+        new_node = node.copy()
+        new_node.update_coords(new_coords)
 
         phi_a0 = new_node.energy
+        count+=1
 
+
+    # print(f"{alpha0=} // {count=}")
     return alpha0
 
 # def _attempt_step(node: Node2D, grad, t, f):
@@ -78,23 +70,23 @@ def ArmijoLineSearch(node: Node2D, alpha0=0.01, rho=0.5, c1=1e-4):
 
 # def ArmijoLineSearch(node: Node2D, grad, t, alpha, beta, f):
 
-    max_steps = 10
-    count = 0
+    # max_steps = 10
+    # count = 0
     
-    en_node_prime, t = _attempt_step(node=node, grad=grad, t=t, f=f)
+    # en_node_prime, t = _attempt_step(node=node, grad=grad, t=t, f=f)
 
-    en_node = f(node)
-    condition = en_node - (en_node_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+    # en_node = f(node)
+    # condition = en_node - (en_node_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
 
-    while condition and count < max_steps:
-        t *= beta
-        count += 1
+    # while condition and count < max_steps:
+    #     t *= beta
+    #     count += 1
 
-        en_node_prime, t = _attempt_step(node=node, grad=grad, t=t, f=f)
+    #     en_node_prime, t = _attempt_step(node=node, grad=grad, t=t, f=f)
 
-        en_node = f(node)
+    #     en_node = f(node)
 
-        condition = en_node - (en_node_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+    #     condition = en_node - (en_node_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
 
-        # print(f"{t=} {count=}")
-    return t
+    #     # print(f"{t=} {count=}")
+    # return t
