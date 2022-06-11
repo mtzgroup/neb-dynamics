@@ -107,19 +107,23 @@ class Node2D(Node):
 
     def displacement(self, grad: np.array):
         from neb_dynamics import ALS
+
         # print(f"input grad: {grad}")
-        dr = ALS.ArmijoLineSearch(
-            node=self.copy(), grad=grad
-        )
-        # print(f"\toutput dr: {dr}")
-        return dr
+        if not self.converged:
+            dr = ALS.ArmijoLineSearch(alpha0=.01, node=self.copy(), grad=grad, rho=0.8, c1=1e-4)
+            # print(f"\toutput dr: {dr}")
+            return dr
+        else:
+            return 0.0
 
     def copy(self):
-        return Node2D(pair_of_coordinates=self.pair_of_coordinates, converged=self.converged)
+        return Node2D(
+            pair_of_coordinates=self.pair_of_coordinates, converged=self.converged
+        )
 
     def update_coords(self, coords: np.array):
         self.pair_of_coordinates = coords
-        return Node2D(self.pair_of_coordinates)
+        
 
 
 @dataclass
@@ -192,12 +196,11 @@ class Node3D(Node):
     def displacement(self, grad):
         from neb_dynamics import ALS
 
-        # print(f"{grad.shape=}")
-        dr = ALS.ArmijoLineSearch(
-            node=self, grad=grad, alpha0=0.01, rho=0.8, c1=1e-4
-        )
-        return dr
-
+        if not self.converged:
+            dr = ALS.ArmijoLineSearch(node=self, grad=grad, alpha0=1, rho=0.8, c1=1e-4)
+            return dr
+        else:
+            return 0.0
     def update_coords(self, coords: np.array) -> None:
         self.tdstructure.update_coords(coords=coords)
         return Node3D(self.tdstructure)
@@ -239,9 +242,8 @@ class Chain:
             if not current_node.converged:
                 grad = self.spring_grad_neb(prev_node, current_node, next_node)
                 grads.append(grad)
-            else: 
+            else:
                 grads.append(np.zeros_like(current_node.gradient))
-                
 
         zero = np.zeros_like(current_node.gradient)
         grads.insert(0, zero)
@@ -258,12 +260,11 @@ class Chain:
     def displacements(self):
 
         grads = self.gradients
-        
+
         correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(grads.shape)]
-        disp =  np.array(
+        disp = np.array(
             [node.displacement(grad) for node, grad in zip(self.nodes, grads)]
         ).reshape(*correct_dimensions)
-
 
         # print(f"{grads=} {disp=}")
         return disp
@@ -316,7 +317,8 @@ class Chain:
         direction = np.sum(
             current_node.dot_function(
                 (next_node.coords - current_node.coords), force_spring
-            ),axis=0
+            ),
+            axis=0,
         )
         if direction < 0:
             force_spring *= -1
@@ -371,24 +373,35 @@ class NEB:
             while nsteps < self.max_steps:
                 new_chain = self.update_chain(chain=chain_previous)
                 # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
-                print(f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}")
-                
+                print(
+                    f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}"
+                )
+
                 self.chain_trajectory.append(new_chain)
 
-                if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
+                if self._chain_converged(
+                    chain_prev=chain_previous, chain_new=new_chain
+                ):
                     print(f"Chain converged!\n{new_chain=}")
                     self.optimized = new_chain
                     return
                 chain_previous = new_chain.copy()
                 nsteps += 1
 
-            if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
+            if not self._chain_converged(
+                chain_prev=chain_previous, chain_new=new_chain
+            ):
                 raise NoneConvergedException(
-                    trajectory=self.chain_trajectory, msg=f"Chain did not converge at step {nsteps}", obj=self
+                    trajectory=self.chain_trajectory,
+                    msg=f"Chain did not converge at step {nsteps}",
+                    obj=self,
                 )
         except:
             raise NoneConvergedException(
-                    trajectory=self.chain_trajectory, msg=f"Chain did not converge at step {nsteps}", obj=self)
+                trajectory=self.chain_trajectory,
+                msg=f"Chain did not converge at step {nsteps}",
+                obj=self,
+            )
 
     def update_chain(fself, chain: Chain) -> Chain:
         new_chain_coordinates = (
@@ -403,14 +416,12 @@ class NEB:
         for ind in indices:
             node = chain[ind]
             node.converged = True
-        
-
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
 
         indices_converged = np.where(differences < self.en_thre)
-        
+
         return np.all(differences < self.en_thre), indices_converged[0]
 
     def _check_grad_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
@@ -420,17 +431,24 @@ class NEB:
         delta_converged = np.where(delta_grad < self.grad_thre)
         mag_converged = np.where(mag_grad < self.mag_grad_thre)
 
-
-        return (np.all(delta_grad < self.grad_thre) and np.all(mag_grad < self.mag_grad_thre), np.intersect1d(delta_converged[0], mag_converged[0]))
+        return (
+            np.all(delta_grad < self.grad_thre)
+            and np.all(mag_grad < self.mag_grad_thre),
+            np.intersect1d(delta_converged[0], mag_converged[0]),
+        )
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         en_bool, en_converged_indices = self._check_en_converged(
             chain_prev=chain_prev, chain_new=chain_new
         )
-        
-        grad_bool, grad_converged_indices = self._check_grad_converged(chain_prev=chain_prev, chain_new=chain_new)
 
-        converged_node_indices = np.intersect1d(en_converged_indices, grad_converged_indices)
+        grad_bool, grad_converged_indices = self._check_grad_converged(
+            chain_prev=chain_prev, chain_new=chain_new
+        )
+
+        converged_node_indices = np.intersect1d(
+            en_converged_indices, grad_converged_indices
+        )
 
         print(f"\t{len(converged_node_indices)} nodes have converged")
 

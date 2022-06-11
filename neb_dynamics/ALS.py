@@ -3,7 +3,7 @@ import numpy as np
 from neb_dynamics.NEB import Node
 
 
-def ArmijoLineSearch(node: Node, grad: np.array, alpha0=.01, rho=0.8, c1=0.0001):
+def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
     """
     alpha0: step size
     rho: factor by which to decrease step size
@@ -17,10 +17,9 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=.01, rho=0.8, c1=0.0001)
     phi0 = node.energy
 
     
-
     # derphi0 = np.dot(gfk, pk)
-    pk = -1 * grad
-    derphi0 = np.sum(node.dot_function(grad, pk), axis=0)
+    pk = -1 * grad / np.linalg.norm(grad)
+    derphi0 = np.sum(node.dot_function(grad, pk))
 
     # print(f"{derphi0=}")
     # new_coords = xk + alpha0 * pk
@@ -32,6 +31,7 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=.01, rho=0.8, c1=0.0001)
 
     count = 0
     while not phi_a0 <= phi0 + c1 * alpha0 * derphi0 and count < count_max:
+    # while not phi_a0 <= phi0 - alpha0*np.linalg.norm(grad)**2 and count < count_max:
         # print(f"{phi0=}")
         alpha0 *= rho
         new_coords = node.coords + alpha0 * pk
@@ -42,6 +42,8 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=.01, rho=0.8, c1=0.0001)
         phi_a0 = new_node.energy
         count+=1
 
+
+    # print(f"{alpha0=} // {count=}")
     return alpha0
 
 # def _attempt_step(node: Node2D, grad, t, f):
