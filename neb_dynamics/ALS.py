@@ -10,7 +10,7 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
     c1: convergence criterion
 
     """
-    count_max = 20
+    count_max = 10
     new_node = node.copy()
     phi0 = node.energy
 
@@ -36,7 +36,7 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
         phi_a0 = new_node.energy
         count += 1
 
-    print(f"{alpha0=} // {count=}")
+    print(f"\t{alpha0=} // {count=}")
     return alpha0
 
 

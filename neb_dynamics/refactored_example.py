@@ -108,12 +108,13 @@ def main():
     # plot_func(n)
     # animate_func(n)
 
-    fp = Path("./example_cases/DA_geodesic_opt.xyz")
+    # fp = Path("./example_cases/DA_geodesic_opt.xyz")
+    fp = Path("./example_cases/PDDA_geodesic.xyz")
 
     traj = Trajectory.from_xyz(fp)
     coords = traj.to_list()
     chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
-    n = NEB(initial_chain=chain)
+    n = NEB(initial_chain=chain, grad_thre=0.01, mag_grad_thre=5)
 
     n.optimize_chain()
     plot_2D(n)

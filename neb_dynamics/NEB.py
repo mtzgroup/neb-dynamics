@@ -135,7 +135,7 @@ class Node3D(Node):
     def coords(self):
         return self.tdstructure.coords
 
-    @property
+    @cached_property
     def _create_calculation_object(self):
         # print("_create_calc obj ", type(self.tdstructure))
         coords = self.tdstructure.coords_bohr
@@ -197,7 +197,7 @@ class Node3D(Node):
         from neb_dynamics import ALS
 
         if not self.converged:
-            dr = ALS.ArmijoLineSearch(node=self, grad=grad, alpha0=1, rho=0.8, c1=1e-4)
+            dr = ALS.ArmijoLineSearch(node=self, grad=grad, alpha0=1, rho=0.5, c1=1e-4)
             return dr
         else:
             return 0.0
