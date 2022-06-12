@@ -175,7 +175,7 @@ class Node3D(Node):
     def grad_func(node: Node3D):
         tdstruct = node.tdstructure
         res = Node3D.run_xtb_calc(tdstruct)
-        return res.get_gradient()
+        return res.get_gradient()*BOHR_TO_ANGSTROMS
 
     @staticmethod
     def en_func(node: Node3D):
@@ -185,7 +185,7 @@ class Node3D(Node):
 
     @property
     def gradient(self):
-        return self._create_calculation_object.get_gradient()
+        return self._create_calculation_object.get_gradient()*BOHR_TO_ANGSTROMS
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:

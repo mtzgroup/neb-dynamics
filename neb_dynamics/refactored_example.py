@@ -83,9 +83,12 @@ def plot_func(neb_obj: NEB):
 
 def plot_2D(neb_obj: NEB):
     opt_chain = neb_obj.optimized
-    ens = [opt_chain[0].en_func(node) for node in opt_chain]
+    ens = np.array([opt_chain[0].en_func(node) for node in opt_chain])
+    ens = ens*627.5
+    ens = ens-ens[0]
 
-    plt.plot(ens)
+
+    plt.plot(list(range(len(ens))), ens, "o--")
     plt.show()
 
 def main():
@@ -108,13 +111,13 @@ def main():
     # plot_func(n)
     # animate_func(n)
 
-    # fp = Path("./example_cases/DA_geodesic_opt.xyz")
-    fp = Path("./example_cases/PDDA_geodesic.xyz")
+    fp = Path("./example_cases/DA_geodesic_opt.xyz")
+    # fp = Path("./example_cases/PDDA_geodesic.xyz")
 
     traj = Trajectory.from_xyz(fp)
     coords = traj.to_list()
     chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
-    n = NEB(initial_chain=chain, grad_thre=0.01, mag_grad_thre=5)
+    n = NEB(initial_chain=chain, grad_thre=0.001, mag_grad_thre=5)
 
     n.optimize_chain()
     plot_2D(n)
