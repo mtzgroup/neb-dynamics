@@ -10,8 +10,7 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
     c1: convergence criterion
 
     """
-    count_max = 10
-    new_node = node.copy()
+    count_max = 20
     phi0 = node.energy
 
     if np.all(grad == 0):
@@ -19,24 +18,28 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
 
     else:
         pk = -1 * grad / np.linalg.norm(grad)
-        derphi0 = np.sum(node.dot_function(grad, pk))
+        derphi0 = np.sum(node.dot_function(grad, pk)) / np.linalg.norm(grad) # function change along direction
 
     new_coords = node.coords + alpha0 * pk
+    new_node = node.copy()
     new_node.update_coords(new_coords)
+    # print(f"\told_coords: {node.coords} / stepgrad: {-alpha0*grad} / new_coords: {new_node.coords}")
     phi_a0 = new_node.energy
 
     count = 0
+    
     while not phi_a0 <= phi0 + c1 * alpha0 * derphi0 and count < count_max:
+        print(f"{phi_a0} <= {phi0} + {c1 * alpha0 * derphi0}")
         alpha0 *= rho
+        
         new_coords = node.coords + alpha0 * pk
-
         new_node = node.copy()
         new_node.update_coords(new_coords)
 
         phi_a0 = new_node.energy
         count += 1
 
-    print(f"\t{alpha0=} // {count=}")
+    print(f"\t{alpha0=} // {count=} //{phi_a0} <= {phi0 + c1 * alpha0 * derphi0}")
     return alpha0
 
 

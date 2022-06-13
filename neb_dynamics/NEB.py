@@ -109,12 +109,14 @@ class Node2D(Node):
         from neb_dynamics import ALS
 
         # print(f"input grad: {grad}")
-        if not self.converged:
-            dr = ALS.ArmijoLineSearch(alpha0=.01, node=self.copy(), grad=grad, rho=0.5, c1=1e-7)
+        # if not self.converged:
+        dr = ALS.ArmijoLineSearch(
+            alpha0=.01, node=self.copy(), grad=grad, rho=0.8, c1=1e-7
+        )
             # print(f"\toutput dr: {dr}")
-            return dr
-        else:
-            return 0.0
+        return dr
+        # else:
+        #     return 0.0
 
     def copy(self):
         return Node2D(
@@ -123,7 +125,6 @@ class Node2D(Node):
 
     def update_coords(self, coords: np.array):
         self.pair_of_coordinates = coords
-        
 
 
 @dataclass
@@ -175,7 +176,7 @@ class Node3D(Node):
     def grad_func(node: Node3D):
         tdstruct = node.tdstructure
         res = Node3D.run_xtb_calc(tdstruct)
-        return res.get_gradient()*BOHR_TO_ANGSTROMS
+        return res.get_gradient() * BOHR_TO_ANGSTROMS
 
     @staticmethod
     def en_func(node: Node3D):
@@ -185,7 +186,7 @@ class Node3D(Node):
 
     @property
     def gradient(self):
-        return self._create_calculation_object.get_gradient()*BOHR_TO_ANGSTROMS
+        return self._create_calculation_object.get_gradient() * BOHR_TO_ANGSTROMS
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
@@ -201,6 +202,7 @@ class Node3D(Node):
             return dr
         else:
             return 0.0
+
     def update_coords(self, coords: np.array) -> None:
         self.tdstructure.update_coords(coords=coords)
         return Node3D(self.tdstructure)
@@ -216,7 +218,9 @@ class Chain:
 
     def __getitem__(self, index):
         return self.nodes.__getitem__(index)
-
+        
+    def __len__(self):
+        return len(self.nodes)
     def copy(self):
         list_of_nodes = [node.copy() for node in self.nodes]
         chain_copy = Chain(nodes=list_of_nodes, k=self.k)
@@ -239,11 +243,11 @@ class Chain:
     def gradients(self) -> np.array:
         grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
-            if not current_node.converged:
-                grad = self.spring_grad_neb(prev_node, current_node, next_node)
-                grads.append(grad)
-            else:
-                grads.append(np.zeros_like(current_node.gradient))
+            # if not current_node.converged:
+            grad = self.spring_grad_neb(prev_node, current_node, next_node)
+            grads.append(grad)
+            # else:
+            #     grads.append(np.zeros_like(current_node.gradient))
 
         zero = np.zeros_like(current_node.gradient)
         grads.insert(0, zero)
@@ -253,7 +257,9 @@ class Chain:
 
     @property
     def grad_normalizations(self):
-        norms = np.array([[np.linalg.norm(grad)]*len(grad) for grad in self.gradients])
+        norms = np.array(
+            [[np.linalg.norm(grad)] * len(grad) for grad in self.gradients]
+        )
         norms[norms == 0] = 1
 
         return norms
@@ -313,51 +319,46 @@ class Chain:
         pe_grad_nudged_const = current_node.dot_function(pe_grad, unit_tan_path)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
 
-        grads_neighs = []
-        force_springs = []
-
         force_spring = -self.k * (
             np.abs(next_node.coords - current_node.coords)
             - np.abs(current_node.coords - prev_node.coords)
         )
 
-        direction = np.sum(
-            current_node.dot_function(
-                (next_node.coords - current_node.coords), force_spring
-            ),
-            axis=0,
-        )
-        if direction < 0:
-            force_spring *= -1
-
-        force_springs.append(force_spring)
-
         force_spring_nudged_const = current_node.dot_function(
             force_spring, unit_tan_path
         )
         force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
+        # force_spring_nudged = force_spring_nudged_const * unit_tan_path
 
-        grads_neighs.append(force_spring_nudged)
-
-        tot_grads_neighs = np.sum(grads_neighs, axis=0)
+        # direction = np.sum(
+        #     current_node.dot_function(
+        #         (next_node.coords - current_node.coords), force_spring_nudged
+        #     ),
+        #     axis=0,
+        # )
+        # if direction < 0:
+        #     force_spring_nudged *= -1
 
         # ANTI-KINK FORCE
-        force_springs = np.sum(force_springs, axis=0)
-
         vec_2_to_1 = next_node.coords - current_node.coords
         vec_1_to_0 = current_node.coords - prev_node.coords
-        cos_phi = current_node.dot_function(vec_2_to_1, vec_1_to_0) / (
+        cos_phi = np.sum(current_node.dot_function(vec_2_to_1, vec_1_to_0)) / (
             np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0)
         )
 
         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
+        print(f"{f_phi=}")
+        anti_kinking_force = force_spring - force_spring_nudged
 
-        proj_force_springs = (
-            force_springs
-            - current_node.dot_function(force_springs, unit_tan_path) * unit_tan_path
-        )
 
-        return (pe_grad_nudged - tot_grads_neighs) + f_phi * (proj_force_springs)
+
+        pe_and_spring_grads = -1*(-1 * pe_grad_nudged + force_spring_nudged)
+        
+
+        anti_kinking_grad = -1*(f_phi * (anti_kinking_force))
+        
+
+        return pe_and_spring_grads + anti_kinking_grad
 
 
 @dataclass
@@ -374,10 +375,17 @@ class NEB:
 
     def optimize_chain(self):
         try:
-            nsteps = 0
+            nsteps = 1
             chain_previous = self.initial_chain.copy()
 
-            while nsteps < self.max_steps:
+            while nsteps < self.max_steps + 1:
+                # if nsteps % 20 == 0: 
+                #     orig_len = len(chain_previous)
+                #     print(f"len before: {len(chain_previous)}")
+                #     chain_previous = self.remove_chain_folding(chain=chain_previous)
+                #     print(f"len after {len(chain_previous)}")
+                #     chain_previous = self.redistribute_chain(chain=chain_previous, requested_length_of_chain=orig_len)
+                #     print(f"len after after {len(chain_previous)}")
                 new_chain = self.update_chain(chain=chain_previous)
                 # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
                 print(
@@ -412,7 +420,7 @@ class NEB:
 
     def update_chain(fself, chain: Chain) -> Chain:
         new_chain_coordinates = (
-            chain.coordinates - chain.gradients  * chain.displacements 
+            chain.coordinates - (chain.gradients) * chain.displacements
         )
         new_chain = chain.copy()
         for node, new_coords in zip(new_chain.nodes, new_chain_coordinates):
@@ -468,7 +476,7 @@ class NEB:
         count = 0
         points_removed = []
         while not_converged:
-            print(f"on count {count}...")
+            print(f"anti-folding: on count {count}...")
             new_chain = []
             new_chain.append(chain[0])
 
@@ -481,11 +489,14 @@ class NEB:
                 else:
                     points_removed.append(current_node)
 
-            new_chain = np.array(new_chain)
+           
+            new_chain.append(chain[-1])
+            new_chain = Chain(nodes=new_chain, k=chain.k)
             if self._check_dot_product_converged(new_chain):
                 not_converged = False
             chain = new_chain.copy()
             count += 1
+
         return chain
 
     def _check_dot_product_converged(self, chain: Chain) -> bool:
@@ -493,11 +504,16 @@ class NEB:
         for prev_node, current_node, next_node in chain.iter_triplets():
             vec1 = current_node.coords - prev_node.coords
             vec2 = next_node.coords - current_node.coords
-            dps.append(current_node.dot_func(vec1, vec2) > 0)
+            dps.append(current_node.dot_function(vec1, vec2) > 0)
 
         return all(dps)
 
-    def redistribute_chain(self, chain) -> Chain:
+    def redistribute_chain(self, chain: Chain, requested_length_of_chain: int) -> Chain:
+        if len(chain) < requested_length_of_chain:
+            fixed_chain = chain.copy()
+            [fixed_chain.nodes.insert(1, fixed_chain[1]) for _ in range(requested_length_of_chain - len(chain))]
+            chain = fixed_chain
+            
         direction = np.array(
             [
                 next_node.coords - current_node.coords
@@ -511,7 +527,7 @@ class NEB:
 
         distributed_chain = []
         for num in np.linspace(0, tot_dist, len(chain)):
-            new_node = self.redistribution_helper(num=num, cum=cumsum, chain=chain)
+            new_node = self.redistribution_helper(num=num, cum=cumsum, chain=chain, node_type=type(chain[0]))
             distributed_chain.append(new_node)
 
         distributed_chain[0] = chain[0]
@@ -519,7 +535,7 @@ class NEB:
 
         return Chain(distributed_chain, k=chain.k)
 
-    def redistribution_helper(self, num, cum, chain) -> Node:
+    def redistribution_helper(self, num, cum, chain: Chain, node_type: Node) -> Node:
         """
         num: the distance from first node to return output point to
         cum: cumulative sums
@@ -535,252 +551,9 @@ class NEB:
                 direction = node_end.coords - node_start.coords
                 percentage = (num - cum_sum_init) / (cum_sum_end - cum_sum_init)
 
-                new_node = node_start.update_coords(vector=direction * percentage)
+                new_node = node_start.update_coords(direction * percentage)
 
                 new_coords = node_start.coords + (direction * percentage)
-                new_node = Node(
-                    coords=new_coords,
-                    grad_func=node_start.grad_func,
-                    en_func=node_start.en_func,
-                    dot_func=node_start.dot_func,
-                )
+                new_node = node_type(new_coords)
 
                 return new_node
-
-
-# @dataclass
-# class neb:
-#     def optimize_chain(self, chain, grad_func, en_func, k, redistribute=True, en_thre=0.001, grad_thre=0.001, max_steps=1000):
-
-#         chain_traj = []
-#         nsteps = 0
-
-#         chain_previous = chain.copy()
-
-#         while nsteps < max_steps:
-#             new_chain = self.update_chain(chain=chain_previous, k=k, en_func=en_func, grad_func=grad_func, redistribute=redistribute)
-
-#             chain_traj.append(new_chain)
-
-#             if self._chain_converged(
-#                 chain_previous=chain_previous,
-#                 new_chain=new_chain,
-#                 en_func=en_func,
-#                 en_thre=en_thre,
-#                 grad_func=grad_func,
-#                 grad_thre=grad_thre,
-#             ):
-#                 print("Chain converged!")
-#                 print(f"{new_chain=}")
-#                 return new_chain, chain_traj
-
-#             chain_previous = new_chain.copy()
-#             nsteps += 1
-
-#         print("Chain did not converge...")
-#         return new_chain, chain_traj
-
-#     def update_chain(self, chain, k, en_func, grad_func, redistribute):
-
-#         chain_copy = np.zeros_like(chain)
-#         chain_copy[0] = chain[0]
-#         chain_copy[-1] = chain[-1]
-
-#         for i in range(1, len(chain) - 1):
-#             view = chain[i - 1: i + 2]
-
-#             grad = self.spring_grad_neb(
-#                 view,
-#                 k=k,
-#                 # ideal_distance=ideal_dist,
-#                 grad_func=grad_func,
-#                 en_func=en_func,
-#             )
-
-#             # dr = 0.01
-
-#             dr, _ = ArmijoLineSearch(
-#                 f=en_func,
-#                 xk=chain[i],
-#                 gfk=grad,
-#                 phi0=en_func(chain[i]),
-#                 alpha0=0.01,
-#                 pk=-1 * grad,
-#             )
-
-#             p_new = chain[i] - grad * dr
-
-#             chain_copy[i] = p_new
-
-#         return chain_copy
-
-#     def _create_tangent_path(self, view, en_func):
-#         en_2 = en_func(view[2])
-#         en_1 = en_func(view[1])
-#         en_0 = en_func(view[0])
-
-#         if en_2 > en_1 and en_1 > en_0:
-#             return view[2] - view[1]
-#         elif en_2 < en_1 and en_1 < en_2:
-#             return view[1] - view[0]
-
-#         else:
-#             deltaV_max = max(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
-#             deltaV_min = min(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
-
-#             if en_2 > en_0:
-#                 tan_vec = (view[2] - view[1]) * deltaV_max + (view[1] - view[0]) * deltaV_min
-#             elif en_2 < en_0:
-#                 tan_vec = (view[2] - view[1]) * deltaV_min + (view[1] - view[0]) * deltaV_max
-#             return tan_vec
-
-#     def spring_grad_neb(self, view, grad_func, k, en_func):
-#         vec_tan_path = self._create_tangent_path(view, en_func=en_func)
-#         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
-
-#         pe_grad = grad_func(view[1])
-#         pe_grad_nudged_const = np.dot(pe_grad, unit_tan_path)
-#         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tan_path
-
-#         grads_neighs = []
-#         force_springs = []
-
-#         force_spring = -k * (np.abs(view[2] - view[1]) - np.abs(view[1] - view[0]))
-
-#         direction = np.dot((view[2] - view[1]), force_spring)
-#         if direction < 0:
-#             force_spring *= -1
-
-#         force_springs.append(force_spring)
-
-#         force_spring_nudged_const = np.dot(force_spring, unit_tan_path)
-#         force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
-
-#         grads_neighs.append(force_spring_nudged)
-
-#         tot_grads_neighs = np.sum(grads_neighs, axis=0)
-
-#         # ANTI-KINK FORCE
-
-#         force_springs = np.sum(force_springs, axis=0)
-
-#         vec_2_to_1 = view[2] - view[1]
-#         vec_1_to_0 = view[1] - view[0]
-#         cos_phi = np.dot(vec_2_to_1, vec_1_to_0) / (np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0))
-
-#         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
-
-#         proj_force_springs = force_springs - np.dot(force_springs, unit_tan_path) * unit_tan_path
-
-#         return (pe_grad_nudged - tot_grads_neighs) + f_phi * (proj_force_springs)
-
-#     def _check_en_converged(self, chain_prev, chain_new, en_func, en_thre):
-#         for i in range(1, len(chain_prev) - 1):
-#             node_prev = chain_prev[i]
-#             node_new = chain_new[i]
-
-#             delta_e = np.abs(en_func(node_new) - en_func(node_prev))
-#             if delta_e > en_thre:
-#                 return False
-#         return True
-
-#     def _check_grad_converged(self, chain_prev, chain_new, grad_func, grad_thre):
-#         for i in range(1, len(chain_prev) - 1):
-#             node_prev = chain_prev[i]
-#             node_new = chain_new[i]
-
-#             delta_grad = np.abs(grad_func(node_new) - grad_func(node_prev))
-
-#             if True in delta_grad > grad_thre:
-#                 return False
-#         return True
-
-#     def _chain_converged(self, chain_previous, new_chain, en_func, en_thre, grad_func, grad_thre):
-
-#         en_converged = self._check_en_converged(
-#             chain_prev=chain_previous,
-#             chain_new=new_chain,
-#             en_func=en_func,
-#             en_thre=en_thre,
-#         )
-#         grad_converged = self._check_grad_converged(
-#             chain_prev=chain_previous,
-#             chain_new=new_chain,
-#             grad_func=grad_func,
-#             grad_thre=grad_thre,
-#         )
-
-#         return en_converged and grad_converged
-
-#     def remove_chain_folding(self, chain):
-#         not_converged = True
-#         count = 0
-#         points_removed = []
-#         while not_converged:
-#             # print(f"on count {count}...")
-#             new_chain = []
-#             for i in range(len(chain)):
-#                 if i == 0 or i == len(chain) - 1:
-#                     new_chain.append(chain[i])
-#                     continue
-
-#                 vec1, vec2 = self._get_vectors(chain, i)
-#                 if np.dot(vec1, vec2) > 0:
-#                     new_chain.append(chain[i])
-#                 else:
-#                     points_removed.append(chain[i])
-
-#             new_chain = np.array(new_chain)
-#             if self._check_dot_product_converged(new_chain):
-#                 not_converged = False
-#             chain = new_chain.copy()
-#             count += 1
-#         return chain
-
-#     def redistribute_chain(self, chain):
-#         direction = np.array([next_node.coords - current_node.coords for current_node, next_node in pairwise(chain)])
-#         distances = np.linalg.norm(direction, axis=1)
-#         tot_dist = np.sum(distances)
-#         cumsum = np.cumsum(distances)  # cumulative sum
-#         cumsum = np.insert(cumsum, 0, 0)
-
-#         distributed_chain = []
-#         for num in np.linspace(0, tot_dist, len(chain)):
-#             foobar = self.redistribution_helper(num=num, cum=cumsum, chain=chain)
-#             distributed_chain.append(foobar)
-
-#         distributed_chain[0] = chain[0]
-#         distributed_chain[-1] = chain[-1]
-
-#         return np.array(distributed_chain)
-
-#     def redistribution_helper(self, num, cum, chain):
-#         """
-#         num: the distance from first node to return output point to
-#         cum: cumulative sums
-#         new_chain: chain that we are considering
-
-#         """
-
-#         for ii, ((cum_sum_init, point_start), (cum_sum_end, point_end)) in enumerate(pairwise(zip(cum, chain))):
-
-#             if cum_sum_init < num < cum_sum_end:
-#                 direction = point_end - point_start
-#                 percentage = (num - cum_sum_init) / (cum_sum_end - cum_sum_init)
-#                 point = point_start + (direction * percentage)
-
-#                 return point
-
-#     def _get_vectors(self, chain, i):
-#         view = chain[i - 1: i + 2]
-#         vec1 = view[1] - view[0]
-#         vec2 = view[2] - view[1]
-#         return vec1, vec2
-
-#     def _check_dot_product_converged(self, chain):
-#         dps = []
-#         for i in range(1, len(chain) - 1):
-#             vec1, vec2 = self._get_vectors(chain, i)
-#             dps.append(np.dot(vec1, vec2) > 0)
-
-#         return all(dps)

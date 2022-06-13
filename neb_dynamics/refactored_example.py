@@ -52,7 +52,7 @@ def plot_func(neb_obj: NEB):
 
     en_func = neb_obj.initial_chain[0].en_func
     orig_chain = neb_obj.initial_chain
-    new_chain = neb_obj.optimized
+    new_chain = neb_obj.chain_trajectory[-1]
 
     min_val = -4
     max_val = 4
@@ -82,7 +82,7 @@ def plot_func(neb_obj: NEB):
 
 
 def plot_2D(neb_obj: NEB):
-    opt_chain = neb_obj.optimized
+    opt_chain = neb_obj.chain_trajectory[-1]
     ens = np.array([opt_chain[0].en_func(node) for node in opt_chain])
     ens = ens*627.5
     ens = ens-ens[0]
@@ -92,35 +92,37 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    # nimages = 10
-    # end_point = (3.00002182, 1.99995542)
-    # start_point = (-3.77928812, -3.28320392)
+    nimages = 150
+    end_point = (3.00002182, 1.99995542)
+    start_point = (-3.77928812, -3.28320392)
 
 
-    # coords = np.linspace(start_point, end_point, nimages)
-    # chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node2D)
-    # n = NEB(initial_chain=chain, max_steps=1000, grad_thre=0.001, mag_grad_thre=5)
-    # try: 
-    #     n.optimize_chain()
-    # except NoneConvergedException as e:
-    #     print(e.obj.chain_trajectory[-1].gradients)
-    #     animate_func(e.obj)
+    coords = np.linspace(start_point, end_point, nimages)
+    chain = Chain.from_list_of_coords(k=0, list_of_coords=coords, node_class=Node2D)
+    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=0.01, mag_grad_thre=1)
+    try: 
+        n.optimize_chain()
+    except NoneConvergedException as e:
+        print(e.obj.chain_trajectory[-1].gradients)
+        animate_func(e.obj)
+        plot_func(e.obj)
+        
     
 
-    # plot_2D(n)
-    # plot_func(n)
-    # animate_func(n)
-
-    fp = Path("./example_cases/DA_geodesic_opt.xyz")
-    # fp = Path("./example_cases/PDDA_geodesic.xyz")
-
-    traj = Trajectory.from_xyz(fp)
-    coords = traj.to_list()
-    chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
-    n = NEB(initial_chain=chain, grad_thre=0.001, mag_grad_thre=5)
-
-    n.optimize_chain()
     plot_2D(n)
+    plot_func(n)
+    animate_func(n)
+
+    # fp = Path("./example_cases/DA_geodesic_opt.xyz")
+    # # fp = Path("./example_cases/PDDA_geodesic.xyz")
+
+    # traj = Trajectory.from_xyz(fp)
+    # coords = traj.to_list()
+    # chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
+    # n = NEB(initial_chain=chain, grad_thre=0.001, mag_grad_thre=5)
+
+    # n.optimize_chain()
+    # plot_2D(n)
 
 
 
