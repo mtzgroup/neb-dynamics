@@ -18,7 +18,8 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
 
     else:
         pk = -1 * grad / np.linalg.norm(grad)
-        derphi0 = np.sum(node.dot_function(grad, pk), axis=0) / np.linalg.norm(grad) # function change along direction
+        # derphi0 = np.sum(node.dot_function(grad, pk), axis=0) / np.linalg.norm(grad) # function change along direction
+        derphi0 = np.linalg.norm(grad)**2
 
     new_coords = node.coords + alpha0 * pk
     new_node = node.copy()

@@ -100,40 +100,40 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 30
-    end_point = (3.00002182, 1.99995542)
-    start_point = (-3.77928812, -3.28320392)
+    # nimages = 30
+    # end_point = (3.00002182, 1.99995542)
+    # start_point = (-3.77928812, -3.28320392)
 
 
-    coords = np.linspace(start_point, end_point, nimages)
-    chain = Chain.from_list_of_coords(k=0, list_of_coords=coords, node_class=Node2D)
-    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=0.01, mag_grad_thre=1)
-    try: 
-        n.optimize_chain()
-    except NoneConvergedException as e:
-        print(e.obj.chain_trajectory[-1].gradients)
-        animate_func(e.obj)
-        plot_func(e.obj)
-        
-
-    plot_2D(n)
-    plot_func(n)
-    animate_func(n)
-
-    # fp = Path("./example_cases/DA_geodesic_opt.xyz")
-    # # fp = Path("./example_cases/PDDA_geodesic.xyz")
-
-    # traj = Trajectory.from_xyz(fp)
-    # coords = traj.to_list()
-    # chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
-    # n = NEB(initial_chain=chain, grad_thre=0.0005, en_thre=0.0005, mag_grad_thre=.01, max_steps=100)
-
+    # coords = np.linspace(start_point, end_point, nimages)
+    # chain = Chain.from_list_of_coords(k=0, list_of_coords=coords, node_class=Node2D)
+    # n = NEB(initial_chain=chain, max_steps=1000, grad_thre=0.01, mag_grad_thre=1)
     # try: 
     #     n.optimize_chain()
-    #     plot_2D(n)
     # except NoneConvergedException as e:
-    #     plot_2D(e.obj)
     #     print(e.obj.chain_trajectory[-1].gradients)
+    #     animate_func(e.obj)
+    #     plot_func(e.obj)
+        
+
+    # plot_2D(n)
+    # plot_func(n)
+    # animate_func(n)
+
+    fp = Path("./example_cases/DA_geodesic_opt.xyz")
+    # fp = Path("./example_cases/PDDA_geodesic.xyz")
+
+    traj = Trajectory.from_xyz(fp)
+    coords = traj.to_list()
+    chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
+    n = NEB(initial_chain=chain, grad_thre=0.0001, en_thre=0.0001, mag_grad_thre=.1, max_steps=100)
+
+    try: 
+        n.optimize_chain()
+        plot_2D(n)
+    except NoneConvergedException as e:
+        plot_2D(e.obj)
+        print(e.obj.chain_trajectory[-1].gradients)
 
 
 
