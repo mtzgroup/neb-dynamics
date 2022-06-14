@@ -83,16 +83,24 @@ def plot_func(neb_obj: NEB):
 
 def plot_2D(neb_obj: NEB):
     opt_chain = neb_obj.chain_trajectory[-1]
-    ens = np.array([opt_chain[0].en_func(node) for node in opt_chain])
-    ens = ens*627.5
+    ens = np.array([node.energy for node in opt_chain])
+    # ens = ens*627.5
+
+
+    orig_ens = np.array([node.energy for node in neb_obj.initial_chain])
+    # orig_ens = orig_ens*627.5
+    orig_ens = orig_ens - ens[0]
+
     ens = ens-ens[0]
 
 
-    plt.plot(list(range(len(ens))), ens, "o--")
+    plt.plot(list(range(len(ens))), ens, "o--", label="last chain")
+    plt.plot(orig_ens, "*", label='original')
+    plt.legend()
     plt.show()
 
 def main():
-    nimages = 150
+    nimages = 30
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
 
@@ -107,7 +115,6 @@ def main():
         animate_func(e.obj)
         plot_func(e.obj)
         
-    
 
     plot_2D(n)
     plot_func(n)
@@ -119,16 +126,16 @@ def main():
     # traj = Trajectory.from_xyz(fp)
     # coords = traj.to_list()
     # chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
-    # n = NEB(initial_chain=chain, grad_thre=0.001, mag_grad_thre=5)
+    # n = NEB(initial_chain=chain, grad_thre=0.0005, en_thre=0.0005, mag_grad_thre=.01, max_steps=100)
 
-    # n.optimize_chain()
-    # plot_2D(n)
+    # try: 
+    #     n.optimize_chain()
+    #     plot_2D(n)
+    # except NoneConvergedException as e:
+    #     plot_2D(e.obj)
+    #     print(e.obj.chain_trajectory[-1].gradients)
 
 
-
-
-    # plot_func(n)
-    # animate_func(n)
 
 
     

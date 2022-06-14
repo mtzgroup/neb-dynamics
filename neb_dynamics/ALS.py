@@ -14,11 +14,11 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
     phi0 = node.energy
 
     if np.all(grad == 0):
-        return 1
+        return 0
 
     else:
         pk = -1 * grad / np.linalg.norm(grad)
-        derphi0 = np.sum(node.dot_function(grad, pk)) / np.linalg.norm(grad) # function change along direction
+        derphi0 = np.sum(node.dot_function(grad, pk), axis=0) / np.linalg.norm(grad) # function change along direction
 
     new_coords = node.coords + alpha0 * pk
     new_node = node.copy()
@@ -29,7 +29,7 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
     count = 0
     
     while not phi_a0 <= phi0 + c1 * alpha0 * derphi0 and count < count_max:
-        print(f"{phi_a0} <= {phi0} + {c1 * alpha0 * derphi0}")
+        # print(f"{phi_a0} <= {phi0} + {c1 * alpha0 * derphi0}")
         alpha0 *= rho
         
         new_coords = node.coords + alpha0 * pk
@@ -39,7 +39,7 @@ def ArmijoLineSearch(node: Node, grad: np.array, alpha0=1, rho=0.5, c1=1e-4):
         phi_a0 = new_node.energy
         count += 1
 
-    print(f"\t{alpha0=} // {count=} //{phi_a0} <= {phi0 + c1 * alpha0 * derphi0}")
+    # print(f"\t{alpha0=} // {count=} //{phi_a0} <= {phi0 + c1 * alpha0 * derphi0}")
     return alpha0
 
 

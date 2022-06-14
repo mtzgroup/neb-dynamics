@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import cached_property
-from itertools import chain
+
 from typing import List
 
 import numpy as np
@@ -14,7 +14,8 @@ from xtb.utils import get_method
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.tdstructure import TDStructure
 
-ANGSTROM_TO_BOHR = 1.88973
+from neb_dynamics.constants import angstroms_to_bohr as ANGSTROM_TO_BOHR
+
 BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR
 
 
@@ -136,35 +137,32 @@ class Node3D(Node):
     def coords(self):
         return self.tdstructure.coords
 
-    @cached_property
-    def _create_calculation_object(self):
-        # print("_create_calc obj ", type(self.tdstructure))
-        coords = self.tdstructure.coords_bohr
-        atomic_numbers = self.tdstructure.atomic_numbers
-        calc = Calculator(
-            get_method("GFN2-xTB"),
-            numbers=np.array(atomic_numbers),
-            positions=coords,
-            charge=self.tdstructure.charge,
-            uhf=self.tdstructure.spinmult - 1,
-        )
-        calc.set_verbosity(VERBOSITY_MUTED)
-        res = calc.singlepoint()
-        return res
+    # @cached_property
+    # def _create_calculation_object(self):
+    #     atomic_numbers = self.tdstructure.atomic_numbers
+    #     calc = Calculator(
+    #         get_method("GFN2-xTB"),
+    #         numbers=np.array(atomic_numbers),
+    #         positions=self.tdstructure.coords_bohr,
+    #         charge=self.tdstructure.charge,
+    #         uhf=self.tdstructure.spinmult - 1,
+    #     )
+    #     calc.set_verbosity(VERBOSITY_MUTED)
+    #     res = calc.singlepoint()
+    #     return res
 
     @property
     def energy(self):
-        return self._create_calculation_object.get_energy()
+        return Node3D.run_xtb_calc(self.tdstructure).get_energy()
 
     # i want to cache the result of this but idk how caching works
-    def run_xtb_calc(tdstruct):
+    def run_xtb_calc(tdstruct: TDStructure):
         # print("runxtb calc", type(tdstruct))
-        coords = tdstruct.coords_bohr
         atomic_numbers = tdstruct.atomic_numbers
         calc = Calculator(
             get_method("GFN2-xTB"),
             numbers=np.array(atomic_numbers),
-            positions=coords,
+            positions=tdstruct.coords_bohr,
             charge=tdstruct.charge,
             uhf=tdstruct.spinmult - 1,
         )
@@ -174,19 +172,17 @@ class Node3D(Node):
 
     @staticmethod
     def grad_func(node: Node3D):
-        tdstruct = node.tdstructure
-        res = Node3D.run_xtb_calc(tdstruct)
-        return res.get_gradient() * BOHR_TO_ANGSTROMS
+        res = Node3D.run_xtb_calc(node.tdstruct)
+        return res.get_gradient()*BOHR_TO_ANGSTROMS
 
     @staticmethod
     def en_func(node: Node3D):
-        tdstruct = node.tdstructure
-        res = Node3D.run_xtb_calc(tdstruct)
+        res = Node3D.run_xtb_calc(node.tdstruct)
         return res.get_energy()
 
     @property
     def gradient(self):
-        return self._create_calculation_object.get_gradient() * BOHR_TO_ANGSTROMS
+        return Node3D.run_xtb_calc(self.tdstructure).get_gradient()*BOHR_TO_ANGSTROMS
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
@@ -198,17 +194,19 @@ class Node3D(Node):
         from neb_dynamics import ALS
 
         if not self.converged:
-            dr = ALS.ArmijoLineSearch(node=self, grad=grad, alpha0=1, rho=0.5, c1=1e-4)
+            dr = ALS.ArmijoLineSearch(node=self, grad=grad, alpha0=1, rho=0.8, c1=1e-4)
+            # dr = 1
             return dr
         else:
             return 0.0
+   
+    def copy(self):
+        return Node3D(tdstructure=self.tdstructure.copy(), converged=self.converged)
 
     def update_coords(self, coords: np.array) -> None:
         self.tdstructure.update_coords(coords=coords)
-        return Node3D(self.tdstructure)
+        return Node3D(tdstructure=self.tdstructure, converged=self.converged)
 
-    def copy(self):
-        return Node3D(tdstructure=self.tdstructure.copy(), converged=self.converged)
 
 
 @dataclass
@@ -221,6 +219,7 @@ class Chain:
         
     def __len__(self):
         return len(self.nodes)
+    
     def copy(self):
         list_of_nodes = [node.copy() for node in self.nodes]
         chain_copy = Chain(nodes=list_of_nodes, k=self.k)
@@ -239,15 +238,15 @@ class Chain:
     def energies(self) -> np.array:
         return np.array([node.energy for node in self.nodes])
 
-    @property
+    @cached_property
     def gradients(self) -> np.array:
         grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
-            # if not current_node.converged:
-            grad = self.spring_grad_neb(prev_node, current_node, next_node)
-            grads.append(grad)
-            # else:
-            #     grads.append(np.zeros_like(current_node.gradient))
+            if not current_node.converged:
+                grad = self.spring_grad_neb(prev_node, current_node, next_node)
+                grads.append(grad)
+            else:
+                grads.append(np.zeros_like(current_node.gradient))
 
         zero = np.zeros_like(current_node.gradient)
         grads.insert(0, zero)
@@ -323,31 +322,29 @@ class Chain:
             np.abs(next_node.coords - current_node.coords)
             - np.abs(current_node.coords - prev_node.coords)
         )
+        # direction = current_node.dot_function(
+        #         (next_node.coords - current_node.coords), force_spring)
+        
+        # force_spring[direction < 0] *= -1
 
         force_spring_nudged_const = current_node.dot_function(
             force_spring, unit_tan_path
         )
-        force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
-        # force_spring_nudged = force_spring_nudged_const * unit_tan_path
+        # force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
+        force_spring_nudged = force_spring_nudged_const * unit_tan_path
 
-        # direction = np.sum(
-        #     current_node.dot_function(
-        #         (next_node.coords - current_node.coords), force_spring_nudged
-        #     ),
-        #     axis=0,
-        # )
-        # if direction < 0:
-        #     force_spring_nudged *= -1
+
+
 
         # ANTI-KINK FORCE
         vec_2_to_1 = next_node.coords - current_node.coords
         vec_1_to_0 = current_node.coords - prev_node.coords
-        cos_phi = np.sum(current_node.dot_function(vec_2_to_1, vec_1_to_0)) / (
+        cos_phi = np.sum(current_node.dot_function(vec_2_to_1, vec_1_to_0),axis=0) / (
             np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0)
         )
 
         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
-        print(f"{f_phi=}")
+        # print(f"{f_phi=}")
         anti_kinking_force = force_spring - force_spring_nudged
 
 
@@ -419,6 +416,7 @@ class NEB:
             )
 
     def update_chain(fself, chain: Chain) -> Chain:
+        # print(f"{chain.gradients=}")
         new_chain_coordinates = (
             chain.coordinates - (chain.gradients) * chain.displacements
         )
