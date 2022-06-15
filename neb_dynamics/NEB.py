@@ -157,7 +157,7 @@ class Node3D(Node):
 
     @property
     def gradient(self):
-        return Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
+        return Node3D.run_xtb_calc(self.tdstructure).get_gradient() 
 
     # i want to cache the result of this but idk how caching works
     def run_xtb_calc(tdstruct: TDStructure):
@@ -402,44 +402,37 @@ class NEB:
     chain_trajectory: list[Chain] = field(default_factory=list)
 
     def optimize_chain(self):
-        try:
-            nsteps = 1
-            chain_previous = self.initial_chain.copy()
+        nsteps = 1
+        chain_previous = self.initial_chain.copy()
 
-            while nsteps < self.max_steps + 1:
-                # if nsteps % 20 == 0:
-                #     orig_len = len(chain_previous)
-                #     print(f"len before: {len(chain_previous)}")
-                #     chain_previous = self.remove_chain_folding(chain=chain_previous)
-                #     print(f"len after {len(chain_previous)}")
-                #     chain_previous = self.redistribute_chain(chain=chain_previous, requested_length_of_chain=orig_len)
-                #     print(f"len after after {len(chain_previous)}")
-                new_chain = self.update_chain(chain=chain_previous)
-                # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
-                print(
-                    f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}"
-                )
+        while nsteps < self.max_steps + 1:
+            # if nsteps % 20 == 0:
+            #     orig_len = len(chain_previous)
+            #     print(f"len before: {len(chain_previous)}")
+            #     chain_previous = self.remove_chain_folding(chain=chain_previous)
+            #     print(f"len after {len(chain_previous)}")
+            #     chain_previous = self.redistribute_chain(chain=chain_previous, requested_length_of_chain=orig_len)
+            #     print(f"len after after {len(chain_previous)}")
+            new_chain = self.update_chain(chain=chain_previous)
+            # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
+            print(
+                f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}"
+            )
 
-                self.chain_trajectory.append(new_chain)
+            self.chain_trajectory.append(new_chain)
 
-                if self._chain_converged(
-                    chain_prev=chain_previous, chain_new=new_chain
-                ):
-                    print(f"Chain converged!\n{new_chain=}")
-                    self.optimized = new_chain
-                    return
-                chain_previous = new_chain.copy()
-                nsteps += 1
-
-            if not self._chain_converged(
+            if self._chain_converged(
                 chain_prev=chain_previous, chain_new=new_chain
             ):
-                raise NoneConvergedException(
-                    trajectory=self.chain_trajectory,
-                    msg=f"Chain did not converge at step {nsteps}",
-                    obj=self,
-                )
-        except:
+                print(f"Chain converged!\n{new_chain=}")
+                self.optimized = new_chain
+                return
+            chain_previous = new_chain.copy()
+            nsteps += 1
+
+        if not self._chain_converged(
+            chain_prev=chain_previous, chain_new=new_chain
+        ):
             raise NoneConvergedException(
                 trajectory=self.chain_trajectory,
                 msg=f"Chain did not converge at step {nsteps}",
