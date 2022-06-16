@@ -7,6 +7,7 @@ from functools import cached_property
 from typing import List
 
 import numpy as np
+
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
@@ -181,7 +182,7 @@ class Node3D(Node):
 
     @staticmethod
     def en_func(node: Node3D):
-        res = Node3D.run_xtb_calc(node.tdstruct)
+        res = Node3D.run_xtb_calc(node.tdstructure)
         return res.get_energy()
 
 
@@ -195,7 +196,7 @@ class Node3D(Node):
         from neb_dynamics import ALS
 
         if not self.converged:
-            dr = ALS.ArmijoLineSearch(node=self, grad=grad, alpha0=0.01, rho=0.8, c1=1e-4)
+            dr = ALS.ArmijoLineSearch(node=self, grad=grad, t=1,beta=0.8, f=self.en_func, alpha=0.3)
             # dr = 1
             return dr
         else:
@@ -205,8 +206,11 @@ class Node3D(Node):
         return Node3D(tdstructure=self.tdstructure.copy(), converged=self.converged)
 
     def update_coords(self, coords: np.array) -> None:
-        self.tdstructure.update_coords(coords=coords)
-        return Node3D(tdstructure=self.tdstructure, converged=self.converged)
+
+        copy_tdstruct = self.tdstructure.copy()
+
+        copy_tdstruct.update_coords(coords=coords)
+        return Node3D(tdstructure=copy_tdstruct, converged=self.converged)
 
 
 @dataclass
@@ -284,6 +288,8 @@ class Chain:
     def displacements(self):
 
         grads = self.gradients
+
+        print(f"\t\t\t these are the input grads: {grads=}")
 
         correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(grads.shape)]
         disp = np.array(
@@ -375,14 +381,13 @@ class Chain:
         force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
         # force_spring_nudged = force_spring_nudged_const * unit_tan_path
 
-        anti_kinking_force = force_spring - force_spring_nudged
         f_phi = self._get_anti_kink_switch_func(
             prev_node=prev_node,
             current_node=current_node,
             next_node=next_node,
             unit_tangent=unit_tan_path,
         )
-        anti_kinking_grad = (f_phi * (anti_kinking_force))
+        anti_kinking_grad = (f_phi * (force_spring_nudged))
 
         pe_and_spring_grads = -1 * (-1 * pe_grad_nudged +  force_spring_nudged)
 
