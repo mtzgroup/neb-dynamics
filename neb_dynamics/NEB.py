@@ -349,7 +349,7 @@ class Chain:
         # ANTI-KINK FORCE
         vec_2_to_1 = next_node.coords - current_node.coords
         vec_1_to_0 = current_node.coords - prev_node.coords
-        cos_phi = np.sum(current_node.dot_function(vec_2_to_1, vec_1_to_0), axis=0) / (
+        cos_phi = current_node.dot_function(vec_2_to_1, vec_1_to_0) / (
             np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0)
         )
 
@@ -372,8 +372,8 @@ class Chain:
         force_spring_nudged_const = current_node.dot_function(
             force_spring, unit_tan_path
         )
-        # force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
-        force_spring_nudged = force_spring_nudged_const * unit_tan_path
+        force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
+        # force_spring_nudged = force_spring_nudged_const * unit_tan_path
 
         anti_kinking_force = force_spring - force_spring_nudged
         f_phi = self._get_anti_kink_switch_func(
@@ -382,7 +382,7 @@ class Chain:
             next_node=next_node,
             unit_tangent=unit_tan_path,
         )
-        anti_kinking_grad = -1*(f_phi * (anti_kinking_force))
+        anti_kinking_grad = (f_phi * (anti_kinking_force))
 
         pe_and_spring_grads = -1 * (-1 * pe_grad_nudged +  force_spring_nudged)
 
