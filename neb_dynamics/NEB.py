@@ -138,6 +138,7 @@ class Node3D(Node):
     def coords(self):
         return self.tdstructure.coords
 
+
     # @cached_property
     # def _create_calculation_object(self):
     #     atomic_numbers = self.tdstructure.atomic_numbers
@@ -178,7 +179,7 @@ class Node3D(Node):
     @staticmethod
     def grad_func(node: Node3D):
         res = Node3D.run_xtb_calc(node.tdstruct)
-        return res.get_gradient() * BOHR_TO_ANGSTROMS
+        return res.get_gradient() 
 
     @staticmethod
     def en_func(node: Node3D):
@@ -242,7 +243,7 @@ class Chain:
     def energies(self) -> np.array:
         return np.array([node.energy for node in self.nodes])
 
-    @cached_property
+    @property
     def gradients(self) -> np.array:
         grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
@@ -270,26 +271,17 @@ class Chain:
 
         return tan_list
 
-    @property
-    def grad_normalizations(self):
-        norms = np.array(
-            [[np.linalg.norm(grad)] * len(grad) for grad in self.gradients]
-        )
-        norms[norms == 0] = 1
-
-        return norms
 
     @property
     def coordinates(self) -> np.array:
 
         return np.array([node.coords for node in self.nodes])
 
+
     @property
     def displacements(self):
 
         grads = self.gradients
-
-        print(f"\t\t\t these are the input grads: {grads=}")
 
         correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(grads.shape)]
         disp = np.array(
@@ -344,7 +336,7 @@ class Chain:
         ## this prevents stuff from blowing up in 3D case... somehow...
         direction = np.sum(current_node.dot_function(
                 (next_node.coords - current_node.coords), force_spring),axis=len(current_node.coords.shape)-1)
-
+        
         force_spring[direction < 0] *= -1
 
         return force_spring
@@ -419,11 +411,14 @@ class NEB:
             #     chain_previous = self.redistribute_chain(chain=chain_previous, requested_length_of_chain=orig_len)
             #     print(f"len after after {len(chain_previous)}")
             new_chain = self.update_chain(chain=chain_previous)
+            # print(f"\n\n\nnsteps=={nsteps-1}{new_chain.coordinates}\n\n\n")
             # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
             print(
                 f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}"
             )
 
+
+        
             self.chain_trajectory.append(new_chain)
 
             if self._chain_converged(
@@ -435,6 +430,9 @@ class NEB:
             chain_previous = new_chain.copy()
             nsteps += 1
 
+
+
+        new_chain = self.update_chain(chain=chain_previous)
         if not self._chain_converged(
             chain_prev=chain_previous, chain_new=new_chain
         ):
@@ -444,14 +442,17 @@ class NEB:
                 obj=self,
             )
 
-    def update_chain(fself, chain: Chain) -> Chain:
+    def update_chain(self, chain: Chain) -> Chain:
         # print(f"{chain.gradients=}")
         new_chain_coordinates = (
-            chain.coordinates - (chain.gradients) * chain.displacements
+            chain.coordinates - (chain.gradients*BOHR_TO_ANGSTROMS) * chain.displacements
         )
-        new_chain = chain.copy()
-        for node, new_coords in zip(new_chain.nodes, new_chain_coordinates):
-            node.update_coords(new_coords)
+        new_nodes = []
+        for node, new_coords in zip(chain.nodes, new_chain_coordinates):
+
+            new_nodes.append(node.update_coords(new_coords))
+
+        new_chain = Chain(new_nodes, k=chain.k)
         return new_chain
 
     def _update_node_convergence(self, chain: Chain, indices: np.array) -> None:
@@ -468,7 +469,7 @@ class NEB:
 
     def _check_grad_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
-        mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])
+        mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])*BOHR_TO_ANGSTROMS
 
         delta_converged = np.where(delta_grad < self.grad_thre)
         mag_converged = np.where(mag_grad < self.mag_grad_thre)
