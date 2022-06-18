@@ -3,10 +3,12 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import cached_property
+from pathlib import Path
 
 from typing import List
 
 import numpy as np
+from neb_dynamics.trajectory import Trajectory
 
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
@@ -235,6 +237,12 @@ class Chain:
             yield self.nodes[i - 1 : i + 2]
 
     @classmethod
+    def from_traj(cls, traj, k=10):
+        nodes = [Node3D(s) for s in traj]
+        return Chain(nodes, k=k)
+        
+
+    @classmethod
     def from_list_of_coords(cls, k, list_of_coords: List, node_class: Node) -> Chain:
         nodes = [node_class(point) for point in list_of_coords]
         return cls(nodes=nodes, k=k)
@@ -247,11 +255,11 @@ class Chain:
     def gradients(self) -> np.array:
         grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
-            # if not current_node.converged:
-            grad = self.spring_grad_neb(prev_node, current_node, next_node)
-            grads.append(grad)
-            # else:
-            #     grads.append(np.zeros_like(current_node.gradient))
+            if not current_node.converged:
+                grad = self.spring_grad_neb(prev_node, current_node, next_node)
+                grads.append(grad)
+            else:
+                grads.append(np.zeros_like(current_node.gradient))
 
         zero = np.zeros_like(grads[0])
         grads.insert(0, zero)
@@ -333,11 +341,11 @@ class Chain:
             - np.abs(current_node.coords - prev_node.coords)
         )
 
-        ## this prevents stuff from blowing up in 3D case... somehow...
-        direction = np.sum(current_node.dot_function(
-                (next_node.coords - current_node.coords), force_spring),axis=len(current_node.coords.shape)-1)
+        # ## this prevents stuff from blowing up in 3D case... somehow...
+        # direction = np.sum(current_node.dot_function(
+        #         (next_node.coords - current_node.coords), force_spring),axis=len(current_node.coords.shape)-1)
         
-        force_spring[direction < 0] *= -1
+        # force_spring[direction < 0] *= -1
 
         return force_spring
 
@@ -370,8 +378,8 @@ class Chain:
         force_spring_nudged_const = current_node.dot_function(
             force_spring, unit_tan_path
         )
-        force_spring_nudged = force_spring - force_spring_nudged_const * unit_tan_path
-        # force_spring_nudged = force_spring_nudged_const * unit_tan_path
+
+        force_spring_nudged = force_spring_nudged_const * unit_tan_path
 
         f_phi = self._get_anti_kink_switch_func(
             prev_node=prev_node,
@@ -379,9 +387,9 @@ class Chain:
             next_node=next_node,
             unit_tangent=unit_tan_path,
         )
-        anti_kinking_grad = (f_phi * (force_spring_nudged))
+        anti_kinking_grad = (f_phi * -1*(force_spring - force_spring_nudged))
 
-        pe_and_spring_grads = -1 * (-1 * pe_grad_nudged +  force_spring_nudged)
+        pe_and_spring_grads =  pe_grad_nudged - force_spring_nudged
 
         return pe_and_spring_grads + anti_kinking_grad
 
@@ -389,7 +397,7 @@ class Chain:
 @dataclass
 class NEB:
     initial_chain: Chain
-    redistribute: bool = True
+    redistribute: bool = False
     en_thre: float = 0.001
     grad_thre: float = 0.001
     mag_grad_thre: float = 0.01
@@ -425,6 +433,10 @@ class NEB:
                 chain_prev=chain_previous, chain_new=new_chain
             ):
                 print(f"Chain converged!\n{new_chain=}")
+                
+                if self.redistribute:
+                    new_chain = self.redistribute_chain(chain=new_chain.copy(), requested_length_of_chain=len(new_chain))
+
                 self.optimized = new_chain
                 return
             chain_previous = new_chain.copy()
@@ -458,7 +470,7 @@ class NEB:
     def _update_node_convergence(self, chain: Chain, indices: np.array) -> None:
         for ind in indices:
             node = chain[ind]
-            node.converged = True
+            node.converged = True 
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
@@ -495,9 +507,11 @@ class NEB:
 
         print(f"\t{len(converged_node_indices)} nodes have converged")
 
-        self._update_node_convergence(chain=chain_new, indices=converged_node_indices)
 
-        return en_bool and grad_bool
+        return len(converged_node_indices) == len(chain_new.nodes)
+        # self._update_node_convergence(chain=chain_new, indices=converged_node_indices)
+
+        # return en_bool and grad_bool
 
     def remove_chain_folding(self, chain: Chain) -> Chain:
         not_converged = True
@@ -589,3 +603,7 @@ class NEB:
                 new_node = node_type(new_coords)
 
                 return new_node
+
+    def write_to_disk(self, fp: Path):
+        out_traj = Trajectory([node.tdstructure for node in self.optimized.nodes])
+        out_traj.write_trajectory(fp)
