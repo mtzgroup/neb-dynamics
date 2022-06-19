@@ -159,7 +159,7 @@ class Node3D(Node):
     def energy(self):
         return Node3D.run_xtb_calc(self.tdstructure).get_energy()
 
-    @property
+    @cached_property
     def gradient(self):
         return Node3D.run_xtb_calc(self.tdstructure).get_gradient() 
 
@@ -251,7 +251,7 @@ class Chain:
     def energies(self) -> np.array:
         return np.array([node.energy for node in self.nodes])
 
-    @property
+    @cached_property
     def gradients(self) -> np.array:
         grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
@@ -336,7 +336,7 @@ class Chain:
         return pe_grad_nudged
 
     def _get_spring_force(self, prev_node, current_node, next_node):
-        force_spring = -self.k * (
+        force_spring = self.k * (
             np.abs(next_node.coords - current_node.coords)
             - np.abs(current_node.coords - prev_node.coords)
         )
@@ -398,6 +398,7 @@ class Chain:
 class NEB:
     initial_chain: Chain
     redistribute: bool = False
+    remove_folding: bool = False
     en_thre: float = 0.001
     grad_thre: float = 0.001
     mag_grad_thre: float = 0.01
@@ -433,10 +434,16 @@ class NEB:
                 chain_prev=chain_previous, chain_new=new_chain
             ):
                 print(f"Chain converged!\n{new_chain=}")
-                
-                if self.redistribute:
-                    new_chain = self.redistribute_chain(chain=new_chain.copy(), requested_length_of_chain=len(new_chain))
+                original_chain_len = len(new_chain)
 
+
+                if self.remove_folding:
+                    new_chain = self.remove_chain_folding(chain=new_chain.copy())
+                    self.chain_trajectory.append(new_chain)
+
+                if self.redistribute:
+                    new_chain = self.redistribute_chain(chain=new_chain.copy(), requested_length_of_chain=original_chain_len)
+                    self.chain_trajectory.append(new_chain)
                 self.optimized = new_chain
                 return
             chain_previous = new_chain.copy()
@@ -526,7 +533,7 @@ class NEB:
                 vec1 = current_node.coords - prev_node.coords
                 vec2 = next_node.coords - current_node.coords
 
-                if current_node.dot_function(vec1, vec2) > 0:
+                if np.all(current_node.dot_function(vec1, vec2)) > 0:
                     new_chain.append(current_node)
                 else:
                     points_removed.append(current_node)
