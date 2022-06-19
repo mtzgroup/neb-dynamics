@@ -4,20 +4,18 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-
 from typing import List
 
 import numpy as np
-from neb_dynamics.trajectory import Trajectory
-
+from scipy.signal import argrelextrema
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
+from neb_dynamics.constants import angstroms_to_bohr as ANGSTROM_TO_BOHR
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.tdstructure import TDStructure
-
-from neb_dynamics.constants import angstroms_to_bohr as ANGSTROM_TO_BOHR
+from neb_dynamics.trajectory import Trajectory
 
 BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR
 
@@ -63,6 +61,12 @@ class Node(ABC):
     def coords(self):
         ...
 
+
+    @property
+    @abstractmethod
+    def do_climb(self):
+        ...
+
     @abstractmethod
     def dot_function(self, other):
         ...
@@ -80,6 +84,7 @@ class Node(ABC):
 class Node2D(Node):
     pair_of_coordinates: np.array
     converged: bool = False
+    do_climb: bool = False
 
     @property
     def coords(self):
@@ -124,7 +129,7 @@ class Node2D(Node):
 
     def copy(self):
         return Node2D(
-            pair_of_coordinates=self.pair_of_coordinates, converged=self.converged
+            pair_of_coordinates=self.pair_of_coordinates, converged=self.converged, do_climb=self.do_climb
         )
 
     def update_coords(self, coords: np.array):
@@ -135,25 +140,11 @@ class Node2D(Node):
 class Node3D(Node):
     tdstructure: TDStructure
     converged: bool = False
+    do_climb: bool = False
 
     @property
     def coords(self):
         return self.tdstructure.coords
-
-
-    # @cached_property
-    # def _create_calculation_object(self):
-    #     atomic_numbers = self.tdstructure.atomic_numbers
-    #     calc = Calculator(
-    #         get_method("GFN2-xTB"),
-    #         numbers=np.array(atomic_numbers),
-    #         positions=self.tdstructure.coords_bohr,
-    #         charge=self.tdstructure.charge,
-    #         uhf=self.tdstructure.spinmult - 1,
-    #     )
-    #     calc.set_verbosity(VERBOSITY_MUTED)
-    #     res = calc.singlepoint()
-    #     return res
 
     @property
     def energy(self):
@@ -206,14 +197,14 @@ class Node3D(Node):
             return 0.0
 
     def copy(self):
-        return Node3D(tdstructure=self.tdstructure.copy(), converged=self.converged)
+        return Node3D(tdstructure=self.tdstructure.copy(), converged=self.converged, do_climb=self.do_climb)
 
     def update_coords(self, coords: np.array) -> None:
 
         copy_tdstruct = self.tdstructure.copy()
 
         copy_tdstruct.update_coords(coords=coords)
-        return Node3D(tdstructure=copy_tdstruct, converged=self.converged)
+        return Node3D(tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb)
 
 
 @dataclass
@@ -256,8 +247,19 @@ class Chain:
         grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
             if not current_node.converged:
-                grad = self.spring_grad_neb(prev_node, current_node, next_node)
-                grads.append(grad)
+                if not current_node.do_climb:
+                    grad = self.spring_grad_neb(prev_node, current_node, next_node)
+                    grads.append(grad)
+
+                elif current_node.do_climb:
+                    # print("THIS NODE WANTS TO CLIMB BB")
+                    grad = self.climb_grad_neb(prev_node, current_node, next_node)
+                    # print(f"ITS GRAD IS: {grad=}")
+                    grads.append(grad)
+
+                else:
+                    raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
+
             else:
                 grads.append(np.zeros_like(current_node.gradient))
 
@@ -393,12 +395,27 @@ class Chain:
 
         return pe_and_spring_grads + anti_kinking_grad
 
+    def climb_grad_neb(self, prev_node: Node, current_node: Node, next_node: Node):
+        vec_tan_path = self._create_tangent_path(prev_node, current_node, next_node)
+        unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
+
+        pe_grad = current_node.gradient
+        pe_grad_nudged = self._get_nudged_pe_grad(
+            node=current_node, unit_tangent=unit_tan_path
+        )
+
+
+        climbing_grad = -2*pe_grad_nudged
+
+        return pe_grad + climbing_grad
+
 
 @dataclass
 class NEB:
     initial_chain: Chain
     redistribute: bool = False
     remove_folding: bool = False
+    climb: bool = False
     en_thre: float = 0.001
     grad_thre: float = 0.001
     mag_grad_thre: float = 0.01
@@ -407,33 +424,33 @@ class NEB:
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
 
+
+    def set_climbing_nodes(self, chain:Chain):
+        inds_maxima = argrelextrema(chain.energies, np.greater)[0]
+        print(f"----->Setting {len(inds_maxima)} nodes to climb")
+
+        for ind in inds_maxima:
+            chain[ind].do_climb = True
+        
     def optimize_chain(self):
         nsteps = 1
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps + 1:
-            # if nsteps % 20 == 0:
-            #     orig_len = len(chain_previous)
-            #     print(f"len before: {len(chain_previous)}")
-            #     chain_previous = self.remove_chain_folding(chain=chain_previous)
-            #     print(f"len after {len(chain_previous)}")
-            #     chain_previous = self.redistribute_chain(chain=chain_previous, requested_length_of_chain=orig_len)
-            #     print(f"len after after {len(chain_previous)}")
+            if nsteps == 10 and self.climb:
+                self.set_climbing_nodes(chain_previous)
+
             new_chain = self.update_chain(chain=chain_previous)
-            # print(f"\n\n\nnsteps=={nsteps-1}{new_chain.coordinates}\n\n\n")
-            # print(f"step {nsteps} ∆ coords: {new_chain.coordinates - chain_previous.coordinates}")
             print(
                 f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}"
             )
 
-
-        
             self.chain_trajectory.append(new_chain)
 
             if self._chain_converged(
                 chain_prev=chain_previous, chain_new=new_chain
             ):
-                print(f"Chain converged!\n{new_chain=}")
+                print(f"Chain converged!")
                 original_chain_len = len(new_chain)
 
 
@@ -443,6 +460,22 @@ class NEB:
 
                 if self.redistribute:
                     new_chain = self.redistribute_chain(chain=new_chain.copy(), requested_length_of_chain=original_chain_len)
+                    self.chain_trajectory.append(new_chain)
+
+
+                if self.climb:
+                    print("Climbing...")
+                    
+                    
+
+                    for node in new_chain:
+                        node.converged = False
+
+                    new_NEB = NEB(initial_chain=new_chain, redistribute=self.redistribute, remove_folding=self.remove_folding,
+                    climb=False, en_thre=self.en_thre, grad_thre=self.grad_thre, mag_grad_thre=self.mag_grad_thre, max_steps=self.max_steps)
+                    new_NEB.optimize_chain()
+                    new_chain = new_NEB.optimized
+
                     self.chain_trajectory.append(new_chain)
                 self.optimized = new_chain
                 return
@@ -519,6 +552,7 @@ class NEB:
         return len(converged_node_indices) == len(chain_new.nodes)
 
         # return en_bool and grad_bool
+
 
     def remove_chain_folding(self, chain: Chain) -> Chain:
         not_converged = True
