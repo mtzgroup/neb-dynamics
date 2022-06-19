@@ -471,20 +471,6 @@ class NEB:
                     self.chain_trajectory.append(new_chain)
 
 
-                if self.climb:
-                    print("Climbing...")
-                    
-                    
-
-                    for node in new_chain:
-                        node.converged = False
-
-                    new_NEB = NEB(initial_chain=new_chain, redistribute=self.redistribute, remove_folding=self.remove_folding,
-                    climb=False, en_thre=self.en_thre, grad_thre=self.grad_thre, mag_grad_thre=self.mag_grad_thre, max_steps=self.max_steps)
-                    new_NEB.optimize_chain()
-                    new_chain = new_NEB.optimized
-
-                    self.chain_trajectory.append(new_chain)
                 self.optimized = new_chain
                 return
             chain_previous = new_chain.copy()
