@@ -413,6 +413,8 @@ class Chain:
 @dataclass
 class NEB:
     initial_chain: Chain
+
+
     redistribute: bool = False
     remove_folding: bool = False
     climb: bool = False
@@ -420,16 +422,22 @@ class NEB:
     grad_thre: float = 0.001
     mag_grad_thre: float = 0.01
     max_steps: float = 1000
+    steps_until_climb: int = 3
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
 
 
     def set_climbing_nodes(self, chain:Chain):
+        # reset node convergence
+        for node in chain:
+            node.converged = False
+
+
         inds_maxima = argrelextrema(chain.energies, np.greater)[0]
         print(f"----->Setting {len(inds_maxima)} nodes to climb")
 
-        for ind in inds_maxima:
+        for ind in inds_maxima: 
             chain[ind].do_climb = True
         
     def optimize_chain(self):
@@ -437,7 +445,7 @@ class NEB:
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps + 1:
-            if nsteps == 10 and self.climb:
+            if nsteps+1 == self.steps_until_climb and self.climb:
                 self.set_climbing_nodes(chain_previous)
 
             new_chain = self.update_chain(chain=chain_previous)
