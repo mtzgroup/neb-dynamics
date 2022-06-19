@@ -199,7 +199,7 @@ class Node3D(Node):
         from neb_dynamics import ALS
 
         if not self.converged:
-            dr = ALS.ArmijoLineSearch(node=self, grad=grad, t=1,beta=0.8, f=self.en_func, alpha=0.3)
+            dr = ALS.ArmijoLineSearch(node=self, grad=grad, t=1,beta=0.5, f=self.en_func, alpha=0.3)
             # dr = 1
             return dr
         else:
@@ -508,8 +508,8 @@ class NEB:
         print(f"\t{len(converged_node_indices)} nodes have converged")
 
 
+        self._update_node_convergence(chain=chain_new, indices=converged_node_indices)
         return len(converged_node_indices) == len(chain_new.nodes)
-        # self._update_node_convergence(chain=chain_new, indices=converged_node_indices)
 
         # return en_bool and grad_bool
 
