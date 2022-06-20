@@ -102,66 +102,66 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    # nimages = 10
-    # end_point = (3.00002182, 1.99995542)
-    # start_point = (-3.77928812, -3.28320392)
+    nimages = 10
+    end_point = (3.00002182, 1.99995542)
+    start_point = (-3.77928812, -3.28320392)
 
 
-    # coords = np.linspace(start_point, end_point, nimages)
-    # chain = Chain.from_list_of_coords(k=1, list_of_coords=coords, node_class=Node2D)
-    # n = NEB(initial_chain=chain, max_steps=1000, grad_thre=0.001,en_thre=0.001, mag_grad_thre=10,
-    # climb=False, steps_until_climb=220)
-    # try: 
-    #     n.optimize_chain()
-    #     plot_2D(n)
-    #     plot_func(n)
-    #     animate_func(n)
-    # except NoneConvergedException as e:
-    #     print(e.obj.chain_trajectory[-1].gradients)
-    #     animate_func(e.obj)
-    #     plot_func(e.obj)
+    coords = np.linspace(start_point, end_point, nimages)
+    chain = Chain.from_list_of_coords(k=1, list_of_coords=coords, node_class=Node2D)
+    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=0.001,en_thre=0.001, mag_grad_thre=10,redistribute=True,
+    climb=False, steps_until_climb=220)
+    try: 
+        n.optimize_chain()
+        plot_2D(n)
+        plot_func(n)
+        animate_func(n)
+    except NoneConvergedException as e:
+        print(e.obj.chain_trajectory[-1].gradients)
+        animate_func(e.obj)
+        plot_func(e.obj)
         
 
  
 
-    fp = Path("../example_cases/DA_geodesic_opt.xyz")
-#     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
-#     # fp = Path("./example_cases/PDDA_geodesic.xyz")
+#     fp = Path("../example_cases/DA_geodesic_opt.xyz")
+# #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
+# #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
 
 
-    kval = 0.01
-    traj = Trajectory.from_xyz(fp)
-    coords = traj.to_list()
-    chain = Chain.from_list_of_coords(k=kval, list_of_coords=coords, node_class=Node3D)
-    n = NEB(initial_chain=chain, grad_thre=0.0001, en_thre=0.0001, mag_grad_thre=1, max_steps=1000, redistribute=False, remove_folding=False)
+#     kval = 0.1
+#     traj = Trajectory.from_xyz(fp)
+#     coords = traj.to_list()
+#     chain = Chain.from_list_of_coords(k=kval, list_of_coords=coords, node_class=Node3D)
+#     n = NEB(initial_chain=chain, grad_thre=0.0001, en_thre=0.0001, mag_grad_thre=1, max_steps=1000, redistribute=True, remove_folding=False)
 
-    try:
-        n.optimize_chain()
-        plot_2D(n)
+#     try:
+#         n.optimize_chain()
+#         plot_2D(n)
 
 
         
-        # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_redist_and_defolded.xyz")
-        # n.write_to_disk(fp.parent / f"neb_DA_k{kval}.xyz")
-        # n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_redist_and_defolded.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
 
 
-        opt_chain = n.optimized
-        all_dists = []
-        for i in range(len(opt_chain)-2):
-            c0 = opt_chain[i].coords
-            c1 = opt_chain[i+1].coords
+#         opt_chain = n.optimized
+#         all_dists = []
+#         for i in range(len(opt_chain)-2):
+#             c0 = opt_chain[i].coords
+#             c1 = opt_chain[i+1].coords
 
             
 
-            dist = np.linalg.norm(c1 - c0)
-            all_dists.append(dist)
+#             dist = np.linalg.norm(c1 - c0)
+#             all_dists.append(dist)
 
-        plt.bar(x=list(range(len(all_dists))), height=all_dists)
-        plt.show()
+#         plt.bar(x=list(range(len(all_dists))), height=all_dists)
+#         plt.show()
 
-    except NoneConvergedException as e:
-        plot_2D(e.obj)
+#     except NoneConvergedException as e:
+#         plot_2D(e.obj)
 
 #     # nsteps = 1
 #     # chain_previous = n.initial_chain.copy()

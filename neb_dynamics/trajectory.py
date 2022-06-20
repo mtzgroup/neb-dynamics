@@ -11,7 +11,7 @@ from neb_dynamics.fileio import read_xyz, write_xyz
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.constants import angstroms_to_bohr
 
-
+BOHR_TO_ANGSTROMS = 1/angstroms_to_bohr
 @dataclass
 class Trajectory:
     """
@@ -95,14 +95,14 @@ class Trajectory:
             xyz_arr.append(molecule_coords)
 
         symbols = OBH.obmol_to_symbs(molecule.molecule_obmol)
-        return xyz_arr, symbols
+        return np.array(xyz_arr), symbols
 
     def write_trajectory(self, file_path: Path):
         """
         writes a list of xyz coordinates to 'file_path'
         """
         xyz_arr, symbs = self.as_xyz()
-        write_xyz(filename=str(file_path.resolve()), atoms=symbs, coords=xyz_arr)
+        write_xyz(filename=str(file_path.resolve()), atoms=symbs, coords=xyz_arr*BOHR_TO_ANGSTROMS)
 
     def write_traj_energies(self, file_path: Path, energies: list):
         fout = open(str(file_path.resolve()), "w+")

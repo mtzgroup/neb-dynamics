@@ -79,6 +79,9 @@ class TDStructure:
         obmol = OBH.load_obmol_from_fp(fp)
         obmol.SetTotalCharge(tot_charge)
         obmol.SetTotalSpinMultiplicity(tot_spinmult)
+        
+        # TODO: need to convert read-in coordinates from Angstroms to Bohr
+
         return cls(molecule_obmol=obmol)
 
     @classmethod
@@ -92,7 +95,6 @@ class TDStructure:
         obmol.SetTotalSpinMultiplicity(tot_spinmult)
 
 
-        # TODO: need to convert read-in coordinates from Angstroms to Bohr
 
         return cls(molecule_obmol=obmol)
 

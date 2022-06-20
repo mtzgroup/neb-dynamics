@@ -584,13 +584,13 @@ class NEB:
         return all(dps)
 
     def redistribute_chain(self, chain: Chain, requested_length_of_chain: int) -> Chain:
-        if len(chain) < requested_length_of_chain:
-            fixed_chain = chain.copy()
-            [
-                fixed_chain.nodes.insert(1, fixed_chain[1])
-                for _ in range(requested_length_of_chain - len(chain))
-            ]
-            chain = fixed_chain
+        # if len(chain) < requested_length_of_chain:
+        #     fixed_chain = chain.copy()
+        #     [
+        #         fixed_chain.nodes.insert(1, fixed_chain[1])
+        #         for _ in range(requested_length_of_chain - len(chain))
+        #     ]
+        #     chain = fixed_chain
 
         direction = np.array(
             [
@@ -606,8 +606,8 @@ class NEB:
         distributed_chain = []
         for num in np.linspace(0, tot_dist, len(chain)):
             new_node = self.redistribution_helper(
-                num=num, cum=cumsum, chain=chain, node_type=type(chain[0])
-            )
+                num=num, cum=cumsum, chain=chain)
+            
             distributed_chain.append(new_node)
 
         distributed_chain[0] = chain[0]
@@ -615,7 +615,7 @@ class NEB:
 
         return Chain(distributed_chain, k=chain.k)
 
-    def redistribution_helper(self, num, cum, chain: Chain, node_type: Node) -> Node:
+    def redistribution_helper(self, num, cum, chain: Chain) -> Node:
         """
         num: the distance from first node to return output point to
         cum: cumulative sums
@@ -627,14 +627,13 @@ class NEB:
             pairwise(zip(cum, chain))
         ):
 
-            if cum_sum_init < num < cum_sum_end:
+            if cum_sum_init <= num < cum_sum_end:
                 direction = node_end.coords - node_start.coords
                 percentage = (num - cum_sum_init) / (cum_sum_end - cum_sum_init)
 
-                new_node = node_start.update_coords(direction * percentage)
-
+                new_node = node_start.copy()
                 new_coords = node_start.coords + (direction * percentage)
-                new_node = node_type(new_coords)
+                new_node = new_node.update_coords(new_coords)
 
                 return new_node
 
