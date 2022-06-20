@@ -109,18 +109,20 @@ def main():
 
     # coords = np.linspace(start_point, end_point, nimages)
     # chain = Chain.from_list_of_coords(k=1, list_of_coords=coords, node_class=Node2D)
-    # n = NEB(initial_chain=chain, max_steps=1, grad_thre=0.01, mag_grad_thre=1)
+    # n = NEB(initial_chain=chain, max_steps=1000, grad_thre=0.001,en_thre=0.001, mag_grad_thre=10,
+    # climb=False, steps_until_climb=220)
     # try: 
     #     n.optimize_chain()
+    #     plot_2D(n)
+    #     plot_func(n)
+    #     animate_func(n)
     # except NoneConvergedException as e:
     #     print(e.obj.chain_trajectory[-1].gradients)
     #     animate_func(e.obj)
     #     plot_func(e.obj)
         
 
-    # plot_2D(n)
-    # plot_func(n)
-    # animate_func(n)
+ 
 
     fp = Path("../example_cases/DA_geodesic_opt.xyz")
 #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")

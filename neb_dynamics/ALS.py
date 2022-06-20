@@ -48,17 +48,11 @@ BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR
 
 def _attempt_step(node: Node3D, grad, t, f):
     # print("t_init: ", t)
-
-    struct = node.tdstructure
-
     
-    new_coords = struct.coords - t * grad
-
+    new_coords = node.coords - t * grad
     new_node = node.update_coords(new_coords)
 
     en_struct_prime = f(new_node)
-
-    failed_so_far = False
     
     return en_struct_prime, t
 

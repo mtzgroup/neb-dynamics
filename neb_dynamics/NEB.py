@@ -117,7 +117,7 @@ class Node2D(Node):
         # print(f"input grad: {grad}")
         # if not self.converged:
         dr = ALS.ArmijoLineSearch(
-            alpha0=0.01, node=self.copy(), grad=grad, rho=0.8, c1=1e-7
+            node=self, grad=grad, t=0.01,beta=0.5, f=self.en_func, alpha=0.3
         )
         # print(f"\toutput dr: {dr}")
         return dr
@@ -130,7 +130,9 @@ class Node2D(Node):
         )
 
     def update_coords(self, coords: np.array):
-        self.pair_of_coordinates = coords
+        new_node = self.copy()
+        new_node.pair_of_coordinates = coords
+        return new_node
 
 
 @dataclass
