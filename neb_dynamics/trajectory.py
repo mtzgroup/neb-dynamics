@@ -9,6 +9,7 @@ import numpy as np
 from neb_dynamics import OBH
 from neb_dynamics.fileio import read_xyz, write_xyz
 from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.constants import angstroms_to_bohr
 
 
 @dataclass
@@ -44,7 +45,7 @@ class Trajectory:
             file_path = Path(file_path)
 
         symbols, coords = read_xyz(str(file_path.resolve()))
-        return cls.from_coords_symbs(coords=coords, symbs=symbols, tot_charge=tot_charge, tot_spinmult=tot_spinmult)
+        return cls.from_coords_symbs(coords=np.array(coords)*angstroms_to_bohr, symbs=symbols, tot_charge=tot_charge, tot_spinmult=tot_spinmult)
 
     @classmethod
     def from_coords_symbs(cls, coords, symbs, tot_charge=0, tot_spinmult=1):

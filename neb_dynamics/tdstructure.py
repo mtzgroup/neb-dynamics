@@ -31,9 +31,9 @@ class TDStructure:
             atom.SetVector(x, y, z)
         
 
-    @property
-    def coords_bohr(self):
-        return self.coords*angstroms_to_bohr
+    # @property
+    # def coords_bohr(self):
+    #     return self.coords*angstroms_to_bohr
 
     @property
     def symbols(self):
@@ -90,6 +90,9 @@ class TDStructure:
         obmol = pybel_mol.OBMol
         obmol.SetTotalCharge(tot_charge)
         obmol.SetTotalSpinMultiplicity(tot_spinmult)
+
+
+        # TODO: need to convert read-in coordinates from Angstroms to Bohr
 
         return cls(molecule_obmol=obmol)
 

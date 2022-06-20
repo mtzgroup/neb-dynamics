@@ -52,8 +52,7 @@ def _attempt_step(node: Node3D, grad, t, f):
     struct = node.tdstructure
 
     
-    new_coords_bohr = struct.coords_bohr - t * grad
-    new_coords = new_coords_bohr * BOHR_TO_ANGSTROMS
+    new_coords = struct.coords - t * grad
 
     new_node = node.update_coords(new_coords)
 

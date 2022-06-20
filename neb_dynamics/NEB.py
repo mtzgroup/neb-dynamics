@@ -12,12 +12,9 @@ from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
-from neb_dynamics.constants import angstroms_to_bohr as ANGSTROM_TO_BOHR
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
-
-BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR
 
 
 @dataclass
@@ -161,7 +158,7 @@ class Node3D(Node):
         calc = Calculator(
             get_method("GFN2-xTB"),
             numbers=np.array(atomic_numbers),
-            positions=tdstruct.coords_bohr,
+            positions=tdstruct.coords,
             charge=tdstruct.charge,
             uhf=tdstruct.spinmult - 1,
         )
@@ -491,7 +488,7 @@ class NEB:
     def update_chain(self, chain: Chain) -> Chain:
         # print(f"{chain.gradients=}")
         new_chain_coordinates = (
-            chain.coordinates - (chain.gradients*BOHR_TO_ANGSTROMS) * chain.displacements
+            chain.coordinates - (chain.gradients) * chain.displacements
         )
         new_nodes = []
         for node, new_coords in zip(chain.nodes, new_chain_coordinates):
@@ -515,7 +512,7 @@ class NEB:
 
     def _check_grad_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
-        mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])*BOHR_TO_ANGSTROMS
+        mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])
 
         delta_converged = np.where(delta_grad < self.grad_thre)
         mag_converged = np.where(mag_grad < self.mag_grad_thre)
