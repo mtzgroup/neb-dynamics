@@ -102,15 +102,15 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 10
+    nimages = 15
     end_point = (3.00002182, 1.99995542)
     start_point = (-3.77928812, -3.28320392)
 
 
     coords = np.linspace(start_point, end_point, nimages)
-    chain = Chain.from_list_of_coords(k=1, list_of_coords=coords, node_class=Node2D)
-    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=0.001,en_thre=0.001, mag_grad_thre=10,redistribute=True,
-    climb=False, steps_until_climb=220)
+    chain = Chain.from_list_of_coords(k=0.5, list_of_coords=coords, node_class=Node2D)
+    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=5e-3,en_thre=5e-3, mag_grad_thre=10000 ,redistribute=True,
+    climb=True, k_climb=0.5)
     try: 
         n.optimize_chain()
         plot_2D(n)
@@ -118,8 +118,9 @@ def main():
         animate_func(n)
     except NoneConvergedException as e:
         print(e.obj.chain_trajectory[-1].gradients)
-        animate_func(e.obj)
+        plot_2D(e.obj)
         plot_func(e.obj)
+        animate_func(e.obj)
         
 
  

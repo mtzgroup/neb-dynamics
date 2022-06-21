@@ -115,14 +115,13 @@ class Node2D(Node):
         from neb_dynamics import ALS
 
         # print(f"input grad: {grad}")
-        # if not self.converged:
-        dr = ALS.ArmijoLineSearch(
-            node=self, grad=grad, t=0.01,beta=0.5, f=self.en_func, alpha=0.3
-        )
-        # print(f"\toutput dr: {dr}")
-        return dr
-        # else:
-        #     return 0.0
+        if not self.converged:
+            dr = ALS.ArmijoLineSearch(
+                node=self, grad=grad, t=0.01,beta=0.5, f=self.en_func, alpha=0.3
+            )
+            return dr
+        else:
+            return 0.0
 
     def copy(self):
         return Node2D(
@@ -190,7 +189,6 @@ class Node3D(Node):
 
         if not self.converged:
             dr = ALS.ArmijoLineSearch(node=self, grad=grad, t=1,beta=0.5, f=self.en_func, alpha=0.3)
-            # dr = 1
             return dr
         else:
             return 0.0
@@ -248,16 +246,14 @@ class Chain:
             if not current_node.converged:
                 if not current_node.do_climb:
                     grad = self.spring_grad_neb(prev_node, current_node, next_node)
-                    grads.append(grad)
 
                 elif current_node.do_climb:
-                    # print("THIS NODE WANTS TO CLIMB BB")
                     grad = self.climb_grad_neb(prev_node, current_node, next_node)
-                    # print(f"ITS GRAD IS: {grad=}")
-                    grads.append(grad)
-
+                
                 else:
                     raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
+
+                grads.append(grad)
 
             else:
                 grads.append(np.zeros_like(current_node.gradient))
@@ -342,12 +338,6 @@ class Chain:
             - np.abs(current_node.coords - prev_node.coords)
         )
 
-        # ## this prevents stuff from blowing up in 3D case... somehow...
-        # direction = np.sum(current_node.dot_function(
-        #         (next_node.coords - current_node.coords), force_spring),axis=len(current_node.coords.shape)-1)
-        
-        # force_spring[direction < 0] *= -1
-
         return force_spring
 
     def _get_anti_kink_switch_func(
@@ -399,12 +389,11 @@ class Chain:
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
         pe_grad = current_node.gradient
-        pe_grad_nudged = self._get_nudged_pe_grad(
-            node=current_node, unit_tangent=unit_tan_path
-        )
+        pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
+        pe_along_path = pe_along_path_const*unit_tan_path
 
 
-        climbing_grad = -2*pe_grad_nudged
+        climbing_grad = -2*pe_along_path
 
         return pe_grad + climbing_grad
 
@@ -421,7 +410,7 @@ class NEB:
     grad_thre: float = 0.001
     mag_grad_thre: float = 0.01
     max_steps: float = 1000
-    steps_until_climb: int = 3
+    k_climb: float = 0.1
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
@@ -439,13 +428,48 @@ class NEB:
         for ind in inds_maxima: 
             chain[ind].do_climb = True
         
+    def climb_chain(self, chain: Chain):
+        nsteps = 1
+        chain_previous = chain.copy()
+        self.set_climbing_nodes(chain_previous)
+
+        while nsteps < self.max_steps + 1:
+
+            new_chain = self.update_chain(chain=chain_previous)
+            print(
+                f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}"
+            )
+
+            self.chain_trajectory.append(new_chain)
+
+            if self._chain_converged(
+                chain_prev=chain_previous, chain_new=new_chain
+            ):
+                print(f"Chain converged!")
+
+
+                self.optimized = new_chain
+                return
+            chain_previous = new_chain.copy()
+            nsteps += 1
+
+
+
+        new_chain = self.update_chain(chain=chain_previous)
+        if not self._chain_converged(
+            chain_prev=chain_previous, chain_new=new_chain
+        ):
+            raise NoneConvergedException(
+                trajectory=self.chain_trajectory,
+                msg=f"Chain did not converge at step {nsteps}",
+                obj=self,
+            )
+
     def optimize_chain(self):
         nsteps = 1
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps + 1:
-            if nsteps+1 == self.steps_until_climb and self.climb:
-                self.set_climbing_nodes(chain_previous)
 
             new_chain = self.update_chain(chain=chain_previous)
             print(
@@ -466,9 +490,16 @@ class NEB:
                     self.chain_trajectory.append(new_chain)
 
                 if self.redistribute:
-                    new_chain = self.redistribute_chain(chain=new_chain.copy(), requested_length_of_chain=original_chain_len)
+                    climbing_chain = new_chain.copy()
+                    climbing_chain.k = self.k_climb
+
+
+                    new_chain = self.redistribute_chain(chain=climbing_chain, requested_length_of_chain=original_chain_len)
                     self.chain_trajectory.append(new_chain)
 
+                if self.climb:
+
+                    new_chain = self.climb_chain(chain=new_chain.copy())
 
                 self.optimized = new_chain
                 return
@@ -486,6 +517,7 @@ class NEB:
                 msg=f"Chain did not converge at step {nsteps}",
                 obj=self,
             )
+
 
     def update_chain(self, chain: Chain) -> Chain:
         # print(f"{chain.gradients=}")
