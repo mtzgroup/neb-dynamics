@@ -17,8 +17,6 @@ from xtb.ase.calculator import XTB
 from xtb.interface import Calculator
 from xtb.utils import get_method
 
-from ALS_xtb import ArmijoLineSearch
-from NEB_xtb import neb
 
 out_dir = Path("/Users/janestrada/neb_dynamics/example_cases")
 rxn_file = Path("/Users/janestrada/Retropaths/retropaths/data/reactions.p")
@@ -31,73 +29,14 @@ random.seed(1)
 
 from neb_dynamics.helper_functions import pload
 
-# +
-# foo = pload(rxn_file)
+foo = pload(rxn_file)
+
+foo["Beckmann-Rearrangement"].draw()
+
+[print(r) for r in foo]
 
 # +
-# foo["Chan-Rearrangement"].draw()
-
-# +
-# [print(r) for r in foo]
-# -
-
-n = neb()
-
-# +
-# from ALS_xtb import ArmijoLineSearch
-# def opt_func(tdstruct, en_func, grad_func, en_thre=0.0001, grad_thre=0.0001, maxsteps=5000):
-# # en_thre=0.01
-# # grad_thre=0.01
-# # maxsteps=5
-# # en_func = n.en_func
-# # grad_func = n.grad_func
-#     # dr = 0.1
-
-
-#     e0 = en_func(tdstruct)
-#     g0 = grad_func(tdstruct)
-#     dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=1, alpha=0.3, beta=0.8, f=en_func)
-#     print(f"DR -->{dr}")
-#     count = 0
-
-#     coords1 = tdstruct.coords_bohr - dr*g0
-#     tdstruct_prime = TDStructure.from_coords_symbs(
-#         coords=coords1*BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols,
-#         tot_charge=tdstruct.charge,
-#         tot_spinmult=tdstruct.spinmult
-#     )
-
-
-#     e1 = en_func(tdstruct_prime)
-#     g1 = grad_func(tdstruct_prime)
-
-#     struct_conv = (np.abs(e1-e0) < en_thre) and False not in (np.abs(g1-g0) < grad_thre).flatten()
-
-#     while not struct_conv and count < maxsteps:
-#         count+=1
-
-#         e0 = e1
-#         g0 = g1
-
-#         coords1 = tdstruct.coords_bohr - dr*g0
-#         tdstruct_prime = TDStructure.from_coords_symbs(
-#             coords=coords1*BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols,
-#             tot_charge=tdstruct.charge,
-#             tot_spinmult=tdstruct.spinmult
-#         )
-
-
-#         e1 = en_func(tdstruct_prime)
-#         g1 = grad_func(tdstruct_prime)
-
-#         struct_conv = (np.abs(e1-e0) < en_thre) and False not in (np.abs(g1-g0) < grad_thre).flatten()
-
-#     print(f"Converged --> {struct_conv} in {count} steps")
-#     return tdstruct_prime
-
-
-# +
-rn = "Chan-Rearrangement"
+rn = "Beckmann-Rearrangement"
 inps = Inputs(rxn_name=rn, reaction_file=rxn_file)
 
 

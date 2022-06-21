@@ -3,18 +3,13 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from ase.atoms import Atoms
-from ase.optimize.lbfgs import LBFGS
-from retropaths.abinitio.geodesic_input import GeodesicInput
-from retropaths.abinitio.tdstructure import TDStructure
-from retropaths.abinitio.trajectory import Trajectory
-from xtb.ase.calculator import XTB
-from xtb.interface import Calculator
-from xtb.libxtb import VERBOSITY_MUTED
-from xtb.utils import get_method
 
-from ALS_xtb import ArmijoLineSearch
-from NEB_xtb import neb
+from retropaths.abinitio.geodesic_input import GeodesicInput
+from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.trajectory import Trajectory
+
+
+from neb_dynamics.NEB import NEB, Chain, Node3D
 
 # +
 
@@ -22,103 +17,42 @@ ANGSTROM_TO_BOHR = 1.88973
 BOHR_TO_ANGSTROMS = 1 / ANGSTROM_TO_BOHR
 # -
 
-data_dir = Path("./example_cases/")
-# traj = Trajectory.from_xyz(data_dir/'diels_alder.xyz')
-traj = Trajectory.from_xyz(data_dir / "PDDA_geodesic.xyz")
-# traj = Trajectory.from_xyz(data_dir/"Claisen-Rearrangement_geodesic.xyz")
+# # DA attempt
+
+data_dir = Path("../example_cases/")
+traj = Trajectory.from_xyz(data_dir/"DA_geodesic_opt.xyz")
+
+coords = list(traj)
+chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
+
+n = NEB(initial_chain=chain, grad_thre=0.0001, mag_grad_thre=0.1)
+# n.optimize_chain()
+
+end = n.update_chain(chain)
+end2 = n.update_chain(end)
+
+end3 = n.update_chain(end2)
+
+foo = chain.coordinates - chain.gradients*chain.displacements
+
+np.mean([np.linalg.norm(grad) for grad in chain.gradients])
+
+i=10
+foo_struct = TDStructure.from_coords_symbs(coords=end3[i].coords, symbs=end3[i].tdstructure.symbols)
+foo_struct.write_to_disk(data_dir/"WTFFFFF.xyz")
+
+chain.displacements
+
+original_chain_ens = [Node3D.en_func(node) for node in chain]
+maybe_ens = [node.energy for node in end3]
+plt.plot(original_chain_ens)
+plt.plot(maybe_ens, "o")
 
 
-struct = traj[5]
 
-# +
-# struct.write_to_disk(data_dir/'orig.xyz')
+# # PDDA repro
 
-# +
-# n = neb()
-# t=1
-# grad = n.grad_func(struct)
-# f = n.en_func
-
-# new_coords_bohr = struct.coords_bohr - t*grad
-# new_coords = new_coords_bohr*BOHR_TO_ANGSTROMS
-
-# struct_prime = TDStructure.from_coords_symbs(
-#             coords=new_coords,
-#             symbs=struct.symbols,
-#             tot_charge=struct.charge,
-#             tot_spinmult=struct.spinmult)
-
-# en_struct_prime = f(struct_prime)
-
-# +
-# en_struct_prime
-
-# +
-# struct_prime.write_to_disk(data_dir/'wtf.xyz')
-# -
-
-n = neb()
-n.en_func(struct)
-
-
-struct.charge
-
-struct.spinmult
-
-# +
-tdstruct = struct
-en_func = n.en_func
-grad_func = n.grad_func
-en_thre = 0.0001
-grad_thre = 0.0001
-maxsteps = 1000
-
-
-e0 = en_func(tdstruct)
-g0 = grad_func(tdstruct)
-
-
-# dr=0.1
-dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=1, alpha=0.3, beta=0.8, f=en_func)
-
-count = 0
-
-coords1 = tdstruct.coords_bohr - dr * g0
-tdstruct_prime = TDStructure.from_coords_symbs(coords=coords1 * BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols, tot_charge=tdstruct.charge, tot_spinmult=tdstruct.spinmult)
-
-
-e1 = en_func(tdstruct_prime)
-g1 = grad_func(tdstruct_prime)
-
-struct_conv = (np.abs(e1 - e0) < en_thre) and False not in (np.abs(g1 - g0) < grad_thre).flatten()
-print(f"DR -->{dr}")
-while not struct_conv and count < maxsteps:
-    count += 1
-
-    e0 = e1
-    g0 = g1
-
-    dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=0.5, alpha=0.3, beta=0.8, f=en_func)
-    coords1 = tdstruct.coords_bohr - dr * g0
-    tdstruct_prime = TDStructure.from_coords_symbs(coords=coords1 * BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols, tot_charge=tdstruct.charge, tot_spinmult=tdstruct.spinmult)
-
-    e1 = en_func(tdstruct_prime)
-    g1 = grad_func(tdstruct_prime)
-
-    struct_conv = (np.abs(e1 - e0) < en_thre) and False not in (np.abs(g1 - g0) < grad_thre).flatten()
-
-print(f"Converged --> {struct_conv} in {count} steps")
-
-# +
-# n.opt_func(tdstruct=struct,en_func=n.en_func,grad_func=n.grad_func)
-# -
-
-# # NEB
-
-from NEB_xtb import neb
-
-n = neb()
-
+data_dir = Path("../example_cases/")
 start = TDStructure.from_fp(data_dir / "root_opt.xyz")
 
 end = TDStructure.from_fp(data_dir / "end_opt.xyz")
@@ -126,9 +60,25 @@ end = TDStructure.from_fp(data_dir / "end_opt.xyz")
 gi = GeodesicInput.from_endpoints(initial=start, final=end)
 traj = gi.run(nimages=31, friction=0.01)
 
-original_chain_ens = [n.en_func(s) for s in traj]
+coords = list(traj)
+chain = Chain.from_list_of_coords(k=10, list_of_coords=coords, node_class=Node3D)
+n = NEB(initial_chain=chain, grad_thre=0.0001, mag_grad_thre=0.1)
+
+# +
+
+original_chain_ens = [Node3D.en_func(node) for node in chain]
+# -
 
 plt.plot(original_chain_ens)
+
+n.optimize_chain()
+
+opt_ens = [Node3D.en_func(node) for node in n.chain_trajectory[-1]]
+
+plt.plot(list(range(len(opt_ens))), opt_ens, "o--")
+
+foo = Trajectory([x.tdstructure for x in n.optimized.nodes])
+foo.write_trajectory(Path("./wtf.xyz"))
 
 # +
 foo1 = np.array([[1, 2, 3]])

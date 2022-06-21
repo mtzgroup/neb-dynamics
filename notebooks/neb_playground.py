@@ -1,16 +1,90 @@
 # -*- coding: utf-8 -*-
 import matplotlib.pyplot as plt
 import numpy as np
+from pathlib import Path
+from neb_dynamics.trajectory import Trajectory
+from matplotlib.animation import FuncAnimation
+from neb_dynamics.helper_functions import pairwise
 
-from NEB import neb
-from neb_dynamics.helper_functions import pload
+# from NEB import neb
+from neb_dynamics.NEB import Chain, Node3D, NEB, Node2D
+# from neb_dynamics.ALS_xtb import ArmijoLineSearch
+from neb_dynamics.ALS import ArmijoLineSearch
 
-# # Define potentials
+
+fp = Path("../example_cases/neb_DA_k0.xyz")
+traj = Trajectory.from_xyz(fp)
+chain = Chain.from_traj(traj, k=1)
+
+plt.plot(chain.energies, 'o-')
+
+# # c-NEB
+
+n = NEB(initial_chain=chain, mag_grad_thre=1, grad_thre=0.0001, en_thre=0.0001)
+
+# + tags=[]
+n.climb_chain(chain)
+# -
+
+chain_ens = chain.energies
+opt_ens = n.optimized.energies
+
+# +
+
+plt.plot((chain_ens-chain_ens[0])*627.5, '-', label='NEB (k=0)')
+plt.plot((opt_ens-opt_ens[0])*627.5, 'o--', label='cNEB (k=1)')
+# -
+
+cneb_traj = Trajectory([node.tdstructure for node in n.optimized.nodes])
+cneb_traj.write_trajectory(Path("./cneb.xyz"))
+
+# # Redistribution
+
+# +
+n = NEB(initial_chain=chain)
+direction = np.array(
+    [
+        next_node.coords - current_node.coords
+        for current_node, next_node in pairwise(chain)
+    ]
+)
+distances = np.linalg.norm(direction, axis=1)
+tot_dist = np.sum(distances)
+cumsum = np.cumsum(distances)  # cumulative sum
+cumsum = np.insert(cumsum, 0, 0)
 
 
-def coulomb(r, d, r0, alpha):
-    return (d / 2) * ((3 / 2) * np.exp(-2 * alpha * (r - r0)) - np.exp(-alpha * (r - r0)))
+cum=cumsum
+distributed_chain = []
+for num in np.linspace(0, tot_dist, len(chain)):
 
+    for ii, ((cum_sum_init, node_start), (cum_sum_end, node_end)) in enumerate(pairwise(zip(cum, chain))):
+
+            if cum_sum_init <= num < cum_sum_end:
+                direction = node_end.coords - node_start.coords
+                percentage = (num - cum_sum_init) / (cum_sum_end - cum_sum_init)
+
+                new_node = node_start.copy()
+                new_coords = node_start.coords + (direction * percentage)
+                new_node = new_node.update_coords(new_coords)
+    print(f"{new_node}")
+
+    distributed_chain.append(new_node)
+
+distributed_chain[0] = chain[0]
+distributed_chain[-1] = chain[-1]
+
+
+# -
+
+dist_chain = Chain(distributed_chain, k=0.1)
+
+plt.plot(chain.energies, 'o--')
+plt.plot(dist_chain.energies, "o")
+
+dist_traj = Trajectory([n.tdstructure for n in dist_chain])
+
+dist_traj.write_trajectory(Path("./bs.xyz"))
 
 coulomb(d=4.746, r=1, r0=0.742, alpha=1.942)
 
@@ -218,11 +292,13 @@ def grad_y(
 # + ((J_BC**2) / ((1 + b) ** 2))
 
 
+
 # + ((J_AC**2) / ((1 + c) ** 2))
 #     )
 #     result_Js_2 = (
 #         ((J_AB * J_BC) / ((1 + a) * (1 + b)))
 # + ((J_AC * J_BC) / ((1 + c) * (1 + b)))
+
 
 
 # + ((J_AB * J_AC) / ((1 + a) * (1 + c)))
@@ -293,9 +369,6 @@ def toy_grad_3(inp):
     )
 
     return np.array([dx, dy])
-
-
-# # Get minima
 
 
 from scipy.optimize import fmin
@@ -438,268 +511,3 @@ plt.plot(ens, "o", label="neb")
 # plt.plot(ens_peb, 'o--',label="peb")
 plt.plot(ens_orig, label="orig")
 plt.legend()
-
-# # 3D
-
-
-# # Anim
-
-chain = np.linspace(start_point, end_point, nimages)
-
-chain
-
-# + tags=[]
-final_chain, all_chains = n.optimize_chain(
-    chain=chain,
-    en_func=en_func,
-    grad_func=grad_func,
-    en_thre=0.001,
-    grad_thre=0.001,
-    max_steps=nsteps,
-    k=10,
-)
-# final_chain_peb, all_chains_peb = optimize_chain(chain=chain, en_func=en_func, grad_func=grad_func, en_thre=0.01, grad_thre=0.01, update_func=update_points_spring, max_steps=nsteps,k=k)
-
-# +
-plt.style.use("seaborn-pastel")
-fs = 19
-num = 100
-en_func = potential
-grad_func = grad
-# figsize = 10
-
-# fig, ax = plt.subplots(figsize=(1.18 * figsize, figsize))
-
-
-# plt.plot(
-#     [(point[0]) for point in chain],
-#     [(point[1]) for point in chain],
-#     "^--",
-#     c="white",
-#     label="original",
-# )
-
-# plt.plot(points_x, points_y, "o--", c="white", label="NEB")
-# plt.xticks(fontsize=fs)
-# plt.yticks(fontsize=fs)
-
-
-# x = np.linspace(start=0.5, stop=4, num=num)
-# xx, yy = np.meshgrid(x,x)
-# y = x.reshape(-1, 1)
-
-
-# h = en_func(x, y)
-# h = en_func([xx, yy])
-# cs = plt.contourf(xx, yy, h)
-# cbar = f.colorbar(cs, ax=ax)
-# cbar.ax.tick_params(labelsize=fs)
-
-figsize = 5
-
-f, ax = plt.subplots(figsize=(1.18 * figsize, figsize))
-x = np.linspace(start=0.5, stop=4, num=num)
-y = x.reshape(-1, 1)
-
-
-# h = en_func(x, y)
-h = en_func([x, y])
-cs = plt.contourf(x, x, h)
-cbar = f.colorbar(cs, ax=ax)
-
-
-# points_x = [point[0] for point in final_chain]
-# points_y = [point[1] for point in final_chain]
-
-
-# +
-# %matplotlib widget
-
-import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib.animation import FuncAnimation
-
-plt.style.use("seaborn-pastel")
-
-figsize = 5
-
-fig, ax = plt.subplots(figsize=(1.18 * figsize, figsize))
-x = np.linspace(start=0.5, stop=4, num=num)
-y = x.reshape(-1, 1)
-
-
-# h = en_func(x, y)
-h = en_func([x, y])
-cs = plt.contourf(x, x, h)
-cbar = f.colorbar(cs, ax=ax)
-(line,) = ax.plot([], [], lw=3)
-
-
-def init():
-    line.set_data([], [])
-    return (line,)
-
-
-def animate(chain):
-
-    x = chain[:, 0]
-    y = chain[:, 1]
-    line.set_data(x, y)
-    return (line,)
-
-
-anim = FuncAnimation(fig=fig, func=animate, frames=all_chains, blit=True, repeat_delay=1000, interval=200)
-anim.save("neb_potential_LEP.gif", writer="imagemagick")
-
-# +
-c = all_chains[3]
-x_foo = c[:, 0]
-y_foo = c[:, 1]
-
-plt.plot(x_foo, y_foo)
-# -
-
-# # Points redistributions and shit
-
-orig_chain = pload("new_chain.p")
-chain = orig_chain
-
-# +
-# chain=np.array([[-3.77928812, -3.28320392],
-#        [-3.66424971, -2.99277951],
-#        [-3.4288167 , -2.21595732],
-#        [-3.26213644, -1.41244935],
-#        [-3.14727529, -0.6506947 ],
-#        [-3.03797399,  0.26355227],
-#        [-2.89784718,  1.63926439],
-#        [-1.34842391,  3.23292859],
-#        [-0.4675266 ,  2.94281472],
-#        [ 0.26723079,  2.8615556 ],
-#        [ 1.00139512,  2.7672409 ],
-#        [ 1.90783469,  2.59743021],
-#        [ 2.81266988,  2.20352924],
-#        [ 3.16778457,  1.60701931],
-#        [ 3.00002182,  1.99995542]])
-# -
-
-plt.plot(chain[:, 0], chain[:, 1])
-
-
-def _get_vectors(chain, i):
-    view = chain[i - 1 : i + 2]
-    vec1 = view[1] - view[0]
-    vec2 = view[2] - view[1]
-    return vec1, vec2
-
-
-def _check_converged(chain):
-    dps = []
-    for i in range(1, len(chain) - 1):
-        vec1, vec2 = _get_vectors(chain, i)
-        dps.append(np.dot(vec1, vec2) > 0)
-
-    return all(dps)
-
-
-# +
-not_converged = True
-count = 0
-points_removed = []
-while not_converged:
-    print(f"on count {count}...")
-    new_chain = []
-    for i in range(len(chain)):
-        if i == 0 or i == len(chain) - 1:
-            new_chain.append(chain[i])
-            continue
-
-        vec1, vec2 = _get_vectors(chain, i)
-        # print(np.dot(vec1, vec2))
-        if np.dot(vec1, vec2) > 0:
-            new_chain.append(chain[i])
-        else:
-            points_removed.append(chain[i])
-
-    new_chain = np.array(new_chain)
-    if _check_converged(new_chain):
-        not_converged = False
-    chain = new_chain.copy()
-    count += 1
-
-
-# -
-
-# new_chain = np.array(new_chain)
-plt.scatter(new_chain[:, 0], new_chain[:, 1])
-
-points_removed = np.array(points_removed)
-plt.scatter(points_removed[:, 0], points_removed[:, 1])
-
-len(points_removed)
-
-len(new_chain)
-
-# # Redistribution
-
-from neb_dynamics.helper_functions import pairwise
-
-direction = np.array([b - a for a, b in pairwise(new_chain)])
-
-distances = np.linalg.norm(direction, axis=1)
-tot_dist = np.sum(distances)
-tot_dist
-
-cum = np.cumsum(distances)  # cumulative sum
-cum = np.insert(cum, 0, 0)
-cum
-
-
-# + tags=[]
-def dioboia(num, cum, new_chain):
-    for ii, ((aaa, china), (bbb, chainb)) in enumerate(pairwise(zip(cum, new_chain))):
-        # print(f"{aaa=} {num=} {bbb=}")
-        if aaa < num < bbb:
-            direction = chainb - china
-            distance = np.linalg.norm(direction)
-            percentage = (num - aaa) / (bbb - aaa)
-            point = china + (direction * percentage)
-            # print(f"\n\n{num=} -> {ii=}\n{aaa=}\n{bbb=}\n{percentage=:.2%}\n{china=}\n{chainb=}\n{distance=}\n{point=}\n")
-            return point
-
-
-distributed_chain = []
-for num in np.linspace(0, tot_dist, len(new_chain)):
-    foobar = dioboia(num, cum, new_chain)
-    # print(num, foobar)
-    distributed_chain.append(foobar)
-# -
-
-cum
-
-
-distributed_chain[0] = new_chain[0]
-distributed_chain[-1] = new_chain[-1]
-
-distributed_chain
-
-# new_chain = np.array(new_chain)
-
-
-distributed_chain = np.array(distributed_chain)
-plt.plot(new_chain[:, 0], new_chain[:, 1])
-plt.scatter(distributed_chain[:, 0], distributed_chain[:, 1])
-
-from NEB import neb
-
-n = neb()
-
-foo, footer = n.optimize_chain(
-    chain=distributed_chain,
-    grad_func=toy_grad_2,
-    en_func=toy_potential_2,
-    k=10,
-)
-
-plt.scatter(foo[:, 0], foo[:, 1])
-
-plt.plot([toy_potential_2(p) for p in foo])

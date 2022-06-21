@@ -109,7 +109,7 @@ def main():
 
     coords = np.linspace(start_point, end_point, nimages)
     chain = Chain.from_list_of_coords(k=0.5, list_of_coords=coords, node_class=Node2D)
-    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=5e-3,en_thre=5e-3, mag_grad_thre=10000 ,redistribute=True,
+    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=5e-3,en_thre=5e-3, mag_grad_thre=10000 ,redistribute=False,
     climb=True, k_climb=0.5)
     try: 
         n.optimize_chain()
