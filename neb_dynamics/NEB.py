@@ -117,7 +117,7 @@ class Node2D(Node):
         # print(f"input grad: {grad}")
         if not self.do_climb:
             dr = ALS.ArmijoLineSearch(
-                node=self, grad=grad, t=.1,beta=0.5, f=self.en_func, alpha=0.3
+                node=self, grad=grad, t=.01,beta=0.5, f=self.en_func, alpha=0.3
             )
             return dr
         elif self.do_climb:
@@ -194,11 +194,18 @@ class Node3D(Node):
     def displacement(self, grad):
         from neb_dynamics import ALS
 
-        # if not self.converged:
-        dr = ALS.ArmijoLineSearch(node=self, grad=grad, t=1,beta=0.5, f=self.en_func, alpha=0.3)
-        return dr
-        # else:
-        #     return 0.0
+        if not self.do_climb:
+            dr = ALS.ArmijoLineSearch(
+                node=self, grad=grad, t=.1,beta=0.5, f=self.en_func, alpha=0.3
+            )
+            return dr
+        elif self.do_climb:
+            dr = ALS.ArmijoLineSearch(
+                node=self, grad=-1*grad, t=.01,beta=0.5, f=self.en_func, alpha=0.3
+            )
+
+            print(f"\t\t climbing: {grad=} // {dr=}")
+            return dr
 
     def copy(self):
         return Node3D(tdstructure=self.tdstructure.copy(), converged=self.converged, do_climb=self.do_climb)
@@ -491,7 +498,7 @@ class NEB:
             node.converged = False
 
 
-        inds_maxima = argrelextrema(chain.energies, np.greater, order=1)[0]
+        inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
         print(f"----->Setting {len(inds_maxima)} nodes to climb")
 
         for ind in inds_maxima: 
@@ -540,7 +547,7 @@ class NEB:
 
         while nsteps < self.max_steps + 1:
             
-            if nsteps==50: self.set_climbing_nodes(chain=chain_previous)
+            # if nsteps==50: self.set_climbing_nodes(chain=chain_previous)
 
             new_chain = self.update_chain(chain=chain_previous)
             print(
@@ -567,9 +574,9 @@ class NEB:
                     new_chain = self.redistribute_chain(chain=new_chain.copy(), requested_length_of_chain=original_chain_len)
                     self.chain_trajectory.append(new_chain)
 
-                # if self.climb:
-                #     climbing_chain = new_chain.copy()
-                #     new_chain = self.climb_chain(chain=climbing_chain.copy())
+                if self.climb:
+                    climbing_chain = new_chain.copy()
+                    new_chain = self.climb_chain(chain=climbing_chain.copy())
 
                 self.optimized = new_chain
                 return
