@@ -76,5 +76,5 @@ def ArmijoLineSearch(node: Node3D, grad, t, alpha, beta, f):
 
         condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
 
-    print(f"\t\t\t{t=} {count=}")
+    # print(f"\t\t\t{t=} {count=}")
     return t
