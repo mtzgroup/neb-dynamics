@@ -107,15 +107,22 @@ def main():
     start_point = (-3.77928812, -3.28320392)
 
 
+
     coords = np.linspace(start_point, end_point, nimages)
-    chain = Chain.from_list_of_coords(k=0.5, list_of_coords=coords, node_class=Node2D)
-    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=5e-3,en_thre=5e-3, mag_grad_thre=10000 ,redistribute=False,
-    climb=True, k_climb=0.5)
+    # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
+    # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
+    ks = 1
+    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D, delta_k=0.9)
+    n = NEB(initial_chain=chain, max_steps=2000, grad_thre=1e-4,en_thre=5e-3, mag_grad_thre=10000 ,redistribute=False,
+    climb=False, k_climb=ks)
     try: 
         n.optimize_chain()
         plot_2D(n)
         plot_func(n)
         animate_func(n)
+
+    except AlessioError as e:
+        print(e.message)
     except NoneConvergedException as e:
         print(e.obj.chain_trajectory[-1].gradients)
         plot_2D(e.obj)
