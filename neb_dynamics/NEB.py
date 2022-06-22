@@ -115,11 +115,18 @@ class Node2D(Node):
         from neb_dynamics import ALS
 
         # print(f"input grad: {grad}")
-        # if not self.converged:
-        dr = ALS.ArmijoLineSearch(
-            node=self, grad=grad, t=.01,beta=0.5, f=self.en_func, alpha=0.3
-        )
-        return dr
+        if not self.do_climb:
+            dr = ALS.ArmijoLineSearch(
+                node=self, grad=grad, t=.1,beta=0.5, f=self.en_func, alpha=0.3
+            )
+            return dr
+        elif self.do_climb:
+            dr = ALS.ArmijoLineSearch(
+                node=self, grad=-1*grad, t=.01,beta=0.5, f=self.en_func, alpha=0.3
+            )
+
+            print(f"\t\t climbing: {grad=} // {dr=}")
+            return dr
         # else:
         #     return 0.0
 
@@ -187,11 +194,11 @@ class Node3D(Node):
     def displacement(self, grad):
         from neb_dynamics import ALS
 
-        if not self.converged:
-            dr = ALS.ArmijoLineSearch(node=self, grad=grad, t=1,beta=0.5, f=self.en_func, alpha=0.3)
-            return dr
-        else:
-            return 0.0
+        # if not self.converged:
+        dr = ALS.ArmijoLineSearch(node=self, grad=grad, t=1,beta=0.5, f=self.en_func, alpha=0.3)
+        return dr
+        # else:
+        #     return 0.0
 
     def copy(self):
         return Node3D(tdstructure=self.tdstructure.copy(), converged=self.converged, do_climb=self.do_climb)
@@ -212,8 +219,7 @@ class Chain:
 
     def compute_k(self):
         new_ks = []
-        # k_max = max(self.k) if hasattr(self.k, '__iter__') else self.k
-        k_max = 1
+        k_max = max(self.k) if hasattr(self.k, '__iter__') else self.k
         e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
         e_max = max(self.energies)
 
@@ -258,9 +264,9 @@ class Chain:
             yield self.nodes[i - 1 : i + 2]
 
     @classmethod
-    def from_traj(cls, traj, k=10):
+    def from_traj(cls, traj, k, delta_k):
         nodes = [Node3D(s) for s in traj]
-        return Chain(nodes, k=k)
+        return Chain(nodes, k=k, delta_k=delta_k)
         
 
     @classmethod
@@ -278,45 +284,43 @@ class Chain:
         spring_forces_nudged_no_k = []
         anti_kinking_grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
-            if not current_node.converged:
-                vec_tan_path = self._create_tangent_path(prev_node, current_node, next_node)
-                unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
+            # if not current_node.converged:
+            vec_tan_path = self._create_tangent_path(prev_node, current_node, next_node)
+            unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
+            
+            if not current_node.do_climb:
+                pe_grads_nudged.append(self.get_pe_grad_nudged(prev_node=prev_node, current_node=current_node,next_node=next_node))
+                spring_forces_nudged_no_k.append(self.get_force_spring_nudged_no_k(prev_node=prev_node, current_node=current_node,next_node=next_node, unit_tan_path=unit_tan_path))
+                anti_kinking_grads.append(self.get_anti_kinking_grad(prev_node=prev_node, current_node=current_node,next_node=next_node, unit_tan_path=unit_tan_path))
+        
+
+            elif current_node.do_climb:
                 
-                if not current_node.do_climb:
-                    pe_grads_nudged.append(self.get_pe_grad_nudged(prev_node=prev_node, current_node=current_node,next_node=next_node))
-                    spring_forces_nudged_no_k.append(self.get_force_spring_nudged_no_k(prev_node=prev_node, current_node=current_node,next_node=next_node, unit_tan_path=unit_tan_path))
-                    anti_kinking_grads.append(self.get_anti_kinking_grad(prev_node=prev_node, current_node=current_node,next_node=next_node, unit_tan_path=unit_tan_path))
-            
+                pe_grad = current_node.gradient
+                pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
+                pe_along_path = pe_along_path_const*unit_tan_path
 
 
+                climbing_grad = -2*pe_along_path
 
-                elif current_node.do_climb:
-                    
-                    pe_grad = current_node.gradient
-                    pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
-                    pe_along_path = pe_along_path_const*unit_tan_path
+                pe_grads_nudged.append(pe_grad + climbing_grad)
 
 
-                    climbing_grad = -2*pe_along_path
-
-                    pe_grads_nudged.append(pe_grad + climbing_grad)
-
-
-                    zero = np.zeros_like(pe_grad)
-                    spring_forces_nudged_no_k.append(zero)
-                    anti_kinking_grads.append(zero)
-                    
-            
-                else:
-                    raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
+                zero = np.zeros_like(pe_grad)
+                spring_forces_nudged_no_k.append(zero)
+                anti_kinking_grads.append(zero)
+                
+        
+            else:
+                raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
 
                 # grads.append(grad)
 
-            else:
-                z = np.zeros_like(current_node.gradient)
-                pe_grads_nudged.append(z)
-                spring_forces_nudged_no_k.append(z)
-                anti_kinking_grads.append(z)
+            # else:
+            #     z = np.zeros_like(current_node.gradient)
+            #     pe_grads_nudged.append(z)
+            #     spring_forces_nudged_no_k.append(z)
+            #     anti_kinking_grads.append(z)
 
         pe_grads_nudged = np.array(pe_grads_nudged)
         spring_forces_nudged_no_k = np.array(spring_forces_nudged_no_k)
@@ -453,7 +457,7 @@ class Chain:
             next_node=next_node,
             unit_tangent=unit_tan_path,
         )
-
+        # print(f"{f_phi=}")
         force_spring = self.get_force_spring_no_k(prev_node=prev_node, current_node=current_node, next_node=next_node)
         force_spring_nudged = self.get_force_spring_nudged_no_k(prev_node=prev_node, current_node=current_node, next_node=next_node, unit_tan_path=unit_tan_path)
 
@@ -462,19 +466,6 @@ class Chain:
 
         return anti_kinking_grad
 
-
-    def climb_grad_neb(self, prev_node: Node, current_node: Node, next_node: Node):
-        vec_tan_path = self._create_tangent_path(prev_node, current_node, next_node)
-        unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
-
-        pe_grad = current_node.gradient
-        pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
-        pe_along_path = pe_along_path_const*unit_tan_path
-
-
-        climbing_grad = -2*pe_along_path
-
-        return pe_grad + climbing_grad
 
 
 @dataclass
@@ -489,7 +480,6 @@ class NEB:
     grad_thre: float = 0.001
     mag_grad_thre: float = 0.01
     max_steps: float = 1000
-    k_climb: float = 0.1
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
@@ -501,7 +491,7 @@ class NEB:
             node.converged = False
 
 
-        inds_maxima = argrelextrema(chain.energies, np.greater)[0]
+        inds_maxima = argrelextrema(chain.energies, np.greater, order=1)[0]
         print(f"----->Setting {len(inds_maxima)} nodes to climb")
 
         for ind in inds_maxima: 
@@ -549,11 +539,16 @@ class NEB:
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps + 1:
+            
+            if nsteps==50: self.set_climbing_nodes(chain=chain_previous)
+
             new_chain = self.update_chain(chain=chain_previous)
             print(
                 f"step {nsteps} // avg. |gradient| {np.mean([np.linalg.norm(grad) for grad in new_chain.gradients])}"
             )
 
+
+            
             self.chain_trajectory.append(new_chain)
 
             if self._chain_converged(
@@ -572,11 +567,9 @@ class NEB:
                     new_chain = self.redistribute_chain(chain=new_chain.copy(), requested_length_of_chain=original_chain_len)
                     self.chain_trajectory.append(new_chain)
 
-                if self.climb:
-                    climbing_chain = new_chain.copy()
-                    climbing_chain.k = self.k_climb
-
-                    new_chain = self.climb_chain(chain=climbing_chain.copy())
+                # if self.climb:
+                #     climbing_chain = new_chain.copy()
+                #     new_chain = self.climb_chain(chain=climbing_chain.copy())
 
                 self.optimized = new_chain
                 return

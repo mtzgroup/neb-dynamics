@@ -2,6 +2,7 @@
 from http.client import NETWORK_AUTHENTICATION_REQUIRED
 from pathlib import Path
 from platform import node
+from xmlrpc.client import FastMarshaller
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,7 +34,7 @@ def animate_func(neb_obj: NEB):
     h = sorry_func([x, y])
     cs = plt.contourf(x, x, h)
     _ = f.colorbar(cs, ax=ax)
-    (line,) = ax.plot([], [], lw=3)
+    (line,) = ax.plot([], [], 'o--', lw=3)
 
     def init():
         line.set_data([], [])
@@ -46,7 +47,8 @@ def animate_func(neb_obj: NEB):
         line.set_data(x, y)
         return (line,)
 
-    _ = FuncAnimation(fig=f, func=animate, frames=np.array([chain.coordinates for chain in chain_traj]), blit=True, repeat_delay=1000, interval=200)
+    anim = FuncAnimation(fig=f, func=animate, frames=np.array([chain.coordinates for chain in chain_traj]), blit=True, repeat_delay=1000, interval=200)
+    anim.save('c-neb.gif')
     plt.show()
 
 
@@ -102,8 +104,9 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 15
+    nimages = 8
     end_point = (3.00002182, 1.99995542)
+    # end_point = (-2.8, 3.11)
     start_point = (-3.77928812, -3.28320392)
 
 
@@ -113,8 +116,8 @@ def main():
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     ks = 1
     chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D, delta_k=0.9)
-    n = NEB(initial_chain=chain, max_steps=2000, grad_thre=1e-4,en_thre=5e-3, mag_grad_thre=10000 ,redistribute=False,
-    climb=False, k_climb=ks)
+    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=1e-4,en_thre=5e-3, mag_grad_thre=100 ,redistribute=False,
+    climb=True)
     try: 
         n.optimize_chain()
         plot_2D(n)
