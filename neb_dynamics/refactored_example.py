@@ -7,7 +7,7 @@ from xmlrpc.client import FastMarshaller
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
-from regex import F
+
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 from neb_dynamics.NEB import NEB, AlessioError, Chain, Node2D, Node3D, NoneConvergedException
@@ -105,7 +105,7 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 11
+    nimages = 7
     # end_point = (3.00002182, 1.99995542)
     end_point = (2.129, 2.224)
     start_point = (-3.77928812, -3.28320392)
@@ -117,8 +117,8 @@ def main():
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     ks = 50
     chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D, delta_k=0)
-    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=1,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
-    climb=False)
+    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=.01,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    climb=True)
     try: 
         n.optimize_chain()
         animate_func(n)
@@ -136,8 +136,8 @@ def main():
 
  
 
-#     fp = Path("../example_cases/DA_geodesic_opt.xyz")
-# # #     # fp = Path("../example_cases/debug_geodesic_claisen.xyz")
+    # fp = Path("../example_cases/DA_geodesic_opt.xyz")
+#     fp = Path("./notebooks/debug_geodesic_claisen.xyz")
 # # #     fp = Path(f"../example_cases/neb_DA_k0.1.xyz")
 # # # #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
 # # # #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
@@ -151,7 +151,7 @@ def main():
 
 #     # n = NEB(initial_chain=chain, grad_thre=0.1, en_thre=0.0001, mag_grad_thre=100, max_steps=1000, redistribute=False, remove_folding=False,
 #     # climb=True)
-#     n = NEB(initial_chain=chain, grad_thre=0.1, max_steps=1000, redistribute=False, remove_folding=False,
+#     n = NEB(initial_chain=chain, grad_thre=0.01, max_steps=1000, redistribute=False, remove_folding=False,
 #     climb=True)
 
 #     try:
