@@ -99,6 +99,37 @@ class Node2D(Node):
         dy = 2 * (x ** 2 + y - 11) + 2 * (x + y ** 2 - 7) * (2 * y)
         return np.array([dx, dy])
 
+    @staticmethod
+    def neighs_grad_func(prev_node: Node2D, current_node: Node2D, next_node: Node2D):
+        if not current_node.converged:
+                vec_tan_path = self._create_tangent_path(prev_node, current_node, next_node)
+                unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
+                
+                if not current_node.do_climb:
+                    pe_grads_nudged.append(self.get_pe_grad_nudged(prev_node=prev_node, current_node=current_node,next_node=next_node))
+                    spring_forces_nudged_no_k.append(self.get_force_spring_nudged_no_k(prev_node=prev_node, current_node=current_node,next_node=next_node, unit_tan_path=unit_tan_path))
+                    anti_kinking_grads.append(self.get_anti_kinking_grad(prev_node=prev_node, current_node=current_node,next_node=next_node, unit_tan_path=unit_tan_path))
+            
+
+                elif current_node.do_climb:
+                    
+                    pe_grad = current_node.gradient
+                    pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
+                    pe_along_path = pe_along_path_const*unit_tan_path
+
+                    climbing_grad = -2*pe_along_path
+
+                    pe_grads_nudged.append(pe_grad + climbing_grad)
+
+                    zero = np.zeros_like(pe_grad)
+                    spring_forces_nudged_no_k.append(zero)
+                    anti_kinking_grads.append(zero)
+                    
+            
+                else:
+                    raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
+
+
     @property
     def energy(self) -> float:
         return self.en_func(self)
@@ -290,34 +321,7 @@ class Chain:
         spring_forces_nudged_no_k = []
         anti_kinking_grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
-            if not current_node.converged:
-                vec_tan_path = self._create_tangent_path(prev_node, current_node, next_node)
-                unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
-                
-                if not current_node.do_climb:
-                    pe_grads_nudged.append(self.get_pe_grad_nudged(prev_node=prev_node, current_node=current_node,next_node=next_node))
-                    spring_forces_nudged_no_k.append(self.get_force_spring_nudged_no_k(prev_node=prev_node, current_node=current_node,next_node=next_node, unit_tan_path=unit_tan_path))
-                    anti_kinking_grads.append(self.get_anti_kinking_grad(prev_node=prev_node, current_node=current_node,next_node=next_node, unit_tan_path=unit_tan_path))
             
-
-                elif current_node.do_climb:
-                    
-                    pe_grad = current_node.gradient
-                    pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
-                    pe_along_path = pe_along_path_const*unit_tan_path
-
-                    climbing_grad = -2*pe_along_path
-
-                    pe_grads_nudged.append(pe_grad + climbing_grad)
-
-                    zero = np.zeros_like(pe_grad)
-                    spring_forces_nudged_no_k.append(zero)
-                    anti_kinking_grads.append(zero)
-                    
-            
-                else:
-                    raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
-
 
             else:
                 z = np.zeros_like(current_node.gradient)
