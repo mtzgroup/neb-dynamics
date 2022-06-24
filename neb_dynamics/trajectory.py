@@ -7,11 +7,10 @@ from pathlib import Path
 import numpy as np
 
 from neb_dynamics import OBH
-from neb_dynamics.fileio import read_xyz, write_xyz
+from neb_dynamics.geodesic_interpolation.fileio import read_xyz, write_xyz
 from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.constants import angstroms_to_bohr
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 
-BOHR_TO_ANGSTROMS = 1/angstroms_to_bohr
 @dataclass
 class Trajectory:
     """
@@ -45,7 +44,7 @@ class Trajectory:
             file_path = Path(file_path)
 
         symbols, coords = read_xyz(str(file_path.resolve()))
-        return cls.from_coords_symbs(coords=np.array(coords)*angstroms_to_bohr, symbs=symbols, tot_charge=tot_charge, tot_spinmult=tot_spinmult)
+        return cls.from_coords_symbs(coords=np.array(coords)*ANGSTROM_TO_BOHR, symbs=symbols, tot_charge=tot_charge, tot_spinmult=tot_spinmult)
 
     @classmethod
     def from_coords_symbs(cls, coords, symbs, tot_charge=0, tot_spinmult=1):
@@ -102,7 +101,10 @@ class Trajectory:
         writes a list of xyz coordinates to 'file_path'
         """
         xyz_arr, symbs = self.as_xyz()
-        write_xyz(filename=str(file_path.resolve()), atoms=symbs, coords=xyz_arr*BOHR_TO_ANGSTROMS)
+        xyz_arr *= BOHR_TO_ANGSTROMS
+
+
+        write_xyz(filename=str(file_path.resolve()), atoms=symbs, coords=xyz_arr)
 
     def write_traj_energies(self, file_path: Path, energies: list):
         fout = open(str(file_path.resolve()), "w+")

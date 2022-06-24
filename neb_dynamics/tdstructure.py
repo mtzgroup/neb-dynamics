@@ -3,8 +3,9 @@ from pathlib import Path
 
 import numpy as np
 from openbabel import openbabel, pybel
+
 from neb_dynamics import OBH
-from neb_dynamics.constants import angstroms_to_bohr
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.elements import ElementData
 
 
@@ -31,9 +32,9 @@ class TDStructure:
             atom.SetVector(x, y, z)
         
 
-    # @property
-    # def coords_bohr(self):
-    #     return self.coords*angstroms_to_bohr
+    @property
+    def coords_angstroms(self):
+        return self.coords*BOHR_TO_ANGSTROMS
 
     @property
     def symbols(self):
@@ -134,4 +135,7 @@ class TDStructure:
         return TDStructure(molecule_obmol=obmol_copy)
 
     def write_to_disk(self, fp):
+
+        self.update_coords(self.coords*BOHR_TO_ANGSTROMS)
         OBH.output_obmol_to_file(self.molecule_obmol, fp)
+        self.update_coords(self.coords*ANGSTROM_TO_BOHR)
