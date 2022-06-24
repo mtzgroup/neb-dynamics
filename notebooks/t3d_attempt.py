@@ -31,12 +31,13 @@ from neb_dynamics.helper_functions import pload
 
 foo = pload(rxn_file)
 
-foo["Beckmann-Rearrangement"].draw()
-
-[print(r) for r in foo]
+foo["Claisen-Rearrangement"].draw()
 
 # +
-rn = "Beckmann-Rearrangement"
+# [print(r) for r in foo]
+
+# +
+rn = "Claisen-Rearrangement"
 inps = Inputs(rxn_name=rn, reaction_file=rxn_file)
 
 

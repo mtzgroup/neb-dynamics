@@ -10,33 +10,50 @@ from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.NEB import Chain, Node3D, NEB, Node2D
 # from neb_dynamics.ALS_xtb import ArmijoLineSearch
 from neb_dynamics.ALS import ArmijoLineSearch
+from neb_dynamics.trajectory import Trajectory
+from pathlib import Path
+import matplotlib.pyplot as plt
 
-
-fp = Path("../example_cases/neb_DA_k0.xyz")
+# fp = Path("../example_cases/DA_geodesic_opt.xyz")
+fp = Path("../example_cases/debug_geodesic_claisen.xyz")
+# fp = Path("../example_cases/neb_DA_k0.1.xyz")
 traj = Trajectory.from_xyz(fp)
-chain = Chain.from_traj(traj, k=1)
+chain = Chain.from_traj(traj, k=.1, delta_k=0.09)
 
 plt.plot(chain.energies, 'o-')
 
 # # c-NEB
 
-n = NEB(initial_chain=chain, mag_grad_thre=1, grad_thre=0.0001, en_thre=0.0001)
+n = NEB(initial_chain=chain, mag_grad_thre=100, grad_thre=0.00001, en_thre=0.00001, climb=True)
 
 # + tags=[]
-n.climb_chain(chain)
+n.optimize_chain()
 # -
 
 chain_ens = chain.energies
 opt_ens = n.optimized.energies
 
-# +
-
-plt.plot((chain_ens-chain_ens[0])*627.5, '-', label='NEB (k=0)')
-plt.plot((opt_ens-opt_ens[0])*627.5, 'o--', label='cNEB (k=1)')
+# + tags=[]
+chain_ref = Chain.from_traj(traj, k=1, delta_k=0)
+n_ref = NEB(initial_chain=chain_ref, mag_grad_thre=10000, grad_thre=0.0001, en_thre=0.0001, climb=False)
+n_ref.optimize_chain()
 # -
 
+ref_ens = n_ref.optimized.energies
+
+# +
+# n.write_to_disk(Path("variable_springs_DA_neb.xyz"))
+# n.write_to_disk(Path("variable_springs_claisen_neb.xyz"))
+# -
+
+# plt.plot((chain_ens-chain_ens[0])*627.5, '-', label='GI')
+plt.plot((chain_ens-chain_ens[0])*627.5, '-', label='NEB (k=0.1)')
+plt.plot((opt_ens-opt_ens[0])*627.5, 'o--', label='NEB (k$_{max}$=1')
+plt.plot((ref_ens-ref_ens[0])*627.5, 'o--', label='NEB (k=1)')
+plt.legend()
+
 cneb_traj = Trajectory([node.tdstructure for node in n.optimized.nodes])
-cneb_traj.write_trajectory(Path("./cneb.xyz"))
+cneb_traj.write_trajectory(Path("./cneb_claisen.xyz"))
 
 # # Redistribution
 

@@ -1,18 +1,24 @@
 # -*- coding: utf-8 -*-
-ref_old = Trajectory.from_xyz(Path("/Users/janestrada/neb_2/neb_dynamics/neb_dynamics/reference_DA_neb.xyz"))
-ref_new = Trajectory.from_xyz(Path("/Users/janestrada/neb_dynamics/example_cases/neb_converted_pre_redistr.xyz"))
+# +
+# ref_old = Trajectory.from_xyz(Path("/Users/janestrada/neb_2/neb_dynamics/neb_dynamics/reference_DA_neb.xyz"))
+# ref_new = Trajectory.from_xyz(Path("/Users/janestrada/neb_dynamics/example_cases/neb_converted_pre_redistr.xyz"))
 
-chain_old = Chain.from_traj(ref_old)
+# +
+# chain_old = Chain.from_traj(ref_old)
 
-chain_new = Chain.from_traj(ref_new)
+# +
+# chain_new = Chain.from_traj(ref_new)
 
-plt.plot(chain_old.energies, 'o--', label='old')
-plt.plot(chain_new.energies, 'x--', label='new')
-plt.legend()
+# +
+# plt.plot(chain_old.energies, 'o--', label='old')
+# plt.plot(chain_new.energies, 'x--', label='new')
+# plt.legend()
 
-chain_old.energies 
+# +
+# chain_old.energies 
 
-chain_new.energies
+# +
+# chain_new.energies
 
 # +
 import random
@@ -21,8 +27,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from retropaths.abinitio.geodesic_input import GeodesicInput
-from retropaths.abinitio.inputs import Inputs
+from neb_dynamics.geodesic_input import GeodesicInput
+# from retropaths.abinitio.inputs import Inputs
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, Node3D, Chain
@@ -42,9 +48,8 @@ traj = gi.run(nimages=31, friction=0.01, nudge=0.01)
 traj.write_trajectory(out_dir/"pdda_traj_xtb_optmized_geo_att2.xyz")
 # traj = Trajectory.from_xyz(out_dir/"pdda_traj_xtb_optmized_geo_att2.xyz")
 
-nodes = [Node3D(s) for s in traj]
-chain = Chain(nodes, k=10)
-ens = [Node3D.en_func(node) for node in chain]
+chain = Chain.from_traj(traj, k=1, delta_k=0.9)
+ens = chain.energies
 
 plt.plot(ens)
 

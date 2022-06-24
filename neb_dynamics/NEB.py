@@ -615,7 +615,7 @@ class NEB:
     def _update_node_convergence(self, chain: Chain, indices: np.array) -> None:
         for ind in indices:
             node = chain[ind]
-            node.converged = True 
+            node.converged = False ## TODO: CHANGE THIS BACK 
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
@@ -650,12 +650,12 @@ class NEB:
         #     en_converged_indices, grad_converged_indices
         # )
 
-        # print(f"\t{len(converged_node_indices)} nodes have converged")
-        converged_nodes = sum([np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients])
-        print(f"\t{converged_nodes} nodes have converged")
+        converged_nodes_indices = [i for i, bool in enumerate(np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients) if bool]
+        print(f"\t{len(converged_nodes_indices)} nodes have converged")
+        # print(f"\t{converged_nodes_indices} nodes have converged")
 
 
-        # self._update_node_convergence(chain=chain_new, indices=converged_node_indices)
+        self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
         # return len(converged_node_indices) == len(chain_new.nodes)
         
         return np.all([np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients])

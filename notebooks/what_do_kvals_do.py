@@ -21,28 +21,28 @@ k01_traj = Trajectory.from_xyz(data_dir / "neb_DA_k0.1.xyz")
 k0_traj = Trajectory.from_xyz(data_dir / "neb_DA_k0.xyz")
 # -
 
-ref_geo_chain = Chain.from_traj(ref_geo_traj)
+ref_geo_chain = Chain.from_traj(ref_geo_traj, k=1, delta_k=0)
 ref_geo_ens = ref_geo_chain.energies
 
-k1_chain = Chain.from_traj(k1_traj)
+k1_chain = Chain.from_traj(k1_traj, k=1, delta_k=0)
 k1_chain_ens = k1_chain.energies
 
-k09_chain = Chain.from_traj(k09_traj)
+k09_chain = Chain.from_traj(k09_traj, k=.9, delta_k=0)
 k09_chain_ens = k09_chain.energies
 
-k07_chain = Chain.from_traj(k07_traj)
+k07_chain = Chain.from_traj(k07_traj, k=.7, delta_k=0)
 k07_chain_ens = k07_chain.energies
 
-k05_chain = Chain.from_traj(k05_traj)
+k05_chain = Chain.from_traj(k05_traj, k=.5, delta_k=0)
 k05_chain_ens = k05_chain.energies
 
-k03_chain = Chain.from_traj(k03_traj)
+k03_chain = Chain.from_traj(k03_traj, k=.3, delta_k=0)
 k03_chain_ens = k03_chain.energies
 
-k01_chain = Chain.from_traj(k01_traj)
+k01_chain = Chain.from_traj(k01_traj, k=.1, delta_k=0)
 k01_chain_ens = k01_chain.energies
 
-k0_chain = Chain.from_traj(k0_traj)
+k0_chain = Chain.from_traj(k0_traj, k=0, delta_k=0)
 k0_chain_ens = k0_chain.energies
 
 # +

@@ -105,83 +105,85 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    # nimages = 100
+    nimages = 11
     # end_point = (3.00002182, 1.99995542)
-    # # end_point = (-2.8, 3.11)
-    # start_point = (-3.77928812, -3.28320392)
+    end_point = (2.129, 2.224)
+    start_point = (-3.77928812, -3.28320392)
 
 
 
-    # coords = np.linspace(start_point, end_point, nimages)
-    # # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
-    # # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
-    # ks = 1
-    # chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D, delta_k=0.9)
-    # n = NEB(initial_chain=chain, max_steps=1000, grad_thre=1,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
-    # climb=False)
-    # try: 
-    #     n.optimize_chain()
-    #     animate_func(n)
-    #     plot_func(n)
-    #     plot_2D(n)
+    coords = np.linspace(start_point, end_point, nimages)
+    # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
+    # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
+    ks = 50
+    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D, delta_k=0)
+    n = NEB(initial_chain=chain, max_steps=1000, grad_thre=1,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    climb=False)
+    try: 
+        n.optimize_chain()
+        animate_func(n)
+        plot_func(n)
+        plot_2D(n)
 
-    # except AlessioError as e:
-    #     print(e.message)
-    # except NoneConvergedException as e:
-    #     print(e.obj.chain_trajectory[-1].gradients)
-    #     # plot_2D(e.obj)
-    #     animate_func(e.obj)
-    #     plot_func(e.obj)
+    except AlessioError as e:
+        print(e.message)
+    except NoneConvergedException as e:
+        print(e.obj.chain_trajectory[-1].gradients)
+        # plot_2D(e.obj)
+        animate_func(e.obj)
+        plot_func(e.obj)
         
 
  
 
-    fp = Path("../example_cases/DA_geodesic_opt.xyz")
-# #     # fp = Path("../example_cases/debug_geodesic_claisen.xyz")
-# #     fp = Path(f"../example_cases/neb_DA_k0.1.xyz")
-# # #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
-# # #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
+#     fp = Path("../example_cases/DA_geodesic_opt.xyz")
+# # #     # fp = Path("../example_cases/debug_geodesic_claisen.xyz")
+# # #     fp = Path(f"../example_cases/neb_DA_k0.1.xyz")
+# # # #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
+# # # #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
 
-    kval = 1
-    traj = Trajectory.from_xyz(fp)
-    coords = traj.to_list()
-    chain = Chain.from_list_of_coords(k=kval, list_of_coords=coords, node_class=Node3D, delta_k=0.9)
-    # chain[6].do_climb = True
+#     kval = 0.008 # about 5 (kcal/mol) / Bohr^2
+#     traj = Trajectory.from_xyz(fp)
+#     coords = traj.to_list()
+#     chain = Chain.from_list_of_coords(k=kval, list_of_coords=coords, node_class=Node3D, delta_k=0.9)
+#     # chain[6].do_climb = True
 
 
-    n = NEB(initial_chain=chain, grad_thre=0.0001, en_thre=0.0001, mag_grad_thre=100, max_steps=1000, redistribute=False, remove_folding=False,
-    climb=True)
+#     # n = NEB(initial_chain=chain, grad_thre=0.1, en_thre=0.0001, mag_grad_thre=100, max_steps=1000, redistribute=False, remove_folding=False,
+#     # climb=True)
+#     n = NEB(initial_chain=chain, grad_thre=0.1, max_steps=1000, redistribute=False, remove_folding=False,
+#     climb=True)
 
-    try:
-        n.optimize_chain()
-        plot_2D(n)
+#     try:
+#         n.optimize_chain()
+#         plot_2D(n)
 
 
         
-        # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_redist_and_defolded.xyz")
-        # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_cneb.xyz")
-        # n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_redist_and_defolded.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_cneb.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
 
 
-        opt_chain = n.optimized
-        all_dists = []
-        for i in range(len(opt_chain)-2):
-            c0 = opt_chain[i].coords
-            c1 = opt_chain[i+1].coords
+#         opt_chain = n.optimized
+#         all_dists = []
+#         for i in range(len(opt_chain)-2):
+#             c0 = opt_chain[i].coords
+#             c1 = opt_chain[i+1].coords
 
             
 
-            dist = np.linalg.norm(c1 - c0)
-            all_dists.append(dist)
+#             dist = np.linalg.norm(c1 - c0)
+#             all_dists.append(dist)
 
-        plt.bar(x=list(range(len(all_dists))), height=all_dists)
-        plt.show()
+#         plt.bar(x=list(range(len(all_dists))), height=all_dists)
+#         plt.show()
 
-    except AlessioError as e:
-        print(e.message)
+#     except AlessioError as e:
+#         print(e.message)
 
-    except NoneConvergedException as e:
-        plot_2D(e.obj)
+#     except NoneConvergedException as e:
+#         plot_2D(e.obj)
 
 
 if __name__ == "__main__":
