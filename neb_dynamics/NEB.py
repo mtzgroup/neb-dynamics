@@ -517,7 +517,8 @@ class Chain:
                 ) * deltaV_max
 
             else:
-                raise ValueError("Something catastrophic happened. Check chain traj.")
+                # return next_node.coords - current_node.coords
+                raise ValueError(f"Energies adjacent to current node are identical. {en_2=} {en_0=}")
 
             return tan_vec
 
@@ -718,6 +719,7 @@ class NEB:
 
         directions = prev_velocity*new_force
         prev_velocity[directions < 0] = 0 # zero the velocities for which we overshot the minima
+        # prev_velocity *= 0
 
         new_velocity = prev_velocity + new_force
         return new_velocity
