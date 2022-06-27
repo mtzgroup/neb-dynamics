@@ -216,24 +216,6 @@ class Node3D(Node):
 
         return np.sum(first * second, axis=1).reshape(-1, 1)
 
-    # def displacement(self, grad):
-    #     from neb_dynamics import ALS
-    #     if not self.converged:
-    #         if not self.do_climb:
-    #             dr = ALS.ArmijoLineSearch(
-    #                 node=self, grad=grad, t=0.37,beta=0.5, f=self.en_func, alpha=0.3 # 0.37 Bohr is 0.2 Angstroms which this paper suggests as step size
-    #             )                                                                     # https://aip.scitation.org/doi/pdf/10.1063/1.2841941
-    #             return dr
-    #         elif self.do_climb:
-    #             dr = ALS.ArmijoLineSearch(
-    #                 node=self, grad=-1*grad, t=0.37,beta=0.5, f=self.en_func, alpha=0.3
-    #             )
-
-    #             print(f"\t\t climbing: {grad=} // {dr=}")
-    #             return dr
-    #     else:
-    #         return 0
-
     # i want to cache the result of this but idk how caching works
     def run_xtb_calc(tdstruct: TDStructure):
         # print("runxtb calc", type(tdstruct))
@@ -330,7 +312,7 @@ class Chain:
         e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
         e_max = max(self.energies)
 
-        for prev_node, current_node, _ in self.iter_triplets():
+        for prev_node, current_node, next_node in self.iter_triplets():
             e_i = max(current_node.energy, prev_node.energy)
             if e_i > e_ref:
                 new_k = k_max - self.delta_k * ((e_max - e_i) / (e_max - e_ref))
@@ -347,7 +329,7 @@ class Chain:
         new_ks = new_ks.reshape(*correct_dimensions)
 
         self.k = new_ks
-        # print(f"\n\n\nnew_ks: {new_ks=}\n\n\n")
+        print(f"\n\n\nnew_ks: {new_ks=}\n\n\n")
 
     def __getitem__(self, index):
         return self.nodes.__getitem__(index)
@@ -377,11 +359,11 @@ class Chain:
         nodes = [node_class(point) for point in list_of_coords]
         return cls(nodes=nodes, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity)
 
-    @property
+    @cached_property
     def energies(self) -> np.array:
         return np.array([node.energy for node in self.nodes])
 
-    @property
+    @cached_property
     def gradients(self) -> np.array:
         pe_grads_nudged = []
         spring_forces_nudged_no_k = []
@@ -415,14 +397,18 @@ class Chain:
             pe_grads_nudged - self.k * spring_forces_nudged_no_k
         ) + self.k * anti_kinking_grads
 
+        print(f"\n\n\n{self.k=}\n\n\n")
+
         zero = np.zeros_like(grads[0])
         grads = np.insert(grads, 0, zero, axis=0)
         grads = np.insert(grads, len(grads), zero, axis=0)
 
         # remove rotations and translations
-        # grads[:,0,:] = 0
-        # grads[:,1,:2] = 0
-        # grads[:,2,:1] = 0
+        if grads.shape[1] >= 3:
+            print(f"{grads.shape}")
+            grads[:,0,:] = 0
+            grads[:,1,:2] = 0
+            grads[:,2,:1] = 0
 
         # raise AlessioError('dioooomailae')
 
@@ -447,7 +433,7 @@ class Chain:
 
         return np.array([node.coords for node in self.nodes])
 
-    @property
+    @cached_property
     def displacements(self):
 
         grads = self.gradients
@@ -475,21 +461,22 @@ class Chain:
         self, current_node: Node, prev_node: Node, next_node: Node, grad: np.array
     ):
         from neb_dynamics import ALS
-        
-        dr = ALS.ArmijoLineSearch(
-                    node=current_node,
-                    t=self.step_size,
-                    grad=grad,
-                    next_node=next_node,
-                    prev_node=prev_node,
-                    grad_func=self.neighs_grad_func,
-                    beta=0.5,
-                    f=current_node.en_func,
-                    alpha=0.01,
-                    k=max(self.k)
-                )
-        return dr
-                
+        if not current_node.converged:
+            dr = ALS.ArmijoLineSearch(
+                        node=current_node,
+                        t=self.step_size,
+                        grad=grad,
+                        next_node=next_node,
+                        prev_node=prev_node,
+                        grad_func=self.neighs_grad_func,
+                        beta=0.5,
+                        f=current_node.en_func,
+                        alpha=0.01,
+                        k=max(self.k)
+                    )
+            return dr
+        else:
+            return 0.0
         
         
     def _create_tangent_path(
@@ -620,18 +607,25 @@ class NEB:
     mag_grad_thre: float = 0.01
     max_steps: float = 1000
 
+    vv_force_thre: float = 1.0
+
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
+
+    def do_velvel(self, chain: Chain):
+        max_force_on_node = max([np.linalg.norm(grad) for grad in chain.gradients])
+        return max_force_on_node < self.vv_force_thre
 
     def set_climbing_nodes(self, chain: Chain):
         # reset node convergence
         for node in chain:
-            node.converged = False
+            node.converged = True ## TODO: change back?
 
         inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
         print(f"----->Setting {len(inds_maxima)} nodes to climb")
 
         for ind in inds_maxima:
+            chain[ind].converged = False
             chain[ind].do_climb = True
 
     def climb_chain(self, chain: Chain):
@@ -670,7 +664,7 @@ class NEB:
 
         while nsteps < self.max_steps + 1:
 
-            # if nsteps==50: self.set_climbing_nodes(chain=chain_previous)
+            if nsteps % 10: chain_previous.compute_k()
 
             new_chain = self.update_chain(chain=chain_previous)
             print(
@@ -713,30 +707,35 @@ class NEB:
             )
 
 
-    def get_chain_velocity(self, chain) -> np.array:
-        prev_velocity = chain.velocity 
-        new_force = - (chain.gradients) * chain.displacements
+    def get_chain_velocity(self, chain: Chain) -> np.array:
+        prev_velocity = chain.velocity
+        new_force = - (chain.gradients)*chain.step_size
+        
 
         directions = prev_velocity*new_force
         prev_velocity[directions < 0] = 0 # zero the velocities for which we overshot the minima
-        # prev_velocity *= 0
 
         new_velocity = prev_velocity + new_force
         return new_velocity
 
     def update_chain(self, chain: Chain) -> Chain:
-        chain.compute_k()
 
-        velocity = self.get_chain_velocity(chain=chain)
+        do_vv = self.do_velvel(chain=chain)
 
-        new_chain_coordinates = (chain.coordinates + velocity)
+        if do_vv:
+            velocity = self.get_chain_velocity(chain=chain)
+            new_chain_coordinates = (chain.coordinates + velocity)
+
+        else:
+            new_chain_coordinates = (chain.coordinates - chain.gradients*chain.displacements)
+        
         new_nodes = []
         for node, new_coords in zip(chain.nodes, new_chain_coordinates):
 
             new_nodes.append(node.update_coords(new_coords))
 
         new_chain = Chain(new_nodes, k=chain.k, delta_k=chain.delta_k, step_size=chain.step_size, velocity=chain.velocity)
-        new_chain.velocity = velocity
+        if do_vv: new_chain.velocity = velocity
 
         return new_chain
 
