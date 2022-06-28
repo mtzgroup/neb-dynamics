@@ -3,9 +3,9 @@
 
 from pathlib import Path
 from argparse import ArgumentParser
-from retropaths.abinitio.trajectory import Trajectory
-from NEB_xtb import neb
-
+from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.NEB import NEB, Node3D, Chain
+import numpy as np
 
 def read_single_arguments():
     """
@@ -51,12 +51,14 @@ def main():
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
-
-    n = neb()
+    chain = Chain.from_traj(traj,k=0.1)
+    n = NEB(initial_chain=chain, grad_thre=0.01, climb=False)
     
-    opt_chain, chain_changes = n.optimize_chain(chain=traj,grad_func=n.grad_func, en_func=n.en_func, k=10)
+    n.optimize_chain()
 
-    opt_traj = Trajectory(traj_array=opt_chain, tot_charge=args.c, tot_spinmult=args.s)
+    list_of_tdstructs = np.array([s.tdstructure for s in n.optimized.nodes])
+
+    opt_traj = Trajectory(traj_array=list_of_tdstructs, tot_charge=args.c, tot_spinmult=args.s)
 
     data_dir = fp.parent
 
