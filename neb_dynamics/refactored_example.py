@@ -3,6 +3,7 @@
 from pathlib import Path
 from platform import node
 from tracemalloc import start
+from matplotlib.patches import FancyArrow
 
 
 import matplotlib.pyplot as plt
@@ -11,7 +12,7 @@ from matplotlib.animation import FuncAnimation
 
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
-from neb_dynamics.NEB import NEB, AlessioError, Chain, Node2D, Node2D_2, Node3D, NoneConvergedException
+from neb_dynamics.NEB import NEB, AlessioError, Chain, Node2D, Node2D_2, Node2D_ITM, Node3D, NoneConvergedException
 from neb_dynamics.trajectory import Trajectory
 
 
@@ -31,6 +32,14 @@ def sorry_func(inp): # https://theory.cm.utexas.edu/henkelman/pubs/sheppard11_17
     return A + B + C*D
 
 
+# def sorry_func(inp):
+#     x, y = inp
+#     Ax = 1
+#     Ay = 1
+#     return -1*(Ax*np.cos(2*np.pi*x) + Ay*np.cos(2*np.pi*y))
+
+
+
 def animate_func(neb_obj: NEB):
     n_nodes = len(neb_obj.initial_chain.nodes)
     en_func = neb_obj.initial_chain[0].en_func
@@ -40,28 +49,37 @@ def animate_func(neb_obj: NEB):
     figsize = 5
 
     f, ax = plt.subplots(figsize=(1.18 * figsize, figsize))
-    x = np.linspace(start=-s, stop=s, num=n_nodes)
+
+
+    min_val = -s
+    max_val = s
+
+    # min_val = -.5
+    # max_val = 1.5
+
+    x = np.linspace(start=min_val, stop=max_val, num=n_nodes)
     y = x.reshape(-1, 1)
 
     # h = en_func(x, y)
     h = sorry_func([x, y])
     cs = plt.contourf(x, x, h)
     _ = f.colorbar(cs, ax=ax)
-    (line,) = ax.plot([], [], 'o--', lw=3)
-
-    def init():
-        line.set_data([], [])
-        return (line,)
+    arrows = [ax.arrow(0,0,0,0,head_width=.05, facecolor='black') for _ in range(n_nodes)]
+    (line,)  = ax.plot([], [], 'o--', lw=3)
 
     def animate(chain):
 
-        x = chain[:, 0]
-        y = chain[:, 1]
-        line.set_data(x, y)
-        return (line,)
+        x = chain.coordinates[:, 0]
+        y = chain.coordinates[:, 1]
+        
+        for arrow, (x_i, y_i), (dx_i, dy_i) in zip(arrows, chain.coordinates, chain.gradients):
+            arrow.set_data(x=x_i, y=y_i, dx=-1*dx_i, dy=-1*dy_i)
 
-    anim = FuncAnimation(fig=f, func=animate, frames=np.array([chain.coordinates for chain in chain_traj]), blit=True, repeat_delay=1000, interval=200)
-    # anim.save('c-neb.gif')
+        line.set_data(x, y)
+        return (x for x in arrows)
+
+    anim = FuncAnimation(fig=f, func=animate, frames=chain_traj, blit=True, repeat_delay=1000, interval=200)
+    # anim.save('cool_arrows.gif')
     plt.show()
 
 
@@ -73,6 +91,8 @@ def plot_func(neb_obj: NEB):
 
     min_val = -s
     max_val = s
+    # min_val = -.5
+    # max_val = 1.5
     num = 10
     fig = 10
     f, _ = plt.subplots(figsize=(1.18 * fig, fig))
@@ -117,35 +137,40 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 10
+    nimages = 70
 
-    ### node 2d
+    # ### node 2d
     # end_point = (3.00002182, 1.99995542)
     # end_point = (2.129, 2.224)
     # start_point = (-3.77928812, -3.28320392)
 
-    ### node 2d - 2
+    # ### node 2d - 2
     start_point = (-1, 1)
-    end_point = (1, 1)
+    # end_point = (1, 1)
     # end_point = (-1, -1)
-    # end_point = (1, -1)
+    end_point = (1, -1)
 
+    ### node 2d - ITM
+    # start_point = (0, 0)
+    # end_point = (1, 0)
+    # end_point = (-1, -1)
+    # end_point = (.5, -.5)
 
     coords = np.linspace(start_point, end_point, nimages)
+    # coords[5]+= np.array([0,.2])
+    
 
 
     # coords = np.linspace(start_point, (-1.2, 1), 15)
     # coords = np.append(coords, np.linspace(end_point, (1.2, -1), 15), axis=0)
-
-    print(coords)
 
 
     # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     # kval = .01
     ks = .1
-    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D_2, delta_k=0, step_size=.001, velocity=np.zeros_like(coords))
-    n = NEB(initial_chain=chain, max_steps=250, grad_thre=.01, climb=False)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D_2, delta_k=0, step_size=.01)
+    n = NEB(initial_chain=chain, max_steps=500, grad_thre=.1, climb=False, vv_force_thre=0.0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
     try: 
         n.optimize_chain()
         animate_func(n)
@@ -165,11 +190,11 @@ def main():
 
     # fp = Path("../example_cases/DA_geodesic_opt.xyz")
 #     fp = Path("./example_cases/debug_geodesic_claisen.xyz")
-# # # #     fp = Path(f"../example_cases/neb_DA_k0.1.xyz")
-# # # # #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
-# # # # #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
+# # # # # #     fp = Path(f"../example_cases/neb_DA_k0.1.xyz")
+# # # # # # #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
+# # # # # # #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
 
-#     kval = 0.016 # about 10 (kcal/mol) / Bohr^2
+#     kval = .001 
 #     traj = Trajectory.from_xyz(fp)
 #     coords = traj.to_list()
 #     chain = Chain.from_list_of_coords(k=kval, list_of_coords=coords, node_class=Node3D, delta_k=0, step_size=0.01, velocity=np.zeros_like([struct.coords for struct in traj]))
@@ -178,8 +203,8 @@ def main():
 
 #     # n = NEB(initial_chain=chain, grad_thre=0.1, en_thre=0.0001, mag_grad_thre=100, max_steps=1000, redistribute=False, remove_folding=False,
 #     # climb=True)
-#     n = NEB(initial_chain=chain, grad_thre=0.05, max_steps=2000, redistribute=False, remove_folding=False,
-#     climb=False)
+#     n = NEB(initial_chain=chain, grad_thre=0.03, max_steps=2000, redistribute=False, remove_folding=False,
+#     climb=False, vv_force_thre=.3)
 
 #     try:
 #         n.optimize_chain()
@@ -187,9 +212,9 @@ def main():
 
 
         
-#         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_redist_and_defolded.xyz")
-#         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_cneb.xyz")
-#         n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
+#         # n.write_to_disk(fp.parent / f"cneb_DA_k{kval}.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_CR_k{kval}_neb.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
 
 
 #         opt_chain = n.optimized
@@ -206,6 +231,21 @@ def main():
 #         plt.bar(x=list(range(len(all_dists))), height=all_dists)
 #         plt.show()
 
+
+
+#         # now make it climb
+        
+#         # n = NEB(initial_chain=opt_chain, grad_thre=0.01, max_steps=2000, redistribute=False, remove_folding=False,
+#         #   climb=True, vv_force_thre=0) # i.e. dont do VV
+        
+#         # n.climb_chain(opt_chain)
+
+#         # plot_2D(n)
+#         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_cneb.xyz")
+
+
+
+        
 #     except AlessioError as e:
 #         print(e.message)
 

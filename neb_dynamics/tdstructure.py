@@ -81,9 +81,9 @@ class TDStructure:
         obmol.SetTotalCharge(tot_charge)
         obmol.SetTotalSpinMultiplicity(tot_spinmult)
         
-        # TODO: need to convert read-in coordinates from Angstroms to Bohr
-
-        return cls(molecule_obmol=obmol)
+        tdstruct = cls(molecule_obmol=obmol)
+        tdstruct.update_coords(tdstruct.coords*ANGSTROM_TO_BOHR)
+        return tdstruct
 
     @classmethod
     def from_smiles(cls, smi, tot_charge=0, tot_spinmult=1):

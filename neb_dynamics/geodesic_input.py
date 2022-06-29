@@ -4,6 +4,7 @@ from functools import cached_property
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.elements import ElementData
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS, ANGSTROM_TO_BOHR
 from openbabel import pybel
 from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
 import numpy as np
@@ -20,10 +21,8 @@ class GeodesicInput:
         return cls(trajectory=traj)
 
     @property
-    def coords(self):
-        computed_coords = np.array(
-            [struct.coords for struct in self.trajectory]
-        )
+    def coords(self): # Geodesic Interpolation works in ANGSTROMS so need to convert
+        computed_coords = np.array([struct.coords*BOHR_TO_ANGSTROMS for struct in self.trajectory])
         if np.array_equal(computed_coords[0], computed_coords[1]):
             raise ValueError("Input coordinates are identical")
         return computed_coords
@@ -41,6 +40,9 @@ class GeodesicInput:
         return self.trajectory[0].symbols
         
     def run(self, **kwargs):
+        
+
+
         xyz_coords = run_geodesic_py(self, **kwargs)
-        return Trajectory.from_coords_symbs(coords=xyz_coords, symbs=self.symbols, tot_charge=self.charge, tot_spinmult=self.spinmult)
+        return Trajectory.from_coords_symbs(coords=xyz_coords*ANGSTROM_TO_BOHR, symbs=self.symbols, tot_charge=self.charge, tot_spinmult=self.spinmult)
 
