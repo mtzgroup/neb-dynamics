@@ -324,12 +324,6 @@ class Chain:
                 next_node=next_node,
                 unit_tan_path=unit_tan_path,
             )
-            # anti_kinking_grads = self.get_anti_kinking_grad(
-            #     prev_node=prev_node,
-            #     current_node=current_node,
-            #     next_node=next_node,
-            #     unit_tan_path=unit_tan_path,
-            # )
 
         elif current_node.do_climb:
 
@@ -343,7 +337,7 @@ class Chain:
 
             zero = np.zeros_like(pe_grad)
             spring_forces_nudged_no_k = zero
-            # anti_kinking_grads = zero
+            
 
         else:
             raise ValueError(
@@ -446,10 +440,10 @@ class Chain:
             yield self.nodes[i - 1 : i + 2]
 
     @classmethod
-    def from_traj(cls, traj, k, delta_k, step_size, velocity=None):
+    def from_traj(cls, traj, k, delta_k, step_size, node_class, velocity=None):
         if velocity == None:
             velocity = np.zeros_like([struct.coords for struct in traj])
-        nodes = [Node3D(s) for s in traj]
+        nodes = [node_class(s) for s in traj]
         return Chain(
             nodes, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity
         )
@@ -466,7 +460,7 @@ class Chain:
     ) -> Chain:
 
         if velocity == None:
-            velocity = np.zeros_like(list_of_coords)
+            velocity = np.zeros_like([c for c in list_of_coords])
         nodes = [node_class(point) for point in list_of_coords]
         return cls(
             nodes=nodes, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity
@@ -599,10 +593,10 @@ class Chain:
                 ) * deltaV_max
 
             else:
-                # return next_node.coords - current_node.coords
-                raise ValueError(
-                    f"Energies adjacent to current node are identical. {en_2=} {en_0=}"
-                )
+                return next_node.coords - current_node.coords
+                # raise ValueError(
+                #     f"Energies adjacent to current node are identical. {en_2=} {en_0=}"
+                # )
 
             return tan_vec
 
@@ -682,7 +676,7 @@ class NEB:
     remove_folding: bool = False
     climb: bool = False
     en_thre: float = 0.001
-    grad_thre: float = 0.001
+    grad_thre_per_atom: float = 0.001
     mag_grad_thre: float = 0.01
     max_steps: float = 1000
 
@@ -691,6 +685,12 @@ class NEB:
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
     gradient_trajectory: list[np.array] = field(default_factory=list)
+
+    @property
+    def grad_thre(self):
+        n_atoms = self.initial_chain[0].coords.shape[0]
+        return self.grad_thre_per_atom*(n_atoms)
+
 
     def do_velvel(self, chain: Chain):
         max_force_on_node = max([np.linalg.norm(grad) for grad in chain.gradients])
@@ -707,41 +707,16 @@ class NEB:
         for ind in inds_maxima:
             chain[ind].do_climb = True
 
-    def climb_chain(self, chain: Chain):
-        nsteps = 1
-        chain_previous = chain.copy()
-        self.set_climbing_nodes(chain_previous)
-
-        while nsteps < self.max_steps + 1:
-
-            new_chain = self.update_chain(chain=chain_previous)
-            print(
-                f"step {nsteps} // max |gradient| {np.max([np.linalg.norm(grad) for grad in new_chain.gradients])}"
-            )
-
-            self.chain_trajectory.append(new_chain)
-
-            if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
-                print(f"Chain converged!")
-
-                self.optimized = new_chain
-                return new_chain
-            chain_previous = new_chain.copy()
-            nsteps += 1
-
-        new_chain = self.update_chain(chain=chain_previous)
-        if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
-            raise NoneConvergedException(
-                trajectory=self.chain_trajectory,
-                msg=f"Chain did not converge at step {nsteps}",
-                obj=self,
-            )
-
     def optimize_chain(self):
         nsteps = 1
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps + 1:
+
+            max_grad_val = np.max([np.linalg.norm(grad) for grad in chain_previous.gradients])
+            if max_grad_val<= 2*self.grad_thre and self.climb: 
+                self.set_climbing_nodes(chain=chain_previous)
+                self.climb = False
 
             new_chain = self.update_chain(chain=chain_previous)
             print(
@@ -786,7 +761,10 @@ class NEB:
 
     def get_chain_velocity(self, chain: Chain) -> np.array:
         prev_velocity = chain.velocity
-        new_force = -(chain.gradients) * chain.step_size
+
+        step = self.grad_thre/10 # make the step size rel. to threshold we want
+
+        new_force = -(chain.gradients) * step
 
         directions = prev_velocity * new_force
         prev_velocity[

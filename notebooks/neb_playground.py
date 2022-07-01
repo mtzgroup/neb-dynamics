@@ -1,37 +1,242 @@
 # -*- coding: utf-8 -*-
+# +
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.NEB import Chain, NEB, Node3D
 from matplotlib.animation import FuncAnimation
 from neb_dynamics.helper_functions import pairwise
-
-# from NEB import neb
-from neb_dynamics.NEB import Chain, Node3D, NEB, Node2D
-# from neb_dynamics.ALS_xtb import ArmijoLineSearch
 from neb_dynamics.ALS import ArmijoLineSearch
-from neb_dynamics.trajectory import Trajectory
-from pathlib import Path
-import matplotlib.pyplot as plt
 
-# fp = Path("../example_cases/DA_geodesic_opt.xyz")
-fp = Path("../example_cases/debug_geodesic_claisen.xyz")
-# fp = Path("../example_cases/neb_DA_k0.1.xyz")
-traj = Trajectory.from_xyz(fp)
-chain = Chain.from_traj(traj, k=.1, delta_k=0.09)
+from dataclasses import dataclass
+# -
 
-plt.plot(chain.energies, 'o-')
+traj = Trajectory.from_xyz(Path("../example_cases/neb_CR_k0.001_neb.xyz"))
+chain = Chain.from_traj(traj, k=0.01, delta_k=0, step_size=0.31, node_class=Node3D)
 
-# # c-NEB
+plt.plot(chain.energies, 'o')
 
-n = NEB(initial_chain=chain, mag_grad_thre=100, grad_thre=0.00001, en_thre=0.00001, climb=True)
+n = NEB(initial_chain=chain, climb=True, vv_force_thre=0.01, grad_thre=0.001)
 
 # + tags=[]
 n.optimize_chain()
 # -
 
-chain_ens = chain.energies
-opt_ens = n.optimized.energies
+plt.plot((chain.energies - chain.energies[0])*627.5, "--")
+plt.plot((n.optimized.energies - n.optimized.energies[0])*627.5, 'o--')
+
+
+def new_pot(inp): # https://theory.cm.utexas.edu/henkelman/pubs/sheppard11_1769.pdf
+    x, y = inp
+    A = np.cos(np.pi*x) 
+    B = np.cos(np.pi*y) 
+    C = np.pi*np.exp(-np.pi*x**2)
+    D = (np.exp(-np.pi*(y - 0.8)**2))  + np.exp(-np.pi*(y+0.8)**2)
+    return A + B + C*D
+new_pot((0,0))
+
+
+# +
+def new_grad(inp):
+    x, y = inp
+    A_x = -2*np.pi**2 * np.exp(-np.pi*x**2)*x
+    B_x = np.exp(-np.pi*(y-0.8)**2) + np.exp(-np.pi**2 *(y + 0.8)**2)
+    C_x = -np.pi*np.sin(np.pi*x)
+    
+    dx = A_x*B_x - C_x
+    
+    A_y = np.pi*np.exp(-np.pi*x**2)
+    B_y = (-2*np.pi*np.exp(-np.pi*(y - 0.8)**2)) * (y - 0.8)
+    C_y = -2*np.pi**2*np.exp(-np.pi**2*(y+0.8)**2)*(y + 0.8)
+    D_y = -np.pi*np.sin(np.pi*y)
+    
+    dy = A_y*(B_y + C_y) + D_y
+
+    return np.array([dx, dy])
+
+    
+new_grad((0,0))
+# -
+
+new_grad((.5,0))
+
+new_grad((-.5,0))
+
+
+def plot_func(neb_obj: NEB):
+
+    en_func = neb_obj.initial_chain[0].en_func
+    orig_chain = neb_obj.initial_chain
+    new_chain = neb_obj.chain_trajectory[-1]
+
+    min_val = -2
+    max_val = 2
+    num = 10
+    fig = 10
+    f, _ = plt.subplots(figsize=(1.18 * fig, fig))
+    x = np.linspace(start=min_val, stop=max_val, num=num)
+    y = x.reshape(-1, 1)
+
+    h = new_pot([x, y])
+    cs = plt.contourf(x, x, h)
+    _ = f.colorbar(cs)
+    plt.plot(
+        [(node.coords[0]) for node in orig_chain],
+        [(node.coords[1]) for node in orig_chain],
+        "^--",
+        c="white",
+        label="original",
+    )
+
+    points_x = [node.coords[0] for node in new_chain]
+    points_y = [node.coords[1] for node in new_chain]
+    # plt.plot([toy_potential_2(point) for point in new_chain])
+    plt.plot(points_x, points_y, "o--", c="white", label="NEB")
+    # psave(new_chain, "new_chain.p")
+    plt.show()
+
+
+@dataclass
+class Node2D_2(Node):
+    pair_of_coordinates: np.array
+    converged: bool = False
+    do_climb: bool = False
+
+    @property
+    def coords(self):
+        return self.pair_of_coordinates
+
+    @staticmethod
+    def en_func(node):
+        x, y = node.coords
+
+        A = np.cos(np.pi*x) 
+        B = np.cos(np.pi*y) 
+        C = np.pi*np.exp(-np.pi*x**2)
+        D = (np.exp(-np.pi*(y - 0.8)**2))  + np.exp(-np.pi*(y+0.8)**2)
+        return A + B + C*D
+
+    @staticmethod
+    def grad_func(node):
+        x, y = node.coords
+        A_x = -2*np.pi**2 * np.exp(-np.pi*x**2)*x
+        B_x = np.exp(-np.pi*(y-0.8)**2) + np.exp(-np.pi**2 *(y + 0.8)**2)
+        C_x = -np.pi*np.sin(np.pi*x)
+
+        dx = A_x*B_x - C_x
+
+        A_y = np.pi*np.exp(-np.pi*x**2)
+        B_y = (-2*np.pi*np.exp(-np.pi*(y - 0.8)**2)) * (y - 0.8)
+        C_y = -2*np.pi**2*np.exp(-np.pi**2*(y+0.8)**2)*(y + 0.8)
+        D_y = -np.pi*np.sin(np.pi*y)
+
+        dy = A_y*(B_y + C_y) + D_y
+
+        return np.array([dx, dy])
+
+
+    @property
+    def energy(self) -> float:
+        return self.en_func(self)
+
+    @property
+    def gradient(self) -> np.array:
+        return self.grad_func(self)
+
+    @staticmethod
+    def dot_function(self, other) -> float:
+        return np.dot(self, other)
+
+    def copy(self):
+        return Node2D_2(
+            pair_of_coordinates=self.pair_of_coordinates,
+            converged=self.converged,
+            do_climb=self.do_climb,
+        )
+
+    def update_coords(self, coords: np.array):
+        new_node = self.copy()
+        new_node.pair_of_coordinates = coords
+        return new_node
+
+
+def animate_func(neb_obj: NEB):
+    n_nodes = len(neb_obj.initial_chain.nodes)
+    en_func = neb_obj.initial_chain[0].en_func
+    chain_traj = neb_obj.chain_trajectory
+    plt.style.use("seaborn-pastel")
+
+    figsize = 5
+
+    f, ax = plt.subplots(figsize=(1.18 * figsize, figsize))
+    x = np.linspace(start=-2, stop=2, num=n_nodes)
+    y = x.reshape(-1, 1)
+
+    # h = en_func(x, y)
+    h = new_pot([x, y])
+    cs = plt.contourf(x, x, h)
+    _ = f.colorbar(cs, ax=ax)
+    (line,) = ax.plot([], [], 'o--', lw=3)
+
+    def init():
+        line.set_data([], [])
+        return (line,)
+
+    def animate(chain):
+
+        x = chain[:, 0]
+        y = chain[:, 1]
+        line.set_data(x, y)
+        return (line,)
+
+    anim = FuncAnimation(fig=f, func=animate, frames=np.array([chain.coordinates for chain in chain_traj]), blit=True, repeat_delay=1000, interval=200)
+    # anim.save('c-neb.gif')
+    plt.show()
+
+
+# +
+nimages = 10
+ks = 0.01
+start_point = (-1, 1)
+end_point = (1, 1)
+
+
+coords = np.linspace(start_point, end_point, nimages)
+orig_chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D_2, delta_k=0,
+                                      step_size=.01)
+
+
+# +
+min_val = -2
+max_val = 2
+num = 10
+fig = 10
+f, _ = plt.subplots(figsize=(1.18 * fig, fig))
+x = np.linspace(start=min_val, stop=max_val, num=num)
+y = x.reshape(-1, 1)
+
+plt.plot(
+        [(node.coords[0]) for node in orig_chain],
+        [(node.coords[1]) for node in orig_chain],
+        "^--",
+        c="white",
+        label="original",
+    )
+
+h = new_pot([x, y])
+cs = plt.contourf(x, x, h)
+_ = f.colorbar(cs)
+plt.show()
+
+# + tags=[]
+n = NEB(initial_chain=orig_chain, grad_thre=0.01, max_steps=1000)
+n.optimize_chain()
+# -
+
+plot_func(n)
+
+animate_func(n)
 
 # + tags=[]
 chain_ref = Chain.from_traj(traj, k=1, delta_k=0)
@@ -54,8 +259,6 @@ plt.legend()
 
 cneb_traj = Trajectory([node.tdstructure for node in n.optimized.nodes])
 cneb_traj.write_trajectory(Path("./cneb_claisen.xyz"))
-
-# # Redistribution
 
 # +
 n = NEB(initial_chain=chain)

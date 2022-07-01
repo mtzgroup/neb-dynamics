@@ -1,3 +1,49 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+def en_func(inp):
+    x, y = inp
+    Ax = 1
+    Ay = 1
+    return -1*(Ax*np.cos(2*np.pi*x) + Ay*np.cos(2*np.pi*y))
+
+
+
+from neb_dynamics.NEB import Node2D_ITM
+
+# +
+min_val = -1
+max_val = 1
+num = 10
+fig = 10
+f, _ = plt.subplots(figsize=(1.18 * fig, fig))
+x = np.linspace(start=min_val, stop=max_val, num=num)
+y = x.reshape(-1, 1)
+
+h = en_func([x, y])
+cs = plt.contourf(x, x, h)
+_ = f.colorbar(cs)
+
+
+
+plt.show()
+
+
+# -
+
+def grad_func(inp):
+    x, y = inp
+    Ax = 1
+    Ay = 1
+    dx = -2*Ax*np.pi*np.sin(2*np.pi*x)
+    dy = -2*Ay*np.pi*np.sin(2*np.pi*y)
+
+    return np.array([dx, dy])
+
+
+grad_func((0.3, -0.3))
+
 # +
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.NEB import Chain

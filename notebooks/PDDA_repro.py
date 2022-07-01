@@ -41,27 +41,27 @@ out_dir = Path("/Users/janestrada/neb_dynamics/example_cases")
 root = TDStructure.from_fp(out_dir/"root_opt.xyz")
 end = TDStructure.from_fp(out_dir/"end_opt.xyz")
 
+# +
 # ### do geodesic interpolation
-gi = GeodesicInput.from_endpoints(initial=root, final=end)
-traj = gi.run(nimages=31, friction=0.01, nudge=0.01)
+# gi = GeodesicInput.from_endpoints(initial=root, final=end)
+# traj = gi.run(nimages=31, friction=0.01, nudge=0.01)
+# -
 
-traj.write_trajectory(out_dir/"pdda_traj_xtb_optmized_geo_att2.xyz")
-# traj = Trajectory.from_xyz(out_dir/"pdda_traj_xtb_optmized_geo_att2.xyz")
+# traj.write_trajectory(out_dir/"pdda_traj_xtb_optmized_geo_att2.xyz")
+traj = Trajectory.from_xyz(out_dir/"pdda_traj_xtb_optmized_geo_att2.xyz")
 
-chain = Chain.from_traj(traj, k=1, delta_k=0.9)
+chain = Chain.from_traj(traj, k=1, delta_k=0, step_size=1, node_class=Node3D)
 ens = chain.energies
 
 plt.plot(ens)
 
-# +
-n = NEB(initial_chain=chain, mag_grad_thre=1)
+n = NEB(initial_chain=chain, grad_thre=.1, vv_force_thre=0.0)
 
 opt_chain = n.optimize_chain()
-# -
 
-opt_chain_energies = [n.en_func(s) for s in opt_chain[0]]
+opt_chain_energies = n.optimized.energies
 
-plt.title(f"{rn}")
+plt.title(f"PDDA")
 plt.plot(ens, label="geodesic")
 plt.scatter(list(range(len(opt_chain_energies))), opt_chain_energies, label="neb", color="orange")
 plt.legend()
