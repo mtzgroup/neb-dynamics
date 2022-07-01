@@ -1,5 +1,5 @@
 import numpy as np
-
+import sys
 from neb_dynamics.NEB import AlessioError, Node
 
 def _attempt_step(node: Node, grad, grad_func, t, f, prev_node, next_node, k):
@@ -48,4 +48,5 @@ def ArmijoLineSearch(node: Node, prev_node: Node, next_node: Node, grad_func, t,
         condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
 
     print(f"\t\t\t{t=} {count=} || force: {np.linalg.norm(grad)}")
+    sys.stdout.flush()
     return t

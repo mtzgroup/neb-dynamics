@@ -6,6 +6,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import List, Union
 
+import sys
 import numpy as np
 from scipy.signal import argrelextrema
 from xtb.interface import Calculator
@@ -275,7 +276,7 @@ class Node3D(Node):
             charge=tdstruct.charge,
             uhf=tdstruct.spinmult - 1,
         )
-        calc.set_verbosity(VERBOSITY_MUTED)
+        #calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
         return res
 
@@ -722,6 +723,7 @@ class NEB:
             print(
                 f"step {nsteps} // max |gradient| {np.max([np.linalg.norm(grad) for grad in new_chain.gradients])}"
             )
+            sys.stdout.flush()
 
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)
