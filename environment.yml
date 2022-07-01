@@ -10,6 +10,7 @@ dependencies:
   - jupytext
   - mypy
   - pip
+  - scipy
   - pydantic
   - python=3.9.7
   - rdkit
