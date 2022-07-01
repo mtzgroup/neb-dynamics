@@ -51,18 +51,14 @@ def main():
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
-    chain = Chain.from_traj(traj,k=0.1)
-    n = NEB(initial_chain=chain, grad_thre=0.01, climb=False)
+    chain = Chain.from_traj(traj=traj, k=.1, delta_k=0, step_size=1, node_class=Node3D)
+    n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, climb=True, vv_force_thre=0)
     
     n.optimize_chain()
 
-    list_of_tdstructs = np.array([s.tdstructure for s in n.optimized.nodes])
-
-    opt_traj = Trajectory(traj_array=list_of_tdstructs, tot_charge=args.c, tot_spinmult=args.s)
-
     data_dir = fp.parent
 
-    opt_traj.write_trajectory(data_dir/f"{fp.stem}_neb.xyz")
+    n.write_to_disk(data_dir/f"{fp.stem}_cneb.xyz")
 
 
 if __name__ == "__main__":
