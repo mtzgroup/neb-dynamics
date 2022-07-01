@@ -275,7 +275,7 @@ class Node3D(Node):
             charge=tdstruct.charge,
             uhf=tdstruct.spinmult - 1,
         )
-        calc.set_verbosity(VERBOSITY_MUTED)
+        #calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
         return res
 
