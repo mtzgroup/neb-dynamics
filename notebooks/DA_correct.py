@@ -196,7 +196,7 @@ plt.plot(orig_chain.energies, '--')
 n_CR = NEB(initial_chain=orig_chain, climb=True, grad_thre_per_atom=0.0016, vv_force_thre=0)
 n_CR.optimize_chain()
 
-n_CR.write_to_disk(Path("../example_cases/cneb_claisen_k1_gt_0008.xyz"))
+n_CR.write_to_disk(Path("../example_cases/cneb_claisen_k1_gt_0016.xyz"))
 
 cr_neb_k02_traj = Trajectory.from_xyz(Path("../example_cases/cneb_claisen_k0.2.xyz"))
 cr_neb_k02_chain = Chain.from_traj(cr_neb_k02_traj, k=1, delta_k=0, step_size=1, node_class=Node3D)
