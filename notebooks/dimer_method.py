@@ -207,7 +207,7 @@ update_img(r_vec=r2, d_theta=.1, unit_dir=unit_dir, theta_rot=theta_rot, delta_r
 
 
 def update_dimer(dimer, delta_r, d_theta=0.5):
-    r1, r2 = dimer
+    r1, r2a = dimer
     unit_dir = get_unit_dir(dimer)
     midpoint = r2 - unit_dir*delta_r
     

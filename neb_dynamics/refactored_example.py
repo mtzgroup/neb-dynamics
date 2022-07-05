@@ -137,26 +137,26 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    # nimages = 10
+    nimages = 100
 
-    # ### node 2d
+    ### node 2d
     # end_point = (3.00002182, 1.99995542)
-    # end_point = (2.129, 2.224)
-    # start_point = (-3.77928812, -3.28320392)
+    end_point = (2.129, 2.224)
+    start_point = (-3.77928812, -3.28320392)
 
-    # ### node 2d - 2
+    ### node 2d - 2
     # start_point = (-1, 1)
     # end_point = (1, 1)
     # end_point = (-1, -1)
     # end_point = (1, -1)
 
-    ### node 2d - ITM
+    # ## node 2d - ITM
     # start_point = (0, 0)
     # end_point = (1, 0)
     # end_point = (-1, -1)
     # end_point = (.5, -.5)
 
-    # coords = np.linspace(start_point, end_point, nimages)
+    coords = np.linspace(start_point, end_point, nimages)
     # coords[5]+= np.array([0,.2])
     
 
@@ -168,87 +168,87 @@ def main():
     # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     # kval = .01
-    # ks = 10
-    # chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D, delta_k=0, step_size=.01)
-    # n = NEB(initial_chain=chain, max_steps=500, grad_thre_per_atom=1, climb=True, vv_force_thre=0.0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
-    # try: 
-    #     n.optimize_chain()
-    #     animate_func(n)
-    #     plot_func(n)
-    #     plot_2D(n)
+    ks = 6
+    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D, delta_k=0, step_size=.01)
+    n = NEB(initial_chain=chain, max_steps=500, grad_thre_per_atom=1, climb=False, vv_force_thre=0.0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    try: 
+        n.optimize_chain()
+        animate_func(n)
+        plot_func(n)
+        plot_2D(n)
 
-    # except AlessioError as e:
-    #     print(e.message)
-    # except NoneConvergedException as e:
-    #     print(e.obj.chain_trajectory[-1].gradients)
-    #     # plot_2D(e.obj)
-    #     animate_func(e.obj)
-    #     plot_func(e.obj)
+    except AlessioError as e:
+        print(e.message)
+    except NoneConvergedException as e:
+        print(e.obj.chain_trajectory[-1].gradients)
+        # plot_2D(e.obj)
+        animate_func(e.obj)
+        plot_func(e.obj)
         
 
  
 
-    fp = Path("../example_cases/DA_geodesic_opt.xyz")
-    fp = Path("./example_cases/debug_geodesic_claisen.xyz")
-# # # # # #     fp = Path(f"../example_cases/neb_DA_k0.1.xyz")
-# # # # # # #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
-# # # # # # #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
+#     fp = Path("../example_cases/DA_geodesic_opt.xyz")
+#     fp = Path("./example_cases/debug_geodesic_claisen.xyz")
+# # # # # # #     fp = Path(f"../example_cases/neb_DA_k0.1.xyz")
+# # # # # # # #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
+# # # # # # # #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
 
-    kval = .001 
-    traj = Trajectory.from_xyz(fp)
-    chain = Chain.from_traj(traj=traj,k=kval, node_class=Node3D, delta_k=0, step_size=0.37)
+#     kval = .001 
+#     traj = Trajectory.from_xyz(fp)
+#     chain = Chain.from_traj(traj=traj,k=kval, node_class=Node3D, delta_k=0, step_size=0.37)
 
 
-    # n = NEB(initial_chain=chain, grad_thre_per_atom=0.1, en_thre=0.0001, mag_grad_thre=100, max_steps=1000, redistribute=False, remove_folding=False,
-    # climb=True)0
-    n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, max_steps=2000, redistribute=False, remove_folding=False,
-    climb=False, vv_force_thre=0.0)
+#     # n = NEB(initial_chain=chain, grad_thre_per_atom=0.1, en_thre=0.0001, mag_grad_thre=100, max_steps=1000, redistribute=False, remove_folding=False,
+#     # climb=True)0
+#     n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, max_steps=2000, redistribute=False, remove_folding=False,
+#     climb=False, vv_force_thre=0.0)
 
-    try:
-        n.optimize_chain()
-        plot_2D(n)
+#     try:
+#         n.optimize_chain()
+#         plot_2D(n)
 
 
         
-        # n.write_to_disk(fp.parent / f"cneb_DA_k{kval}.xyz")
-        # n.write_to_disk(fp.parent / f"neb_CR_k{kval}_neb.xyz")
-        # n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
+#         # n.write_to_disk(fp.parent / f"cneb_DA_k{kval}.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_CR_k{kval}_neb.xyz")
+#         # n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
 
 
-        opt_chain = n.optimized
-        all_dists = []
-        for i in range(len(opt_chain)-2):
-            c0 = opt_chain[i].coords
-            c1 = opt_chain[i+1].coords
+#         opt_chain = n.optimized
+#         all_dists = []
+#         for i in range(len(opt_chain)-2):
+#             c0 = opt_chain[i].coords
+#             c1 = opt_chain[i+1].coords
 
             
 
-            dist = np.linalg.norm(c1 - c0)
-            all_dists.append(dist)
+#             dist = np.linalg.norm(c1 - c0)
+#             all_dists.append(dist)
 
-        plt.bar(x=list(range(len(all_dists))), height=all_dists)
-        plt.show()
+#         plt.bar(x=list(range(len(all_dists))), height=all_dists)
+#         plt.show()
 
 
 
-#         # now make it climb
+# #         # now make it climb
         
-#         # n = NEB(initial_chain=opt_chain, grad_thre=0.01, max_steps=2000, redistribute=False, remove_folding=False,
-#         #   climb=True, vv_force_thre=0) # i.e. dont do VV
+# #         # n = NEB(initial_chain=opt_chain, grad_thre=0.01, max_steps=2000, redistribute=False, remove_folding=False,
+# #         #   climb=True, vv_force_thre=0) # i.e. dont do VV
         
-#         # n.climb_chain(opt_chain)
+# #         # n.climb_chain(opt_chain)
 
-#         # plot_2D(n)
-#         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_cneb.xyz")
+# #         # plot_2D(n)
+# #         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_cneb.xyz")
 
 
 
         
-    except AlessioError as e:
-        print(e.message)
+#     except AlessioError as e:
+#         print(e.message)
 
-    except NoneConvergedException as e:
-        plot_2D(e.obj)
+#     except NoneConvergedException as e:
+#         plot_2D(e.obj)
 
 
 if __name__ == "__main__":

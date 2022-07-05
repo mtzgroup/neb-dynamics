@@ -276,7 +276,7 @@ class Node3D(Node):
             charge=tdstruct.charge,
             uhf=tdstruct.spinmult - 1,
         )
-        #calc.set_verbosity(VERBOSITY_MUTED)
+        calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
         return res
 
@@ -638,36 +638,6 @@ class Chain:
         force_spring = np.linalg.norm(next_node.coords - current_node.coords) - np.linalg.norm(current_node.coords - prev_node.coords)
         return force_spring*unit_tan_path
 
-    # def get_anti_kinking_grad(
-    #     self,
-    #     prev_node: Node,
-    #     current_node: Node,
-    #     next_node: Node,
-    #     unit_tan_path: np.array,
-    # ):
-    #     f_phi = self._get_anti_kink_switch_func(
-    #         prev_node=prev_node,
-    #         current_node=current_node,
-    #         next_node=next_node
-    #     )
-        
-    #     force_spring = self.get_force_spring_no_k(
-    #         prev_node=prev_node, current_node=current_node, next_node=next_node
-    #     )
-    #     force_spring_nudged = self.get_force_spring_nudged_no_k(
-    #         prev_node=prev_node,
-    #         current_node=current_node,
-    #         next_node=next_node,
-    #         unit_tan_path=unit_tan_path,
-    #     )
-
-    #     anti_kinking_grad = -1 * f_phi *  (force_spring - force_spring_nudged)
-    #     if np.abs(f_phi - 1) <= 0.1:
-    #          print(f"\t\t\t{anti_kinking_grad=}")
-        
-        
-    #     return anti_kinking_grad*0
-
 
 @dataclass
 class NEB:
@@ -955,3 +925,172 @@ class NEB:
     def write_to_disk(self, fp: Path):
         out_traj = Trajectory([node.tdstructure for node in self.optimized.nodes])
         out_traj.write_trajectory(fp)
+
+
+@dataclass
+class Dimer:
+    initial_node: Node
+    delta_r: float
+    step_size: float
+    d_theta: float
+    optimized_dimer = None
+
+
+    @property
+    def ts_node(self):
+        if self.optimized_dimer:
+            final_unit_dir = self.get_unit_dir(self.optimized_dimer)
+            r1, r2 = self.optimized_dimer
+            cls = type(r2)
+            ts_coords = r1.coords + self.delta_r*final_unit_dir
+            return cls(ts_coords)
+
+
+    def make_initial_dimer(self):
+        dim = 2 # TODO: calculate dimension of vector
+        random_vec = np.random.rand(dim)
+        random_unit_vec = random_vec / np.linalg.norm(random_vec)
+        r1_coords = self.initial_node.coords - self.delta_r*random_unit_vec
+        r2_coords = self.initial_node.coords + self.delta_r*random_unit_vec
+        
+        cls = type(self.initial_node)
+        r1 = cls(r1_coords)
+        r2 = cls(r2_coords)
+
+        dimer = np.array([r1, r2])
+
+        return dimer
+
+    def get_dimer_energy(self, dimer):
+        r1,r2 = dimer
+        return r1.energy + r2.energy
+
+
+    def force_func(self, node: Node):
+        return - node.gradient
+
+    def force_perp(self, r_vec: Node, unit_dir: np.array):
+        force_r_vec = self.force_func(r_vec)
+        return force_r_vec - r_vec.dot_function(force_r_vec, unit_dir)*unit_dir
+
+    def get_unit_dir(self, dimer):
+        r1, r2 = dimer
+        return (r2.coords - r1.coords)/np.linalg.norm(r2.coords-r1.coords)
+
+    def get_dimer_force_perp(self, dimer):
+        r1, r2 = dimer
+        unit_dir= self.get_unit_dir(dimer)
+        
+        f_r1 = self.force_perp(r1, unit_dir=unit_dir)
+        f_r2 = self.force_perp(r2, unit_dir=unit_dir)
+        return f_r2 - f_r1
+
+    def update_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float):
+        return r_vec.coords + (unit_dir*np.cos(self.d_theta) + theta_rot*np.sin(self.d_theta))*self.delta_r
+
+    def update_dimer(self, dimer: np.array):
+        _, r2 = dimer
+        unit_dir = self.get_unit_dir(dimer)
+        midpoint_coords = r2.coords - unit_dir*self.delta_r
+        cls = type(r2)
+        midpoint = cls(midpoint_coords)
+        
+        dimer_force_perp = self.get_dimer_force_perp(dimer)
+        theta_rot = dimer_force_perp / np.linalg.norm(dimer_force_perp)
+        r2_prime_coords = self.update_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot)
+        r2_prime = cls(r2_prime_coords)
+        
+        new_dir = (r2_prime_coords - midpoint_coords)
+        new_unit_dir = new_dir / np.linalg.norm(new_dir)
+        
+        r1_prime_coords = r2_prime_coords - 2*self.delta_r*new_unit_dir
+        r1_prime = cls(r1_prime_coords)
+        
+        return (r1_prime, r2_prime)
+    
+    def rotate_dimer(self, dimer):
+        dimer_0 = dimer
+        en_0 = self.get_dimer_energy(dimer_0)
+        dimer_1 = self.update_dimer(dimer)
+        en_1 = self.get_dimer_energy(dimer_1)
+        n_counts = 0
+        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 10000:
+
+            dimer_0 = dimer_1
+            en_0 = self.get_dimer_energy(dimer_0)
+            dimer_1 = self.update_dimer(dimer_0)
+            en_1 = self.get_dimer_energy(dimer_1)
+            n_counts+=1
+            
+        if np.abs(en_1 - en_0) <= 1e-7: print(f"Rotation converged in {n_counts} steps!")
+        else: print(f"Rotation did not converge. Final |∆E|: {np.abs(en_1 - en_0)}")
+        return dimer_1
+
+    def get_climb_force(self, dimer):
+        r1, r2 = dimer
+        unit_path = self.get_unit_dir(dimer)
+        
+        
+        f_r1 = self.force_func(r1)
+        f_r2 = self.force_func(r2)
+        F_R = f_r1 + f_r2
+        
+        
+        f_parallel_r1 = np.dot(f_r1, unit_path)*unit_path
+        f_parallel_r2 = np.dot(f_r2, unit_path)*unit_path
+        F_Par = f_parallel_r1 + f_parallel_r2
+        
+
+        return F_R - 2*F_Par
+        
+
+    def translate_dimer(self, dimer):
+        dimer_0 = dimer
+        en_0 = self.get_dimer_energy(dimer_0)
+        
+        
+        r1,r2 = dimer_0
+        force = self.get_climb_force(dimer_0)
+        cls = type(r2)
+
+        r2_prime_coords = r2.coords + self.step_size*force
+        r2_prime = cls(r2_prime_coords)
+        r1_prime_coords = r1.coords + self.step_size*force
+        r1_prime = cls(r1_prime_coords)
+        
+        
+        dimer_1 = (r1_prime, r2_prime)
+        en_1 = self.get_dimer_energy(dimer_1)
+        n_counts = 0
+        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 10000:
+
+            r1,r2 = dimer_1
+            dimer_0 = dimer_1
+            
+            
+            en_0 = self.get_dimer_energy(dimer_0)
+            force = self.get_climb_force(dimer_0)
+            cls = type(r2)
+            r2_prime_coords = r2.coords + self.step_size*force
+            r2_prime = cls(r2_prime_coords)
+            r1_prime_coords = r1.coords + self.step_size*force
+            r1_prime = cls(r1_prime_coords)
+
+
+            dimer_1 = (r1_prime, r2_prime)
+            en_1 = self.get_dimer_energy(dimer_1)
+            n_counts+=1
+        
+        
+        
+        if np.abs(en_1 - en_0) <= 1e-7: print(f"Translation converged in {n_counts} steps!")
+        return (r1_prime, r2_prime)
+
+
+    def find_ts(self):
+        dimer = self.make_initial_dimer()
+        rotated_dimer = self.rotate_dimer(dimer=dimer)
+        trans_dimer = self.translate_dimer(dimer=rotated_dimer)
+        self.optimized_dimer = trans_dimer
+
+
