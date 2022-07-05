@@ -55,8 +55,10 @@ def main():
     # n.optimize_chain()
     # node_for_dimer = n.optimized[4]
 
-    # d = Dimer(initial_node=node_for_dimer, delta_r=0.5, d_theta=0.01,step_size=0.001)
+    # d = Dimer(initial_node=node_for_dimer, delta_r=0.1, d_theta=0.0001,step_size=0.001)
     # d.find_ts()
+    # print("init:",d.initial_node.coords)
+    # print("end:", d.ts_node.coords)
 
     # plot_dimer(d)
 

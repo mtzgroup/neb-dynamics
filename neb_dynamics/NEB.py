@@ -1026,8 +1026,8 @@ class Dimer:
         dimer_1 = self.update_dimer(dimer)
         en_1 = self.get_dimer_energy(dimer_1)
         n_counts = 0
-        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 2000:
-            print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
+        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 100000:
+            # print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
             dimer_0 = dimer_1
             en_0 = self.get_dimer_energy(dimer_0)
             dimer_1 = self.update_dimer(dimer_0)
@@ -1079,7 +1079,7 @@ class Dimer:
         en_1 = self.get_dimer_energy(dimer_1)
         n_counts = 0
         while np.abs(en_1 - en_0) > 1e-7 and n_counts < 4000:
-            print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
+            # print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
 
             r1,r2 = dimer_1
             dimer_0 = dimer_1
@@ -1104,6 +1104,8 @@ class Dimer:
         
         
         if np.abs(en_1 - en_0) <= 1e-7: print(f"Translation converged in {n_counts} steps!")
+        else: print(f"Translation did not converge in {n_counts} steps. Final |∆E|: {np.abs(en_1 - en_0)}")
+        
         return (r1_prime, r2_prime)
 
 
