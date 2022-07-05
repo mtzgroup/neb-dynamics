@@ -941,21 +941,28 @@ class Dimer:
         if self.optimized_dimer:
             final_unit_dir = self.get_unit_dir(self.optimized_dimer)
             r1, r2 = self.optimized_dimer
-            cls = type(r2)
+            ts = self.initial_node.copy()
             ts_coords = r1.coords + self.delta_r*final_unit_dir
-            return cls(ts_coords)
+            ts = ts.update_coords(ts_coords)
+
+
+            return ts
 
 
     def make_initial_dimer(self):
-        dim = 2 # TODO: calculate dimension of vector
-        random_vec = np.random.rand(dim)
+        # dim = self.initial_node.coords.shape[1] # TODO: calculate dimension of vector
+        random_vec = np.random.rand(*self.initial_node.coords.shape)
         random_unit_vec = random_vec / np.linalg.norm(random_vec)
+        
         r1_coords = self.initial_node.coords - self.delta_r*random_unit_vec
         r2_coords = self.initial_node.coords + self.delta_r*random_unit_vec
-        
-        cls = type(self.initial_node)
-        r1 = cls(r1_coords)
-        r2 = cls(r2_coords)
+
+
+        r1 = self.initial_node.copy()
+        r1 = r1.update_coords(r1_coords)
+
+        r2 = self.initial_node.copy()
+        r2 = r2.update_coords(r2_coords)
 
         dimer = np.array([r1, r2])
 
@@ -963,6 +970,8 @@ class Dimer:
 
     def get_dimer_energy(self, dimer):
         r1,r2 = dimer
+
+
         return r1.energy + r2.energy
 
 
@@ -992,30 +1001,33 @@ class Dimer:
         _, r2 = dimer
         unit_dir = self.get_unit_dir(dimer)
         midpoint_coords = r2.coords - unit_dir*self.delta_r
-        cls = type(r2)
-        midpoint = cls(midpoint_coords)
+        midpoint = self.initial_node.copy()
+        midpoint = midpoint.update_coords(midpoint_coords)
         
         dimer_force_perp = self.get_dimer_force_perp(dimer)
         theta_rot = dimer_force_perp / np.linalg.norm(dimer_force_perp)
         r2_prime_coords = self.update_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot)
-        r2_prime = cls(r2_prime_coords)
+        r2_prime = self.initial_node.copy()
+        r2_prime = r2_prime.update_coords(r2_prime_coords)
         
         new_dir = (r2_prime_coords - midpoint_coords)
         new_unit_dir = new_dir / np.linalg.norm(new_dir)
         
         r1_prime_coords = r2_prime_coords - 2*self.delta_r*new_unit_dir
-        r1_prime = cls(r1_prime_coords)
+        r1_prime = self.initial_node.copy()
+        r1_prime = r1_prime.update_coords(r1_prime_coords)
         
-        return (r1_prime, r2_prime)
+        return np.array([r1_prime, r2_prime])
     
     def rotate_dimer(self, dimer):
+        print("Rotating dimer...")
         dimer_0 = dimer
         en_0 = self.get_dimer_energy(dimer_0)
         dimer_1 = self.update_dimer(dimer)
         en_1 = self.get_dimer_energy(dimer_1)
         n_counts = 0
-        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 10000:
-
+        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 2000:
+            print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
             dimer_0 = dimer_1
             en_0 = self.get_dimer_energy(dimer_0)
             dimer_1 = self.update_dimer(dimer_0)
@@ -1036,8 +1048,8 @@ class Dimer:
         F_R = f_r1 + f_r2
         
         
-        f_parallel_r1 = np.dot(f_r1, unit_path)*unit_path
-        f_parallel_r2 = np.dot(f_r2, unit_path)*unit_path
+        f_parallel_r1 = self.initial_node.dot_function(f_r1, unit_path)*unit_path
+        f_parallel_r2 = self.initial_node.dot_function(f_r2, unit_path)*unit_path
         F_Par = f_parallel_r1 + f_parallel_r2
         
 
@@ -1045,24 +1057,29 @@ class Dimer:
         
 
     def translate_dimer(self, dimer):
+        print("Moving dimer...")
         dimer_0 = dimer
         en_0 = self.get_dimer_energy(dimer_0)
         
         
         r1,r2 = dimer_0
         force = self.get_climb_force(dimer_0)
-        cls = type(r2)
 
         r2_prime_coords = r2.coords + self.step_size*force
-        r2_prime = cls(r2_prime_coords)
+        r2_prime = self.initial_node.copy()
+        r2_prime = r2_prime.update_coords(r2_prime_coords)
+
+
         r1_prime_coords = r1.coords + self.step_size*force
-        r1_prime = cls(r1_prime_coords)
+        r1_prime = self.initial_node.copy()
+        r1_prime = r1_prime.update_coords(r1_prime_coords)
         
         
         dimer_1 = (r1_prime, r2_prime)
         en_1 = self.get_dimer_energy(dimer_1)
         n_counts = 0
-        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 10000:
+        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 4000:
+            print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
 
             r1,r2 = dimer_1
             dimer_0 = dimer_1
@@ -1070,11 +1087,14 @@ class Dimer:
             
             en_0 = self.get_dimer_energy(dimer_0)
             force = self.get_climb_force(dimer_0)
-            cls = type(r2)
+
             r2_prime_coords = r2.coords + self.step_size*force
-            r2_prime = cls(r2_prime_coords)
+            r2_prime = self.initial_node.copy()
+            r2_prime = r2_prime.update_coords(r2_prime_coords)
+
             r1_prime_coords = r1.coords + self.step_size*force
-            r1_prime = cls(r1_prime_coords)
+            r1_prime = self.initial_node.copy()
+            r1_prime = r1_prime.update_coords(r1_prime_coords)
 
 
             dimer_1 = (r1_prime, r2_prime)
