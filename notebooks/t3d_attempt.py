@@ -8,7 +8,7 @@ from ase.atoms import Atoms
 from ase.optimize.bfgs import BFGS
 from ase.optimize.lbfgs import LBFGS
 from pytest import approx
-from retropaths.abinitio.geodesic_input import GeodesicInput
+from neb_dynamics.geodesic_input import GeodesicInput
 from retropaths.abinitio.inputs import Inputs
 from retropaths.abinitio.rootstructure import RootStructure
 from retropaths.abinitio.tdstructure import TDStructure
@@ -18,7 +18,7 @@ from xtb.interface import Calculator
 from xtb.utils import get_method
 
 
-from neb_dynamics.NEB import Node3D
+from neb_dynamics.NEB import Node3D, Chain, NEB
 
 out_dir = Path("/Users/janestrada/neb_dynamics/example_cases")
 rxn_file = Path("/Users/janestrada/Retropaths/retropaths/data/reactions.p")
@@ -32,8 +32,6 @@ random.seed(1)
 from neb_dynamics.helper_functions import pload
 
 foo = pload(rxn_file)
-
-foo["Claisen-Rearrangement"].draw()
 
 # +
 # [print(r) for r in foo]
@@ -69,9 +67,9 @@ opt_struct = TDStructure.from_coords_symbs(coords=atoms.positions, symbs=tdstruc
 
 # -
 
-def opt_func(tdstruct, en_func, grad_func, en_thre=0.0001, grad_thre=0.0001, maxsteps=5000):
+def opt_func(tdstruct):
 
-    coords = tdstruct.coords_bohr
+    coords = tdstruct.coords
 
     atoms = Atoms(
         symbols=tdstruct.symbols.tolist(),
@@ -82,83 +80,120 @@ def opt_func(tdstruct, en_func, grad_func, en_thre=0.0001, grad_thre=0.0001, max
     opt = LBFGS(atoms)
     opt.run(fmax=0.1)
 
-    opt_struct = TDStructure.from_coords_symbs(coords=atoms.positions * BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols, tot_charge=tdstruct.charge, tot_spinmult=tdstruct.spinmult)
+    opt_struct = TDStructure.from_coords_symbs(coords=atoms.positions, symbs=tdstruct.symbols, tot_charge=tdstruct.charge, tot_spinmult=tdstruct.spinmult)
 
     return opt_struct
 
-    e0 = en_func(tdstruct)
-    g0 = grad_func(tdstruct)
-    dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=1, alpha=0.3, beta=0.8, f=en_func)
-    print(f"DR -->{dr}")
-    count = 0
-
-    coords1 = tdstruct.coords_bohr - dr * g0
-    tdstruct_prime = TDStructure.from_coords_symbs(coords=coords1 * BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols, tot_charge=tdstruct.charge, tot_spinmult=tdstruct.spinmult)
-
-    e1 = en_func(tdstruct_prime)
-    g1 = grad_func(tdstruct_prime)
-
-    struct_conv = (np.abs(e1 - e0) < en_thre) and False not in (np.abs(g1 - g0) < grad_thre).flatten()
-
-    while not struct_conv and count < maxsteps:
-        count += 1
-
-        e0 = e1
-        g0 = g1
-
-        dr = ArmijoLineSearch(struct=tdstruct, grad=g0, t=1, alpha=0.3, beta=0.8, f=en_func)
-        coords1 = tdstruct.coords_bohr - dr * g0
-        tdstruct_prime = TDStructure.from_coords_symbs(coords=coords1 * BOHR_TO_ANGSTROMS, symbs=tdstruct.symbols, tot_charge=tdstruct.charge, tot_spinmult=tdstruct.spinmult)
-
-        e1 = en_func(tdstruct_prime)
-        g1 = grad_func(tdstruct_prime)
-
-        struct_conv = (np.abs(e1 - e0) < en_thre) and False not in (np.abs(g1 - g0) < grad_thre).flatten()
-
-    print(f"Converged --> {struct_conv} in {count} steps")
-    return tdstruct_prime
 
 
 # +
-rn = "Claisen-Rearrangement"
+# rn = "Claisen-Rearrangement"
 # rn = "Diels Alder 4+2"
 # rn = "Nucleophilic-Aliphatic-Substitution-Beta-acid-EWG1-Nitrile-and-EWG2-Nitrile-Lg-Iodine" # not valid????
 # rn = "Riemschneider-Thiocarbamate-Synthesis-Water"
-# rn = "Chan-Rearrangement"
+rn = "Chan-Rearrangement"
 inps = Inputs(rxn_name=rn, reaction_file=rxn_file)
 
 
 struct = TDStructure.from_rxn_name(rn, data_folder=rxn_file.parent)
-rs = RootStructure(root=struct, master_path=out_dir, rxn_args=inps, trajectory=Trajectory(traj_array=[]))
+mod_smi_struct = struct.molecule_rp.smiles+".[OH-]"
+struct = TDStructure.from_smiles(mod_smi_struct, tot_charge=-1, tot_spinmult=1)
 
-# relax endpoints
-opt_init = opt_func(rs.pseudoaligned, en_func=n.en_func, grad_func=n.grad_func)
-opt_final = opt_func(rs.transformed, en_func=n.en_func, grad_func=n.grad_func)
-# opt_init = rs.pseudoaligned
-# opt_final = rs.transformed
+
+rs = RootStructure(root=struct, master_path=out_dir, rxn_args=inps, trajectory=Trajectory(traj_array=[]))
 # -
 
-n.en_func(opt_final)
+rs.transformed.spinmult
 
-### do geodesic interpolation
+# relax endpoints
+opt_init = opt_func(rs.pseudoaligned)
+opt_final = opt_func(rs.transformed)
+# opt_init = rs.pseudoaligned
+# opt_final = rs.transformed
+
+### do geodesic interpolation/// but need to change the RP coords from Angstroms to Bohr.... cause im a fool
+init_bohr = opt_init.coords_bohr
+end_bohr = opt_final.coords_bohr
+opt_init.update_coords(init_bohr)
+opt_final.update_coords(end_bohr)
+
 gi = GeodesicInput.from_endpoints(initial=opt_init, final=opt_final)
-traj = gi.run(nimages=15, friction=0.1, nudge=0.01)
+traj = gi.run(nimages=50, friction=0.1, nudge=0.01)
 
-ens = [n.en_func(s) for s in traj]
+chain_geo = Chain.from_traj(traj, k=0.1, delta_k=0, step_size=1, node_class=Node3D)
+plt.plot(chain_geo.energies)
 
-plt.plot(ens)
+traj.write_trajectory(Path("./Chan_traj_50_nodes.xyz"))
 
-opt_chain = n.optimize_chain(chain=traj, grad_func=n.grad_func, en_func=n.en_func, k=10)
+# +
+# n = NEB(initial_chain=chain_geo, grad_thre_per_atom=0.0016, vv_force_thre=0)
+# n.optimize_chain()
+# -
 
-opt_chain_energies = [n.en_func(s) for s in opt_chain[0]]
+opt_chain = n.optimized
 
 plt.title(f"{rn}")
-plt.plot(ens, label="geodesic")
-plt.scatter(list(range(len(opt_chain_energies))), opt_chain_energies, label="neb", color="orange")
+plt.plot((chain_geo.energies-opt_chain[0].energy)*627.5, '--',label="geodesic")
+plt.plot((opt_chain.energies-opt_chain[0].energy)*627.5, 'o-', label="neb", color="orange")
 plt.legend()
 
 traj.write_trajectory(out_dir / f"{rn}_geodesic_opt.xyz")
 
+n.write_to_disk(Path("./neb_chan_50_nodes.xyz"))
+
 opt_traj = Trajectory(opt_chain[0])
 
 opt_traj.write_trajectory(out_dir / f"{rn}_neb_opt.xyz")
+
+# # What if, we take frames where a proton transfer happened, and dropped in a base in the viscinity?
+
+# +
+# load neb traj
+traj_neb = Trajectory.from_xyz("./neb_chan.xyz")
+
+# get frames where proton transfer happened
+start = traj_neb[6]
+end = traj_neb[7]
+
+# write them to xyz files
+start.write_to_disk("start_PT.xyz")
+end.write_to_disk("end_PT.xyz")
+
+# +
+# load modified versions
+start_mod = TDStructure.from_fp(Path("./start_PT_OH.xyz"), tot_charge=-1, tot_spinmult=3)
+mod_start = start_mod.coords_bohr
+start_mod.update_coords(mod_start)
+
+end_mod = TDStructure.from_fp(Path("./end_PT_OH.xyz"), tot_charge=-1, tot_spinmult=3)
+mod_end = end_mod.coords_bohr
+end_mod.update_coords(mod_end)
+# -
+
+gi = GeodesicInput.from_endpoints(initial=start_mod, final=end_mod)
+traj_geo_mod = gi.run(nimages=15, friction=0.01, nudge=0.001)
+
+traj_geo_mod.write_trajectory(Path("traj_geo_mod.xyz"))
+
+chain_geo_mod = Chain.from_traj(traj_geo_mod, k=0.1, delta_k=0,node_class=Node3D, step_size=.37)
+
+n_mod = NEB(initial_chain=chain_geo_mod, grad_thre_per_atom=0.0016, vv_force_thre=0)
+n_mod.optimize_chain()
+
+opt_chain_mod = n_mod.optimized
+
+plt.title(f"{rn}")
+plt.plot((chain_geo_mod.energies-opt_chain_mod[0].energy)*627.5, '--',label="geodesic")
+plt.plot((opt_chain_mod.energies-opt_chain_mod[0].energy)*627.5, 'o-', label="neb", color="orange")
+plt.legend()
+
+n_mod.write_to_disk(Path("./interesting.xyz"))
+
+wtf = Trajectory([n.tdstructure for n in n_mod.chain_trajectory[-1].nodes])
+wtf.write_trajectory(Path("wtf.xyz"))
+
+
+
+
+
+

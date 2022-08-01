@@ -115,7 +115,7 @@ plot_func(n)
 
 plot_2D(n)
 
-node_for_dimer = n.optimized[4]
+node_for_dimer = n.optimized[2]
 
 # # Create random unit vector and make dimer
 
@@ -126,7 +126,7 @@ random_vec = np.random.rand(2)
 random_unit_vec = random_vec / np.linalg.norm(random_vec)
 
 # +
-delta_r = 0.3 # distance between dimer images
+delta_r = 0.1 # distance between dimer images
 r1 = vec - delta_r*random_unit_vec
 r2 = vec + delta_r*random_unit_vec
 
@@ -292,13 +292,12 @@ def get_climb_force(dimer):
     return F_R - 2*F_Par
     
     
-get_climb_force(rotated_dimer)
-# -
+# get_climb_force(rotated_dimer)
 
-rotated_dimer = rotate_dimer(dimer)
-unit_path = get_unit_dir(rotated_dimer)
-plot_grad_arrows(rotated_dimer, [f_climb(r1, unit_path),f_climb(r2, unit_path)])
-
+# +
+# rotated_dimer = rotate_dimer(dimer)
+# unit_path = get_unit_dir(rotated_dimer)
+# plot_grad_arrows(rotated_dimer, [f_climb(r1, unit_path),f_climb(r2, unit_path)])
 
 # +
 def translate_dimer(dimer, step=0.001):
@@ -336,7 +335,7 @@ def translate_dimer(dimer, step=0.001):
     if np.abs(en_1 - en_0) <= 1e-7: print(f"Translation converged in {n_counts} steps!")
     return (r1_prime, r2_prime)
 
-translate_dimer(rotated_dimer)
+# translate_dimer(rotated_dimer)
 
 # +
 min_val = -s
