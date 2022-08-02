@@ -337,5 +337,5 @@ def quaternionrmsd(c1, c2):
                [2*(qmax[1]*qmax[3] - qmax[0]*qmax[2]), 2*(qmax[2]*qmax[3] + qmax[0]*qmax[1]), (qmax[0]**2 - qmax[1]**2 - qmax[2]**2 + qmax[3]**2)]])
     g_rmsd = (c1 - np.matmul(c2, rot))/(N*rmsd)
     
-    # return rmsd
-    return g_rmsd
+    return rmsd
+    # return g_rmsd
