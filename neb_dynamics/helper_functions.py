@@ -303,3 +303,39 @@ def flip_structure_if_necessary(react_struc, product_struc, rs):
         return react_struct
     return False
         
+
+# -------
+
+# @author: alexchang
+import numpy as np
+import scipy.sparse.linalg
+
+def quaternionrmsd(c1, c2):
+    N = len(c1)
+    if len(c2) != N:
+        raise "Dimensions not equal!"
+    bary1 = np.mean(c1, axis = 0)
+    bary2 = np.mean(c2, axis = 0)
+
+    c1 = c1 - bary1
+    c2 = c2 - bary2
+
+    R = np.dot(np.transpose(c1), c2)
+
+    F = np.array([[(R[0, 0] + R[1, 1] + R[2, 2]), (R[1, 2] - R[2, 1]), (R[2, 0] - R[0, 2]), (R[0, 1] - R[1, 0])], 
+            [(R[1, 2] - R[2, 1]), (R[0, 0] - R[1, 1] - R[2, 2]), (R[1, 0] + R[0, 1]), (R[2, 0] + R[0, 2])],
+            [(R[2, 0] - R[0, 2]), (R[1, 0] + R[0, 1]), (-R[0, 0] + R[1, 1] - R[2, 2]), (R[1, 2] + R[2, 1])],
+            [(R[0, 1] - R[1, 0]), (R[2, 0] + R[0, 2]), (R[1, 2] + R[2, 1]), (-R[0, 0] - R[1, 1] + R[2, 2])]])
+    eigen = scipy.sparse.linalg.eigs(F, k = 1, which = 'LR')
+    lmax = float(eigen[0][0])
+    qmax = np.array(eigen[1][0:4])
+    qmax = np.float_(qmax)
+    qmax = np.ndarray.flatten(qmax)
+    rmsd = ((np.sum(np.square(c1)) + np.sum(np.square(c2)) - 2 * lmax)/N)** 0.5
+    rot = np.array([[(qmax[0]**2 + qmax[1]**2 - qmax[2]**2 - qmax[3]**2), 2*(qmax[1]*qmax[2] - qmax[0]*qmax[3]), 2*(qmax[1]*qmax[3] + qmax[0]*qmax[2])],
+               [2*(qmax[1]*qmax[2] + qmax[0]*qmax[3]), (qmax[0]**2 - qmax[1]**2 + qmax[2]**2 - qmax[3]**2), 2*(qmax[2]*qmax[3] - qmax[0]*qmax[1])],
+               [2*(qmax[1]*qmax[3] - qmax[0]*qmax[2]), 2*(qmax[2]*qmax[3] + qmax[0]*qmax[1]), (qmax[0]**2 - qmax[1]**2 - qmax[2]**2 + qmax[3]**2)]])
+    g_rmsd = (c1 - np.matmul(c2, rot))/(N*rmsd)
+    
+    # return rmsd
+    return g_rmsd
