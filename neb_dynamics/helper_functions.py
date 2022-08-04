@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 from IPython.core.display import HTML
 
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
+
 
 def print_matrix_2D(mat: np.array, precision: float = 6, threshold: float = 0.0):
     """
