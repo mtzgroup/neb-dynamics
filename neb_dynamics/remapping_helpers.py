@@ -49,6 +49,7 @@ def get_all_product_isomorphisms(end_struct):
 
 def get_correct_product_structure(new_structs, start_struct):
     max_gi_vals = []
+    works = []
     trajs = []
     # out_dir = Path("./GI_filter")
     for i, end_point in enumerate(new_structs):
@@ -59,8 +60,10 @@ def get_correct_product_structure(new_structs, start_struct):
 
         chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
         max_gi_vals.append(max(chain.energies))
+        works.append(chain.work)
 
-    return new_structs[np.argmin(max_gi_vals)], trajs[np.argmin(max_gi_vals)]
+    # return new_structs[np.argmin(max_gi_vals)], trajs[np.argmin(max_gi_vals)]
+    return new_structs[np.argmin(works)], trajs[np.argmin(works)]
 
 def create_correct_interpolation(start_ind, end_ind, root_conformers, transformed_conformers):
     start_struct = root_conformers[start_ind]
