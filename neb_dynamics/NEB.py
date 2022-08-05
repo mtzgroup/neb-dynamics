@@ -16,6 +16,7 @@ from xtb.utils import get_method
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.helper_functions import quaternionrmsd
 
 
 @dataclass
@@ -666,6 +667,27 @@ class Chain:
         return cls(
             nodes=nodes, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity
         )
+
+    @property
+    def path_distances(self):
+        dist = []
+        for i in range(len(self.nodes)):
+            if i == 0: continue
+            start = self.nodes[i-1]
+            end = self.nodes[i]
+            
+            dist.append(quaternionrmsd(start.coords, end.coords))
+        
+        return np.array(dist)
+
+    @cached_property
+    def work(self) -> float:
+        ens = self.energies
+        ens -= ens[0]
+
+        works = ens[1:]*self.path_distances
+        tot_work = works.sum()
+        return tot_work
 
     @cached_property
     def energies(self) -> np.array:

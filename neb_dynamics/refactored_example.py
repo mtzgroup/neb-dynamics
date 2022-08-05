@@ -12,32 +12,20 @@ from matplotlib.animation import FuncAnimation
 
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
-from neb_dynamics.NEB import NEB, AlessioError, Chain, Node2D, Node2D_2, Node2D_ITM, Node3D, NoneConvergedException
+from neb_dynamics.NEB import NEB, AlessioError, Chain, Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, NoneConvergedException, Node3D 
 from neb_dynamics.trajectory import Trajectory
 
+from potential_functions import sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3
 
-s=4
+sfs = [sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3]
+
+ind_f = 1
 
 def sorry_func(inp):
-    
-    x, y = inp
-    return (x ** 2 + y - 11) ** 2 + (x + y ** 2 - 7) ** 2
-
-# def sorry_func(inp): # https://theory.cm.utexas.edu/henkelman/pubs/sheppard11_1769.pdf
-#     x, y = inp
-#     A = np.cos(np.pi*x) 
-#     B = np.cos(np.pi*y) 
-#     C = np.pi*np.exp(-np.pi*x**2)
-#     D = (np.exp(-np.pi*(y - 0.8)**2))  + np.exp(-np.pi*(y+0.8)**2)
-#     return A + B + C*D
+    return sfs[ind_f](inp)
 
 
-# def sorry_func(inp):
-#     x, y = inp
-#     Ax = 1
-#     Ay = 1
-#     return -1*(Ax*np.cos(2*np.pi*x) + Ay*np.cos(2*np.pi*y))
-
+s=2
 
 
 def animate_func(neb_obj: NEB):
@@ -48,14 +36,14 @@ def animate_func(neb_obj: NEB):
 
     figsize = 5
 
-    f, ax = plt.subplots(figsize=(1.18 * figsize, figsize))
+    f, ax = plt.subplots(figsize=(1.618 * figsize, figsize))
 
 
     min_val = -s
     max_val = s
 
-    # min_val = -.5
-    # max_val = 1.5
+    # min_val = 0.5
+    # max_val = 4
 
     x = np.linspace(start=min_val, stop=max_val, num=n_nodes)
     y = x.reshape(-1, 1)
@@ -79,11 +67,13 @@ def animate_func(neb_obj: NEB):
         return (x for x in arrows)
 
     anim = FuncAnimation(fig=f, func=animate, frames=chain_traj, blit=True, repeat_delay=1000, interval=200)
-    # anim.save('no_vv.gif')
+    # anim.save(f'pot{ind_f}_super_trippy.gif')
     plt.show()
 
 
 def plot_func(neb_obj: NEB):
+    size=8
+    f,ax=plt.subplots(figsize=(1.618*size, size))
 
     en_func = neb_obj.initial_chain[0].en_func
     orig_chain = neb_obj.initial_chain
@@ -91,8 +81,8 @@ def plot_func(neb_obj: NEB):
 
     min_val = -s
     max_val = s
-    # min_val = -.5
-    # max_val = 1.5
+    # min_val = 0.5
+    # max_val = 4
     num = 10
     fig = 10
     f, _ = plt.subplots(figsize=(1.18 * fig, fig))
@@ -107,13 +97,13 @@ def plot_func(neb_obj: NEB):
         [(node.coords[1]) for node in orig_chain],
         "^--",
         c="white",
-        label="original",
+        label="original",ms=9
     )
 
     points_x = [node.coords[0] for node in new_chain]
     points_y = [node.coords[1] for node in new_chain]
     # plt.plot([toy_potential_2(point) for point in new_chain])
-    plt.plot(points_x, points_y, "o--", c="white", label="NEB")
+    plt.plot(points_x, points_y, "o--", c="white", label="NEB", ms=9)
     # psave(new_chain, "new_chain.p")
     plt.show()
 
@@ -137,18 +127,18 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 100
+    nimages = 300
 
     ### node 2d
     # end_point = (3.00002182, 1.99995542)
-    end_point = (2.129, 2.224)
-    start_point = (-3.77928812, -3.28320392)
+    # end_point = (2.129, 2.224)
+    # start_point = (-3.77928812, -3.28320392)
 
     ### node 2d - 2
-    # start_point = (-1, 1)
+    start_point = (-1, 1)
     # end_point = (1, 1)
-    # end_point = (-1, -1)
-    # end_point = (1, -1)
+    end_point = (1, -1)
+    # end_point = (1.01, -1.01)
 
     # ## node 2d - ITM
     # start_point = (0, 0)
@@ -156,6 +146,9 @@ def main():
     # end_point = (-1, -1)
     # end_point = (.5, -.5)
 
+    # ## node 2d - LEPS
+    # start_point = [0.74200203, 4]
+    # end_point = [4, 0.74200311]
     coords = np.linspace(start_point, end_point, nimages)
     # coords[5]+= np.array([0,.2])
     
@@ -168,11 +161,13 @@ def main():
     # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     # kval = .01
-    ks = 6
-    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D, delta_k=0, step_size=.01)
-    n = NEB(initial_chain=chain, max_steps=500, grad_thre_per_atom=1, climb=False, vv_force_thre=0.0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    ks = 0.05
+    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D_2, delta_k=0, step_size=.01)
+    n = NEB(initial_chain=chain, max_steps=1000, grad_thre_per_atom=.05, climb=False, vv_force_thre=0.0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
     try: 
         n.optimize_chain()
+
+        print(n.optimized.coordinates)
         animate_func(n)
         plot_func(n)
         plot_2D(n)
