@@ -13,10 +13,10 @@ from neb_dynamics.trajectory import Trajectory
 import numpy as np
 
 import matplotlib.pyplot as plt
-# -
 
+# +
 rxn_name = 'Claisen-Rearrangement'
-reaction_path = Path("/Users/janestrada/Documents/Stanford/Retropaths/retropaths/data/reactions.p")
+reaction_path = Path("/Users/janestrada/Retropaths/retropaths/data/reactions.p")
 
 out_path=Path("/Users/janestrada/T3D_data/template_rxns/Claisen-Rearrangement")
 inp = Inputs(rxn_name=rxn_name, reaction_file=reaction_path)
@@ -26,6 +26,7 @@ root_structure = RootStructure(
     rxn_args=inp,
     trajectory=Trajectory([]),
 )
+# -
 
 root_conformers, root_energies = root_structure.crest(
     tdstruct=root_structure.root, id="root"
@@ -71,15 +72,10 @@ r = root_conformers[r_ind]
 p = transformed_conformers[p_ind]
 
 # +
-traj = Trajectory.from_xyz(Path(f"./Claisen-Rearrangement/traj_{r_ind}-{p_ind}_neb.xyz"))
+traj = Trajectory.from_xyz(Path(f"/Users/janestrada/T3D_data/template_rxns/Claisen-Rearrangement/traj_{r_ind}-{p_ind}_neb.xyz"))
 chain = Chain.from_traj(traj, k=1,delta_k=1,step_size=0,node_class=Node3D)
 
 plt.plot(chain.energies, 'o--')
-# -
-
-root_structure._get_bonds_between_fragments()
-
-r.coords[5]
 
 
 # +
@@ -102,24 +98,7 @@ def get_neighs(struct, ind):
     return neighs
 
 get_neighs(r, 5)
-
-# +
-origin_a = get_atom_xyz(r, 5) 
-r1_a = get_atom_xyz(r, 12) - origin_a
-r2_a = get_atom_xyz(r, 13) - origin_a
-
-origin_p_a = get_atom_xyz(p, 5)
-p1_a = get_atom_xyz(p, 12) - origin_p_a
-p2_a =  get_atom_xyz(p, 13) - origin_p_a
 # -
-
-cr_1 = np.cross(r1_a, r2_a)
-
-cr_2 = np.cross(p1_a, p2_a)
-
-np.sign(np.dot(cr_1, cr_2))
-
-# # Attempt 2, The square bullshit
 
 get_neighs(r, 0)
 
@@ -166,7 +145,7 @@ print((side_1_p, side_2_p))
 print((cross_1_p, cross_2_p))
 # -
 
-# # Attempt 3: Checking if two lines cross
+# # Checking if two lines cross
 
 # +
 p1 = np.array([0.0,0.0])
@@ -196,23 +175,6 @@ def get_intersect(a1, a2, b1,b2) :
     return (num / denom.astype(float))*db + b1
 
 
-# +
-# def get_intersect(a1, a2, b1, b2):
-#     """ 
-#     Returns the point of intersection of the lines passing through a2,a1 and b2,b1.
-#     a1: [x, y] a point on the first line
-#     a2: [x, y] another point on the first line
-#     b1: [x, y] a point on the second line
-#     b2: [x, y] another point on the second line
-#     """
-#     s = np.vstack([a1,a2,b1,b2])        # s for stacked
-#     h = np.hstack((s, np.ones((4, 1)))) # h for homogeneous
-#     l1 = np.cross(h[0], h[1])           # get first line
-#     l2 = np.cross(h[2], h[3])           # get second line
-#     x, y, z = np.cross(l1, l2)          # point of intersection
-#     if z == 0:                          # lines are parallel
-#         return (float('inf'), float('inf'))
-#     return (x/z, y/z)
 # -
 
 def _check_point_in_both_lines(point,line1, line2):
@@ -253,55 +215,6 @@ def check_if_lines_intersect(p1_var, p2_var, p3_var, p4_var):
     return _check_point_in_both_lines(poi, line1=(p1_var,p2_var), line2=(p3_var,p4_var))
 
 
-check_if_lines_intersect(
-    p1_var=np.array((0,0)),
-    p2_var=np.array((1,1)),
-    p3_var=np.array((0,0)),
-    p4_var=np.array((0,1))
-)
-
-# +
-r_0 = get_atom_xyz(r, 0)
-r_6 = get_atom_xyz(r, 6)
-r_7 = get_atom_xyz(r, 7)
-
-
-r_5 = get_atom_xyz(r,5)
-r_12 = get_atom_xyz(r,12)
-r_13 = get_atom_xyz(r, 13)
-
-# +
-p_0 = get_atom_xyz(p, 0)
-p_6 = get_atom_xyz(p, 6)
-p_7 = get_atom_xyz(p, 7)
-
-
-p_5 = get_atom_xyz(p,5)
-p_12 = get_atom_xyz(p,12)
-p_13 = get_atom_xyz(p, 13)
-# -
-
-check_if_lines_intersect(p1_var=r_6[[0,2]], p2_var=r_13[[0,2]], p3_var=r_7[[0,2]], p4_var=r_12[[0,2]])
-
-_check_point_in_both_lines([ 0.01729678,-0.10795274], line1=(r_6[[0,2]],r_13[[0,2]]), line2=(r_7[[0,2]],r_12[[0,2]]))
-
-
-
-# +
-x1 = r_6[[0,2]]
-x2 = r_13[[0,2]]
-x3 = r_7[[0,2]]
-x4 = r_12[[0,2]]
-
-
-plt.plot([x1[0], x2[0]], [x1[1],x2[1]], label='6-13')
-plt.plot([x3[0], x4[0]], [x3[1],x4[1]], label='7-12')
-plt.legend()
-# -
-
-check_if_lines_intersect(p1_var=p_6[[0,2]], p2_var=p_13[[0,2]], p3_var=p_7[[0,2]], p4_var=p_12[[0,2]])
-
-
 def get_points(struct, indices):
     a1, a2, b1, b2 = indices
     p_a1 = get_atom_xyz(struct, a1)
@@ -317,32 +230,12 @@ def get_neigh_inds(struct, ref_atoms_inds):
     
     ref_atom_1, ref_atom_2 = ref_atoms_inds
     
-    a1, a2 = get_neighs(product_struc, ref_atom_1)
+    a1, a2 = get_neighs(struct, ref_atom_1)
 
-    b1, b2 = get_neighs(product_struc, ref_atom_2)
+    b1, b2 = get_neighs(struct, ref_atom_2)
     
     return a1, a2, b1, b2
 
-
-# +
-a1, a2, b1, b2 = get_neigh_inds(product_struc, rs._get_bonds_between_fragments()['single'][0])
-p_a1, p_a2, p_b1, p_b2 = get_points(product_struc, [a1,a2,b1,b2])
-
-
-x1 = p_a1[[0,2]]
-x2 = p_b1[[0,2]]
-x3 = p_a2[[0,2]]
-x4 = p_b2[[0,2]]
-
-
-plt.plot([x1[0], x2[0]], [x1[1],x2[1]])
-plt.plot([x3[0], x4[0]], [x3[1],x4[1]])
-
-
-# +
-# react_struc.write_to_disk("DEBUG_22.xyz")
-# product_struc.write_to_disk("DEBUG_11.xyz")
-# -
 
 def flip_coordinates(struct, a1, a2):
     struct_copy = struct.copy()
@@ -356,12 +249,6 @@ def flip_coordinates(struct, a1, a2):
 
     struct_copy.update_coords(new_coords)
     return struct_copy
-
-
-# this will be the function for checking if indices need to be flipped
-product_struc = p
-react_struc = r
-rs = root_structure
 
 
 # +
@@ -422,8 +309,261 @@ count
 
 pairs_to_fix
 
-root_conformers[0].write_to_disk("DEBUG_0.xyz")
+f = open("./pairs_to_fix.txt", "w+")
+for r, p in pairs_to_fix:
+    f.write(f"{r} {p}\n")
+f.close()
 
-transformed_conformers[3].write_to_disk("DEBUG_3.xyz")
+# # Use GI to filter
+#
+# Plan: 
+# 1. Get all isomorphisms of product conformer
+# 2. Interpolate between each, getting max barrier from GI
+# 3. Select isomorphism with lowest barrier
+
+from neb_dynamics.geodesic_input import GeodesicInput
+from neb_dynamics.NEB import Chain, Node3D, NEB
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
+
+# +
+root_conformers, root_energies = root_structure.crest(
+    tdstruct=root_structure.root, id="root"
+).conf_and_energy
+transformed_conformers, transformed_energies = root_structure.crest(
+    tdstruct=root_structure.transformed,
+    id="transformed"
+).conf_and_energy
+
+sampler = Sampler(mode="distance")
+sub_root_conformers, _  = sampler.run(
+conformers_to_subsample=root_conformers,
+bonds_between_frags=root_structure._get_bonds_between_fragments(),
+energies=root_energies,
+cutoff=7
+) 
+sub_trans_conformers, _ = sampler.run(
+conformers_to_subsample=transformed_conformers,
+bonds_between_frags=root_structure._get_bonds_between_fragments(),
+energies=transformed_energies,
+cutoff=7
+)
+
+root_conformers = sub_root_conformers
+transformed_conformers = sub_trans_conformers
+
+
+# +
+# start_ind = 15
+# end_ind = 20
+
+start_ind = 28
+end_ind = 3
+
+# +
+from retropaths.molecules.molecule import Molecule
+from retropaths.molecules.isomorphism_tools import SubGraphMatcherApplyPermute
+
+mol = root_conformers[start_ind].molecule_rp
+sgmap = SubGraphMatcherApplyPermute(mol)
+isoms = sgmap.get_isomorphisms(mol)
+
+# -
+
+def create_isomorphic_structure(struct, iso):
+
+    orig_coords = struct.coords
+    new_coords = orig_coords.copy()
+
+    for orig_ind,remap_ind in iso.items():
+        new_coords[orig_ind] = orig_coords[remap_ind]
+
+
+    new_struct = struct.copy()
+    new_struct.update_coords(new_coords*ANGSTROM_TO_BOHR)
+    return new_struct
+
+
+# +
+start_struct = root_conformers[start_ind]
+start_struct_coords = start_struct.coords
+start_struct.update_coords(start_struct_coords*ANGSTROM_TO_BOHR)
+
+
+end_struct = transformed_conformers[end_ind]
+new_structs = []
+for isom in isoms:
+    new_structs.append(create_isomorphic_structure(struct=end_struct, iso=isom))
+# -
+
+max_gi_vals = []
+works = []
+trajs = []
+out_dir = Path("./GI_filter")
+for i, end_point in enumerate(new_structs):
+    gi = GeodesicInput.from_endpoints(initial=start_struct, final=end_point)
+    # traj = gi.run(nimages=15, friction=0.01, nudge=0.001)
+    traj = gi.run(nimages=40, friction=0.01, nudge=0.001)
+    # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
+    trajs.append(traj)
+    
+    chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
+    max_gi_vals.append(max(chain.energies))
+    works.append(chain.work)
+
+np.argmin(max_gi_vals)
+
+np.argmin(works)
+
+# ## Trial by fire. NEB on each of the GIs
+
+# gis = []
+# for fp in out_dir.iterdir():
+#     gis.append(Trajectory.from_xyz(Path(fp)))
+
+
+# gis_chains = [Chain.from_traj(gi, k=1, delta_k=0, node_class=Node3D, step_size=9) for gi in gis]
+gis_chains = [Chain.from_traj(t, k=.1, delta_k=0, node_class=Node3D, step_size=1) for t in trajs]
+
+for i, gi in enumerate(gis_chains):
+    print(i, gi.work)
+
+# +
+f, ax = plt.subplots()
+for i, c in enumerate(gis_chains):
+    plt.plot(c.energies, 'o--', label=f'gi_{i}')
+
+plt.legend()
+# -
+
+nebs = []
+for gi in gis_chains:
+    n = NEB(initial_chain=gi, grad_thre_per_atom=0.0016, vv_force_thre=0, climb=False)
+    try:
+        n.optimize_chain()
+        nebs.append(n)
+    except:
+        nebs.append(None)
+
+for i, n in enumerate(nebs):
+    try:
+        c = n.optimized
+        print(i, c.work)
+        # n.write_to_disk(Path(f'./neb_{i}.xyz'))
+        
+        # if i == 7 or i==5 : plt.plot(c.energies, 'o-', label=f'neb_{i}', linewidth=4)
+        # else: plt.plot(c.energies, '--', label=f'neb_{i}')
+    except:
+        continue
+
+
+# +
+f, ax = plt.subplots()
+for i, n in enumerate(nebs):
+    try:
+        c = n.optimized
+        plt.plot(c.energies, 'o-', label=f'neb_{i}')
+        # if i == 7 or i == 4: plt.plot(c.energies, 'o-', label=f'neb_{i}', linewidth=4)
+        # else: plt.plot(c.energies, '--', label=f'neb_{i}')
+    except:
+        continue
+
+plt.legend()
+
+# +
+long_gis = []
+
+for i, end_point in enumerate(new_structs):
+    if i==4 or i==7:
+        gi = GeodesicInput.from_endpoints(initial=start_struct, final=end_point)
+        traj = gi.run(nimages=40, friction=0.01, nudge=0.001)
+        # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
+        long_gis.append(traj)
+
+        # chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
+        # max_gi_vals.append(max(chain.energies))
+        # works.append(chain.work)
+# -
+
+gi_4 = long_gis[0]
+gi_4_chain = Chain.from_traj(gi_4, k=0.1, delta_k=0, step_size=1, node_class=Node3D)
+print(max(gi_4_chain.energies))
+plt.plot(gi_4_chain.energies)
+
+gi_7 = long_gis[1]
+gi_7_chain = Chain.from_traj(gi_7, k=0.1, delta_k=0, step_size=1, node_class=Node3D)
+print(max(gi_7_chain.energies))
+plt.plot(gi_7_chain.energies)
+
+n_4 = NEB(gi_4_chain, grad_thre_per_atom=0.0016, vv_force_thre=0)
+n_4.optimize_chain()
+
+n_7 = NEB(gi_7_chain, grad_thre_per_atom=0.0016, vv_force_thre=0)
+n_7.optimize_chain()
+
+plt.plot((n_4.optimized.energies-n_4.optimized.energies[0])*627.5,'o--', label='neb_4')
+plt.plot((n_7.optimized.energies-n_4.optimized.energies[0])*627.5,'o--', label='neb_7')
+plt.legend()
+
+print(n_7.optimized.work)
+print(n_4.optimized.work)
+
+n_7.write_to_disk(Path('./n7.xyz'))
+n_4.write_to_disk(Path('./n4.xyz'))
+
+
+# +
+# for i in range(len(nebs)):
+#     try:
+#         nebs[i].write_to_disk(out_dir/f'neb_{i}.xyz')
+#     except:
+#         continue
+# -
+
+# ## functions
+
+def get_all_product_isomorphisms(end_struct):
+    new_structs = []
+    for isom in isoms:
+        new_structs.append(create_isomorphic_structure(struct=end_struct, iso=isom))
+        
+    return new_structs
+
+
+def get_correct_product_structure(new_structs):
+    max_gi_vals = []
+    trajs = []
+    # out_dir = Path("./GI_filter")
+    for i, end_point in enumerate(new_structs):
+        gi = GeodesicInput.from_endpoints(initial=start_struct, final=end_point)
+        traj = gi.run(nimages=15, friction=0.01, nudge=0.001)
+        # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
+        trajs.append(traj)
+
+        chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
+        max_gi_vals.append(max(chain.energies))
+
+    return new_structs[np.argmin(max_gi_vals)], trajs[np.argmin(max_gi_vals)]
+
+
+def create_correct_interpolation(start_ind, end_ind):
+    start_struct = root_conformers[start_ind]
+    start_struct_coords = start_struct.coords
+    start_struct.update_coords(start_struct_coords*ANGSTROM_TO_BOHR)
+    
+    end_struct = transformed_conformers[end_ind]
+    
+    new_structs = get_all_product_isomorphisms(end_struct)
+    correct_end_struct, correct_gi_traj = get_correct_product_structure(new_structs)
+    
+    return correct_gi_traj
+
+
+out = Path('./GI_filter_data/')
+for r, p in pairs_to_fix:
+    # print(f"{r=} {p=}")
+    traj = create_correct_interpolation(r, p)
+    traj.write_trajectory(out/f'traj_{r}-{p}.xyz')
+
+print("done")
 
 
