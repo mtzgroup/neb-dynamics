@@ -52,7 +52,7 @@ def main():
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
     chain = Chain.from_traj(traj=traj, k=.1, delta_k=0, step_size=1, node_class=Node3D)
-    n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, climb=True, vv_force_thre=0)
+    n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, climb=False, vv_force_thre=0)
     
     n.optimize_chain()
 
