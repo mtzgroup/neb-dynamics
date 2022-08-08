@@ -685,7 +685,7 @@ class Chain:
         ens = self.energies
         ens -= ens[0]
 
-        works = ens[1:]*self.path_distances
+        works = np.abs(ens[1:]*self.path_distances)
         tot_work = works.sum()
         return tot_work
 
