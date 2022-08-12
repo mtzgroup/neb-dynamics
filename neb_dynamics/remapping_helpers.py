@@ -3,6 +3,7 @@ from neb_dynamics.NEB import Chain, Node3D
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.geodesic_input import GeodesicInput
 from retropaths.molecules.isomorphism_tools import SubGraphMatcherApplyPermute
+from neb_dynamics.trajectory import Trajectory
 
 def get_atom_xyz(struct, atom_ind):
     atom_r = struct.molecule_obmol.GetAtom(atom_ind+1)
@@ -89,5 +90,6 @@ def create_correct_interpolation(start_ind, end_ind, root_conformers, transforme
     new_structs = get_all_product_isomorphisms(end_struct)
     gi_info = get_gi_info(new_structs=new_structs, start_struct=start_struct)
     correct_end_struct, correct_gi_traj = get_correct_product_structure(new_structs=new_structs, gi_info=gi_info)
-    
+    correct_gi_traj = np.array([Trajectory(t, tot_charge=0, tot_spinmult=1) for t in correct_gi_traj])
+
     return correct_gi_traj
