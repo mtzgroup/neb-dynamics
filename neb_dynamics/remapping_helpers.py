@@ -75,7 +75,6 @@ def get_correct_product_structure(new_structs, gi_info, kcal_window=10):
     sorted_arr-= sorted_arr[0]
     ints_to_do = sorted_inds[sorted_arr <= kcal_window]
     print(ints_to_do)
-
     return new_structs[ints_to_do], trajs[ints_to_do]
     # return new_structs[np.argmin(max_gi_vals)], trajs[np.argmin(max_gi_vals)]
     # return new_structs[np.argmin(works)], trajs[np.argmin(works)]
