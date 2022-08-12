@@ -127,8 +127,9 @@ def main():
     root_conformers = sub_root_conformers
     transformed_conformers = sub_trans_conformers
 
-    traj = create_correct_interpolation(start_ind, end_ind, root_conformers=root_conformers, transformed_conformers=transformed_conformers)
-    traj.write_trajectory(out_path/f'traj_{start_ind}-{end_ind}.xyz')
+    trajs = create_correct_interpolation(start_ind, end_ind, root_conformers=root_conformers, transformed_conformers=transformed_conformers)
+    for i, traj in enumerate(trajs):
+        traj.write_trajectory(out_path/f'traj_{start_ind}-{end_ind}_{i}.xyz')
     
         
 	    

@@ -44,10 +44,10 @@ def get_all_product_isomorphisms(end_struct):
     for isom in isoms:
         new_structs.append(create_isomorphic_structure(struct=end_struct, iso=isom))
         
-    return new_structs
+    return np.array(new_structs)
 
 
-def get_correct_product_structure(new_structs, start_struct):
+def get_gi_info(new_structs, start_struct):
     max_gi_vals = []
     works = []
     trajs = []
@@ -59,11 +59,25 @@ def get_correct_product_structure(new_structs, start_struct):
         trajs.append(traj)
 
         chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
-        max_gi_vals.append(max(chain.energies))
+        chain_energies_hartree = chain.energies
+        chain_energies_hartree -= chain_energies_hartree[0]
+        chain_energies_kcal = chain_energies_hartree*627.5
+        max_gi_vals.append(max(chain_energies_kcal))
         works.append(chain.work)
+    return np.array(max_gi_vals), np.array(works), np.array(trajs)
 
+def get_correct_product_structure(new_structs, gi_info, kcal_window=10):
+    max_gi_vals, works, trajs = gi_info
+    
+    sorted_inds = np.argsort(max_gi_vals) # indices that would sort array
+    sorted_arr = max_gi_vals[sorted_inds]
+    sorted_arr-= sorted_arr[0]
+    ints_to_do = sorted_inds[sorted_arr <= kcal_window]
+    print(ints_to_do)
+
+    return new_structs[ints_to_do], trajs[ints_to_do]
     # return new_structs[np.argmin(max_gi_vals)], trajs[np.argmin(max_gi_vals)]
-    return new_structs[np.argmin(works)], trajs[np.argmin(works)]
+    # return new_structs[np.argmin(works)], trajs[np.argmin(works)]
 
 def create_correct_interpolation(start_ind, end_ind, root_conformers, transformed_conformers):
     start_struct = root_conformers[start_ind]
@@ -73,6 +87,7 @@ def create_correct_interpolation(start_ind, end_ind, root_conformers, transforme
     end_struct = transformed_conformers[end_ind]
     
     new_structs = get_all_product_isomorphisms(end_struct)
-    correct_end_struct, correct_gi_traj = get_correct_product_structure(new_structs, start_struct)
+    gi_info = get_gi_info(new_structs=new_structs, start_struct=start_struct)
+    correct_end_struct, correct_gi_traj = get_correct_product_structure(new_structs=new_structs, gi_info=gi_info)
     
     return correct_gi_traj
