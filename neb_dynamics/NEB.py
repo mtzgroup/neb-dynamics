@@ -1197,7 +1197,7 @@ class Dimer:
         return - node.gradient
 
     def force_perp(self, r_vec: Node, unit_dir: np.array):
-        force_r_vec = self.force_func(r_vec)
+        force_r_vec = - r_vec.gradient
         return force_r_vec - r_vec.dot_function(force_r_vec, unit_dir)*unit_dir
 
     def get_unit_dir(self, dimer):
@@ -1212,29 +1212,66 @@ class Dimer:
         f_r2 = self.force_perp(r2, unit_dir=unit_dir)
         return f_r2 - f_r1
 
-    def _grad_d_theta(self, dimer, unit_dir):
+
+
+    def _attempt_rot_step(self, dimer: np.array,theta_rot, t, unit_dir):
+    
+        # update dimer endpoint
+        _, r2 = dimer
+        r2_prime_coords = r2.coords + (unit_dir*np.cos(t) + theta_rot*np.sin(t))*self.delta_r
+        r2_prime = self.initial_node.copy()
+        r2_prime = r2_prime.update_coords(r2_prime_coords)
+
+        # calculate new unit direction
+        midpoint_coords = r2.coords - unit_dir*self.delta_r
+        new_dir = (r2_prime_coords - midpoint_coords)
+        new_unit_dir = new_dir / np.linalg.norm(new_dir)
+        
+        # remake dimer using new unit direciton
+        r1_prime_coords = r2_prime_coords - 2*self.delta_r*new_unit_dir
+        r1_prime = self.initial_node.copy()
+        r1_prime = r1_prime.update_coords(r1_prime_coords)
+
+        new_dimer = np.array([r1_prime, r2_prime])
+        new_grad = self.get_dimer_force_perp(new_dimer)
+        
+        en_struct_prime = np.linalg.norm(new_grad)
+    
+        return en_struct_prime, t
+
+    def _rotate_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float, dimer: np.array, 
+    alpha=0.0001, beta=0.5):
+        
+        max_steps = 10
+        count = 0
         
 
 
-        return (unit_dir*np.cos(opt_d_theta) + theta_rot*np.sin(opt_d_theta))*self.delta_r
+        grad = self.get_dimer_force_perp(dimer)
+        en_struct = np.linalg.norm(grad)
 
-    def _rotate_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float):
-        from ALS_dimer import ArmijoLineSearchDimer
-        opt_d_theta = ArmijoLineSearchDimer(
-                node=r_vec,
-                t=self.d_theta,
-                grad=self.force_perp(r_vec, unit_dir=unit_dir),
-                grad_func=self.force_perp,
-                beta=0.5,
-                unit_dir=unit_dir,
-                
-                alpha=0.0001,
-            )
+        en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
+
+        condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+
+        while condition and count < max_steps:
+            t *= beta
+            count += 1
+            en_struct = en_struct_prime
+
+            en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
+
+            condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+
+        print(f"\t\t\t{t=} {count=} || force: {np.linalg.norm(grad)}")
+        sys.stdout.flush()
         
 
 
-        return r_vec.coords + (unit_dir*np.cos(opt_d_theta) + theta_rot*np.sin(opt_d_theta))*self.delta_r
+        return r_vec.coords + (unit_dir*np.cos(t) + theta_rot*np.sin(t))*self.delta_r
         
+
+    
 
     def _rotate_dimer(self, dimer):
         """
@@ -1248,7 +1285,7 @@ class Dimer:
         
         dimer_force_perp = self.get_dimer_force_perp(dimer)
         theta_rot = dimer_force_perp / np.linalg.norm(dimer_force_perp)
-        r2_prime_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot)
+        r2_prime_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot, dimer=dimer)
         r2_prime = self.initial_node.copy()
         r2_prime = r2_prime.update_coords(r2_prime_coords)
         
