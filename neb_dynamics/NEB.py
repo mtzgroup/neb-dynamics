@@ -1170,7 +1170,6 @@ class Dimer:
 
 
     def make_initial_dimer(self):
-        # dim = self.initial_node.coords.shape[1] # TODO: calculate dimension of vector
         random_vec = np.random.rand(*self.initial_node.coords.shape)
         random_unit_vec = random_vec / np.linalg.norm(random_vec)
         
@@ -1190,7 +1189,6 @@ class Dimer:
 
     def get_dimer_energy(self, dimer):
         r1,r2 = dimer
-
 
         return r1.energy + r2.energy
 
@@ -1214,10 +1212,34 @@ class Dimer:
         f_r2 = self.force_perp(r2, unit_dir=unit_dir)
         return f_r2 - f_r1
 
-    def update_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float):
-        return r_vec.coords + (unit_dir*np.cos(self.d_theta) + theta_rot*np.sin(self.d_theta))*self.delta_r
+    def _grad_d_theta(self, dimer, unit_dir):
+        
 
-    def update_dimer(self, dimer: np.array):
+
+        return (unit_dir*np.cos(opt_d_theta) + theta_rot*np.sin(opt_d_theta))*self.delta_r
+
+    def _rotate_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float):
+        from ALS_dimer import ArmijoLineSearchDimer
+        opt_d_theta = ArmijoLineSearchDimer(
+                node=r_vec,
+                t=self.d_theta,
+                grad=self.force_perp(r_vec, unit_dir=unit_dir),
+                grad_func=self.force_perp,
+                beta=0.5,
+                unit_dir=unit_dir,
+                
+                alpha=0.0001,
+            )
+        
+
+
+        return r_vec.coords + (unit_dir*np.cos(opt_d_theta) + theta_rot*np.sin(opt_d_theta))*self.delta_r
+        
+
+    def _rotate_dimer(self, dimer):
+        """
+        from this paper https://aip.scitation.org/doi/pdf/10.1063/1.480097
+        """
         _, r2 = dimer
         unit_dir = self.get_unit_dir(dimer)
         midpoint_coords = r2.coords - unit_dir*self.delta_r
@@ -1226,7 +1248,7 @@ class Dimer:
         
         dimer_force_perp = self.get_dimer_force_perp(dimer)
         theta_rot = dimer_force_perp / np.linalg.norm(dimer_force_perp)
-        r2_prime_coords = self.update_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot)
+        r2_prime_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot)
         r2_prime = self.initial_node.copy()
         r2_prime = r2_prime.update_coords(r2_prime_coords)
         
@@ -1238,26 +1260,55 @@ class Dimer:
         r1_prime = r1_prime.update_coords(r1_prime_coords)
         
         return np.array([r1_prime, r2_prime])
-    
-    def rotate_dimer(self, dimer):
-        print("Rotating dimer...")
+
+    def _translate_dimer(self, dimer):
+        dimer_0 = dimer
+        
+        r1,r2 = dimer_0
+        force = self.get_climb_force(dimer_0)
+
+        r2_prime_coords = r2.coords + self.step_size*force
+        r2_prime = self.initial_node.copy()
+        r2_prime = r2_prime.update_coords(r2_prime_coords)
+
+
+        r1_prime_coords = r1.coords + self.step_size*force
+        r1_prime = self.initial_node.copy()
+        r1_prime = r1_prime.update_coords(r1_prime_coords)
+        
+        
+        dimer_1 = (r1_prime, r2_prime)
+
+        return dimer_1
+
+
+    def fully_update_dimer(self, dimer):
         dimer_0 = dimer
         en_0 = self.get_dimer_energy(dimer_0)
-        dimer_1 = self.update_dimer(dimer)
+        
+        dimer_0_prime = self._rotate_dimer(dimer_0)
+        dimer_1 = self._translate_dimer(dimer_0_prime)
         en_1 = self.get_dimer_energy(dimer_1)
+        
         n_counts = 0
         while np.abs(en_1 - en_0) > 1e-7 and n_counts < 100000:
             # print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
             dimer_0 = dimer_1
             en_0 = self.get_dimer_energy(dimer_0)
-            dimer_1 = self.update_dimer(dimer_0)
+
+            dimer_0_prime = self._rotate_dimer(dimer_0)
+            dimer_1 = self._translate_dimer(dimer_0_prime)
+
             en_1 = self.get_dimer_energy(dimer_1)
             n_counts+=1
             
-        if np.abs(en_1 - en_0) <= 1e-7: print(f"Rotation converged in {n_counts} steps!")
-        else: print(f"Rotation did not converge. Final |∆E|: {np.abs(en_1 - en_0)}")
+        if np.abs(en_1 - en_0) <= 1e-7: print(f"Optimization converged in {n_counts} steps!")
+        else: print(f"Optimization did not converge. Final |∆E|: {np.abs(en_1 - en_0)}")
         return dimer_1
 
+
+
+   
     def get_climb_force(self, dimer):
         r1, r2 = dimer
         unit_path = self.get_unit_dir(dimer)
@@ -1276,63 +1327,10 @@ class Dimer:
         return F_R - 2*F_Par
         
 
-    def translate_dimer(self, dimer):
-        print("Moving dimer...")
-        dimer_0 = dimer
-        en_0 = self.get_dimer_energy(dimer_0)
-        
-        
-        r1,r2 = dimer_0
-        force = self.get_climb_force(dimer_0)
-
-        r2_prime_coords = r2.coords + self.step_size*force
-        r2_prime = self.initial_node.copy()
-        r2_prime = r2_prime.update_coords(r2_prime_coords)
-
-
-        r1_prime_coords = r1.coords + self.step_size*force
-        r1_prime = self.initial_node.copy()
-        r1_prime = r1_prime.update_coords(r1_prime_coords)
-        
-        
-        dimer_1 = (r1_prime, r2_prime)
-        en_1 = self.get_dimer_energy(dimer_1)
-        n_counts = 0
-        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 4000:
-            # print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
-
-            r1,r2 = dimer_1
-            dimer_0 = dimer_1
-            
-            
-            en_0 = self.get_dimer_energy(dimer_0)
-            force = self.get_climb_force(dimer_0)
-
-            r2_prime_coords = r2.coords + self.step_size*force
-            r2_prime = self.initial_node.copy()
-            r2_prime = r2_prime.update_coords(r2_prime_coords)
-
-            r1_prime_coords = r1.coords + self.step_size*force
-            r1_prime = self.initial_node.copy()
-            r1_prime = r1_prime.update_coords(r1_prime_coords)
-
-
-            dimer_1 = (r1_prime, r2_prime)
-            en_1 = self.get_dimer_energy(dimer_1)
-            n_counts+=1
-        
-        
-        
-        if np.abs(en_1 - en_0) <= 1e-7: print(f"Translation converged in {n_counts} steps!")
-        else: print(f"Translation did not converge in {n_counts} steps. Final |∆E|: {np.abs(en_1 - en_0)}")
-        
-        return (r1_prime, r2_prime)
-
 
     def find_ts(self):
         dimer = self.make_initial_dimer()
-        rotated_dimer = self.rotate_dimer(dimer=dimer)
-        trans_dimer = self.translate_dimer(dimer=rotated_dimer)
-        self.optimized_dimer = trans_dimer
+        opt_dimer = self.fully_update_dimer(dimer)
+        self.optimized_dimer = opt_dimer
 
 
