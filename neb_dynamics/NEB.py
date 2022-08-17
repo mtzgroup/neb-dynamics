@@ -1154,6 +1154,7 @@ class Dimer:
     step_size: float
     d_theta: float
     optimized_dimer = None
+    en_thre: float = 1e-7
 
 
     @property
@@ -1235,40 +1236,45 @@ class Dimer:
         new_dimer = np.array([r1_prime, r2_prime])
         new_grad = self.get_dimer_force_perp(new_dimer)
         
-        en_struct_prime = np.linalg.norm(new_grad)
+        # en_struct_prime = np.linalg.norm(new_grad)
+        en_struct_prime = np.dot(new_grad, theta_rot)
+        # en_struct_prime = self.get_dimer_energy(new_dimer)
     
         return en_struct_prime, t
 
-    def _rotate_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float, dimer: np.array, 
-    alpha=0.0001, beta=0.5):
+    def _rotate_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float, dimer: np.array,dt,  
+    alpha=0.000001, beta=0.5):
         
-        max_steps = 10
-        count = 0
-        
-
-
-        grad = self.get_dimer_force_perp(dimer)
-        en_struct = np.linalg.norm(grad)
-
-        en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
-
-        condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
-
-        while condition and count < max_steps:
-            t *= beta
-            count += 1
-            en_struct = en_struct_prime
-
-            en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
-
-            condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
-
-        print(f"\t\t\t{t=} {count=} || force: {np.linalg.norm(grad)}")
-        sys.stdout.flush()
+        # max_steps = 10
+        # count = 0
         
 
 
-        return r_vec.coords + (unit_dir*np.cos(t) + theta_rot*np.sin(t))*self.delta_r
+        # grad = self.get_dimer_force_perp(dimer)
+        # # en_struct = np.linalg.norm(grad)
+        # en_struct = np.dot(grad, theta_rot)
+        # # en_struct = self.get_dimer_energy(dimer)
+
+        # en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
+
+        # condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+
+        # while condition and count < max_steps:
+        #     t *= beta
+        #     count += 1
+        #     en_struct = en_struct_prime
+
+        #     en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
+
+        #     condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+
+        # print(f"\t\t\t{t=} {count=} || force: {np.linalg.norm(grad)}")
+        # sys.stdout.flush()
+        
+
+
+        # return r_vec.coords + (unit_dir*np.cos(t) + theta_rot*np.sin(t))*self.delta_r
+        return r_vec.coords + (unit_dir*np.cos(dt) + theta_rot*np.sin(dt))*self.delta_r
         
 
     
@@ -1285,7 +1291,11 @@ class Dimer:
         
         dimer_force_perp = self.get_dimer_force_perp(dimer)
         theta_rot = dimer_force_perp / np.linalg.norm(dimer_force_perp)
-        r2_prime_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot, dimer=dimer)
+
+
+
+
+        r2_prime_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot, dimer=dimer, dt=self.d_theta)
         r2_prime = self.initial_node.copy()
         r2_prime = r2_prime.update_coords(r2_prime_coords)
         
@@ -1295,14 +1305,55 @@ class Dimer:
         r1_prime_coords = r2_prime_coords - 2*self.delta_r*new_unit_dir
         r1_prime = self.initial_node.copy()
         r1_prime = r1_prime.update_coords(r1_prime_coords)
-        
-        return np.array([r1_prime, r2_prime])
+
+
+        dimer_prime = np.array([r1_prime, r2_prime])
+        dimer_prime_force_perp = self.get_dimer_force_perp(dimer_prime)
+        theta_rot_prime = dimer_prime_force_perp / np.linalg.norm(dimer_prime_force_perp)
+        f_prime = (np.dot(dimer_prime_force_perp, theta_rot_prime) - np.dot(dimer_force_perp, theta_rot))/self.d_theta
+
+        # optimal_d_theta = (np.dot(dimer_force_perp, theta_rot) + np.dot(dimer_prime_force_perp, theta_rot_prime))/(-2*f_prime)
+
+
+        r1_p, r2_p = dimer_prime
+        f_r1_p = self.force_perp(r1_p, unit_dir=unit_dir)
+        f_r2_p = self.force_perp(r2_p, unit_dir=unit_dir)
+
+        r1, r2 = dimer
+        f_r1 = self.force_perp(r1, unit_dir=unit_dir)
+        f_r2 = self.force_perp(r2, unit_dir=unit_dir)
+
+
+
+        f_val = 0.5*(np.dot(f_r2_p - f_r1_p, theta_rot_prime) + np.dot(f_r2 - f_r1, theta_rot))
+        f_val_prime = (1/self.d_theta)*(np.dot(f_r2_p - f_r1_p, theta_rot_prime) - np.dot(f_r2 - f_r1, theta_rot))
+
+        optimal_d_theta = 0.5*np.arctan(2*f_val/f_val_prime) - self.d_theta/2
+        print(f"\t\t{optimal_d_theta=}")
+        r2_final_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot, dimer=dimer, dt=optimal_d_theta)
+        r2_final = self.initial_node.copy()
+        r2_final = r2_final.update_coords(r2_final_coords)
+
+        final_dir = (r2_final_coords - midpoint_coords)
+        final_unit_dir = final_dir / np.linalg.norm(final_dir)
+
+        r1_final_coords = r2_final_coords - 2*self.delta_r*final_unit_dir
+        r1_final = self.initial_node.copy()
+        r1_final = r1_final.update_coords(r1_final_coords)
+
+        dimer_final = np.array([r1_final, r2_final])
+
+
+        return dimer_final
 
     def _translate_dimer(self, dimer):
         dimer_0 = dimer
         
         r1,r2 = dimer_0
         force = self.get_climb_force(dimer_0)
+
+
+
 
         r2_prime_coords = r2.coords + self.step_size*force
         r2_prime = self.initial_node.copy()
@@ -1328,7 +1379,7 @@ class Dimer:
         en_1 = self.get_dimer_energy(dimer_1)
         
         n_counts = 0
-        while np.abs(en_1 - en_0) > 1e-7 and n_counts < 100000:
+        while np.abs(en_1 - en_0) > self.en_thre and n_counts < 100000:
             # print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
             dimer_0 = dimer_1
             en_0 = self.get_dimer_energy(dimer_0)
@@ -1339,7 +1390,7 @@ class Dimer:
             en_1 = self.get_dimer_energy(dimer_1)
             n_counts+=1
             
-        if np.abs(en_1 - en_0) <= 1e-7: print(f"Optimization converged in {n_counts} steps!")
+        if np.abs(en_1 - en_0) <= self.en_thre: print(f"Optimization converged in {n_counts} steps!")
         else: print(f"Optimization did not converge. Final |∆E|: {np.abs(en_1 - en_0)}")
         return dimer_1
 
