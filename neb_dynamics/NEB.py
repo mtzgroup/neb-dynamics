@@ -465,7 +465,8 @@ class Node3D(Node):
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
-        return np.sum(first * second, axis=1).reshape(-1, 1)
+        # return np.sum(first * second, axis=1).reshape(-1, 1)
+        return np.tensordot(first, second)
 
     # i want to cache the result of this but idk how caching works
     def run_xtb_calc(tdstruct: TDStructure):
@@ -531,6 +532,7 @@ class Chain:
 
             pe_grad = current_node.gradient
             pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
+            # pe_along_path_const = np.tensordot(pe_grad, unit_tan_path)
             pe_along_path = pe_along_path_const * unit_tan_path
 
             climbing_grad = 2 * pe_along_path
