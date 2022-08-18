@@ -1,5 +1,4 @@
-#!/Users/janestrada/opt/anaconda3/envs/neb/bin/python
-
+#!/home/jdep/.conda/envs/neb/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
 from neb_dynamics.trajectory import Trajectory
@@ -51,11 +50,11 @@ def main():
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
     chain = Chain.from_traj(traj=traj, k=.1, delta_k=0, step_size=1, node_class=Node3D)
-    n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, climb=False, vv_force_thre=0, max_steps=3000)
+    n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, climb=True, vv_force_thre=0, max_steps=3000)
     try: 
         n.optimize_chain()
         data_dir = fp.parent
-        n.write_to_disk(data_dir/f"{fp.stem}_neb.xyz")
+        n.write_to_disk(data_dir/f"{fp.stem}_cneb.xyz")
     except NoneConvergedException as e:
         e.obj.write_to_disk(data_dir/f"{fp.stem}_failed.xyz")
         

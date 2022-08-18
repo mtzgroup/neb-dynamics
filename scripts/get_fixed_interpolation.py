@@ -128,7 +128,8 @@ def main():
     transformed_conformers = sub_trans_conformers
 
     trajs = create_correct_interpolation(start_ind, end_ind, root_conformers=root_conformers, transformed_conformers=transformed_conformers)
-    for i, traj in enumerate(trajs):
+    for i, traj_array in enumerate(trajs):
+        traj = Trajectory(traj_array, tot_charge=0, tot_spinmult=1)
         traj.write_trajectory(out_path/f'traj_{start_ind}-{end_ind}_{i}.xyz')
     
         
