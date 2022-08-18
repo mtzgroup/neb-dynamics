@@ -58,13 +58,16 @@ def get_gi_info(new_structs, start_struct):
         traj = gi.run(nimages=15, friction=0.01, nudge=0.001)
         # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
         trajs.append(traj)
-
-        chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
-        chain_energies_hartree = chain.energies
-        chain_energies_hartree -= chain_energies_hartree[0]
-        chain_energies_kcal = chain_energies_hartree*627.5
-        max_gi_vals.append(max(chain_energies_kcal))
-        works.append(chain.work)
+        try:
+            chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
+            chain_energies_hartree = chain.energies
+            chain_energies_hartree -= chain_energies_hartree[0]
+            chain_energies_kcal = chain_energies_hartree*627.5
+            max_gi_vals.append(max(chain_energies_kcal))
+            works.append(chain.work)
+        except:
+            max_gi_vals.append(np.inf)
+            works.append(np.inf)
     return np.array(max_gi_vals), np.array(works), np.array(trajs)
 
 def get_correct_product_structure(new_structs, gi_info, kcal_window=10):
