@@ -503,10 +503,17 @@ class Node3D(Node):
 class Chain:
     nodes: List[Node]
     k: Union[List[float], float]
-    delta_k: float
-    step_size: float
+    delta_k: float = 0
+    step_size: float = 1
+    velocity: np.array = np.zeros(1)
+    node_class: Node = Node3D
 
-    velocity: np.array
+
+    @classmethod
+    def from_xyz(cls, fp: Path, k=0.1, delta_k=0, step_size=1, velocity=np.zeros(1), node_class=Node3D):
+        traj = Trajectory.from_xyz(fp)
+        chain = cls.from_traj(traj, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity, node_class=node_class)
+        return chain
 
     def neighs_grad_func(
         self, prev_node: Node, current_node: Node, next_node: Node
@@ -532,7 +539,6 @@ class Chain:
 
             pe_grad = current_node.gradient
             pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
-            # pe_along_path_const = np.tensordot(pe_grad, unit_tan_path)
             pe_along_path = pe_along_path_const * unit_tan_path
 
             climbing_grad = 2 * pe_along_path
