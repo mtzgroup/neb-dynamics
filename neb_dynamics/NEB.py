@@ -549,7 +549,7 @@ class Chain:
             pe_grads_nudged = self.get_pe_grad_nudged(
                 current_node=current_node, unit_tan_path=unit_tan_path
             )
-            spring_forces_nudged_no_k = self.get_force_spring_nudged_no_k(
+            spring_forces_nudged = self.get_force_spring_nudged(
                 prev_node=prev_node,
                 current_node=current_node,
                 next_node=next_node,
@@ -567,7 +567,7 @@ class Chain:
             pe_grads_nudged = pe_grad - climbing_grad
 
             zero = np.zeros_like(pe_grad)
-            spring_forces_nudged_no_k = zero
+            spring_forces_nudged = zero
             
 
         else:
@@ -575,7 +575,7 @@ class Chain:
                 f"current_node.do_climb is not a boolean: {current_node.do_climb=}"
             )
 
-        return pe_grads_nudged, spring_forces_nudged_no_k #, anti_kinking_grads
+        return pe_grads_nudged, spring_forces_nudged #, anti_kinking_grads
 
     def _k_between_nodes(
         self, node0: Node, node1: Node, e_ref: float, k_max: float, e_max: float
@@ -587,69 +587,69 @@ class Chain:
             new_k = k_max - self.delta_k
         return new_k
 
-    def _choose_k(self, k_vals: np.array, springs_forces: np.array):
+    # def _choose_k(self, k_vals: np.array, springs_forces: np.array):
 
-        bools = (
-            springs_forces >= 0
-        )  # list of [..1, 0...] so will give index of left or right spring constant
-        chosen_ks = []
+    #     bools = (
+    #         springs_forces >= 0
+    #     )  # list of [..1, 0...] so will give index of left or right spring constant
+    #     chosen_ks = []
 
-        for k_pair, ind_choice in zip(k_vals, bools):
-            ind_choice = int(ind_choice)
+    #     for k_pair, ind_choice in zip(k_vals, bools):
+    #         ind_choice = int(ind_choice)
 
-            chosen_ks.append(k_pair[ind_choice])
+    #         chosen_ks.append(k_pair[ind_choice])
 
-        return np.array(chosen_ks)
+    #     return np.array(chosen_ks)
 
-    def compute_k(self, spring_forces, ref_grad):
-        new_ks = []
-        k_max = max(self.k) if hasattr(self.k, "__iter__") else self.k
-        e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
-        e_max = max(self.energies)
+    # def compute_k(self, spring_forces, ref_grad):
+    #     new_ks = []
+    #     k_max = max(self.k) if hasattr(self.k, "__iter__") else self.k
+    #     e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
+    #     e_max = max(self.energies)
 
         
 
-        dir_springs_forces = []
-        for spring_force_on_node, (prev_node, current_node, next_node) in zip(
-            spring_forces, self.iter_triplets()
-        ):
-            tan_vec = self._create_tangent_path(
-                prev_node=prev_node, current_node=current_node, next_node=next_node
-            )
-            unit_tan = tan_vec / np.linalg.norm(tan_vec)
+    #     dir_springs_forces = []
+    #     for spring_force_on_node, (prev_node, current_node, next_node) in zip(
+    #         spring_forces, self.iter_triplets()
+    #     ):
+    #         tan_vec = self._create_tangent_path(
+    #             prev_node=prev_node, current_node=current_node, next_node=next_node
+    #         )
+    #         unit_tan = tan_vec / np.linalg.norm(tan_vec)
 
-            k01 = self._k_between_nodes(
-                node0=prev_node,
-                node1=current_node,
-                e_ref=e_ref,
-                k_max=k_max,
-                e_max=e_max,
-            )
+    #         k01 = self._k_between_nodes(
+    #             node0=prev_node,
+    #             node1=current_node,
+    #             e_ref=e_ref,
+    #             k_max=k_max,
+    #             e_max=e_max,
+    #         )
 
-            k10 = self._k_between_nodes(
-                node0=current_node,
-                node1=next_node,
-                e_ref=e_ref,
-                k_max=k_max,
-                e_max=e_max,
-            )
+    #         k10 = self._k_between_nodes(
+    #             node0=current_node,
+    #             node1=next_node,
+    #             e_ref=e_ref,
+    #             k_max=k_max,
+    #             e_max=e_max,
+    #         )
 
-            new_ks.append([k01, k10])
-            dir_springs_forces.append(
-                current_node.dot_function(spring_force_on_node, unit_tan)
-            )
+    #         new_ks.append([k01, k10])
+    #         dir_springs_forces.append(
+    #             current_node.dot_function(spring_force_on_node, unit_tan)
+    #         )
 
-        new_ks = np.array(new_ks)
-        # print(f"\t\tk_vals={new_ks}")
-        dir_springs_forces = np.array(dir_springs_forces)
+    #     new_ks = np.array(new_ks)
+    #     # print(f"\t\tk_vals={new_ks}")
+    #     dir_springs_forces = np.array(dir_springs_forces)
 
-        ks_sub = self._choose_k(k_vals=new_ks, springs_forces=dir_springs_forces)
+    #     ks_sub = self._choose_k(k_vals=new_ks, springs_forces=dir_springs_forces)
 
-        # reshape k array
-        correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(ref_grad.shape)]
-        new_ks = ks_sub.reshape(*correct_dimensions)
+    #     # reshape k array
+    #     correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(ref_grad.shape)]
+    #     new_ks = ks_sub.reshape(*correct_dimensions)
 
-        self.k = new_ks
+    #     self.k = new_ks
 
     def __getitem__(self, index):
         return self.nodes.__getitem__(index)
@@ -727,27 +727,25 @@ class Chain:
     @cached_property
     def gradients(self) -> np.array:
         pe_grads_nudged = []
-        spring_forces_nudged_no_k = []
+        spring_forces_nudged = []
         # anti_kinking_grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
             (
                 pe_grad_nudged,
-                spring_force_nudged_no_k) = self.neighs_grad_func(
+                spring_force_nudged) = self.neighs_grad_func(
                 prev_node=prev_node, current_node=current_node, next_node=next_node
             )
 
 
             pe_grads_nudged.append(pe_grad_nudged)
-            spring_forces_nudged_no_k.append(spring_force_nudged_no_k)
+            spring_forces_nudged.append(spring_force_nudged)
             # anti_kinking_grads.append(anti_kinking_grad)
 
         pe_grads_nudged = np.array(pe_grads_nudged)
-        spring_forces_nudged_no_k = np.array(spring_forces_nudged_no_k)
+        spring_forces_nudged = np.array(spring_forces_nudged)
         # anti_kinking_grads = np.array(anti_kinking_grads)
-
-        self.compute_k(spring_forces=spring_forces_nudged_no_k, ref_grad=pe_grads_nudged)
         
-        grads = (pe_grads_nudged - self.k * spring_forces_nudged_no_k) #+ self.k * anti_kinking_grads
+        grads = (pe_grads_nudged - spring_forces_nudged) #+ self.k * anti_kinking_grads
 
         zero = np.zeros_like(grads[0])
         grads = np.insert(grads, 0, zero, axis=0)
@@ -816,7 +814,7 @@ class Chain:
                 beta=0.5,
                 f=current_node.en_func,
                 alpha=0.0001,
-                k=max(self.k),
+                k=self.k,
             )
             return dr
         else:
@@ -881,14 +879,38 @@ class Chain:
         )
         return pe_grad_nudged
 
-    def get_force_spring_nudged_no_k(
+    def get_force_spring_nudged(
         self,
         prev_node: Node,
         current_node: Node,
         next_node: Node,
         unit_tan_path: np.array,
     ):
-        force_spring = np.linalg.norm(next_node.coords - current_node.coords) - np.linalg.norm(current_node.coords - prev_node.coords)
+        
+        k_max = max(self.k) if hasattr(self.k, "__iter__") else self.k
+        e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
+        e_max = max(self.energies)
+        # print(f"***{e_max=}//{e_ref=}//{k_max=}")
+
+        k01 = self._k_between_nodes(
+                    node0=prev_node,
+                    node1=current_node,
+                    e_ref=e_ref,
+                    k_max=k_max,
+                    e_max=e_max,
+                )
+
+        k12 = self._k_between_nodes(
+            node0=current_node,
+            node1=next_node,
+            e_ref=e_ref,
+            k_max=k_max,
+            e_max=e_max,
+        )
+
+        # print(f"***{k12=} // {k01=}")
+
+        force_spring = k12*np.linalg.norm(next_node.coords - current_node.coords) - k01*np.linalg.norm(current_node.coords - prev_node.coords)
         return force_spring*unit_tan_path
 
 
