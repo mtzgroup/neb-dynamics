@@ -515,6 +515,27 @@ class Chain:
         chain = cls.from_traj(traj, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity, node_class=node_class)
         return chain
 
+    @property
+    def integrated_path_length(self):
+        
+        endpoint_vec = self.nodes[-1].coords - self.nodes[0].coords
+        cum_sums = [0]
+        
+        int_path_len = [0]
+        for i, frame in enumerate(self.nodes):
+            if i == len(self.nodes) -1 :
+                continue
+            next_frame = self.nodes[i+1]
+            dist_vec = next_frame.coords - frame.coords
+            cum_sums.append(cum_sums[-1]+np.linalg.norm(dist_vec))
+            # proj = (frame.dot_function(dist_vec, endpoint_vec) / frame.dot_function(endpoint_vec, endpoint_vec))*endpoint_vec
+
+            # proj_dist = np.linalg.norm(proj)
+            # int_path_len.append(int_path_len[-1]+proj_dist)
+        cum_sums = np.array(cum_sums)
+        int_path_len = cum_sums / cum_sums[-1]
+        return np.array(int_path_len)
+
     def neighs_grad_func(
         self, prev_node: Node, current_node: Node, next_node: Node
     ):
@@ -586,6 +607,8 @@ class Chain:
         e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
         e_max = max(self.energies)
 
+        
+
         dir_springs_forces = []
         for spring_force_on_node, (prev_node, current_node, next_node) in zip(
             spring_forces, self.iter_triplets()
@@ -613,7 +636,7 @@ class Chain:
 
             new_ks.append([k01, k10])
             dir_springs_forces.append(
-                np.sum(current_node.dot_function(unit_tan, spring_force_on_node))
+                current_node.dot_function(spring_force_on_node, unit_tan)
             )
 
         new_ks = np.array(new_ks)
