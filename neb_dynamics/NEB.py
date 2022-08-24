@@ -778,47 +778,49 @@ class Chain:
 
     @cached_property
     def displacements(self):
-
         grads = self.gradients
-
         correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(grads.shape)]
         disps = []
 
-        for grad, (prev_node, current_node, next_node) in zip(
-            grads, self.iter_triplets()
-        ):
+        for prev_node, current_node, next_node in self.iter_triplets():
             disp = self.node_displacement(
                 current_node=current_node,
                 prev_node=prev_node,
                 next_node=next_node,
-                grad=grad,
+                grad=0,
             )
             disps.append(disp)
 
+        disps.insert(0, 0) # add 0 displacement for endpoints
+        disps.append(0)
+
         disps = np.array(disps).reshape(*correct_dimensions)
-        return disp
+        
+        return disps
 
     def node_displacement(
         self, current_node: Node, prev_node: Node, next_node: Node, grad: np.array
     ):
         from neb_dynamics import ALS
-
-        if not current_node.converged:
-            dr = ALS.ArmijoLineSearch(
-                node=current_node,
-                t=self.step_size,
-                grad=grad,
-                next_node=next_node,
-                prev_node=prev_node,
-                grad_func=self.neighs_grad_func,
-                beta=0.5,
-                f=current_node.en_func,
-                alpha=0.0001,
-                k=self.k,
-            )
-            return dr
-        else:
-            return 0.0
+        pe_grads_nudged, spring_forces_nudged = self.neighs_grad_func(prev_node=prev_node, current_node=current_node, next_node=next_node)
+        grad = pe_grads_nudged - spring_forces_nudged
+        # if not current_node.converged:
+        # dr = 0.01
+        dr = ALS.ArmijoLineSearch(
+            node=current_node,
+            t=self.step_size,
+            grad=grad,
+            next_node=next_node,
+            prev_node=prev_node,
+            grad_func=self.neighs_grad_func,
+            beta=0.5,
+            f=current_node.en_func,
+            alpha=.5,
+            k=self.k,
+        )
+        return dr
+        # else:
+        #     return 0.0
 
     def _create_tangent_path(
         self, prev_node: Node, current_node: Node, next_node: Node
@@ -835,17 +837,16 @@ class Chain:
             deltaV_max = max(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
             deltaV_min = min(np.abs(en_2 - en_1), np.abs(en_0 - en_1))
 
+
+            tau_plus = next_node.coords - current_node.coords
+            tau_minus = current_node.coords - prev_node.coords
             if en_2 > en_0:
-                tan_vec = (next_node.coords - current_node.coords) * deltaV_max + (
-                    current_node.coords - prev_node.coords
-                ) * deltaV_min
+                tan_vec = deltaV_max*tau_plus  + deltaV_min*tau_minus
             elif en_2 < en_0:
-                tan_vec = (next_node.coords - current_node.coords) * deltaV_min + (
-                    current_node.coords - prev_node.coords
-                ) * deltaV_max
+                tan_vec = deltaV_min*tau_plus + deltaV_max*tau_minus
 
             else:
-                return next_node.coords - current_node.coords
+                return 0.5*(tau_minus + tau_plus)
                 # raise ValueError(
                 #     f"Energies adjacent to current node are identical. {en_2=} {en_0=}"
                 # )
