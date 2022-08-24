@@ -13,6 +13,7 @@ from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
+
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
@@ -801,23 +802,22 @@ class Chain:
     def node_displacement(
         self, current_node: Node, prev_node: Node, next_node: Node, grad: np.array
     ):
-        from neb_dynamics import ALS
         pe_grads_nudged, spring_forces_nudged = self.neighs_grad_func(prev_node=prev_node, current_node=current_node, next_node=next_node)
         grad = pe_grads_nudged - spring_forces_nudged
         # if not current_node.converged:
-        # dr = 0.01
-        dr = ALS.ArmijoLineSearch(
-            node=current_node,
-            t=self.step_size,
-            grad=grad,
-            next_node=next_node,
-            prev_node=prev_node,
-            grad_func=self.neighs_grad_func,
-            beta=0.5,
-            f=current_node.en_func,
-            alpha=.5,
-            k=self.k,
-        )
+        dr = 0.01
+        # dr = ALS.ArmijoLineSearch(
+        #     node=current_node,
+        #     t=self.step_size,
+        #     grad=grad,
+        #     next_node=next_node,
+        #     prev_node=prev_node,
+        #     grad_func=self.neighs_grad_func,
+        #     beta=0.5,
+        #     f=current_node.en_func,
+        #     alpha=.5,
+        #     k=self.k,
+        # )
         return dr
         # else:
         #     return 0.0
@@ -1021,6 +1021,7 @@ class NEB:
         return new_velocity
 
     def update_chain(self, chain: Chain) -> Chain:
+        from neb_dynamics import ALS
 
         do_vv = self.do_velvel(chain=chain)
 
@@ -1029,8 +1030,12 @@ class NEB:
             new_chain_coordinates = chain.coordinates + velocity
 
         else:
+            # new_chain_coordinates = (
+            #     chain.coordinates - chain.gradients * chain.displacements
+            # )
+            disp = ALS.ArmijoLineSearch(chain=chain, t=chain.step_size, alpha=0.01, beta=0.5, grad=chain.gradients)
             new_chain_coordinates = (
-                chain.coordinates - chain.gradients * chain.displacements
+                chain.coordinates - chain.gradients * disp
             )
 
         new_nodes = []
