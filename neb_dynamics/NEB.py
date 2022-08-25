@@ -731,6 +731,7 @@ class Chain:
         spring_forces_nudged = []
         # anti_kinking_grads = []
         for prev_node, current_node, next_node in self.iter_triplets():
+            
             (
                 pe_grad_nudged,
                 spring_force_nudged) = self.neighs_grad_func(
@@ -738,9 +739,14 @@ class Chain:
             )
 
 
-            pe_grads_nudged.append(pe_grad_nudged)
-            spring_forces_nudged.append(spring_force_nudged)
             # anti_kinking_grads.append(anti_kinking_grad)
+            if not current_node.converged:
+                pe_grads_nudged.append(pe_grad_nudged)
+                spring_forces_nudged.append(spring_force_nudged)
+            else:
+                zero = np.zeros_like(pe_grad_nudged)
+                pe_grads_nudged.append(zero)
+                spring_forces_nudged.append(zero)
 
         pe_grads_nudged = np.array(pe_grads_nudged)
         spring_forces_nudged = np.array(spring_forces_nudged)
@@ -922,9 +928,9 @@ class NEB:
     redistribute: bool = False
     remove_folding: bool = False
     climb: bool = False
-    en_thre: float = 0.001
-    grad_thre_per_atom: float = 0.001
-    mag_grad_thre: float = 0.01
+    en_thre: float = 1e-4
+    grad_thre: float = 1e-4
+    mag_grad_thre: float = 1e-4
     max_steps: float = 1000
 
     vv_force_thre: float = 1.0
@@ -933,20 +939,18 @@ class NEB:
     chain_trajectory: list[Chain] = field(default_factory=list)
     gradient_trajectory: list[np.array] = field(default_factory=list)
 
-    @property
-    def grad_thre(self):
-        n_atoms = self.initial_chain[0].coords.shape[0]
-        return self.grad_thre_per_atom*(n_atoms)
-
-
     def do_velvel(self, chain: Chain):
         max_force_on_node = max([np.linalg.norm(grad) for grad in chain.gradients])
         return max_force_on_node < self.vv_force_thre
 
-    def set_climbing_nodes(self, chain: Chain):
-        # reset node convergence
+    def _reset_node_convergence(self, chain):
         for node in chain:
             node.converged = False
+
+
+    def set_climbing_nodes(self, chain: Chain):
+        # reset node convergence
+        self._reset_node_convergence(chain=chain)
 
         inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
         print(f"----->Setting {len(inds_maxima)} nodes to climb")
@@ -959,6 +963,7 @@ class NEB:
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps + 1:
+            
 
             max_grad_val = np.max([np.linalg.norm(grad) for grad in chain_previous.gradients])
             if max_grad_val<= 2*self.grad_thre and self.climb: 
@@ -995,6 +1000,8 @@ class NEB:
                 self.optimized = new_chain
                 return
             chain_previous = new_chain.copy()
+
+
             nsteps += 1
 
         new_chain = self.update_chain(chain=chain_previous)
@@ -1056,9 +1063,11 @@ class NEB:
         return new_chain
 
     def _update_node_convergence(self, chain: Chain, indices: np.array) -> None:
-        for ind in indices:
-            node = chain[ind]
-            node.converged = True
+        for i, node in enumerate(chain):
+            if i in indices:
+                node.converged = True
+            else: 
+                node.converged = False
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
@@ -1081,34 +1090,37 @@ class NEB:
         )
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-        # en_bool, en_converged_indices = self._check_en_converged(
-        #     chain_prev=chain_prev, chain_new=chain_new
-        # )
+        en_bool, en_converged_indices = self._check_en_converged(
+            chain_prev=chain_prev, chain_new=chain_new
+        )
 
-        # grad_bool, grad_converged_indices = self._check_grad_converged(
-        #     chain_prev=chain_prev, chain_new=chain_new
-        # )
+        grad_bool, grad_converged_indices = self._check_grad_converged(
+            chain_prev=chain_prev, chain_new=chain_new
+        )
 
-        # converged_node_indices = np.intersect1d(
-        #     en_converged_indices, grad_converged_indices
-        # )
 
-        converged_nodes_indices = [
-            i
-            for i, bool in enumerate(
-                np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients
-            )
-            if bool
-        ]
+        converged_nodes_indices = np.intersect1d(
+            en_converged_indices, grad_converged_indices
+        )
+
+        # converged_nodes_indices = [
+        #     i
+        #     for i, bool in enumerate(
+        #         np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients
+        #     )
+        #     if bool
+        # ]
         print(f"\t{len(converged_nodes_indices)} nodes have converged")
         # print(f"\t{converged_nodes_indices} nodes have converged")
 
-        # self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
+        self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
         # return len(converged_node_indices) == len(chain_new.nodes)
 
-        return np.all(
-            [np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients]
-        )
+        return len(converged_nodes_indices) == len(chain_new)
+
+        # return np.all(
+        #     [np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients]
+        # )
 
         # return en_bool and grad_bool
 

@@ -1,4 +1,4 @@
-#!/home/jdep/.conda/envs/neb/bin/python
+#!/Users/janestrada/opt/anaconda3/envs/rp/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
 from neb_dynamics.trajectory import Trajectory
@@ -49,8 +49,8 @@ def main():
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
-    chain = Chain.from_traj(traj=traj, k=.1, delta_k=0, step_size=1, node_class=Node3D)
-    n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, climb=True, vv_force_thre=0, max_steps=3000)
+    chain = Chain.from_traj(traj=traj, k=0.1, delta_k=0.0, step_size=1, node_class=Node3D)
+    n = NEB(initial_chain=chain, grad_thre=1e-3, en_thre=1e-3, mag_grad_thre=1e-3, climb=True, vv_force_thre=0, max_steps=100000)
     try: 
         n.optimize_chain()
         data_dir = fp.parent

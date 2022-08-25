@@ -18,14 +18,26 @@ from neb_dynamics.trajectory import Trajectory
 from potential_functions import sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3
 
 sfs = [sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3]
+index = 0
+nodes = [Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS]
+min_sizes = [-4, -2, -2, 0.5]
+max_sizes = [4, 2, 2, 4]
 
-ind_f = 1
+presets = {
+'pot_func': sfs[index],
+'node': nodes[index],
+'min_size':min_sizes[index],
+'max_size':max_sizes[index]
+}
+
+
+
 
 def sorry_func(inp):
-    return sfs[ind_f](inp)
+    return sfs[index](inp)
 
 
-s=2
+s=4
 
 
 def animate_func(neb_obj: NEB):
@@ -42,8 +54,8 @@ def animate_func(neb_obj: NEB):
     min_val = -s
     max_val = s
 
-    # min_val = 0.5
-    # max_val = 4
+    min_val = presets['min_size']
+    max_val = presets['max_size']
 
     x = np.linspace(start=min_val, stop=max_val, num=n_nodes)
     y = x.reshape(-1, 1)
@@ -73,16 +85,15 @@ def animate_func(neb_obj: NEB):
 
 def plot_func(neb_obj: NEB):
     size=8
-    f,ax=plt.subplots(figsize=(1.618*size, size))
 
     en_func = neb_obj.initial_chain[0].en_func
     orig_chain = neb_obj.initial_chain
     new_chain = neb_obj.chain_trajectory[-1]
 
-    min_val = -s
-    max_val = s
-    # min_val = 0.5
-    # max_val = 4
+    # min_val = -s
+    # max_val = s
+    min_val = presets['min_size']
+    max_val = presets['max_size']
     num = 10
     fig = 10
     f, _ = plt.subplots(figsize=(1.18 * fig, fig))
@@ -120,24 +131,24 @@ def plot_2D(neb_obj: NEB):
 
     ens = ens-ens[0]
 
-
-    plt.plot(list(range(len(ens))), ens, "o--", label="last chain")
-    plt.plot(orig_ens, "*", label='original')
+    print(f"{opt_chain.integrated_path_length=}")
+    plt.plot(opt_chain.integrated_path_length, ens, "o--", label="last chain")
+    plt.plot(np.linspace(0, opt_chain.integrated_path_length[-1], len(orig_ens)),orig_ens, "*", label='original')
     plt.legend()
     plt.show()
 
 def main():
-    nimages = 300
+    nimages = 40
 
     ### node 2d
-    # end_point = (3.00002182, 1.99995542)
+    end_point = (3.00002182, 1.99995542)
     # end_point = (2.129, 2.224)
-    # start_point = (-3.77928812, -3.28320392)
+    start_point = (-3.77928812, -3.28320392)
 
     ### node 2d - 2
-    start_point = (-1, 1)
+    # start_point = (-1, 1)
     # end_point = (1, 1)
-    end_point = (1, -1)
+    # end_point = (1, -1)
     # end_point = (1.01, -1.01)
 
     # ## node 2d - ITM
@@ -161,13 +172,13 @@ def main():
     # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     # kval = .01
-    ks = 0.05
-    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=Node2D_2, delta_k=0, step_size=.01)
-    n = NEB(initial_chain=chain, max_steps=1000, grad_thre_per_atom=.05, climb=False, vv_force_thre=0.0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    ks = 10
+    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=presets['node'], delta_k=10, step_size=1)
+    n = NEB(initial_chain=chain, max_steps=1000, climb=False, en_thre=1e-2, grad_thre=1e-2, mag_grad_thre=1e-2, vv_force_thre=0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
     try: 
         n.optimize_chain()
 
-        print(n.optimized.coordinates)
+        print(f"{n.optimized.coordinates=}")
         animate_func(n)
         plot_func(n)
         plot_2D(n)

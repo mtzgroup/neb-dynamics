@@ -55,7 +55,7 @@ def get_gi_info(new_structs, start_struct):
     # out_dir = Path("./GI_filter")
     for i, end_point in enumerate(new_structs):
         gi = GeodesicInput.from_endpoints(initial=start_struct, final=end_point)
-        traj = gi.run(nimages=15, friction=0.01, nudge=0.001)
+        traj = gi.run(nimages=40, friction=0.01, nudge=0.001)
         # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
         trajs.append(traj)
         try:

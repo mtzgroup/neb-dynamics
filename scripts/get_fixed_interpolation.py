@@ -1,4 +1,4 @@
-#!/home/jdep/.conda/envs/rp/bin/python
+#!/Users/janestrada/opt/anaconda3/envs/rp/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
 
