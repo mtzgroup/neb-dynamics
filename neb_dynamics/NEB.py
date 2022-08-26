@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from functools import cached_property
+from hashlib import new
 from pathlib import Path
 from typing import List, Union
 
@@ -929,8 +930,9 @@ class NEB:
     remove_folding: bool = False
     climb: bool = False
     en_thre: float = 1e-4
+    rms_grad_thre: float = 1e-4
     grad_thre: float = 1e-4
-    mag_grad_thre: float = 1e-4
+    # mag_grad_thre: float = 1e-4
     max_steps: float = 1000
 
     vv_force_thre: float = 1.0
@@ -966,7 +968,7 @@ class NEB:
             
 
             max_grad_val = np.max([np.linalg.norm(grad) for grad in chain_previous.gradients])
-            if max_grad_val<= 2*self.grad_thre and self.climb: 
+            if max_grad_val<= 3*self.grad_thre and self.climb: 
                 self.set_climbing_nodes(chain=chain_previous)
                 self.climb = False
 
@@ -1071,47 +1073,64 @@ class NEB:
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
-
         indices_converged = np.where(differences < self.en_thre)
 
-        return np.all(differences < self.en_thre), indices_converged[0]
+        return indices_converged[0], differences
 
-    def _check_grad_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-        delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
-        mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])
+    def _check_grad_converged(self, chain: Chain) -> bool:
+        # delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
+        # mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])
+        bools = []
+        max_grad_components = []
+        gradients = chain.gradients
+        for grad in gradients:
+            max_grad = np.amax(grad)
+            max_grad_components.append(max_grad)
+            bools.append(max_grad < self.grad_thre)
 
-        delta_converged = np.where(delta_grad < self.grad_thre)
-        mag_converged = np.where(mag_grad < self.mag_grad_thre)
 
-        return (
-            np.all(delta_grad < self.grad_thre)
-            and np.all(mag_grad < self.mag_grad_thre),
-            np.intersect1d(delta_converged[0], mag_converged[0]),
-        )
+        # grad_converged = np.where(delta_grad < self.grad_thre)
+        # mag_converged = np.where(mag_grad < self.mag_grad_thre)
+        # mag_converged = mag_grad < self.mag_grad_thre
+
+        # return delta_converged[0], mag_converged[0], delta_grad, mag_grad
+        # return delta_converged[0], delta_grad
+        return np.where(bools), max(max_grad_components)
+
+    def _check_rms_grad_converged(self, chain: Chain):
+        bools = []
+        rms_grads = []
+        grads = chain.gradients
+        for grad in grads:
+            rms_gradient= np.sqrt(np.mean(np.square(grad)))
+            rms_grads.append(rms_gradient)
+            rms_grad_converged = rms_gradient < self.rms_grad_thre
+            bools.append(rms_grad_converged)
+
+        return np.where(bools), max(rms_grads)
+
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-        en_bool, en_converged_indices = self._check_en_converged(
-            chain_prev=chain_prev, chain_new=chain_new
-        )
 
-        grad_bool, grad_converged_indices = self._check_grad_converged(
+        rms_grad_conv_ind, max_rms_grad = self._check_rms_grad_converged(chain_new)
+        en_converged_indices, en_deltas = self._check_en_converged(
             chain_prev=chain_prev, chain_new=chain_new
         )
+        
+        grad_conv_ind, max_grad_component = self._check_grad_converged(chain=chain_new)
+
 
 
         converged_nodes_indices = np.intersect1d(
-            en_converged_indices, grad_converged_indices
+            en_converged_indices, rms_grad_conv_ind
         )
+        converged_nodes_indices = np.intersect1d(converged_nodes_indices,  grad_conv_ind)
 
-        # converged_nodes_indices = [
-        #     i
-        #     for i, bool in enumerate(
-        #         np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients
-        #     )
-        #     if bool
-        # ]
+        
+        
+        # [print(f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(∆Grad) : { np.amax(grad_deltas[i])} | |Grad| : {mag_grad_deltas[i]} | Converged? : {chain_new.nodes[i].converged}") for i in range(len(chain_new))]
+        [print(f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(RMS Grad): {max_rms_grad} | Max(Grad components): {max_grad_component} | Converged? : {chain_new.nodes[i].converged}") for i in range(len(chain_new))]
         print(f"\t{len(converged_nodes_indices)} nodes have converged")
-        # print(f"\t{converged_nodes_indices} nodes have converged")
 
         self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
         # return len(converged_node_indices) == len(chain_new.nodes)
