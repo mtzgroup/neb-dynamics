@@ -68,7 +68,8 @@ def _attempt_step(chain: Chain, t):
     )
     
     new_grad = new_chain.gradients
-    en_struct_prime = np.linalg.norm(new_grad)
+    en_struct_prime = np.sqrt(np.mean(np.square(new_grad)))
+    # en_struct_prime = np.sum(new_chain.energies)
     return en_struct_prime, t
 
 def ArmijoLineSearch(chain: Chain, t, alpha, beta,grad):
@@ -76,7 +77,8 @@ def ArmijoLineSearch(chain: Chain, t, alpha, beta,grad):
     count = 0
 
     en_struct_prime, t =  _attempt_step(chain=chain, t=t)
-    en_struct = np.linalg.norm(grad)
+    en_struct = np.sqrt(np.mean(np.square(grad)))
+    # en_struct = np.sum(chain.energies)
     condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
 
     while condition and count < max_steps:
