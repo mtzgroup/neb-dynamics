@@ -138,7 +138,7 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 40
+    nimages = 20
 
     ### node 2d
     end_point = (3.00002182, 1.99995542)
@@ -172,9 +172,11 @@ def main():
     # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     # kval = .01
-    ks = 10
-    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=presets['node'], delta_k=10, step_size=1)
-    n = NEB(initial_chain=chain, max_steps=1000, climb=False, en_thre=1e-2, grad_thre=1e-2, mag_grad_thre=1e-2, vv_force_thre=0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    ks = 50
+    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=presets['node'], delta_k=50, step_size=1)
+    # n = NEB(initial_chain=chain, max_steps=1000, climb=False, en_thre=1e-1, grad_thre=1e-1, mag_grad_thre=1e-1, vv_force_thre=0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    tol = .00001
+    n = NEB(initial_chain=chain, max_steps=2000, climb=True, en_thre=tol/450, rms_grad_thre=tol*(2/3), grad_thre=tol, vv_force_thre=0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
     try: 
         n.optimize_chain()
 
