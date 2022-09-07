@@ -92,7 +92,7 @@ def ArmijoLineSearch(chain: Chain, t, alpha, beta,grad):
         en_struct_prime, t = _attempt_step(chain=chain, t=t)
         condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
 
-    print(f"\t\t\t{t=} {count=} || force0: {en_struct} || force1: {en_struct_prime}")
+    # print(f"\t\t\t{t=} {count=} || force0: {en_struct} || force1: {en_struct_prime}")
     sys.stdout.flush()
     return t
 
