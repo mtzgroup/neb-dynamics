@@ -30,14 +30,14 @@ def create_isomorphic_structure(struct, iso):
 
 
     new_struct = struct.copy()
-    new_struct.update_coords(new_coords*ANGSTROM_TO_BOHR) # <--- warning, this was left in because TDstructures from RP were still in angstroms...
+    new_struct.update_coords(new_coords) 
     return new_struct
 
-def get_all_product_isomorphisms(end_struct):
+def get_all_product_isomorphisms(end_struct, timeout=100):
     
 
     mol = end_struct.molecule_rp
-    sgmap = SubGraphMatcherApplyPermute(mol)
+    sgmap = SubGraphMatcherApplyPermute(mol, timeout_seconds=timeout)
     isoms = sgmap.get_isomorphisms(mol)
 
 
