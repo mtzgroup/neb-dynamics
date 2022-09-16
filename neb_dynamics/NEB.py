@@ -95,11 +95,29 @@ class Node2D(Node):
         return (x ** 2 + y - 11) ** 2 + (x + y ** 2 - 7) ** 2
 
     @staticmethod
+    def en_func_arr(xy_vals):
+        x, y = xy_vals
+        return (x ** 2 + y - 11) ** 2 + (x + y ** 2 - 7) ** 2
+
+    @staticmethod
     def grad_func(node: Node2D):
         x, y = node.coords
         dx = 2 * (x ** 2 + y - 11) * (2 * x) + 2 * (x + y ** 2 - 7)
         dy = 2 * (x ** 2 + y - 11) + 2 * (x + y ** 2 - 7) * (2 * y)
         return np.array([dx, dy])
+
+    @staticmethod
+    def hess_func(node: Node2D):
+        x, y = node.coords
+        dx2 = 12*x**2 + 4*y - 42
+        dy2 = 4*x + 12*y**2 - 26
+        
+        dxdy = 4*(x + y)
+        
+        return np.array([
+                        [dx2, dxdy],
+                        [dxdy, dy2]
+                        ])
 
     @property
     def energy(self) -> float:
@@ -108,6 +126,10 @@ class Node2D(Node):
     @property
     def gradient(self) -> np.array:
         return self.grad_func(self)
+
+    @property
+    def hessian(self) -> np.array:
+        return self.hess_func(self)
 
     @staticmethod
     def dot_function(self, other: Node2D) -> float:
@@ -147,6 +169,15 @@ class Node2D_2(Node):
         return A + B + C * D
 
     @staticmethod
+    def en_func_arr(xy_vals):
+        x, y = xy_vals
+        A = np.cos(np.pi * x)
+        B = np.cos(np.pi * y)
+        C = np.pi * np.exp(-np.pi * x ** 2)
+        D = (np.exp(-np.pi * (y - 0.8) ** 2)) + np.exp(-np.pi * (y + 0.8) ** 2)
+        return A + B + C * D
+
+    @staticmethod
     def grad_func(node):
         x, y = node.coords
         A_x = (-2 * np.pi ** 2) * (np.exp(-np.pi * (x ** 2)) * x)
@@ -164,6 +195,34 @@ class Node2D_2(Node):
 
         return np.array([dx, dy])
 
+    @staticmethod
+    def hess_func(node: Node2D):
+        x, y = node.coords
+
+
+        A_xx = (4*np.pi**3)*np.exp(-np.pi*x**2)*x**2
+        B_xx = (np.exp(-np.pi*(y - 0.8)**2) + np.exp(-np.pi*(y + 0.8)**2))
+        C_xx = (2*np.pi**2)*(np.exp(-np.pi*x**2))*(np.exp(-np.pi*(y - 0.8)**2) + np.exp(-np.pi*(y+0.8)**2))
+        D_xx = np.pi**2 * np.cos(np.pi*x)
+
+        A_yy = np.pi*np.exp(-np.pi*x*2)
+        B_yy = 4*np.pi**2 * np.exp(-np.pi*(y - 0.8)**2)*(y - 0.8)**2
+        C_yy =4*np.pi**2*np.exp(-np.pi*(y+0.8)**2)*(y+0.8)**2
+        D_yy = 2*np.pi*np.exp(-np.pi*(y-0.8)**2)
+        E_yy = 2*np.pi*np.exp(-np.pi*(y+0.8)**2)
+        F_yy = np.pi**2*np.cos(np.pi*y)
+
+
+        dx2 = A_xx*B_xx - C_xx - D_xx
+        dy2 = A_yy*(B_yy + C_yy - D_yy - E_yy) - F_yy
+        
+        dxdy = 2.22386*x*(np.exp(np.pi*(y+0.8)**2)*(y - 0.8) + (np.exp(np.pi*(y - 0.8)**2))*(y + 0.8))*np.exp(-3.14159*x**2 - 6.28319*y**2)
+        
+        return np.array([
+                        [dx2, dxdy],
+                        [dxdy, dy2]
+                        ])
+
     @property
     def energy(self) -> float:
         return self.en_func(self)
@@ -171,6 +230,10 @@ class Node2D_2(Node):
     @property
     def gradient(self) -> np.array:
         return self.grad_func(self)
+
+    @property 
+    def hessian(self) -> np.array:
+        return self.hess_func(self)
 
     @staticmethod
     def dot_function(self, other) -> float:
@@ -205,7 +268,13 @@ class Node2D_ITM(Node):
         Ay = 1
         return -1*(Ax*np.cos(2*np.pi*x) + Ay*np.cos(2*np.pi*y))
 
-        
+    @staticmethod
+    def en_func_arr(xy_vals):
+        x, y = xy_vals
+        Ax = 1
+        Ay = 1
+        return -1*(Ax*np.cos(2*np.pi*x) + Ay*np.cos(2*np.pi*y))
+
 
     @staticmethod
     def grad_func(node: Node2D_ITM):
@@ -626,70 +695,6 @@ class Chain:
         plt.yticks(fontsize=fs)
         plt.show()
 
-    # def _choose_k(self, k_vals: np.array, springs_forces: np.array):
-
-    #     bools = (
-    #         springs_forces >= 0
-    #     )  # list of [..1, 0...] so will give index of left or right spring constant
-    #     chosen_ks = []
-
-    #     for k_pair, ind_choice in zip(k_vals, bools):
-    #         ind_choice = int(ind_choice)
-
-    #         chosen_ks.append(k_pair[ind_choice])
-
-    #     return np.array(chosen_ks)
-
-    # def compute_k(self, spring_forces, ref_grad):
-    #     new_ks = []
-    #     k_max = max(self.k) if hasattr(self.k, "__iter__") else self.k
-    #     e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
-    #     e_max = max(self.energies)
-
-        
-
-    #     dir_springs_forces = []
-    #     for spring_force_on_node, (prev_node, current_node, next_node) in zip(
-    #         spring_forces, self.iter_triplets()
-    #     ):
-    #         tan_vec = self._create_tangent_path(
-    #             prev_node=prev_node, current_node=current_node, next_node=next_node
-    #         )
-    #         unit_tan = tan_vec / np.linalg.norm(tan_vec)
-
-    #         k01 = self._k_between_nodes(
-    #             node0=prev_node,
-    #             node1=current_node,
-    #             e_ref=e_ref,
-    #             k_max=k_max,
-    #             e_max=e_max,
-    #         )
-
-    #         k10 = self._k_between_nodes(
-    #             node0=current_node,
-    #             node1=next_node,
-    #             e_ref=e_ref,
-    #             k_max=k_max,
-    #             e_max=e_max,
-    #         )
-
-    #         new_ks.append([k01, k10])
-    #         dir_springs_forces.append(
-    #             current_node.dot_function(spring_force_on_node, unit_tan)
-    #         )
-
-    #     new_ks = np.array(new_ks)
-    #     # print(f"\t\tk_vals={new_ks}")
-    #     dir_springs_forces = np.array(dir_springs_forces)
-
-    #     ks_sub = self._choose_k(k_vals=new_ks, springs_forces=dir_springs_forces)
-
-    #     # reshape k array
-    #     correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(ref_grad.shape)]
-    #     new_ks = ks_sub.reshape(*correct_dimensions)
-
-    #     self.k = new_ks
-
     def __getitem__(self, index):
         return self.nodes.__getitem__(index)
 
@@ -820,51 +825,6 @@ class Chain:
     def coordinates(self) -> np.array:
 
         return np.array([node.coords for node in self.nodes])
-
-    @cached_property
-    def displacements(self):
-        grads = self.gradients
-        correct_dimensions = [1 if i > 0 else -1 for i, _ in enumerate(grads.shape)]
-        disps = []
-
-        for prev_node, current_node, next_node in self.iter_triplets():
-            disp = self.node_displacement(
-                current_node=current_node,
-                prev_node=prev_node,
-                next_node=next_node,
-                grad=0,
-            )
-            disps.append(disp)
-
-        disps.insert(0, 0) # add 0 displacement for endpoints
-        disps.append(0)
-
-        disps = np.array(disps).reshape(*correct_dimensions)
-        
-        return disps
-
-    def node_displacement(
-        self, current_node: Node, prev_node: Node, next_node: Node, grad: np.array
-    ):
-        pe_grads_nudged, spring_forces_nudged = self.neighs_grad_func(prev_node=prev_node, current_node=current_node, next_node=next_node)
-        grad = pe_grads_nudged - spring_forces_nudged
-        # if not current_node.converged:
-        dr = 0.01
-        # dr = ALS.ArmijoLineSearch(
-        #     node=current_node,
-        #     t=self.step_size,
-        #     grad=grad,
-        #     next_node=next_node,
-        #     prev_node=prev_node,
-        #     grad_func=self.neighs_grad_func,
-        #     beta=0.5,
-        #     f=current_node.en_func,
-        #     alpha=.5,
-        #     k=self.k,
-        # )
-        return dr
-        # else:
-        #     return 0.0
 
     def _create_tangent_path(
         self, prev_node: Node, current_node: Node, next_node: Node
@@ -1078,9 +1038,6 @@ class NEB:
             new_chain_coordinates = chain.coordinates + velocity
 
         else:
-            # new_chain_coordinates = (
-            #     chain.coordinates - chain.gradients * chain.displacements
-            # )
             disp = ALS.ArmijoLineSearch(chain=chain, t=chain.step_size, alpha=0.01, beta=0.5, grad=chain.gradients)
             new_chain_coordinates = (
                 chain.coordinates - chain.gradients * disp
@@ -1276,279 +1233,410 @@ class NEB:
         out_traj.write_trajectory(fp)
 
 
-@dataclass
-class Dimer:
-    initial_node: Node
-    delta_r: float
-    step_size: float
-    d_theta: float
-    optimized_dimer = None
-    en_thre: float = 1e-7
+# @dataclass
+# class Dimer:
+#     initial_node: Node
+#     delta_r: float
+#     step_size: float
+#     d_theta: float
+#     optimized_dimer = None
+#     en_thre: float = 1e-7
 
 
-    @property
-    def ts_node(self):
-        if self.optimized_dimer:
-            final_unit_dir = self.get_unit_dir(self.optimized_dimer)
-            r1, r2 = self.optimized_dimer
-            ts = self.initial_node.copy()
-            ts_coords = r1.coords + self.delta_r*final_unit_dir
-            ts = ts.update_coords(ts_coords)
+#     @property
+#     def ts_node(self):
+#         if self.optimized_dimer:
+#             final_unit_dir = self.get_unit_dir(self.optimized_dimer)
+#             r1, r2 = self.optimized_dimer
+#             ts = self.initial_node.copy()
+#             ts_coords = r1.coords + self.delta_r*final_unit_dir
+#             ts = ts.update_coords(ts_coords)
 
 
-            return ts
+#             return ts
 
 
-    def make_initial_dimer(self):
-        random_vec = np.random.rand(*self.initial_node.coords.shape)
-        random_unit_vec = random_vec / np.linalg.norm(random_vec)
+#     def make_initial_dimer(self):
+#         random_vec = np.random.rand(*self.initial_node.coords.shape)
+#         random_unit_vec = random_vec / np.linalg.norm(random_vec)
         
-        r1_coords = self.initial_node.coords - self.delta_r*random_unit_vec
-        r2_coords = self.initial_node.coords + self.delta_r*random_unit_vec
+#         r1_coords = self.initial_node.coords - self.delta_r*random_unit_vec
+#         r2_coords = self.initial_node.coords + self.delta_r*random_unit_vec
 
 
-        r1 = self.initial_node.copy()
-        r1 = r1.update_coords(r1_coords)
+#         r1 = self.initial_node.copy()
+#         r1 = r1.update_coords(r1_coords)
 
-        r2 = self.initial_node.copy()
-        r2 = r2.update_coords(r2_coords)
+#         r2 = self.initial_node.copy()
+#         r2 = r2.update_coords(r2_coords)
 
-        dimer = np.array([r1, r2])
+#         dimer = np.array([r1, r2])
 
-        return dimer
+#         return dimer
 
-    def get_dimer_energy(self, dimer):
-        r1,r2 = dimer
+#     def get_dimer_energy(self, dimer):
+#         r1,r2 = dimer
 
-        return r1.energy + r2.energy
+#         return r1.energy + r2.energy
 
 
-    def force_func(self, node: Node):
-        return - node.gradient
+#     def force_func(self, node: Node):
+#         return - node.gradient
 
-    def force_perp(self, r_vec: Node, unit_dir: np.array):
-        force_r_vec = - r_vec.gradient
-        return force_r_vec - r_vec.dot_function(force_r_vec, unit_dir)*unit_dir
+#     def force_perp(self, r_vec: Node, unit_dir: np.array):
+#         force_r_vec = - r_vec.gradient
+#         return force_r_vec - r_vec.dot_function(force_r_vec, unit_dir)*unit_dir
 
-    def get_unit_dir(self, dimer):
-        r1, r2 = dimer
-        return (r2.coords - r1.coords)/np.linalg.norm(r2.coords-r1.coords)
+#     def get_unit_dir(self, dimer):
+#         r1, r2 = dimer
+#         return (r2.coords - r1.coords)/np.linalg.norm(r2.coords-r1.coords)
 
-    def get_dimer_force_perp(self, dimer):
-        r1, r2 = dimer
-        unit_dir= self.get_unit_dir(dimer)
+#     def get_dimer_force_perp(self, dimer):
+#         r1, r2 = dimer
+#         unit_dir= self.get_unit_dir(dimer)
         
-        f_r1 = self.force_perp(r1, unit_dir=unit_dir)
-        f_r2 = self.force_perp(r2, unit_dir=unit_dir)
-        return f_r2 - f_r1
+#         f_r1 = self.force_perp(r1, unit_dir=unit_dir)
+#         f_r2 = self.force_perp(r2, unit_dir=unit_dir)
+#         return f_r2 - f_r1
 
 
 
-    def _attempt_rot_step(self, dimer: np.array,theta_rot, t, unit_dir):
+#     def _attempt_rot_step(self, dimer: np.array,theta_rot, t, unit_dir):
     
-        # update dimer endpoint
-        _, r2 = dimer
-        r2_prime_coords = r2.coords + (unit_dir*np.cos(t) + theta_rot*np.sin(t))*self.delta_r
-        r2_prime = self.initial_node.copy()
-        r2_prime = r2_prime.update_coords(r2_prime_coords)
+#         # update dimer endpoint
+#         _, r2 = dimer
+#         r2_prime_coords = r2.coords + (unit_dir*np.cos(t) + theta_rot*np.sin(t))*self.delta_r
+#         r2_prime = self.initial_node.copy()
+#         r2_prime = r2_prime.update_coords(r2_prime_coords)
 
-        # calculate new unit direction
-        midpoint_coords = r2.coords - unit_dir*self.delta_r
-        new_dir = (r2_prime_coords - midpoint_coords)
-        new_unit_dir = new_dir / np.linalg.norm(new_dir)
+#         # calculate new unit direction
+#         midpoint_coords = r2.coords - unit_dir*self.delta_r
+#         new_dir = (r2_prime_coords - midpoint_coords)
+#         new_unit_dir = new_dir / np.linalg.norm(new_dir)
         
-        # remake dimer using new unit direciton
-        r1_prime_coords = r2_prime_coords - 2*self.delta_r*new_unit_dir
-        r1_prime = self.initial_node.copy()
-        r1_prime = r1_prime.update_coords(r1_prime_coords)
+#         # remake dimer using new unit direciton
+#         r1_prime_coords = r2_prime_coords - 2*self.delta_r*new_unit_dir
+#         r1_prime = self.initial_node.copy()
+#         r1_prime = r1_prime.update_coords(r1_prime_coords)
 
-        new_dimer = np.array([r1_prime, r2_prime])
-        new_grad = self.get_dimer_force_perp(new_dimer)
+#         new_dimer = np.array([r1_prime, r2_prime])
+#         new_grad = self.get_dimer_force_perp(new_dimer)
         
-        # en_struct_prime = np.linalg.norm(new_grad)
-        en_struct_prime = np.dot(new_grad, theta_rot)
-        # en_struct_prime = self.get_dimer_energy(new_dimer)
+#         # en_struct_prime = np.linalg.norm(new_grad)
+#         en_struct_prime = np.dot(new_grad, theta_rot)
+#         # en_struct_prime = self.get_dimer_energy(new_dimer)
     
-        return en_struct_prime, t
+#         return en_struct_prime, t
 
-    def _rotate_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float, dimer: np.array,dt,  
-    alpha=0.000001, beta=0.5):
+#     def _rotate_img(self, r_vec: Node, unit_dir: np.array, theta_rot: float, dimer: np.array,dt,  
+#     alpha=0.000001, beta=0.5):
         
-        # max_steps = 10
-        # count = 0
-        
-
-
-        # grad = self.get_dimer_force_perp(dimer)
-        # # en_struct = np.linalg.norm(grad)
-        # en_struct = np.dot(grad, theta_rot)
-        # # en_struct = self.get_dimer_energy(dimer)
-
-        # en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
-
-        # condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
-
-        # while condition and count < max_steps:
-        #     t *= beta
-        #     count += 1
-        #     en_struct = en_struct_prime
-
-        #     en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
-
-        #     condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
-
-        # print(f"\t\t\t{t=} {count=} || force: {np.linalg.norm(grad)}")
-        # sys.stdout.flush()
+#         # max_steps = 10
+#         # count = 0
         
 
 
-        # return r_vec.coords + (unit_dir*np.cos(t) + theta_rot*np.sin(t))*self.delta_r
-        return r_vec.coords + (unit_dir*np.cos(dt) + theta_rot*np.sin(dt))*self.delta_r
+#         # grad = self.get_dimer_force_perp(dimer)
+#         # # en_struct = np.linalg.norm(grad)
+#         # en_struct = np.dot(grad, theta_rot)
+#         # # en_struct = self.get_dimer_energy(dimer)
+
+#         # en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
+
+#         # condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+
+#         # while condition and count < max_steps:
+#         #     t *= beta
+#         #     count += 1
+#         #     en_struct = en_struct_prime
+
+#         #     en_struct_prime, t = self._attempt_rot_step(dimer=dimer, t=self.d_theta, unit_dir=unit_dir, theta_rot=theta_rot)
+
+#         #     condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+
+#         # print(f"\t\t\t{t=} {count=} || force: {np.linalg.norm(grad)}")
+#         # sys.stdout.flush()
+        
+
+
+#         # return r_vec.coords + (unit_dir*np.cos(t) + theta_rot*np.sin(t))*self.delta_r
+#         return r_vec.coords + (unit_dir*np.cos(dt) + theta_rot*np.sin(dt))*self.delta_r
         
 
     
 
-    def _rotate_dimer(self, dimer):
-        """
-        from this paper https://aip.scitation.org/doi/pdf/10.1063/1.480097
-        """
-        _, r2 = dimer
-        unit_dir = self.get_unit_dir(dimer)
-        midpoint_coords = r2.coords - unit_dir*self.delta_r
-        midpoint = self.initial_node.copy()
-        midpoint = midpoint.update_coords(midpoint_coords)
+#     def _rotate_dimer(self, dimer):
+#         """
+#         from this paper https://aip.scitation.org/doi/pdf/10.1063/1.480097
+#         """
+#         _, r2 = dimer
+#         unit_dir = self.get_unit_dir(dimer)
+#         midpoint_coords = r2.coords - unit_dir*self.delta_r
+#         midpoint = self.initial_node.copy()
+#         midpoint = midpoint.update_coords(midpoint_coords)
         
-        dimer_force_perp = self.get_dimer_force_perp(dimer)
-        theta_rot = dimer_force_perp / np.linalg.norm(dimer_force_perp)
+#         dimer_force_perp = self.get_dimer_force_perp(dimer)
+#         theta_rot = dimer_force_perp / np.linalg.norm(dimer_force_perp)
 
 
 
 
-        r2_prime_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot, dimer=dimer, dt=self.d_theta)
-        r2_prime = self.initial_node.copy()
-        r2_prime = r2_prime.update_coords(r2_prime_coords)
+#         r2_prime_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot, dimer=dimer, dt=self.d_theta)
+#         r2_prime = self.initial_node.copy()
+#         r2_prime = r2_prime.update_coords(r2_prime_coords)
         
-        new_dir = (r2_prime_coords - midpoint_coords)
-        new_unit_dir = new_dir / np.linalg.norm(new_dir)
+#         new_dir = (r2_prime_coords - midpoint_coords)
+#         new_unit_dir = new_dir / np.linalg.norm(new_dir)
         
-        r1_prime_coords = r2_prime_coords - 2*self.delta_r*new_unit_dir
-        r1_prime = self.initial_node.copy()
-        r1_prime = r1_prime.update_coords(r1_prime_coords)
+#         r1_prime_coords = r2_prime_coords - 2*self.delta_r*new_unit_dir
+#         r1_prime = self.initial_node.copy()
+#         r1_prime = r1_prime.update_coords(r1_prime_coords)
 
 
-        dimer_prime = np.array([r1_prime, r2_prime])
-        dimer_prime_force_perp = self.get_dimer_force_perp(dimer_prime)
-        theta_rot_prime = dimer_prime_force_perp / np.linalg.norm(dimer_prime_force_perp)
-        f_prime = (np.dot(dimer_prime_force_perp, theta_rot_prime) - np.dot(dimer_force_perp, theta_rot))/self.d_theta
+#         dimer_prime = np.array([r1_prime, r2_prime])
+#         dimer_prime_force_perp = self.get_dimer_force_perp(dimer_prime)
+#         theta_rot_prime = dimer_prime_force_perp / np.linalg.norm(dimer_prime_force_perp)
+#         f_prime = (np.dot(dimer_prime_force_perp, theta_rot_prime) - np.dot(dimer_force_perp, theta_rot))/self.d_theta
 
-        # optimal_d_theta = (np.dot(dimer_force_perp, theta_rot) + np.dot(dimer_prime_force_perp, theta_rot_prime))/(-2*f_prime)
-
-
-        r1_p, r2_p = dimer_prime
-        f_r1_p = self.force_perp(r1_p, unit_dir=unit_dir)
-        f_r2_p = self.force_perp(r2_p, unit_dir=unit_dir)
-
-        r1, r2 = dimer
-        f_r1 = self.force_perp(r1, unit_dir=unit_dir)
-        f_r2 = self.force_perp(r2, unit_dir=unit_dir)
+#         # optimal_d_theta = (np.dot(dimer_force_perp, theta_rot) + np.dot(dimer_prime_force_perp, theta_rot_prime))/(-2*f_prime)
 
 
+#         r1_p, r2_p = dimer_prime
+#         f_r1_p = self.force_perp(r1_p, unit_dir=unit_dir)
+#         f_r2_p = self.force_perp(r2_p, unit_dir=unit_dir)
 
-        f_val = 0.5*(np.dot(f_r2_p - f_r1_p, theta_rot_prime) + np.dot(f_r2 - f_r1, theta_rot))
-        f_val_prime = (1/self.d_theta)*(np.dot(f_r2_p - f_r1_p, theta_rot_prime) - np.dot(f_r2 - f_r1, theta_rot))
-
-        optimal_d_theta = 0.5*np.arctan(2*f_val/f_val_prime) - self.d_theta/2
-        print(f"\t\t{optimal_d_theta=}")
-        r2_final_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot, dimer=dimer, dt=optimal_d_theta)
-        r2_final = self.initial_node.copy()
-        r2_final = r2_final.update_coords(r2_final_coords)
-
-        final_dir = (r2_final_coords - midpoint_coords)
-        final_unit_dir = final_dir / np.linalg.norm(final_dir)
-
-        r1_final_coords = r2_final_coords - 2*self.delta_r*final_unit_dir
-        r1_final = self.initial_node.copy()
-        r1_final = r1_final.update_coords(r1_final_coords)
-
-        dimer_final = np.array([r1_final, r2_final])
+#         r1, r2 = dimer
+#         f_r1 = self.force_perp(r1, unit_dir=unit_dir)
+#         f_r2 = self.force_perp(r2, unit_dir=unit_dir)
 
 
-        return dimer_final
 
-    def _translate_dimer(self, dimer):
-        dimer_0 = dimer
+#         f_val = 0.5*(np.dot(f_r2_p - f_r1_p, theta_rot_prime) + np.dot(f_r2 - f_r1, theta_rot))
+#         f_val_prime = (1/self.d_theta)*(np.dot(f_r2_p - f_r1_p, theta_rot_prime) - np.dot(f_r2 - f_r1, theta_rot))
+
+#         optimal_d_theta = 0.5*np.arctan(2*f_val/f_val_prime) - self.d_theta/2
+#         print(f"\t\t{optimal_d_theta=}")
+#         r2_final_coords = self._rotate_img(r_vec=midpoint, unit_dir=unit_dir, theta_rot=theta_rot, dimer=dimer, dt=optimal_d_theta)
+#         r2_final = self.initial_node.copy()
+#         r2_final = r2_final.update_coords(r2_final_coords)
+
+#         final_dir = (r2_final_coords - midpoint_coords)
+#         final_unit_dir = final_dir / np.linalg.norm(final_dir)
+
+#         r1_final_coords = r2_final_coords - 2*self.delta_r*final_unit_dir
+#         r1_final = self.initial_node.copy()
+#         r1_final = r1_final.update_coords(r1_final_coords)
+
+#         dimer_final = np.array([r1_final, r2_final])
+
+
+#         return dimer_final
+
+#     def _translate_dimer(self, dimer):
+#         dimer_0 = dimer
         
-        r1,r2 = dimer_0
-        force = self.get_climb_force(dimer_0)
+#         r1,r2 = dimer_0
+#         force = self.get_climb_force(dimer_0)
 
 
 
 
-        r2_prime_coords = r2.coords + self.step_size*force
-        r2_prime = self.initial_node.copy()
-        r2_prime = r2_prime.update_coords(r2_prime_coords)
+#         r2_prime_coords = r2.coords + self.step_size*force
+#         r2_prime = self.initial_node.copy()
+#         r2_prime = r2_prime.update_coords(r2_prime_coords)
 
 
-        r1_prime_coords = r1.coords + self.step_size*force
-        r1_prime = self.initial_node.copy()
-        r1_prime = r1_prime.update_coords(r1_prime_coords)
+#         r1_prime_coords = r1.coords + self.step_size*force
+#         r1_prime = self.initial_node.copy()
+#         r1_prime = r1_prime.update_coords(r1_prime_coords)
         
         
-        dimer_1 = (r1_prime, r2_prime)
+#         dimer_1 = (r1_prime, r2_prime)
 
-        return dimer_1
+#         return dimer_1
 
 
-    def fully_update_dimer(self, dimer):
-        dimer_0 = dimer
-        en_0 = self.get_dimer_energy(dimer_0)
+#     def fully_update_dimer(self, dimer):
+#         dimer_0 = dimer
+#         en_0 = self.get_dimer_energy(dimer_0)
         
-        dimer_0_prime = self._rotate_dimer(dimer_0)
-        dimer_1 = self._translate_dimer(dimer_0_prime)
-        en_1 = self.get_dimer_energy(dimer_1)
+#         dimer_0_prime = self._rotate_dimer(dimer_0)
+#         dimer_1 = self._translate_dimer(dimer_0_prime)
+#         en_1 = self.get_dimer_energy(dimer_1)
         
-        n_counts = 0
-        while np.abs(en_1 - en_0) > self.en_thre and n_counts < 100000:
-            # print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
-            dimer_0 = dimer_1
-            en_0 = self.get_dimer_energy(dimer_0)
+#         n_counts = 0
+#         while np.abs(en_1 - en_0) > self.en_thre and n_counts < 100000:
+#             # print(f"{n_counts=} // |∆E|: {np.abs(en_1 - en_0)}")
+#             dimer_0 = dimer_1
+#             en_0 = self.get_dimer_energy(dimer_0)
 
-            dimer_0_prime = self._rotate_dimer(dimer_0)
-            dimer_1 = self._translate_dimer(dimer_0_prime)
+#             dimer_0_prime = self._rotate_dimer(dimer_0)
+#             dimer_1 = self._translate_dimer(dimer_0_prime)
 
-            en_1 = self.get_dimer_energy(dimer_1)
-            n_counts+=1
+#             en_1 = self.get_dimer_energy(dimer_1)
+#             n_counts+=1
             
-        if np.abs(en_1 - en_0) <= self.en_thre: print(f"Optimization converged in {n_counts} steps!")
-        else: print(f"Optimization did not converge. Final |∆E|: {np.abs(en_1 - en_0)}")
-        return dimer_1
+#         if np.abs(en_1 - en_0) <= self.en_thre: print(f"Optimization converged in {n_counts} steps!")
+#         else: print(f"Optimization did not converge. Final |∆E|: {np.abs(en_1 - en_0)}")
+#         return dimer_1
 
 
 
    
-    def get_climb_force(self, dimer):
-        r1, r2 = dimer
-        unit_path = self.get_unit_dir(dimer)
+#     def get_climb_force(self, dimer):
+#         r1, r2 = dimer
+#         unit_path = self.get_unit_dir(dimer)
         
         
-        f_r1 = self.force_func(r1)
-        f_r2 = self.force_func(r2)
-        F_R = f_r1 + f_r2
+#         f_r1 = self.force_func(r1)
+#         f_r2 = self.force_func(r2)
+#         F_R = f_r1 + f_r2
         
         
-        f_parallel_r1 = self.initial_node.dot_function(f_r1, unit_path)*unit_path
-        f_parallel_r2 = self.initial_node.dot_function(f_r2, unit_path)*unit_path
-        F_Par = f_parallel_r1 + f_parallel_r2
+#         f_parallel_r1 = self.initial_node.dot_function(f_r1, unit_path)*unit_path
+#         f_parallel_r2 = self.initial_node.dot_function(f_r2, unit_path)*unit_path
+#         F_Par = f_parallel_r1 + f_parallel_r2
         
 
-        return F_R - 2*F_Par
+#         return F_R - 2*F_Par
         
+
+
+#     def find_ts(self):
+#         dimer = self.make_initial_dimer()
+#         opt_dimer = self.fully_update_dimer(dimer)
+#         self.optimized_dimer = opt_dimer
+
+
+@dataclass
+class TS_PRFO:
+    initial_node: Node
+    max_nsteps: int = 2000
+    dr: float = 0.1
+    grad_thre: float = 1e-6
+
+    @property
+    def ts(self):
+        ts, _ = self.ts_and_traj
+        return ts
+
+    @property
+    def traj(self):
+        _, traj = self.ts_and_traj
+        return traj
+        
+    @cached_property
+    def ts_and_traj(self):
+        return self.find_ts()
+
+
+    def get_lambda_n(self, all_eigenvalues, f_vector, tol=10e-3, break_limit=1e6):
+        """
+        f_vector and all_eigsenvalues need to be ordered
+        from lowest to highest based on eigenvalue value
+        """
+        break_ind = 0
+        lamb_guess = 0
+        hist = [lamb_guess]
+        while break_ind < break_limit:
+            tot_lamb = 0
+            for eigval_i,f_i in zip(all_eigenvalues, f_vector):
+                tot_lamb+= (f_i**2)/(lamb_guess - eigval_i)
+            if np.abs(tot_lamb - lamb_guess) <= tol:
+                return tot_lamb, hist
+            else:
+                lamb_guess = tot_lamb
+            break_ind+=1
+            hist.append(lamb_guess)
+        return None, hist
+    
+
+    def get_lambda_p(self, eigval, f_i):
+        lambda_p = 0.5*eigval + 0.5*(np.sqrt(eigval**2 + 4*(f_i)**2))
+        return lambda_p
+
+    def prfo_step(self, node):
+        grad = node.gradient
+        H = node.hessian
+        H_evals, H_evecs = np.linalg.eigh(H)
+        F_vec = node.dot_function(H_evecs.T, grad)
+
+
+        lambda_p = self.get_lambda_p(H_evals[0], F_vec[0])
+        lambda_n, _ = self.get_lambda_n(all_eigenvalues=H_evals, f_vector=F_vec, break_limit=1e6)
+        if type(lambda_n)==type(None): raise NoneConvergedException("lambda_n calculation failed. maybe start again with a different initial guess")
+
+        h0 = (-1*F_vec[0]*H_evecs[:, 0])/(H_evals[0] - lambda_p)
+        h1 = (-1*F_vec[1]*H_evecs[:, 1])/(H_evals[1] - lambda_n)
+
+        return h0+h1
 
 
     def find_ts(self):
-        dimer = self.make_initial_dimer()
-        opt_dimer = self.fully_update_dimer(dimer)
-        self.optimized_dimer = opt_dimer
+        traj = []
+        traj.append(self.initial_node)
+        
+        steps_taken = 0
+        converged = False
+        
+        start_node = self.initial_node
+        
+        grad_mag = np.linalg.norm(start_node.gradient)
+        converged = grad_mag <= self.grad_thre 
+        while steps_taken < self.max_nsteps and not converged:
+            steps_taken+=1
+            direction = self.prfo_step(start_node)
 
+            new_point = start_node.coords + direction*self.dr
+            new_node = start_node.copy()
+            new_node = new_node.update_coords(new_point)
+                        
+            grad_mag = np.linalg.norm(new_node.gradient)
+            converged = grad_mag <= self.grad_thre 
+
+            if converged: 
+                print(f"Converged in {steps_taken} steps!")
+                new_node.converged = True
+            
+            traj.append(new_node)
+            start_node = new_node
+            
+        if converged: return new_node, traj
+
+        if not converged: 
+            print(f"Did not converge in {steps_taken} steps.")
+            return new_node, traj
+
+    def plot_path(self):
+        traj = self.traj
+        node = traj[0]
+        
+        s=4
+        fs=18
+
+        en_func = node.en_func_arr
+
+        min_val = -s
+        max_val = s
+
+        fig = 10
+        f, _ = plt.subplots(figsize=(1.18 * fig, fig))
+        x = np.linspace(start=min_val, stop=max_val, num=10)
+        y = x.reshape(-1, 1)
+
+
+        h = en_func([x, y])
+        cs = plt.contourf(x, x, h, levels=10)
+        # _ = f.colorbar(cs)
+
+
+        plt.plot([x.coords[0] for x in traj], [x.coords[1] for x in traj], "*--", c="white", label="path", ms=15)
+        # for inp, (evec0, evec1) in zip(traj, eigvecs):
+        #     plt.arrow(inp[0], inp[1], evec0[0], evec0[1], color='red', width=.05)
+        #     plt.arrow(inp[0], inp[1], evec1[0], evec1[1], color='green', width=.05)
+
+        plt.yticks(fontsize=fs)
+        plt.xticks(fontsize=fs)
+        plt.show()
 
 

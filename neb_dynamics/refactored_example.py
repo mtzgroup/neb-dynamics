@@ -12,13 +12,13 @@ from matplotlib.animation import FuncAnimation
 
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
-from neb_dynamics.NEB import NEB, AlessioError, Chain, Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, NoneConvergedException, Node3D 
+from neb_dynamics.NEB import NEB, AlessioError, Chain, Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, NoneConvergedException, TS_PRFO
 from neb_dynamics.trajectory import Trajectory
 
 from potential_functions import sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3
 
 sfs = [sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3]
-index = 0
+index = 1
 nodes = [Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS]
 min_sizes = [-4, -2, -2, 0.5]
 max_sizes = [4, 2, 2, 4]
@@ -138,16 +138,16 @@ def plot_2D(neb_obj: NEB):
     plt.show()
 
 def main():
-    nimages = 20
+    nimages = 5
 
     ### node 2d
-    end_point = (3.00002182, 1.99995542)
+    # end_point = (3.00002182, 1.99995542)
     # end_point = (2.129, 2.224)
-    start_point = (-3.77928812, -3.28320392)
+    # start_point = (-3.77928812, -3.28320392)
 
     ### node 2d - 2
-    # start_point = (-1, 1)
-    # end_point = (1, 1)
+    start_point = (-1, 1)
+    end_point = (1, 1)
     # end_point = (1, -1)
     # end_point = (1.01, -1.01)
 
@@ -172,18 +172,25 @@ def main():
     # ks = np.array([0.1, 0.1, 10, 10, 10, 10, 1, 1, 1, 1, 1, 0.1, 0.1, 0.1]).reshape(-1,1)
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     # kval = .01
-    ks = 50
-    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=presets['node'], delta_k=50, step_size=1)
+    ks = 0.1
+    chain = Chain.from_list_of_coords(k=ks, list_of_coords=coords, node_class=presets['node'], delta_k=0, step_size=.1)
     # n = NEB(initial_chain=chain, max_steps=1000, climb=False, en_thre=1e-1, grad_thre=1e-1, mag_grad_thre=1e-1, vv_force_thre=0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
-    tol = .00001
-    n = NEB(initial_chain=chain, max_steps=2000, climb=True, en_thre=tol/450, rms_grad_thre=tol*(2/3), grad_thre=tol, vv_force_thre=0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
+    tol = .01
+    n = NEB(initial_chain=chain, max_steps=2000, climb=False, en_thre=tol/450, rms_grad_thre=tol*(2/3), grad_thre=tol, vv_force_thre=0)#,en_thre=1e-2, mag_grad_thre=1000 ,redistribute=False,
     try: 
         n.optimize_chain()
 
         print(f"{n.optimized.coordinates=}")
         animate_func(n)
         plot_func(n)
-        plot_2D(n)
+        # plot_2D(n)
+
+        node_ind = np.argmax(n.optimized.energies)
+        node = n.optimized[node_ind]
+        print(f"Finding TS using node_index {node_ind} as guess >> {node.coords}")
+
+        tsopt = TS_PRFO(initial_node=node)
+        print(f"SP = {tsopt.ts.coords}")
 
     except AlessioError as e:
         print(e.message)
