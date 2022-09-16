@@ -52,7 +52,7 @@ def main():
 
     tol = 4.5e-3
     chain = Chain.from_traj(traj=traj, k=.1, delta_k=0.0, step_size=2, node_class=Node3D)
-    n = NEB(initial_chain=chain, grad_thre=tol, en_thre=tol/450, rms_grad_thre=tol*(2/3), climb=False, vv_force_thre=0, max_steps=10000)
+    n = NEB(initial_chain=chain, grad_thre=tol, en_thre=tol/450, rms_grad_thre=tol*(2/3), climb=True, vv_force_thre=0, max_steps=10000)
     try: 
         n.optimize_chain()
         data_dir = fp.parent
