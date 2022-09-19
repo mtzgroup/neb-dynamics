@@ -30,6 +30,13 @@ class TDStructure:
             
             atom = self.molecule_obmol.GetAtom(i+1)
             atom.SetVector(x, y, z)
+
+    @property
+    def atomn(self):
+        '''
+        returns number of atoms
+        '''
+        return self.molecule_obmol.NumAtoms()
         
 
     @property

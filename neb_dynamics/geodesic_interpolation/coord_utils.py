@@ -1,10 +1,6 @@
 """Coordinate utilities used by the interpolation program"""
-import logging
-
 import numpy as np
 from scipy.spatial import KDTree
-
-logger = logging.getLogger(__name__)
 
 
 def align_path(path):
@@ -153,7 +149,7 @@ def get_bond_list(
     else:
         radius = np.array([ATOMIC_RADIUS.get(atom.capitalize(), 1.5) for atom in atoms])
         re = np.array([radius[i] + radius[j] for i, j in rijlist])
-    logger.debug("Pair list contain %d pairs", len(rijlist))
+    
     return rijlist, re
 
 

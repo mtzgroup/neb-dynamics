@@ -2,14 +2,14 @@
 metric to find geodesics directly in Cartesian, to avoid feasibility problems associated
 with redundant internals.
 """
-import logging
+
 
 import numpy as np
 from scipy.optimize import least_squares
 
 from .coord_utils import align_path, compute_wij, get_bond_list, morse_scaler
 
-logger = logging.getLogger(__name__)
+
 
 
 class Geodesic(object):
@@ -23,7 +23,7 @@ class Geodesic(object):
         scaler=1.7,
         threshold=3,
         min_neighbors=4,
-        log_level=logging.INFO,
+        
         friction=1e-3,
     ):
         """Initialize the interpolater
@@ -43,7 +43,7 @@ class Geodesic(object):
         """
         rmsd0, self.path = align_path(path)
         self.atoms = atoms
-        logger.log(log_level, "Maximum RMSD change in initial path: %10.2f", rmsd0)
+        
         if self.path.ndim != 3:
             raise ValueError("The path to be interpolated must have 3 dimensions")
         self.nimages, self.natoms, _ = self.path.shape
@@ -54,14 +54,7 @@ class Geodesic(object):
         self.construct_coords()
         self.friction = friction
         # Initalize interal storages for mid points, internal coordinates and B matrices
-        logger.log(log_level, "Performing geodesic smoothing")
-        logger.log(
-            log_level,
-            "  Images: %4d  Atoms %4d Rijs %6d",
-            self.nimages,
-            self.natoms,
-            len(self.rij_list),
-        )
+        
         self.neval = 0
         self.conv_path = []
 
@@ -85,10 +78,8 @@ class Geodesic(object):
             self.scaler = morse_scaler(re=self.re, alpha=self.scaler_input)
         else:
             self.scaler = self.scaler_input
-        if (151, 264) in self.rij_list or (264, 151) in self.rij_list:
-            logger.debug("Is IN!!!")
-        else:
-            logger.debug("Is not IN!!!")
+        
+        
         nimages = len(self.path)
         self.nrij = len(self.rij_list)
         self.w = [None] * nimages
@@ -177,7 +168,7 @@ class Geodesic(object):
             self.grad[length * self.nrij * 2 + idx, idx] = friction
 
     def compute_target_func(
-        self, X=None, start=1, end=-1, log_level=logging.INFO, x0=None, friction=1e-3
+        self, X=None, start=1, end=-1, x0=None, friction=1e-3
     ):
         """Compute the vectorized target function, which is then used for least
         squares minimization."""
@@ -200,13 +191,7 @@ class Geodesic(object):
         self.optimality = np.linalg.norm(
             np.einsum("i,i...", self.disps, self.grad), ord=np.inf
         )
-        logger.log(
-            log_level,
-            "  Iteration %3d: Length %10.3f |dL|=%7.3e",
-            self.neval,
-            self.length,
-            self.optimality,
-        )
+        
         self.conv_path.append(self.path[1].copy())
         self.neval += 1
         return self.disps, self.grad
@@ -229,7 +214,6 @@ class Geodesic(object):
         max_iter=50,
         start=1,
         end=-1,
-        log_level=logging.INFO,
         friction=None,
         xref=None,
     ):
@@ -250,12 +234,12 @@ class Geodesic(object):
         if xref is None:
             xref = X0
         self.disps = self.grad = self.segment = None
-        logger.log(log_level, "  Degree of freedoms %6d: ", len(X0))
+        
         if friction is None:
             friction = self.friction
         # Configure the keyword arguments that will be sent to the target function.
         kwargs = dict(
-            start=start, end=end, log_level=log_level, x0=xref, friction=friction
+            start=start, end=end, x0=xref, friction=friction
         )
         self.compute_target_func(**kwargs)  # Compute length and optimality
         if self.optimality > tol:
@@ -270,18 +254,9 @@ class Geodesic(object):
                 loss="soft_l1",
             )
             self.update_geometry(result["x"], start, end)
-            logger.log(
-                log_level, "Smoothing converged after %d iterations", result["nfev"]
-            )
-        else:
-            logger.log(log_level, "Skipping smoothing: path already optimal.")
+            
         rmsd, self.path = align_path(self.path)
-        logger.log(
-            log_level,
-            "Final path length: %12.5f  Max RMSD in path: %10.2f",
-            self.length,
-            rmsd,
-        )
+        
         return self.path
 
     def sweep(
@@ -307,16 +282,16 @@ class Geodesic(object):
             end = self.nimages + end
         self.neval = 0
         images = range(start, end)
-        logger.info("  Degree of freedoms %6d: ", (end - start) * 3 * self.natoms)
+        
         # Microiteration convergence tolerances are adjusted on the fly based on level of convergence.
         curr_tol = tol * 10
         self.compute_disps()  # Compute and print the initial path length
-        logger.info("  Initial length: %8.3f", self.length)
+        
         for iteration in range(max_iter):
             max_dL = 0
             X0 = self.path.copy()
             for i in images[:-1]:  # Use self.smooth() to optimize individual images
-                logger.debug("Adjusting image %d", i)
+                
                 if reconstruct:
                     self.construct_coords()
                 xmid = (self.path[i - 1] + self.path[i + 1]) * 0.5
@@ -325,7 +300,7 @@ class Geodesic(object):
                     max_iter=min(micro_iter, iteration + 6),
                     start=i,
                     end=i + 1,
-                    log_level=logging.DEBUG,
+                    
                     friction=self.friction if iteration else 0.1,
                     xref=xmid,
                 )
@@ -333,26 +308,16 @@ class Geodesic(object):
             if reconstruct:
                 self.construct_coords()
             self.compute_disps()  # Compute final length after sweep
-            logger.info(
-                "Sweep %3d: L=%7.2f dX=%7.2e tol=%7.3e dL=%7.3e",
-                iteration,
-                self.length,
-                np.linalg.norm(self.path - X0),
-                curr_tol,
-                max_dL,
-            )
+            
             if max_dL < tol:  # Check for convergence.
-                logger.info("Optimization converged after %d iterations", iteration)
+                
                 break
             curr_tol = max(tol * 0.5, max_dL * 0.2)  # Adjust micro-iteration threshold
             images = list(reversed(images))  # Alternate sweeping direction.
-        else:
-            if max_iter > 0:
-                logger.info("Optimization not converged after %d iterations", iteration)
+        
+                
         rmsd, self.path = align_path(self.path)
-        logger.info(
-            "Final path length: %12.5f  Max RMSD in path: %10.2f", self.length, rmsd
-        )
+        
         return self.path
 
 
@@ -373,12 +338,11 @@ def run_geodesic_py(
 ):
     from .interpolation import redistribute
 
-    # Setup logging based on designated logging level
-    logging.basicConfig(format="[%(module)-12s]%(message)s", level="INFO")
+    
 
     # Read the initial geometries.
     symbols, X = input_object.symbols, input_object.coords
-    logger.info(f"Loaded {len(X)} geometries")
+    
     if len(X) < 2:
         raise ValueError("Need at least two initial geometries.")
 
@@ -400,6 +364,6 @@ def run_geodesic_py(
     finally:
         # Save the smoothed path to output file.  try block is to ensure output is saved if one ^C the
         # process, or there is an error
-        logging.info("Saving final path.")
+
         return smoother.path
         # write_xyz(output, symbols, smoother.path)

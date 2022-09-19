@@ -2,7 +2,7 @@
 to add bisection points until point count meet desired number.
 Will need another following geodesic smoothing to get final path.
 """
-import logging
+
 
 import numpy as np
 from scipy.optimize import least_squares, minimize
@@ -11,7 +11,7 @@ from .coord_utils import (align_geom, align_path, compute_wij, get_bond_list,
                           morse_scaler)
 from .geodesic import Geodesic
 
-logger = logging.getLogger(__name__)
+
 
 
 def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
@@ -67,7 +67,7 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
             wx, dwdR = compute_wij(X, rijlist, scaler)
             delta_w = wx - w
             val, grad = 0.5 * np.dot(delta_w, delta_w), np.einsum('i,ij->j', delta_w, dwdR)
-            logger.info("val=%10.3f  ", val)
+
             return val, grad
 
         # The inner loop performs minimization using either end-point as the starting guess.
@@ -75,7 +75,7 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
             # print(f"COEF:{coef}")
             x0 = (geom1 * coef + (1 - coef) * geom2).ravel()
             x0 += nudge * np.random.random_sample(x0.shape)
-            logger.debug('Starting least-squares minimization of bisection point at %7.2f.', coef)
+            
             d = {'w':w,
             }
             # psave(d,'d.p')
@@ -88,17 +88,17 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
             new_rij, _ = get_bond_list(new_list, threshold=threshold, min_neighbors=0)
             extras = set(new_rij) - set(rijlist)
             if extras: 
-                logger.info('  Screened pairs came into contact. Adding reference point.')
+                
                 # Update pair list then go back to the minimization loop if new contacts are found
                 geom_list = new_list
                 add_pair |= extras
                 break
             # Perform local geodesic optimization for the new image.
-            smoother = Geodesic(atoms, [geom1, x_mid, geom2], 0.7, threshold=threshold, log_level=logging.DEBUG, friction=1)
+            smoother = Geodesic(atoms, [geom1, x_mid, geom2], 0.7, threshold=threshold, friction=1)
             smoother.compute_disps()
             width = max([np.sqrt(np.mean((g - smoother.path[1]) ** 2)) for g in [geom1, geom2]])
             dist, x_mid = width + smoother.length, smoother.path[1]
-            logger.debug('  Trial path length: %8.3f after %d iterations', dist, result['nfev'])
+            
             if dist < d_min:
                 d_min, x_min = dist, x_mid
         else:   # Both starting guesses finished without new atom pairs.  Minimization successful
@@ -126,8 +126,7 @@ def redistribute(atoms, geoms, nimages, tol=1e-2, nudge=0.1, ntries=1):
     while len(geoms) < nimages:
         dists = [np.sqrt(np.mean((g1 - g2) ** 2)) for g1, g2 in zip(geoms[1:], geoms)]
         max_i = np.argmax(dists)
-        logger.info("Inserting image between %d and %d with Cartesian RMSD %10.3f.  New length:%d",
-                    max_i, max_i + 1, dists[max_i], len(geoms) + 1)
+
         insertion = mid_point(atoms, geoms[max_i], geoms[max_i + 1], tol, nudge=nudge, ntries=ntries)
         _, insertion = align_geom(geoms[max_i], insertion)
         geoms.insert(max_i + 1, insertion)
@@ -136,9 +135,7 @@ def redistribute(atoms, geoms, nimages, tol=1e-2, nudge=0.1, ntries=1):
     while len(geoms) > nimages:
         dists = [np.sqrt(np.mean((g1 - g2) ** 2)) for g1, g2 in zip(geoms[2:], geoms)]
         min_i = np.argmin(dists)
-        if len(geoms) < nimages + 10:
-            logger.info("Removing image %d.  Cartesian RMSD of merged section %10.3f",
-                         min_i + 1, dists[min_i])
+
         del geoms[min_i + 1]
         geoms = list(align_path(geoms)[1])
     return geoms

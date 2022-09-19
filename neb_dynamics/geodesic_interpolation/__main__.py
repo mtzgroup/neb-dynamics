@@ -7,7 +7,6 @@ avoiding unfeasibility.
 Xiaolei Zhu et al, Martinez Group, Stanford University
 """
 import argparse
-import logging
 
 import numpy as np
 
@@ -15,7 +14,6 @@ from .fileio import read_xyz, write_xyz
 from .geodesic import Geodesic
 from .interpolation import redistribute
 
-logger = logging.getLogger(__name__)
 
 
 def main():
@@ -54,12 +52,11 @@ def main():
                     "new images.")
     args = ps.parse_args()
 
-    # Setup logging based on designated logging level
-    logging.basicConfig(format="[%(module)-12s]%(message)s", level=args.logging)
+    
 
     # Read the initial geometries.
     symbols, X = read_xyz(args.filename)
-    logger.info('Loaded %d geometries from %s', len(X), args.filename)
+    
     if len(X) < 2:
         raise ValueError("Need at least two initial geometries.")
 
@@ -82,7 +79,7 @@ def main():
     finally:
         # Save the smoothed path to output file.  try block is to ensure output is saved if one ^C the
         # process, or there is an error
-        logging.info('Saving final path to file %s', args.output)
+        
         write_xyz(args.output, symbols, smoother.path)
 
 
