@@ -596,6 +596,43 @@ class Node3D(Node):
         return opt_struct
 
 
+    def check_symmetric(self, a, rtol=1e-05, atol=1e-08):
+        return np.allclose(a, a.T, rtol=rtol, atol=atol)
+
+    @property
+    def hessian(self: Node3D):
+        dr = 0.01 # displacement vector, Angstroms
+        numatoms = self.tdstructure.atomn
+        approx_hess = []
+        for n in range(numatoms):
+        # for n in range(2):
+            grad_n = []
+            for coord_ind, coord_name in enumerate(['dx', 'dy', 'dz']):
+                # print(f"doing atom #{n} | {coord_name}")
+
+                coords = np.array(self.coords, dtype='float64')
+
+                # print(coord_ind, coords[n, coord_ind])
+                coords[n, coord_ind] = coords[n, coord_ind] + dr
+                # print(coord_ind, coords[n, coord_ind])
+
+                node2 = self.copy()
+                node2 = node2.update_coords(coords)
+
+                delta_grad = node2.gradient - self.gradient 
+                # print(delta_grad)
+                grad_n.extend(delta_grad)
+
+
+            approx_hess.append(grad_n)
+        approx_hess = np.array(approx_hess)
+        approx_hess = approx_hess.reshape(3*numatoms, 3*numatoms)
+        
+        assert self.check_symmetric(approx_hess, rtol=1e-3, atol=1e-3), 'Hessian not symmetric for some reason'
+        return approx_hess
+
+
+
 @dataclass
 class Chain:
     nodes: List[Node]
@@ -616,7 +653,6 @@ class Chain:
     @property
     def integrated_path_length(self):
         
-        endpoint_vec = self.nodes[-1].coords - self.nodes[0].coords
         cum_sums = [0]
         
         int_path_len = [0]
@@ -1559,17 +1595,19 @@ class TS_PRFO:
         grad = node.gradient
         H = node.hessian
         H_evals, H_evecs = np.linalg.eigh(H)
-        F_vec = node.dot_function(H_evecs.T, grad)
-
+        orig_dim = grad.shape
+        grad_reshaped = grad.reshape(-1,1)
+        F_vec = np.dot(H_evecs.T, grad_reshaped)
 
         lambda_p = self.get_lambda_p(H_evals[0], F_vec[0])
         lambda_n, _ = self.get_lambda_n(all_eigenvalues=H_evals, f_vector=F_vec, break_limit=1e6)
         if type(lambda_n)==type(None): raise NoneConvergedException("lambda_n calculation failed. maybe start again with a different initial guess")
 
         h0 = (-1*F_vec[0]*H_evecs[:, 0])/(H_evals[0] - lambda_p)
-        h1 = (-1*F_vec[1]*H_evecs[:, 1])/(H_evals[1] - lambda_n)
-
-        return h0+h1
+        hrest = sum([(-1*F_vec[i]*H_evecs[:, i])/(H_evals[i] - lambda_n) for i in range(1, len(F_vec))])
+        step =  h0+hrest
+        step_reshaped = step.reshape(orig_dim)
+        return step_reshaped
 
 
     def find_ts(self):
@@ -1585,6 +1623,7 @@ class TS_PRFO:
         converged = grad_mag <= self.grad_thre 
         while steps_taken < self.max_nsteps and not converged:
             steps_taken+=1
+            print(f'StepsTaken:{steps_taken}||grad_mag:{grad_mag}                 \r', end="")
             direction = self.prfo_step(start_node)
 
             new_point = start_node.coords + direction*self.dr
