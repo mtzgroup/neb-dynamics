@@ -601,7 +601,7 @@ class Node3D(Node):
 
     @property
     def hessian(self: Node3D):
-        dr = 0.01 # displacement vector, Angstroms
+        dr = 0.01 # displacement vector, Bohr
         numatoms = self.tdstructure.atomn
         approx_hess = []
         for n in range(numatoms):
@@ -619,17 +619,19 @@ class Node3D(Node):
                 node2 = self.copy()
                 node2 = node2.update_coords(coords)
 
-                delta_grad = node2.gradient - self.gradient 
+                delta_grad = (node2.gradient - self.gradient ) / dr
                 # print(delta_grad)
-                grad_n.extend(delta_grad)
+                grad_n.append(delta_grad.flatten())
 
 
-            approx_hess.append(grad_n)
+            approx_hess.extend(grad_n)
         approx_hess = np.array(approx_hess)
-        approx_hess = approx_hess.reshape(3*numatoms, 3*numatoms)
+        # raise AlessioError(f"{approx_hess.shape}")
         
-        assert self.check_symmetric(approx_hess, rtol=1e-3, atol=1e-3), 'Hessian not symmetric for some reason'
-        return approx_hess
+        approx_hess_sym = 0.5*(approx_hess + approx_hess.T)
+        assert self.check_symmetric(approx_hess_sym, rtol=1e-3, atol=1e-3), 'Hessian not symmetric for some reason'
+        
+        return approx_hess_sym
 
 
 

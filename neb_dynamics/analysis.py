@@ -11,6 +11,7 @@ import pandas as pd
 import numpy as np
 from itertools import product
 import matplotlib.pyplot as plt
+from scipy.signal import argrelmin
 
 
 @dataclass
@@ -58,32 +59,26 @@ class ConformerAnalyzer:
     
     @property
     def geo_data(self):
-        data = []
-        for i, (traj_fp, energies) in enumerate(zip(self.geo_traj_paths, self.geo_energies)):
-
-            fp = traj_fp
-            traj_fp = str(traj_fp.stem)
-            init, end = traj_fp.split("_")[1].split("-")
-
-            tag = traj_fp.split("_")[2]
-
-            row = [
-                int(init),
-                int(end), 
-                energies,
-                str(fp),
-
-                str(fp.parent),
-                tag
-            ]
-            data.append(row)
-        return data
+        return self._get_data('geo')
     
     
     @property
     def neb_data(self):
+        return self._get_data('neb')
+
+    def _get_data(self, method: str):
         data = []
-        for i, (traj_fp, energies) in enumerate(zip(self.neb_traj_paths, self.neb_energies)):
+
+        if method=='geo':
+            traj_paths = self.geo_traj_paths
+            ens  = self.geo_energies
+        elif method=='neb':
+            traj_paths = self.neb_traj_paths
+            ens  = self.neb_energies
+        else:
+            print("Alessio said Cianghini")
+
+        for traj_fp, energies in zip(traj_paths, ens):
 
             fp = traj_fp
             traj_fp = str(traj_fp.stem)
@@ -96,13 +91,11 @@ class ConformerAnalyzer:
                 int(end), 
                 energies,
                 str(fp),
- 
+
                 str(fp.parent),
                 tag
             ]
             data.append(row)
-        return data
-    
 
     def _init_conf_energy(self, row):
         return row['energies_neb'][0]
@@ -340,5 +333,38 @@ class ConformerAnalyzer:
         ax.set_yticklabels(df.iloc[:n]['index'].values)
         plt.colorbar()
         plt.show()
-        
-        
+
+
+    def get_reactive_conformers(self, traj_fp):
+        try:
+            traj = Trajectory.from_xyz(traj_fp)
+            inds_minima = argrelmin(np.array(traj.energies))[0]
+            inds_minima = np.append(inds_minima, -1)
+            prev_min_ind = 0
+            reactive_pairs = []
+            for min_ind in inds_minima:
+
+
+                mol = traj[min_ind]
+                mol_relaxed = mol.xtb_geom_optimization()
+
+                is_isom_to_prev = mol_relaxed.molecule_rp == traj[prev_min_ind].molecule_rp
+
+                # reactive conformers
+                if not is_isom_to_prev:
+                    print(f"\trxn happened between {prev_min_ind} and {min_ind}")
+                    reactive_pairs.append((traj[prev_min_ind],mol_relaxed))
+                else:
+                    prev_min_ind = min_ind
+                    continue
+
+
+                if len(reactive_pairs)==1:
+                    return reactive_pairs[0]
+                else:
+                    print("Multi-intermediate reaction given as input! returning a list!")
+                    return reactive_pairs
+        except:
+            return None
+            
+            
