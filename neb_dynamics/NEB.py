@@ -20,8 +20,10 @@ from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.helper_functions import pairwise, quaternionrmsd
-from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.trajectory import Trajectory
+# from neb_dynamics.tdstructure import TDStructure
+from retropaths.abinitio.tdstructure import TDStructure
+# from neb_dynamics.trajectory import Trajectory
+from retropaths.abinitio.trajectory import Trajectory
 
 
 @dataclass
@@ -520,8 +522,8 @@ class Node3D(Node):
         return self.tdstructure.coords
 
     @property
-    def coords_angstroms(self):
-        return self.tdstructure.coords*BOHR_TO_ANGSTROMS
+    def coords_bohr(self):
+        return self.tdstructure.coords*ANGSTROM_TO_BOHR
 
     @staticmethod
     def en_func(node: Node3D):
@@ -531,7 +533,7 @@ class Node3D(Node):
     @staticmethod
     def grad_func(node: Node3D):
         res = Node3D.run_xtb_calc(node.tdstructure)
-        return res.get_gradient()
+        return res.get_gradient()*BOHR_TO_ANGSTROMS
 
     @cached_property
     def energy(self):
@@ -539,7 +541,7 @@ class Node3D(Node):
 
     @cached_property
     def gradient(self):
-        return Node3D.run_xtb_calc(self.tdstructure).get_gradient()
+        return Node3D.run_xtb_calc(self.tdstructure).get_gradient()*BOHR_TO_ANGSTROMS
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
@@ -552,7 +554,7 @@ class Node3D(Node):
         calc = Calculator(
             get_method("GFN2-xTB"),
             numbers=np.array(atomic_numbers),
-            positions=tdstruct.coords,
+            positions=tdstruct.coords_bohr,
             charge=tdstruct.charge,
             uhf=tdstruct.spinmult - 1,
         )
@@ -571,7 +573,7 @@ class Node3D(Node):
 
         copy_tdstruct = self.tdstructure.copy()
 
-        copy_tdstruct.update_coords(coords=coords)
+        copy_tdstruct = copy_tdstruct.update_coords(coords=coords)
         return Node3D(
             tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb
         )
@@ -579,7 +581,7 @@ class Node3D(Node):
     def opt_func(self, v=True):
         atoms = Atoms(
                 symbols = self.tdstructure.symbols.tolist(),
-                positions = self.coords*BOHR_TO_ANGSTROMS,
+                positions = self.coords, # ASE works in angstroms
             )
 
         atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1)
@@ -587,9 +589,9 @@ class Node3D(Node):
         else: opt = LBFGS(atoms)
         opt.run(fmax=0.1)
 
-        opt_struct = TDStructure.from_coords_symbs(
-            coords=atoms.positions*ANGSTROM_TO_BOHR,
-            symbs=self.tdstructure.symbols,
+        opt_struct = TDStructure.from_coords_symbols(
+            coords=atoms.positions, # ASE works in agnstroms
+            symbols=self.tdstructure.symbols,
             tot_charge=self.tdstructure.charge,
             tot_spinmult=self.tdstructure.spinmult)
 
@@ -991,7 +993,7 @@ class NEB:
         self._reset_node_convergence(chain=chain)
 
         inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
-        if self.v: print(f"----->Setting {len(inds_maxima)} nodes to climb")
+        if self.v > 1: print(f"----->Setting {len(inds_maxima)} nodes to climb")
 
         for ind in inds_maxima:
             chain[ind].do_climb = True
@@ -1009,17 +1011,19 @@ class NEB:
                 self.climb = False
 
             new_chain = self.update_chain(chain=chain_previous)
-            if self.v: 
+            if self.v > 1: 
                 print(
                 f"step {nsteps} // max |gradient| {np.max([np.linalg.norm(grad) for grad in new_chain.gradients])}"
                 )
+            if self.v: 
+                print(f'on step {nsteps}                       ', end='\r')
             sys.stdout.flush()
 
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)
 
             if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
-                if self.v: print(f"Chain converged!")
+                if self.v: print(f"\nChain converged!")
                 original_chain_len = len(new_chain)
 
                 if self.remove_folding:
@@ -1047,7 +1051,7 @@ class NEB:
         if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
             raise NoneConvergedException(
                 trajectory=self.chain_trajectory,
-                msg=f"Chain did not converge at step {nsteps}",
+                msg=f"\nChain did not converge at step {nsteps}",
                 obj=self,
             )
 
@@ -1163,8 +1167,8 @@ class NEB:
         
         
         # [print(f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(∆Grad) : { np.amax(grad_deltas[i])} | |Grad| : {mag_grad_deltas[i]} | Converged? : {chain_new.nodes[i].converged}") for i in range(len(chain_new))]
-        if self.v: [print(f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(RMS Grad): {max_rms_grads[i]} | Max(Grad components): {max_grad_components[i]} | Converged? : {chain_new.nodes[i].converged}") for i in range(len(chain_new))]
-        if self.v: print(f"\t{len(converged_nodes_indices)} nodes have converged")
+        if self.v > 1: [print(f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(RMS Grad): {max_rms_grads[i]} | Max(Grad components): {max_grad_components[i]} | Converged? : {chain_new.nodes[i].converged}") for i in range(len(chain_new))]
+        if self.v > 1: print(f"\t{len(converged_nodes_indices)} nodes have converged")
 
         self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
         # return len(converged_node_indices) == len(chain_new.nodes)
@@ -1182,7 +1186,7 @@ class NEB:
         count = 0
         points_removed = []
         while not_converged:
-            if self.v: print(f"anti-folding: on count {count}...")
+            if self.v > 1: print(f"anti-folding: on count {count}...")
             new_chain = []
             new_chain.append(chain[0])
 
