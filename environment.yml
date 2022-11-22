@@ -21,6 +21,7 @@ dependencies:
   - xtb-python
   - openbabel
   - pip:
+    - ase
     - tqdm
     - black
     - isort
