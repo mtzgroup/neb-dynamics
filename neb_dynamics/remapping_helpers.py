@@ -1,9 +1,9 @@
 import numpy as np
-from neb_dynamics.NEB import Chain, Node3D
-from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
+from neb_dynamics.NEB import Chain, Node3D, NEB, NoneConvergedException
+# from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.geodesic_input import GeodesicInput
 from retropaths.molecules.isomorphism_tools import SubGraphMatcherApplyPermute
-from neb_dynamics.trajectory import Trajectory
+from retropaths.abinitio.trajectory import Trajectory
 
 def get_atom_xyz(struct, atom_ind):
     atom_r = struct.molecule_obmol.GetAtom(atom_ind+1)
@@ -30,7 +30,7 @@ def create_isomorphic_structure(struct, iso):
 
 
     new_struct = struct.copy()
-    new_struct.update_coords(new_coords) 
+    new_struct = new_struct.update_coords(new_coords) 
     return new_struct
 
 def get_all_product_isomorphisms(end_struct, timeout=100):
@@ -39,7 +39,6 @@ def get_all_product_isomorphisms(end_struct, timeout=100):
     mol = end_struct.molecule_rp
     sgmap = SubGraphMatcherApplyPermute(mol, timeout_seconds=timeout)
     isoms = sgmap.get_isomorphisms(mol)
-
 
     new_structs = []
     for isom in isoms:
@@ -50,48 +49,68 @@ def get_all_product_isomorphisms(end_struct, timeout=100):
 
 def get_gi_info(new_structs, start_struct):
     max_gi_vals = []
-    works = []
+    # works = []
     trajs = []
-    # out_dir = Path("./GI_filter")
     for i, end_point in enumerate(new_structs):
-        gi = GeodesicInput.from_endpoints(initial=start_struct, final=end_point)
-        traj = gi.run(nimages=40, friction=0.01, nudge=0.001)
-        # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
+        
+        traj = Trajectory([start_struct, end_point]) # WARNING <--- this NEEDS to be changed if dealing with charged species
+        traj = traj.run_geodesic(nimages=10, friction=0.001)
         trajs.append(traj)
-        try:
-            chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
-            chain_energies_hartree = chain.energies
-            chain_energies_hartree -= chain_energies_hartree[0]
-            chain_energies_kcal = chain_energies_hartree*627.5
-            max_gi_vals.append(max(chain_energies_kcal))
-            works.append(chain.work)
-        except:
-            max_gi_vals.append(np.inf)
-            works.append(np.inf)
-    return np.array(max_gi_vals), np.array(works), np.array(trajs)
 
-def get_correct_product_structure(new_structs, gi_info, kcal_window=10):
+        ens = traj.energies_xtb()
+        if None not in ens:
+            max_gi_vals.append(max(ens))
+        else:
+            max_gi_vals.append(np.inf)
+
+    # return np.array(max_gi_vals), np.array(works), np.array(trajs)
+    return np.array(max_gi_vals), [], np.array(trajs)
+
+def get_correct_product_structure(new_structs, gi_info, kcal_window):
     max_gi_vals, works, trajs = gi_info
+    # print(f"{max_gi_vals=}")
     
     sorted_inds = np.argsort(max_gi_vals) # indices that would sort array
+    # print(f"{sorted_inds=}")
     sorted_arr = max_gi_vals[sorted_inds]
     sorted_arr-= sorted_arr[0]
     ints_to_do = sorted_inds[sorted_arr <= kcal_window]
-    print(ints_to_do)
+    # print(ints_to_do)
     return new_structs[ints_to_do], trajs[ints_to_do]
-    # return new_structs[np.argmin(max_gi_vals)], trajs[np.argmin(max_gi_vals)]
-    # return new_structs[np.argmin(works)], trajs[np.argmin(works)]
 
-def create_correct_interpolation(start_ind, end_ind, root_conformers, transformed_conformers):
-    start_struct = root_conformers[start_ind]
-    start_struct_coords = start_struct.coords
-    start_struct.update_coords(start_struct_coords*ANGSTROM_TO_BOHR)
-    
-    end_struct = transformed_conformers[end_ind]
+
+def decide_with_neb(list_of_trajs: list):
+    neb_results = []
+    for i, traj in enumerate(list_of_trajs):
+        print(f"Doing mapping {i}...")
+        
+        c = Chain.from_traj(traj, k=0.1, delta_k=0,step_size=2, node_class=Node3D)
+        
+        tol=0.01
+        n = NEB(initial_chain=c, en_thre=tol/450, rms_grad_thre=tol*(2/3), grad_thre=tol, vv_force_thre=0,v=False)
+        try:
+            n.optimize_chain()
+            neb_results.append(n)
+        except NoneConvergedException:
+            print(f"warning, NEB {i} did not converge...")
+            neb_results.append(n)
+    else: 
+        neb_results.append(None)
+
+    return neb_results
+
+def create_correct_interpolation(start_struct, end_struct, kcal_window=10):
     
     new_structs = get_all_product_isomorphisms(end_struct)
     gi_info = get_gi_info(new_structs=new_structs, start_struct=start_struct)
-    correct_end_struct, correct_gi_traj = get_correct_product_structure(new_structs=new_structs, gi_info=gi_info)
-    correct_gi_traj = np.array([Trajectory(t, tot_charge=0, tot_spinmult=1) for t in correct_gi_traj])
-
+    correct_end_struct, correct_gi_traj = get_correct_product_structure(new_structs=new_structs, gi_info=gi_info, kcal_window=kcal_window)
+    correct_gi_traj = [Trajectory(t, charge=0, spinmult=1) for t in correct_gi_traj]
+    # list_of_neb_trajs = decide_with_neb(correct_gi_traj)
     return correct_gi_traj
+    # return list_of_neb_trajs
+
+def create_correct_product(start_struct, end_struct, kcal_window=10):
+    new_structs = get_all_product_isomorphisms(end_struct)
+    gi_info = get_gi_info(new_structs=new_structs, start_struct=start_struct)
+    correct_end_struct, _ = get_correct_product_structure(new_structs=new_structs, gi_info=gi_info, kcal_window=kcal_window)
+    return correct_end_struct

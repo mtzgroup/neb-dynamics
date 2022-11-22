@@ -9,14 +9,19 @@ from retropaths.reactions.changes import Changes3D, Changes3DList
 from scipy.signal import argrelextrema
 
 from neb_dynamics.NEB import NEB, Chain, Node3D, NoneConvergedException
+from neb_dynamics.remapping_helpers import create_correct_product
 
 
 @dataclass
 class MSMEP:
+
+    # chain params
     k: float =0.1
     delta_k: float = 0.0 
     step_size: float = 1.0
 
+
+    # neb params
     tol: float = 0.03
     max_steps: int =500
     en_thre: float = None
@@ -24,12 +29,30 @@ class MSMEP:
     grad_thre: float = None
     v: bool = False
 
+    # geodesic interpolation params
+    nimages: int = 15
+    friction: float = 0.1
+    nudge: float = 0.001
+
+    def optimize_hydrogen_label(self, chain):
+        start = chain[0].tdstructure
+        end = chain[-1].tdstructure
+        correct_endpoint = create_correct_product(start, end, kcal_window=10)[0] # currently only selecting the best, need to fix so that you do some more sampling
+        if not np.all(correct_endpoint.coords != end.coords): 
+            print("Making chain with optimal hydrogen")
+            new_chain = self.get_neb_chain(start=start, end=correct_endpoint, do_alignment=False)
+            return new_chain
+        else:
+            return chain
+
+
     def find_mep_multistep(self, inp, do_alignment):
         start, end = inp
         chain = self.get_neb_chain(start=start, end=end, do_alignment=do_alignment)
         if not chain: return None
         if self.is_elem_step(chain):
-            return chain
+            chain_opt = self.optimize_hydrogen_label(chain)
+            return chain_opt
         else:
             pairs_of_minima = self.make_pairs_of_minima(chain)
             elem_steps = []
@@ -56,7 +79,7 @@ class MSMEP:
             start, end = self._align_endpoints(start, end)
         
         traj = Trajectory([start, end])
-        gi = traj.run_geodesic(nimages=15)
+        gi = traj.run_geodesic(nimages=self.nimages, friction=self.friction, nudge=self.nudge)
         
         if self.actual_reaction_happened_based_on_gi(gi):
 
@@ -82,7 +105,7 @@ class MSMEP:
         else:
             print("Endpoints are identical. Returning nothing")
             # return Chain(nodes=[Node3D(start)], k=0.1, delta_k=0,step_size=1,node_class=Node3D)
-            return None
+            return None 
 
 
     def is_elem_step(self, chain):
@@ -122,19 +145,23 @@ class MSMEP:
         return Chain.from_traj(t,k=0.1,delta_k=0,step_size=1,node_class=Node3D)
 
 
-    def _align_endpoints(self, start: Molecule, end: Molecule):
+    def _align_endpoints(self, start: TDStructure, end: TDStructure):
         bc = start.molecule_rp.get_bond_changes(end.molecule_rp)
         c3d_list = self.from_bonds_changes(bc)
 
         if len(c3d_list.deleted+c3d_list.forming+c3d_list.charges)==0: return start, end
         start = start.pseudoalign(c3d_list)
-        start.mm_optimization('uff')
+        start.mm_optimization('uff', steps=2000)
+        start.mm_optimization('gaff', steps=2000)
+        start.mm_optimization('mmff94', steps=2000)
         start = start.xtb_geom_optimization()
         
         end_mod = start.copy()
         end_mod.add_bonds(c3d_list.forming)
         end_mod.delete_bonds(c3d_list.deleted)
-        end_mod.mm_optimization('uff')
+        end_mod.mm_optimization('uff', steps=2000)
+        end_mod.mm_optimization('gaff', steps=2000)
+        end_mod.mm_optimization('mmff94', steps=2000)
         end_mod = end_mod.xtb_geom_optimization()
         return start, end_mod
     
