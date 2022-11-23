@@ -10,6 +10,12 @@ class AlessioError(Exception):
 
 
 class Node(ABC):
+
+    @property
+    @abstractmethod
+    def converged(self):
+        ...
+
     @abstractmethod
     def en_func(coords):
         ...
@@ -48,4 +54,8 @@ class Node(ABC):
 
     @abstractmethod
     def update_coords(self, coords):
+        ...
+
+    @abstractmethod
+    def get_nudged_pe_grad(self, unit_tangent, gradient):
         ...

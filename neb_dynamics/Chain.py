@@ -11,7 +11,13 @@ from retropaths.abinitio.trajectory import Trajectory
 
 from neb_dynamics.helper_functions import quaternionrmsd
 from neb_dynamics.Node import Node
-from neb_dynamics.Node3d import Node3D
+from neb_dynamics.Node3D import Node3D
+
+from xtb.interface import Calculator
+from xtb.libxtb import VERBOSITY_MUTED
+from xtb.utils import get_method
+
+import multiprocessing as mp
 
 
 @dataclass
@@ -49,37 +55,6 @@ class Chain:
         int_path_len = cum_sums / cum_sums[-1]
         return np.array(int_path_len)
 
-    def neighs_grad_func(self, prev_node: Node, current_node: Node, next_node: Node):
-
-        vec_tan_path = self._create_tangent_path(prev_node=prev_node, current_node=current_node, next_node=next_node)
-        unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
-
-        if not current_node.do_climb:
-            pe_grads_nudged = self.get_pe_grad_nudged(current_node=current_node, unit_tan_path=unit_tan_path)
-            spring_forces_nudged = self.get_force_spring_nudged(
-                prev_node=prev_node,
-                current_node=current_node,
-                next_node=next_node,
-                unit_tan_path=unit_tan_path,
-            )
-
-        elif current_node.do_climb:
-
-            pe_grad = current_node.gradient
-            pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
-            pe_along_path = pe_along_path_const * unit_tan_path
-
-            climbing_grad = 2 * pe_along_path
-
-            pe_grads_nudged = pe_grad - climbing_grad
-
-            zero = np.zeros_like(pe_grad)
-            spring_forces_nudged = zero
-        else:
-            raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
-
-        return pe_grads_nudged, spring_forces_nudged  # , anti_kinking_grads
-
     def _k_between_nodes(self, node0: Node, node1: Node, e_ref: float, k_max: float, e_max: float):
         e_i = max(node1.energy, node0.energy)
         if e_i > e_ref:
@@ -115,7 +90,7 @@ class Chain:
         )
         return chain_copy
 
-    def iter_triplets(self):
+    def iter_triplets(self) -> list[list[Node]]:
         for i in range(1, len(self.nodes) - 1):
             yield self.nodes[i - 1: i + 2]
 
@@ -168,33 +143,37 @@ class Chain:
     def energies(self) -> np.array:
         return np.array([node.energy for node in self.nodes])
 
-    def pe_grads_spring_forces_nudged2(self):
-        '''
-        ATTEMPTS HERE ALESSIO HERE HERE
-        '''
-        pe_grads_nudged = []
-        spring_forces_nudged = []
-        # anti_kinking_grads = []
-        for iii in self.iter_triplets():
-            prev_node, current_node, next_node = iii
-            lista = self.neighs_grad_func(
+    def neighs_grad_func(self, prev_node: Node, current_node: Node, next_node: Node):
+
+        vec_tan_path = self._create_tangent_path(prev_node=prev_node, current_node=current_node, next_node=next_node)
+        unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
+
+        pe_grad = current_node.gradient
+
+        if not current_node.do_climb:
+            pe_grads_nudged = current_node.get_nudged_pe_grad(unit_tan_path, gradient=pe_grad)
+            spring_forces_nudged = self.get_force_spring_nudged(
                 prev_node=prev_node,
                 current_node=current_node,
                 next_node=next_node,
+                unit_tan_path=unit_tan_path,
             )
-            pe_grad_nudged, spring_force_nudged = lista
-            # anti_kinking_grads.append(anti_kinking_grad)
-            if not current_node.converged:
-                pe_grads_nudged.append(pe_grad_nudged)
-                spring_forces_nudged.append(spring_force_nudged)
-            else:
-                zero = np.zeros_like(pe_grad_nudged)
-                pe_grads_nudged.append(zero)
-                spring_forces_nudged.append(zero)
 
-        pe_grads_nudged = np.array(pe_grads_nudged)
-        spring_forces_nudged = np.array(spring_forces_nudged)
-        return pe_grads_nudged, spring_forces_nudged
+        elif current_node.do_climb:
+
+            pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
+            pe_along_path = pe_along_path_const * unit_tan_path
+
+            climbing_grad = 2 * pe_along_path
+
+            pe_grads_nudged = pe_grad - climbing_grad
+
+            zero = np.zeros_like(pe_grad)
+            spring_forces_nudged = zero
+        else:
+            raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
+
+        return pe_grads_nudged, spring_forces_nudged  # , anti_kinking_grads
 
     def pe_grads_spring_forces_nudged(self):
         pe_grads_nudged = []
@@ -220,9 +199,37 @@ class Chain:
         spring_forces_nudged = np.array(spring_forces_nudged)
         return pe_grads_nudged, spring_forces_nudged
 
+    def for_the_unconverged_nodes_what_is_the_froce_acting_on_the_unconverged_node(self):
+        return np.max([np.linalg.norm(grad) for grad in self.gradients])
+
+    @staticmethod
+    def la_mia_mamma(tuple):
+        atomic_numbers, coords_bohr, charge, spinmult = tuple
+
+        calc = Calculator(
+            get_method("GFN2-xTB"),
+            numbers=np.array(atomic_numbers),
+            positions=coords_bohr,
+            charge=charge,
+            uhf=spinmult - 1,
+        )
+        calc.set_verbosity(VERBOSITY_MUTED)
+        res = calc.singlepoint()
+
+        return res.get_energy(), res.get_gradient()
+
+    def independent_gradients_ene(self):
+        iterator = ((n.tdstructure.atomic_numbers,  n.tdstructure.coords_bohr, n.tdstructure.charge, n.tdstructure.spinmult) for n in self.nodes)
+        with mp.Pool() as p:
+            ene_gradients = p.map(self.la_mia_mamma, iterator)
+        return ene_gradients
+
     @cached_property
     def gradients(self) -> np.array:
-
+        whatever = self.independent_gradients_ene()
+        for (ene, grad), node in zip(whatever, self.nodes):
+            node._cached_energy = ene
+            node._cached_gradient = grad
         pe_grads_nudged, spring_forces_nudged = self.pe_grads_spring_forces_nudged()
 
         # anti_kinking_grads = np.array(anti_kinking_grads)
@@ -284,12 +291,6 @@ class Chain:
 
             return tan_vec
 
-    def _get_nudged_pe_grad(self, node, unit_tangent):
-        pe_grad = node.gradient
-        pe_grad_nudged_const = node.dot_function(pe_grad, unit_tangent)
-        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
-        return pe_grad_nudged
-
     def _get_anti_kink_switch_func(self, prev_node, current_node, next_node):
         # ANTI-KINK FORCE
         vec_2_to_1 = next_node.coords - current_node.coords
@@ -298,11 +299,6 @@ class Chain:
 
         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
         return f_phi
-
-    def get_pe_grad_nudged(self, current_node: Node, unit_tan_path):
-
-        pe_grad_nudged = self._get_nudged_pe_grad(node=current_node, unit_tangent=unit_tan_path)
-        return pe_grad_nudged
 
     def get_force_spring_nudged(
         self,

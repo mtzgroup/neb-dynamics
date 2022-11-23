@@ -12,13 +12,13 @@ from scipy.signal import argrelextrema
 from neb_dynamics.Chain import Chain
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Node import Node
+from neb_dynamics import ALS
 
 
 @dataclass
 class NoneConvergedException(Exception):
     trajectory: list[Chain]
     msg: str
-
     obj: NEB
 
 
@@ -66,19 +66,14 @@ class NEB:
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps + 1:
-            max_grad_val = np.max([np.linalg.norm(grad) for grad in chain_previous.gradients])
+            max_grad_val = chain_previous.for_the_unconverged_nodes_what_is_the_froce_acting_on_the_unconverged_node()
             if max_grad_val <= 3 * self.grad_thre and self.climb:
                 self.set_climbing_nodes(chain=chain_previous)
                 self.climb = False
 
             new_chain = self.update_chain(chain=chain_previous)
-            if self.v > 1:
-                print(f"step {nsteps} // max |gradient| {np.max([np.linalg.norm(grad) for grad in new_chain.gradients])}")
             if self.v:
-                print(f"on step {nsteps}                       ", end="\r")
-                if nsteps > 3:
-                    print("\n\nALESSIO REMOVE THIS IF\n\n")
-                    break
+                print(f"step {nsteps} // max |gradient| {max_grad_val}{' '*20}", end="\r")
             sys.stdout.flush()
 
             self.chain_trajectory.append(new_chain)
@@ -129,7 +124,6 @@ class NEB:
         return new_velocity
 
     def update_chain(self, chain: Chain) -> Chain:
-        from neb_dynamics import ALS
 
         do_vv = self.do_velvel(chain=chain)
 

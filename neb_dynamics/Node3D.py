@@ -21,6 +21,8 @@ class Node3D(Node):
     tdstructure: TDStructure
     converged: bool = False
     do_climb: bool = False
+    _cached_energy: float | None = None
+    _cached_gradient: np.array | None = None
 
     @property
     def coords(self):
@@ -42,11 +44,17 @@ class Node3D(Node):
 
     @cached_property
     def energy(self):
-        return Node3D.run_xtb_calc(self.tdstructure).get_energy()
+        if self._cached_energy is not None:
+            return self._cached_energy
+        else:
+            return Node3D.run_xtb_calc(self.tdstructure).get_energy()
 
     @cached_property
     def gradient(self):
-        return Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
+        if self._cached_gradient is not None:
+            return self._cached_gradient
+        else:
+            return Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
@@ -66,6 +74,15 @@ class Node3D(Node):
         calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
         return res
+
+    def get_nudged_pe_grad(self, unit_tangent, gradient):
+        '''
+        Alessio to Jan: comment your functions motherfucker.
+        '''
+        pe_grad = gradient
+        pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
+        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+        return pe_grad_nudged
 
     def copy(self):
         return Node3D(

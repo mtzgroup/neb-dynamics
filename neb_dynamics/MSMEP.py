@@ -9,7 +9,7 @@ from scipy.signal import argrelextrema
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Node3d import Node3D
+from neb_dynamics.Node3D import Node3D
 from neb_dynamics.remapping_helpers import create_correct_product
 
 
