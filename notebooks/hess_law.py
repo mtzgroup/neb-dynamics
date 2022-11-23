@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from retropaths.abinitio.tdstructure import TDStructure
 from neb_dynamics.NEB import Node3D
 import numpy as np

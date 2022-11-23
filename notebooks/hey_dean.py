@@ -1,8 +1,13 @@
+# +
 from neb_dynamics.NEB import Node2D, TS_PRFO, Node3D, Chain
 from retropaths.abinitio.tdstructure import TDStructure
 from pathlib import Path
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 import numpy as np
+from IPython.core.display import HTML
+
+HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+# -
 
 node_att = Node2D(pair_of_coordinates=(-2,1))
 tsopt = TS_PRFO(initial_node=node_att, max_nsteps=10000, dr=0.1, grad_thre=1e-8)
@@ -50,9 +55,15 @@ chain = Chain.from_xyz(fp)
 # -
 
 
-chain[9]
-
 chain.plot_chain()
+
+from retropaths.abinitio.trajectory import Trajectory
+import matplotlib.pyplot as plt
+
+t = Trajectory.from_xyz(fp)
+t.draw();
+
+plt.plot(t.energies_xtb(),'o--')
 
 
 # +
@@ -137,6 +148,150 @@ new_td
 # new_td.write_to_disk("claisen_ts_2.xyz")
 # -
 
-# # Diels Alder
+# # Wittig
+
+from retropaths.molecules.molecule import Molecule
+
+# +
+# mol_1 = Molecule.from_smiles("C(=O)(C)C")
+# mol_1.draw()
+
+# +
+# mol_2 = Molecule.from_smiles("C=P(c1ccccc1)(c2ccccc2)c3ccccc3")
+# mol_2.draw()
+# -
+
+# mol = Molecule.from_smiles("C(=O)(C)C.C=P(c1ccccc1)(c2ccccc2)c3ccccc3")
+mol = Molecule.from_smiles("C(=O)(C)C.C=P(C)(C)C")
+# mol2 = Molecule.from_smiles("CC(=C)C.c1ccc(cc1)P(=O)(c2ccccc2)c3ccccc3")
+mol2 = Molecule.from_smiles("CC(=C)C.CP(=O)(C)C")
+
+mol.draw()
+
+mol2.draw()
+
+# +
+# mol2_1 = Molecule.from_smiles("CC(=C)C")
+# mol2_1.draw()
+
+# +
+# mol2_2 = Molecule.from_smiles("c1ccc(cc1)P(=O)(c2ccccc2)c3ccccc3")
+# mol2_2.draw()
+# -
+
+# root_1 = TDStructure.from_RP(mol_1)
+# root_2 = TDStructure.from_RP(mol_2)
+# target_1 = TDStructure.from_RP(mol2_1)
+# target_2 = TDStructure.from_RP(mol2_2)
+root = TDStructure.from_RP(mol)
+target = TDStructure.from_RP(mol2)
+# root = TDStructure.from_fp(Path("../example_cases/wittig/root.xyz"))
+# target = TDStructure.from_fp(Path("../example_cases/wittig/target-aligned_to-root.xyz"))
+root = TDStructure.from_fp(Path("../example_cases/wittig/root_small.xyz"))
+target = TDStructure.from_fp(Path("../example_cases/wittig/target_small-aligned_to-root_small.xyz"))
+
+root.mm_optimization("mmff94")
+target.mm_optimization('mmff94')
+
+root_opt = root.xtb_geom_optimization()
+
+root_opt
+
+target_opt = target.xtb_geom_optimization()
+
+target_opt
+
+traj = Trajectory(traj=[root_opt, target_opt])
+gi = traj.run_geodesic(nimages=15,friction=.01)
+
+gi.draw();
+
+# +
+# gi.write_trajectory(Path("../example_cases/wittig_gi.xyz"))
+# -
+
+plt.plot(gi.energies, 'o--')
+
+gi.draw();
+
+c = Chain.from_traj(traj=gi,k=0.1,delta_k=0,step_size=0.33,node_class=Node3D)
+
+from neb_dynamics.NEB import NEB
+
+n = NEB(initial_chain=c,max_steps=500)
+n.optimize_chain()
+
+n2 = NEB(initial_chain=n.chain_trajectory[-1],max_steps=500)
+n2.optimize_chain()
+
+n2.chain_trajectory[-1].plot_chain()
+
+n3 = NEB(initial_chain=n2.chain_trajectory[-1],max_steps=500)
+n3.optimize_chain()
+
+n3.chain_trajectory[-1].plot_chain()
+
+# +
+# n2.write_to_disk("../example_cases/wittig_neb.xyz")
+# -
+
+n4 = NEB(initial_chain=n3.chain_trajectory[-1],max_steps=5000)
+n4.optimize_chain()
+
+c_temp = n3.chain_trajectory[-1]
+
+c_temp[0].tdstructure.xtb_geom_optimization()
+
+c_temp[0].tdstructure.xtb_geom_optimization()
+
+c_temp[9].tdstructure.xtb_geom_optimization()
+
+t = Trajectory([n.tdstructure for n in c_temp])
+
+t.write_trajectory("../example_cases/wittig/c_temp.xyz")
+
+
+c_temp2 = n4.chain_trajectory[-1]
+
+c_temp2[5].tdstructure.xtb_geom_optimization()
+
+# # Let's find this silly mech
+
+n3.chain_trajectory[-1].plot_chain() # n3 was after 1500 steps
+
+n3.write_to_disk("../example_cases/wittig/root_neb_chain.xyz")
+
+# ### path to first minima
+
+# +
+c_to_split = n3.chain_trajectory[-1]
+
+frag1 = Trajectory([c_to_split[0].tdstructure.xtb_geom_optimization(), c_to_split[5].tdstructure.xtb_geom_optimization()])
+geo1 = frag1.run_geodesic(nimages=15, friction=0.01)
+chain1 = Chain.from_traj(traj=geo1,k=0.1,delta_k=0,step_size=0.33,node_class=Node3D)
+
+n_frag1 = NEB(initial_chain=chain1,max_steps=1500)
+n_frag1.optimize_chain()
+# -
+
+n_frag1.chain_trajectory[-1].plot_chain()
+
+n_frag1.write_to_disk("../example_cases/wittig/frag1_neb.xyz")
+
+# ### path to first first minima (lmao)
+
+# +
+c_to_split2 = n_frag1.chain_trajectory[-1]
+
+frag1_1 = Trajectory([c_to_split2[0].tdstructure.xtb_geom_optimization(), c_to_split2[8].tdstructure.xtb_geom_optimization()])
+geo1_1 = frag1_1.run_geodesic(nimages=15, friction=0.01)
+chain1_1 = Chain.from_traj(traj=geo1_1,k=0.1,delta_k=0,step_size=0.33,node_class=Node3D)
+# -
+
+n_frag1_1 = NEB(initial_chain=chain1_1,max_steps=1500)
+n_frag1_1.optimize_chain()
+
+n_frag1_1_continued = NEB(initial_chain=n_frag1_1.chain_trajectory[-1], max_steps=1500)
+n_frag1_1_continued.optimize_chain()
 
 

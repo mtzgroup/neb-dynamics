@@ -12,7 +12,6 @@ from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.remapping_helpers import create_correct_product
 
-
 @dataclass
 class MSMEP:
 
@@ -40,13 +39,15 @@ class MSMEP:
         correct_endpoint = create_correct_product(start, end, kcal_window=10)[0]  # currently only selecting the best, need to fix so that you do some more sampling
         if not np.all(correct_endpoint.coords != end.coords):
             print("Making chain with optimal hydrogen")
-            new_chain = self.get_neb_chain(start=start, end=correct_endpoint, do_alignment=False)
-            return new_chain
+            n, new_chain = self.get_neb_chain(start=start, end=correct_endpoint, do_alignment=False)
+            return n, new_chain
         else:
             return chain
 
     def find_mep_multistep(self, inp, do_alignment):
         start, end = inp
+        n, chain = self.get_neb_chain(start=start, end=end, do_alignment=do_alignment)
+        if not chain: return None
         chain = self.get_neb_chain(start=start, end=end, do_alignment=do_alignment)
         if not chain:
             return None
@@ -98,10 +99,12 @@ class MSMEP:
                 print("Warning! A chain did not converge. Returning an unoptimized chain...")
                 out_chain = n.chain_trajectory[-1]
 
+            return n, out_chain   
             return out_chain
         else:
             print("Endpoints are identical. Returning nothing")
             # return Chain(nodes=[Node3D(start)], k=0.1, delta_k=0,step_size=1,node_class=Node3D)
+            return None, None 
             return None
 
     def is_elem_step(self, chain):

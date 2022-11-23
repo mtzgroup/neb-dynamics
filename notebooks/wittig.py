@@ -4,7 +4,10 @@ from IPython.core.display import HTML
 from retropaths.reactions.changes import Changes3DList, Changes3D
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
-from neb_dynamics.NEB import NEB, Chain, Node3D, NoneConvergedException
+from neb_dynamics.NEB import NEB, NoneConvergedException
+from neb_dynamics.Chain import Chain
+from neb_dynamics.Node3D import Node3D
+
 from neb_dynamics.MSMEP import MSMEP
 import matplotlib.pyplot as plt
 from retropaths.reactions.template import ReactionTemplate
@@ -258,6 +261,8 @@ t_true = Trajectory([node.tdstructure for node in nodes])
 c = Chain.from_xyz("../example_cases/wittig/true_mechanism_tol03_v2.xyz")
 # c_tot = Chain.from_xyz("../example_cases/wittig/extracted_mechanism_att0.xyz")
 c_tot = Chain.from_xyz("../example_cases/wittig/extracted_mechanism_att3.xyz")
+c_aut = Chain.from_xyz("../example_cases/wittig/auto_extracted_att2.xyz")
+c_aut2 = Chain.from_xyz("../example_cases/wittig/auto_extracted_att2_tol01.xyz")
 
 
 # +
@@ -267,8 +272,9 @@ fs = 18
 f, ax = plt.subplots(figsize=(2.18*s, s))
 
 plt.plot(c.integrated_path_length, (c.energies-c.energies[0])*627.5, 'o--', label='manual')
-plt.plot(c_tot.integrated_path_length, (c_tot.energies-c.energies[0])*627.5, 'o--',label='extracted')
-plt.plot(out.integrated_path_length, (out.energies-c.energies[0])*627.5, 'o--',label='extracted_auto')
+# plt.plot(c_tot.integrated_path_length, (c_tot.energies-c.energies[0])*627.5, 'o--',label='extracted')
+plt.plot(c_aut.integrated_path_length, (c_aut.energies-c.energies[0])*627.5, 'o--',label='extracted_auto (tol 0.0045)')
+plt.plot(c_aut2.integrated_path_length, (c_aut2.energies-c.energies[0])*627.5, 'o--',label='extracted_auto (tol 0.01)')
 # plt.plot(c_resamp.integrated_path_length, (c_resamp.energies-c.energies[0])*627.5, 'o--',label='extracted_resamp')
 plt.yticks(fontsize=fs)
 plt.xticks(fontsize=fs)
@@ -292,36 +298,36 @@ inds_min
 
 # +
 # let's automate shit
-mol = Molecule.from_smiles("CC(=O)C.CP(=C)(C)C")
-# mol = Molecule.from_smiles("C(=O)(C)C.C=P(c1ccccc1)(c2ccccc2)c3ccccc3")
-d = {'charges':[],'delete':[(5,6),(1,2)], 'double':[(1,6),(2,5)]}
-# d = {'charges':[],'delete':[(5,4),(1,0)], 'double':[(0,4),(1,5)]}
+# mol = Molecule.from_smiles("CC(=O)C.CP(=C)(C)C")
+mol = Molecule.from_smiles("C(=O)(C)C.C=P(c1ccccc1)(c2ccccc2)c3ccccc3")
+# d = {'charges':[],'delete':[(5,6),(1,2)], 'double':[(1,6),(2,5)]}
+d = {'charges':[],'delete':[(5,4),(1,0)], 'double':[(0,4),(1,5)]}
 # d = {'charges':[], 'single':[(0,4),(1,5),(5,4),(0,1)]}
 conds = Conditions()
 rules = Rules()
-cg = [
-    (7,5,'Me'),
-    (8,5,'Me'),
-    (4,5,'Me'),
-    (0,1,'Me'),
-    (3,1,'Me'),
-]
-
 # cg = [
-#     (18,5,'Me'),
-#     (6,5,'Me'),
-#     (12,5,'Me'),
-#     (2,0,'Me'),
-#     (3,0,'Me'),
+#     (7,5,'Me'),
+#     (8,5,'Me'),
+#     (4,5,'Me'),
+#     (0,1,'Me'),
+#     (3,1,'Me'),
 # ]
+
+cg = [
+    (18,5,'Me'),
+    (6,5,'Me'),
+    (12,5,'Me'),
+    (2,0,'Me'),
+    (3,0,'Me'),
+]
 temp = ReactionTemplate.from_components(name='Wittig', reactants=mol,changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
 
 # +
-deleting_list = [Changes3D(start=s,end=e, bond_order=1) for s,e in [(5,6), (2,1)]]
-forming_list = [Changes3D(start=s,end=e, bond_order=2) for s,e in [(1,6), (2,5)]]
-# deleting_list = [Changes3D(start=s,end=e, bond_order=1) for s,e in [(5,4),(1,0)]]
+# deleting_list = [Changes3D(start=s,end=e, bond_order=1) for s,e in [(5,6), (2,1)]]
+# forming_list = [Changes3D(start=s,end=e, bond_order=2) for s,e in [(1,6), (2,5)]]
+deleting_list = [Changes3D(start=s,end=e, bond_order=1) for s,e in [(5,4),(1,0)]]
 # deleting_list = []
-# forming_list = [Changes3D(start=s,end=e, bond_order=2) for s,e in [(0,4),(1,5)]]
+forming_list = [Changes3D(start=s,end=e, bond_order=2) for s,e in [(0,4),(1,5)]]
 
 c3d_list = Changes3DList(deleted=deleting_list,forming=forming_list, charges=[])
 # -
@@ -343,22 +349,24 @@ target
 m = MSMEP(max_steps=2000, v=True, tol=0.01)
 
 o = m.get_neb_chain(root, target,do_alignment=False)
+# +
+# o = m.get_neb_chain(root, target,do_alignment=False)
 
-o.plot_chain()
+# +
+# o.plot_chain()
+# -
 
 out = m.find_mep_multistep((root, target), do_alignment=True)
 
 out.plot_chain()
 
-(out.energies[4] - out.energies[0])*627.5
-
-(out.energies[20] - out.energies[15])*627.5
-
 t = Trajectory([n.tdstructure for n in out])
 
-t.draw();
+t.write_trajectory("../example_cases/wittig/auto_extracted_att2_tol01.xyz")
 
-t.write_trajectory("../example_cases/wittig/auto_extracted_TPP_att0.xyz")
+# +
+# t.write_trajectory("../example_cases/wittig/auto_extracted_TPP_att0.xyz")
+# -
 
 #
 
@@ -385,5 +393,32 @@ t2[-1]
 t3 = Trajectory.from_xyz("../example_cases/claisen/cr_MSMEP_tol_01.xyz")
 
 t3.draw();
+
+# +
+from dataclasses import dataclass, field
+from neb_dynamics.NEB import NEB
+
+@dataclass
+class TreeNode:
+    data: NEB
+    children: list = field(default_factory=list)
+    
+    
+    def add_child(self, child: TreeNode):
+        self.children.append(child)
+@dataclass
+class DataTree:
+    root: TreeNode
+
+
+# -
+
+dt = DataTree(root=TreeNode(data=o))
+
+dt.root.children
+
+dt.root.add_child(o)
+
+len(dt.root.children)
 
 

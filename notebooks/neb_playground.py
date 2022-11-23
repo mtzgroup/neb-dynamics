@@ -114,11 +114,14 @@ m = MSMEP(v=True, max_steps=2000, tol=0.0045, nimages=15, friction=0.01, nudge=0
 
 out = m.find_mep_multistep((start, end_mod),do_alignment=False)
 
-out.plot_chain()
+out2 = Chain.from_xyz("../example_cases/ugi/auto_extracted_0.xyz")
+out2.plot_chain()
 
-t = Trajectory([n.tdstructure for n in out])
+t = Trajectory([n.tdstructure for n in out2])
 
-t.write_trajectory("../example_cases/ugi/auto_extracted_0.xyz")
+# +
+# t.write_trajectory("../example_cases/ugi/auto_extracted_0.xyz")
+# -
 
 t.draw();
 

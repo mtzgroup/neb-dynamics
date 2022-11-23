@@ -1,17 +1,22 @@
 from dataclasses import dataclass
-from pathlib import Path
-from neb_dynamics.trajectory import Trajectory
-from neb_dynamics.NEB import Chain, Node3D
-from neb_dynamics.helper_functions import quaternionrmsd
-
 from functools import cached_property
-from multiprocessing.dummy import Pool
-from tqdm.notebook import tqdm
-import pandas as pd
-import numpy as np
 from itertools import product
+from multiprocessing.dummy import Pool
+from pathlib import Path
+
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from kneed import KneeLocator
+from retropaths.abinitio.geodesic_interpolation.coord_utils import align_geom
 from scipy.signal import argrelmin
+from sklearn.cluster import KMeans
+from sklearn.metrics import pairwise_distances_argmin_min
+from tqdm.notebook import tqdm
+
+from neb_dynamics.helper_functions import quaternionrmsd
+# from neb_dynamics.trajectory import Trajectory
+from retropaths.abinitio.trajectory import Trajectory
 
 
 @dataclass
@@ -36,9 +41,8 @@ class ConformerAnalyzer:
     
     def _get_fp_energy(self, fp):
         traj = Trajectory.from_xyz(fp)
-        chain = Chain.from_traj(traj, k=1,delta_k=1,step_size=1,node_class=Node3D)
         try:
-            energies = chain.energies
+            energies = np.array(traj.energies)
         except:
             energies = np.nan
         return energies
@@ -96,6 +100,8 @@ class ConformerAnalyzer:
                 tag
             ]
             data.append(row)
+
+        return data
 
     def _init_conf_energy(self, row):
         return row['energies_neb'][0]
@@ -334,37 +340,132 @@ class ConformerAnalyzer:
         plt.colorbar()
         plt.show()
 
+    def get_all_reactive_conformers(self):
+        all_reactive_conformers = []
+        en_thre = self.dataframe_refined['deltaE'].median()
+        for i, t_fp in enumerate(self.dataframe_refined["fp_traj_neb"].values):
+            print(f"{i}",end=' ')
+            if self.dataframe_refined.iloc[i]['deltaE'] <= en_thre:
+                # print(f"---- {i} under {en_thre} kcal/mol")
+                val = self.get_reactive_conformers(t_fp)
+                all_reactive_conformers.append(val) 
 
-    def get_reactive_conformers(self, traj_fp):
-        try:
-            traj = Trajectory.from_xyz(traj_fp)
-            inds_minima = argrelmin(np.array(traj.energies))[0]
-            inds_minima = np.append(inds_minima, -1)
-            prev_min_ind = 0
-            reactive_pairs = []
-            for min_ind in inds_minima:
+        return all_reactive_conformers
+
+    def get_reactive_conformers(self, traj_fp: str, buffer=2):
+        reactive_mols = []
+
+        traj = Trajectory.from_xyz(traj_fp)
+        prev_td = traj[0]
+        for i in range(1, len(traj.traj)-1):
+            current_td = traj[i]
+            if current_td.molecule_rp == prev_td.molecule_rp:
+                prev_td = current_td 
+                continue
+            else:
+                # print(f"a change has happened at frame {i}")
+                reactive_mols.append(traj[i-buffer])
+                reactive_mols.append(traj[i])
+                prev_td = current_td
+                
+        reactant, product, intermediates = self.post_process_reactive_mols(traj, reactive_mols)
+        if len(intermediates) > 0: 
+            # print("intermediates found!")
+            return (reactant, product), intermediates
+        else:
+            return (reactant, product)
 
 
-                mol = traj[min_ind]
-                mol_relaxed = mol.xtb_geom_optimization()
+    def post_process_reactive_mols(self, traj, mol_list):
+        reactant = None
+        product = None
+        intermediates = []
+        for mol in mol_list:
+            mol_relaxed = mol.xtb_geom_optimization()
+            if mol_relaxed.molecule_rp == traj[0].molecule_rp:
+                reactant = mol_relaxed
+            elif mol_relaxed.molecule_rp == traj[-1].molecule_rp:
+                product = mol_relaxed
+            else:
+                intermediates.append(mol_relaxed)
+        return reactant, product, intermediates
 
-                is_isom_to_prev = mol_relaxed.molecule_rp == traj[prev_min_ind].molecule_rp
 
-                # reactive conformers
-                if not is_isom_to_prev:
-                    print(f"\trxn happened between {prev_min_ind} and {min_ind}")
-                    reactive_pairs.append((traj[prev_min_ind],mol_relaxed))
-                else:
-                    prev_min_ind = min_ind
-                    continue
+    @cached_property
+    def all_reactive_conformers(self):
+        return self.get_all_reactive_conformers()
 
+    def get_reactive_pairs(self):
+        pairs = []
+        for val in self.all_reactive_conformers:
+            try:
+                len(val[0])
+                pairs.append(val[0])
+            except:
+                pairs.append(val)
+        return pairs
+    
+    def score_with_n_clusters(self, n, X):
+        km = KMeans(n)
+        km.fit(X)
+        return -km.score(X)
 
-                if len(reactive_pairs)==1:
-                    return reactive_pairs[0]
-                else:
-                    print("Multi-intermediate reaction given as input! returning a list!")
-                    return reactive_pairs
-        except:
-            return None
+    def make_x_mat(self, vals, ind):
+        all_coords = []
+        for pair in vals:
+            all_coords.append(pair[ind].coords.flatten())
+        return np.array(all_coords)
+
+    def make_out_val(self, max_val, vals, ind):
+        X = self.make_x_mat(vals,ind) 
+        out = [self.score_with_n_clusters(i, X) for i in range(1, max_val)]
+        return out
+
+    def get_optim_cluster_number(self, out_arr):
+        kn = KneeLocator(list(range(len(out_arr))), out_arr, curve='convex', direction='decreasing')
+        return kn.knee
+
+    @property
+    def reactive_reactants(self):
+        return self._get_reactive_conformers_helper(0)
+
+    @property
+    def reactive_products(self):
+        return self._get_reactive_conformers_helper(1)
+
+    def _get_reactive_conformers_helper(self, ind=0):
+        """
+        if ind==0: reactant conformer
+        ind==1: product conformer
+        """
+        pairs = self.get_reactive_pairs()
+        aligned_rel_0 = [pairs[0][ind].coords]
+
+        for i in range(1, len(pairs)-1):
+            ref_geom = aligned_rel_0[0]
+            other_geom = pairs[i][ind].coords
+            rmsd, new_coords = align_geom(ref_geom, other_geom)
+            aligned_rel_0.append(new_coords)
             
-            
+
+
+
+
+        out = self.make_out_val(100, pairs, ind)
+        optim = self.get_optim_cluster_number(out)
+        km = KMeans(optim)
+        X = self.make_x_mat(pairs, ind)
+        km.fit(X)
+
+        t = Trajectory.from_xyz(self.dataframe_refined.iloc[0]['fp_traj_neb'])
+        td = t[0]
+        clustered_structures = []
+        closest_inds, _ = pairwise_distances_argmin_min(km.cluster_centers_, X)
+        for ind in closest_inds:
+            coords = X[ind]
+            td_copy = td.copy()
+            td_copy.update_coords(coords.reshape(td.coords.shape))
+            clustered_structures.append(td_copy)
+
+        return clustered_structures
+                        
