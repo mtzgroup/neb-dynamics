@@ -87,7 +87,6 @@ class MSMEP:
             en_thre = self.en_thre if self.en_thre else self.tol / 450
             rms_grad_thre = self.rms_grad_thre if self.rms_grad_thre else self.tol * (2 / 3)
             grad_thre = self.grad_thre if self.grad_thre else self.tol
-
             n = NEB(initial_chain=chain, max_steps=max_steps, en_thre=en_thre, rms_grad_thre=rms_grad_thre, grad_thre=grad_thre, v=self.v)
 
             try:

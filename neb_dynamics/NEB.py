@@ -174,6 +174,7 @@ class NEB:
         for grad in gradients:
             max_grad = np.amax(grad)
             max_grad_components.append(max_grad)
+            # print(f'{max_grad=} < {self.grad_thre=}')
             bools.append(max_grad < self.grad_thre)
 
         # grad_converged = np.where(delta_grad < self.grad_thre)
