@@ -63,14 +63,15 @@ class MSMEP:
                     next_pair = pairs_of_minima[i + 1]
                     do_alignment = pair[1].molecule_rp != next_pair[0].molecule_rp  # i.e. if minima found is not just a conformer rearrangment
                     print(f"\t{do_alignment=}")
-
-                    elem_steps.append(self.find_mep_multistep(pair, do_alignment=do_alignment))
+                    neb_obj, chain = self.find_mep_multistep(pair, do_alignment=do_alignment)
+                    elem_steps.append(chain)
 
                 else:  # i.e. the final pair
-                    elem_steps.append(self.find_mep_multistep(pair, do_alignment=False))
+                    neb_obj, chain = self.find_mep_multistep(pair, do_alignment=False)
+                    elem_steps.append(chain)
 
             stitched_elem_steps = self.stitch_elem_steps(elem_steps)
-            return stitched_elem_steps
+            return None, stitched_elem_steps # the first 'None' will hold the DataTree that holds all NEB objects
 
     def get_neb_chain(self, start, end, do_alignment):
 
