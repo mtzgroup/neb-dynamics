@@ -47,8 +47,6 @@ class MSMEP:
     def find_mep_multistep(self, inp, do_alignment):
         start, end = inp
         n, chain = self.get_neb_chain(start=start, end=end, do_alignment=do_alignment)
-        if not chain: return None
-        chain = self.get_neb_chain(start=start, end=end, do_alignment=do_alignment)
         if not chain:
             return None
         if self.is_elem_step(chain):
