@@ -51,7 +51,7 @@ class MSMEP:
             return None, None
         if self.is_elem_step(chain):
             chain_opt = self.optimize_hydrogen_label(chain)
-            return chain_opt
+            return None, chain_opt
         else:
             pairs_of_minima = self.make_pairs_of_minima(chain)
             elem_steps = []
