@@ -66,7 +66,7 @@ class NEB:
         chain_previous = self.initial_chain.copy()
 
         while nsteps < self.max_steps + 1:
-            max_grad_val = chain_previous.for_the_unconverged_nodes_what_is_the_froce_acting_on_the_unconverged_node()
+            max_grad_val = chain_previous.get_maximum_grad_magnitude()
             if max_grad_val <= 3 * self.grad_thre and self.climb:
                 self.set_climbing_nodes(chain=chain_previous)
                 self.climb = False

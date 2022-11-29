@@ -199,11 +199,11 @@ class Chain:
         spring_forces_nudged = np.array(spring_forces_nudged)
         return pe_grads_nudged, spring_forces_nudged
 
-    def for_the_unconverged_nodes_what_is_the_froce_acting_on_the_unconverged_node(self):
+    def get_maximum_grad_magnitude(self):
         return np.max([np.linalg.norm(grad) for grad in self.gradients])
 
     @staticmethod
-    def la_mia_mamma(tuple):
+    def calc_xtb_ene_grad_from_input_tuple(tuple):
         atomic_numbers, coords_bohr, charge, spinmult = tuple
 
         calc = Calculator(
@@ -218,16 +218,16 @@ class Chain:
 
         return res.get_energy(), res.get_gradient()
 
-    def independent_gradients_ene(self):
+    def calculate_energy_and_gradients_parallel(self):
         iterator = ((n.tdstructure.atomic_numbers,  n.tdstructure.coords_bohr, n.tdstructure.charge, n.tdstructure.spinmult) for n in self.nodes)
         with mp.Pool() as p:
-            ene_gradients = p.map(self.la_mia_mamma, iterator)
+            ene_gradients = p.map(self.calc_xtb_ene_grad_from_input_tuple, iterator)
         return ene_gradients
 
     @cached_property
     def gradients(self) -> np.array:
-        whatever = self.independent_gradients_ene()
-        for (ene, grad), node in zip(whatever, self.nodes):
+        energy_gradient_tuples = self.calculate_energy_and_gradients_parallel()
+        for (ene, grad), node in zip(energy_gradient_tuples, self.nodes):
             node._cached_energy = ene
             node._cached_gradient = grad
         pe_grads_nudged, spring_forces_nudged = self.pe_grads_spring_forces_nudged()

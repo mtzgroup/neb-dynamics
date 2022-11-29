@@ -81,7 +81,7 @@ class MSMEP:
 
         if self.actual_reaction_happened_based_on_gi(gi):
 
-            chain = Chain.from_traj(gi, k=0.1, delta_k=0, step_size=1, node_class=Node3D)
+            chain = Chain.from_traj(gi, k=self.k, delta_k=self.delta_k, step_size=self.step_size, node_class=self.node_class)
 
             max_steps = self.max_steps
             en_thre = self.en_thre if self.en_thre else self.tol / 450
@@ -99,10 +99,8 @@ class MSMEP:
                 out_chain = n.chain_trajectory[-1]
 
             return n, out_chain   
-            return out_chain
         else:
             print("Endpoints are identical. Returning nothing")
-            # return Chain(nodes=[Node3D(start)], k=0.1, delta_k=0,step_size=1,node_class=Node3D)
             return None, None 
 
     def is_elem_step(self, chain):
@@ -137,9 +135,18 @@ class MSMEP:
             if chain:  # list of chains will contain None values for whenever an interpolation between identical structures was given
                 [list_of_tds.append(n.tdstructure) for n in chain]
         t = Trajectory(list_of_tds)
-        return Chain.from_traj(t, k=0.1, delta_k=0, step_size=1, node_class=Node3D)
+        return Chain.from_traj(t, k=self.k, delta_k=self.delta_k, step_size=self.step_size, node_class=self.node_class)
 
     def _align_endpoints(self, start: TDStructure, end: TDStructure):
+        """
+        this function gets the bond changes between the start and end structure,
+        then applies these changes to the start structure in order to generate a 
+        modified end structure. the idea is to generate the closest structure to the 
+        starting structure.
+
+        this function can (and often does!) lead to a change in conformers of the endpoints, 
+        so it should not be used if you want to conserve the initial and final input conformers
+        """
         bc = start.molecule_rp.get_bond_changes(end.molecule_rp)
         c3d_list = self.from_bonds_changes(bc)
 
