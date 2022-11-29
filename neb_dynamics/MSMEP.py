@@ -48,7 +48,7 @@ class MSMEP:
         start, end = inp
         n, chain = self.get_neb_chain(start=start, end=end, do_alignment=do_alignment)
         if not chain:
-            return None
+            return None, None
         if self.is_elem_step(chain):
             chain_opt = self.optimize_hydrogen_label(chain)
             return chain_opt
@@ -104,7 +104,6 @@ class MSMEP:
             print("Endpoints are identical. Returning nothing")
             # return Chain(nodes=[Node3D(start)], k=0.1, delta_k=0,step_size=1,node_class=Node3D)
             return None, None 
-            return None
 
     def is_elem_step(self, chain):
         if len(chain) > 1:

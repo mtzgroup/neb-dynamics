@@ -346,21 +346,59 @@ root
 
 target
 
-m = MSMEP(max_steps=2000, v=True, tol=0.01)
-
-o = m.get_neb_chain(root, target,do_alignment=False)
 # +
+# reference = Trajectory.from_xyz("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement-cNEB_v4/traj_0-0_0_cneb.xyz")
+# reference_geo = Trajectory.from_xyz("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement-cNEB_v4/traj_0-0_0.xyz")
+
+# +
+# plt.plot((np.array(reference.energies)-reference.energies[0])*627.5, 'o-')
+
+# +
+# root, target = reference[0].copy(), reference[-1].copy()
+
+# +
+# geo_chain = Chain.from_traj(reference_geo,k=0.1,delta_k=0,step_size=2,node_class=Node3D)
+
+# +
+# tol = 4.5e-3
+# chain = Chain.from_traj(traj=reference_geo, k=.1, delta_k=0.0, step_size=2, node_class=Node3D)
+# n = NEB(initial_chain=chain, grad_thre=tol, en_thre=tol/450, rms_grad_thre=tol*(2/3), climb=True, vv_force_thre=0, max_steps=10000)
+
+
+# +
+# n.optimize_chain()
+
+# +
+# plt.plot((n.optimized.energies-n.optimized.energies[0])*627.5,'o-')
+
+# +
+# m = MSMEP(max_steps=2000, v=True, tol=0.0045,friction=0.001)
 # o = m.get_neb_chain(root, target,do_alignment=False)
+# n, c = o
 
 # +
-# o.plot_chain()
+# c.plot_chain()
 # -
 
-out = m.find_mep_multistep((root, target), do_alignment=True)
+m = MSMEP(max_steps=2000, v=True, tol=0.01,friction=0.1)
+n2, out = m.find_mep_multistep((root, target), do_alignment=False)
 
-out.plot_chain()
+plt.plot("Hey loser")
+
+plt.plot(out.energies,'o-',label='MSMEP')
+plt.plot(reference.energies, 'x-', label='old method')
+plt.legend()
+plt.show()
+
+reference[0]
+
+t[0]
+
+print("hey")
 
 t = Trajectory([n.tdstructure for n in out])
+
+t.draw()
 
 t.write_trajectory("../example_cases/wittig/auto_extracted_att2_tol01.xyz")
 

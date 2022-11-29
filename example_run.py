@@ -15,7 +15,9 @@ from retropaths.reactions.rules import Rules
 import numpy as np
 from scipy.signal import argrelextrema
 from retropaths.helper_functions import pairwise
+import random
 
+random.seed(1)
 
 mol = Molecule.from_smiles("CC(=O)C.CP(=C)(C)C")
 # mol = Molecule.from_smiles("C(=O)(C)C.C=P(c1ccccc1)(c2ccccc2)c3ccccc3")
