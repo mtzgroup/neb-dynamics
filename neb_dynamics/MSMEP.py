@@ -10,6 +10,7 @@ from scipy.signal import argrelextrema
 from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Node import Node
 from neb_dynamics.remapping_helpers import create_correct_product
 
 @dataclass
@@ -27,6 +28,7 @@ class MSMEP:
     rms_grad_thre: float = None
     grad_thre: float = None
     v: bool = False
+    node_class: Node = Node3D
 
     # geodesic interpolation params
     nimages: int = 15
