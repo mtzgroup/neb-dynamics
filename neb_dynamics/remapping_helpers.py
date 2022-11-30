@@ -43,11 +43,14 @@ def get_all_product_isomorphisms(end_struct, timeout=100):
     sgmap = SubGraphMatcherApplyPermute(mol, timeout_seconds=timeout)
     isoms = sgmap.get_isomorphisms(mol)
 
+    if len(isoms) > 100:
+        print(f"There are {len(isoms)} candidate structures. Too many. Returning only one struct")
+        return np.array([end_struct])
+
     new_structs = []
     for isom in isoms:
         new_structs.append(create_isomorphic_structure(struct=end_struct, iso=isom))
 
-    print(f"There are {len(new_structs)} candidate structures.")
     return np.array(new_structs)
 
 
