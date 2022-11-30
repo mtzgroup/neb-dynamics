@@ -47,6 +47,7 @@ def get_all_product_isomorphisms(end_struct, timeout=100):
     for isom in isoms:
         new_structs.append(create_isomorphic_structure(struct=end_struct, iso=isom))
 
+    print(f"There are {len(new_structs)} candidate structures.")
     return np.array(new_structs)
 
 
