@@ -41,8 +41,8 @@ class MSMEP:
         correct_endpoint = create_correct_product(start, end, kcal_window=10)[0]  # currently only selecting the best, need to fix so that you do some more sampling
         if not np.all(correct_endpoint.coords != end.coords):
             print("Making chain with optimal hydrogen")
-            n, new_chain = self.get_neb_chain(start=start, end=correct_endpoint, do_alignment=False)
-            return n, new_chain
+            _, new_chain = self.get_neb_chain(start=start, end=correct_endpoint, do_alignment=False)
+            return new_chain
         else:
             return chain
 
