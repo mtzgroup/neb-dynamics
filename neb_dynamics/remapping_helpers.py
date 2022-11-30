@@ -121,6 +121,8 @@ def create_correct_interpolation(start_struct, end_struct, kcal_window=10):
 
 def create_correct_product(start_struct, end_struct, kcal_window=10):
     new_structs = get_all_product_isomorphisms(end_struct)
+    if len(new_structs) == 1:
+        return new_structs[0]
     gi_info = get_gi_info(new_structs=new_structs, start_struct=start_struct)
     correct_end_struct, _ = get_correct_product_structure(new_structs=new_structs, gi_info=gi_info, kcal_window=kcal_window)
     return correct_end_struct
