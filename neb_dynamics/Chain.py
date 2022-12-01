@@ -12,6 +12,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.helper_functions import quaternionrmsd
 from neb_dynamics.Node import Node
 from neb_dynamics.Node3D import Node3D
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
@@ -216,7 +217,7 @@ class Chain:
         calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
 
-        return res.get_energy(), res.get_gradient()
+        return res.get_energy(), res.get_gradient()*BOHR_TO_ANGSTROMS
 
     def calculate_energy_and_gradients_parallel(self):
         iterator = ((n.tdstructure.atomic_numbers,  n.tdstructure.coords_bohr, n.tdstructure.charge, n.tdstructure.spinmult) for n in self.nodes)
