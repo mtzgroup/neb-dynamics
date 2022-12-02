@@ -298,36 +298,36 @@ inds_min
 
 # +
 # let's automate shit
-# mol = Molecule.from_smiles("CC(=O)C.CP(=C)(C)C")
-mol = Molecule.from_smiles("C(=O)(C)C.C=P(c1ccccc1)(c2ccccc2)c3ccccc3")
-# d = {'charges':[],'delete':[(5,6),(1,2)], 'double':[(1,6),(2,5)]}
-d = {'charges':[],'delete':[(5,4),(1,0)], 'double':[(0,4),(1,5)]}
+mol = Molecule.from_smiles("CC(=O)C.CP(=C)(C)C")
+# mol = Molecule.from_smiles("C(=O)(C)C.C=P(c1ccccc1)(c2ccccc2)c3ccccc3")
+d = {'charges':[],'delete':[(5,6),(1,2)], 'double':[(1,6),(2,5)]}
+# d = {'charges':[],'delete':[(5,4),(1,0)], 'double':[(0,4),(1,5)]}
 # d = {'charges':[], 'single':[(0,4),(1,5),(5,4),(0,1)]}
 conds = Conditions()
 rules = Rules()
-# cg = [
-#     (7,5,'Me'),
-#     (8,5,'Me'),
-#     (4,5,'Me'),
-#     (0,1,'Me'),
-#     (3,1,'Me'),
-# ]
-
 cg = [
-    (18,5,'Me'),
-    (6,5,'Me'),
-    (12,5,'Me'),
-    (2,0,'Me'),
-    (3,0,'Me'),
+    (7,5,'Me'),
+    (8,5,'Me'),
+    (4,5,'Me'),
+    (0,1,'Me'),
+    (3,1,'Me'),
 ]
+
+# cg = [
+#     (18,5,'Me'),
+#     (6,5,'Me'),
+#     (12,5,'Me'),
+#     (2,0,'Me'),
+#     (3,0,'Me'),
+# ]
 temp = ReactionTemplate.from_components(name='Wittig', reactants=mol,changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
 
 # +
-# deleting_list = [Changes3D(start=s,end=e, bond_order=1) for s,e in [(5,6), (2,1)]]
-# forming_list = [Changes3D(start=s,end=e, bond_order=2) for s,e in [(1,6), (2,5)]]
-deleting_list = [Changes3D(start=s,end=e, bond_order=1) for s,e in [(5,4),(1,0)]]
+deleting_list = [Changes3D(start=s,end=e, bond_order=1) for s,e in [(5,6), (2,1)]]
+forming_list = [Changes3D(start=s,end=e, bond_order=2) for s,e in [(1,6), (2,5)]]
+# deleting_list = [Changes3D(start=s,end=e, bond_order=1) for s,e in [(5,4),(1,0)]]
 # deleting_list = []
-forming_list = [Changes3D(start=s,end=e, bond_order=2) for s,e in [(0,4),(1,5)]]
+# forming_list = [Changes3D(start=s,end=e, bond_order=2) for s,e in [(0,4),(1,5)]]
 
 c3d_list = Changes3DList(deleted=deleting_list,forming=forming_list, charges=[])
 # -
@@ -380,10 +380,27 @@ target
 # c.plot_chain()
 # -
 
-m = MSMEP(max_steps=2000, v=True, tol=0.01,friction=0.1)
+ref2 = Chain.from_xyz("../example_cases/claisen/cr_MSMEP_tol_0045_hydrogen_fix.xyz")
+ref2.plot_chain()
+
+# +
+ref = Chain.from_xyz("../example_cases/claisen/cr_MSMEP_tol_01.xyz")
+
+ref.plot_chain()
+
+root = ref2[0].tdstructure
+target = ref2[-1].tdstructure
+# -
+
+# %%time
+m = MSMEP(max_steps=2000, v=True, tol=0.0045,friction=0.1,nudge=0)
 n2, out = m.find_mep_multistep((root, target), do_alignment=False)
 
-plt.plot("Hey loser")
+out.plot_chain()
+
+t = Trajectory([n.tdstructure for n in out])
+
+t.draw();
 
 plt.plot(out.energies,'o-',label='MSMEP')
 plt.plot(reference.energies, 'x-', label='old method')
@@ -395,8 +412,6 @@ reference[0]
 t[0]
 
 print("hey")
-
-t = Trajectory([n.tdstructure for n in out])
 
 t.draw()
 

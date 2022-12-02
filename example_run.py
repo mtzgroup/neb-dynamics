@@ -63,11 +63,11 @@ target.mm_optimization("gaff")
 target = target.xtb_geom_optimization()
 
 
-m = MSMEP(max_steps=2000, v=True, tol=0.0045)
+m = MSMEP(max_steps=2000, v=True, tol=0.01)
 
-n_obj, out_chain = m.get_neb_chain(root, target,do_alignment=False)
-t = Trajectory([node.tdstructure for node in out_chain])
-t.write_trajectory("./example_chain.xyz")
+#n_obj, out_chain = m.get_neb_chain(root, target,do_alignment=False)
+#t = Trajectory([node.tdstructure for node in out_chain])
+#t.write_trajectory("./example_chain.xyz")
 n_obj2, out_chain2 = m.find_mep_multistep((root, target), do_alignment=True)
 
 

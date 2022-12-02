@@ -97,7 +97,7 @@ class MSMEP:
                 out_chain = n.optimized
 
             except NoneConvergedException:
-                print("Warning! A chain did not converge. Returning an unoptimized chain...")
+                print("\nWarning! A chain did not converge. Returning an unoptimized chain...")
                 out_chain = n.chain_trajectory[-1]
 
             return n, out_chain   
