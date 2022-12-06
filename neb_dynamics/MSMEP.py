@@ -35,6 +35,25 @@ class MSMEP:
     friction: float = 0.1
     nudge: float = 0.001
 
+    # msmep params
+    optimize_hydrogen: bool = False
+
+
+    def create_endpoints_from_rxn_name(self, rxn_name, reactions_object):
+        rxn = reactions_object[rxn_name]
+        root = TDStructure.from_rxn_name(rxn_name, reactions_object)
+        c3d_list = root.get_changes_in_3d(rxn)
+
+        root = root.pseudoalign(c3d_list)
+        root = root.xtb_geom_optimization()
+
+        target = root.copy()
+        target.apply_changed3d_list(c3d_list)
+        target.mm_optimization("gaff")
+        target = target.xtb_geom_optimization()
+        
+        return root, target
+
     def optimize_hydrogen_label(self, chain):
         start = chain[0].tdstructure
         end = chain[-1].tdstructure
@@ -52,8 +71,11 @@ class MSMEP:
         if not chain:
             return None, None
         if self.is_elem_step(chain):
-            chain_opt = self.optimize_hydrogen_label(chain)
-            return None, chain_opt
+            if self.optimize_hydrogen:
+                chain_opt = self.optimize_hydrogen_label(chain)
+                return None, chain_opt
+            else: 
+                return None, chain
         else:
             pairs_of_minima = self.make_pairs_of_minima(chain)
             elem_steps = []
@@ -81,7 +103,8 @@ class MSMEP:
         traj = Trajectory([start, end])
         gi = traj.run_geodesic(nimages=self.nimages, friction=self.friction, nudge=self.nudge)
 
-        if self.actual_reaction_happened_based_on_gi(gi):
+        # if self.actual_reaction_happened_based_on_gi(gi):
+        if not start.molecule_rp == end.molecule_rp
 
             chain = Chain.from_traj(gi, k=self.k, delta_k=self.delta_k, step_size=self.step_size, node_class=self.node_class)
 

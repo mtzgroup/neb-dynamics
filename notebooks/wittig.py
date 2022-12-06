@@ -16,24 +16,49 @@ from retropaths.reactions.rules import Rules
 import numpy as np
 from scipy.signal import argrelextrema
 from retropaths.helper_functions import pairwise
+import retropaths.helper_functions as hf
 
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
 # +
-# mol = Molecule.from_smiles("C(=O)(C)C.C=P(c1ccccc1)(c2ccccc2)c3ccccc3")
-mol = Molecule.from_smiles("CC(=O)C.CP(=C)(C)C")
-# mol2 = Molecule.from_smiles("CC(=C)C.c1ccc(cc1)P(=O)(c2ccccc2)c3ccccc3")
-# mol2 = Molecule.from_smiles("CC(=C)C.CP(=O)(C)C")
-
-mol.draw(mode='d3',node_index=True)
+# for r in reactions:
+#     print(r)
 
 # +
-d = {'charges':[],'delete':[(5,6),(1,2)], 'double':[(1,6),(2,5)]}
-conds = Conditions()
-rules = Rules()
+reactions = hf.pload("../../retropaths/data/reactions.p")
+# rxn_name = "Claisen-Rearrangement"
+# rxn_name = "Ene-Reaction-N=N"
+# rxn_name = "Knoevenangel-Condensation"
+rxn_name = "Ugi-Reaction"
 
-temp = ReactionTemplate.from_components(name='Wittig', reactants=mol,changes_react_to_prod_dict=d, conditions=conds, rules=rules)
+rxn = reactions[rxn_name]
+root = TDStructure.from_rxn_name(rxn_name, reactions)
+c3d_list = root.get_changes_in_3d(rxn)
+
+root = root.pseudoalign(c3d_list)
+root = root.xtb_geom_optimization()
+
+# +
+target = root.copy()
+target.apply_changed3d_list(c3d_list)
+
+target.mm_optimization("gaff")
+
+target = target.xtb_geom_optimization()
+target
 # -
+
+# %%time
+m = MSMEP(max_steps=2000, v=True, tol=0.01,friction=0.05,nudge=0, k=0.001)
+n2, out = m.find_mep_multistep((root, target), do_alignment=False)
+
+out.plot_chain()
+
+t = Trajectory([n.tdstructure for n in out])
+
+t.draw();
+
+t.write_trajectory(f"../example_cases/{rxn_name}/msmep_tol001.xyz")
 
 # # NEB stuff
 

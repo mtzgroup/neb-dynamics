@@ -334,3 +334,8 @@ class Chain:
 
         force_spring = k12 * np.linalg.norm(next_node.coords - current_node.coords) - k01 * np.linalg.norm(current_node.coords - prev_node.coords)
         return force_spring * unit_tan_path
+
+
+    def to_trajectory(self):
+        t = Trajectory(n.tdstructure for n in self.nodes)
+        return t
