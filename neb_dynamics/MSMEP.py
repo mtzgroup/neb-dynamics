@@ -49,7 +49,8 @@ class MSMEP:
 
         target = root.copy()
         target.apply_changed3d_list(c3d_list)
-        target.mm_optimization("gaff")
+        target.mm_optimization("gaff",steps=5000)
+        target.mm_optimization("uff",steps=5000)
         target = target.xtb_geom_optimization()
         
         return root, target
@@ -104,7 +105,7 @@ class MSMEP:
         gi = traj.run_geodesic(nimages=self.nimages, friction=self.friction, nudge=self.nudge)
 
         # if self.actual_reaction_happened_based_on_gi(gi):
-        if not start.molecule_rp == end.molecule_rp
+        if self.actual_reaction_happened_based_on_gi(gi) and not start.molecule_rp == end.molecule_rp:
 
             chain = Chain.from_traj(gi, k=self.k, delta_k=self.delta_k, step_size=self.step_size, node_class=self.node_class)
 
