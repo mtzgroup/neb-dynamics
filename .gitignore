@@ -20,3 +20,5 @@ usr/
 *.xyz
 *.csv
 *.gif
+*.txt
+example_cases/*
