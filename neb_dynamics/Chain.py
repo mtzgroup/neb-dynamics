@@ -337,5 +337,5 @@ class Chain:
 
 
     def to_trajectory(self):
-        t = Trajectory(n.tdstructure for n in self.nodes)
+        t = Trajectory([n.tdstructure for n in self.nodes])
         return t

@@ -150,3 +150,8 @@ class Node3D(Node):
         assert self.check_symmetric(approx_hess_sym, rtol=1e-3, atol=1e-3), "Hessian not symmetric for some reason"
 
         return approx_hess_sym
+
+    @property
+    def input_tuple(self):
+        return (self.tdstructure.atomic_numbers,  self.tdstructure.coords_bohr, 
+                self.tdstructure.charge, self.tdstructure.spinmult)
