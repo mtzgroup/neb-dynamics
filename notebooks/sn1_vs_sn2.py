@@ -19,12 +19,48 @@ from IPython.core.display import HTML
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
 # +
+# import autode as ade
+# -
+
+# ade.Config.n_cores = 8
+
+
+# +
+# r = ade.Reactant("reactant", smiles='CC[C]([H])[H]')
+# p = ade.Product("product",smiles='C[C]([H])C')
+
+# +
+# reaction = ade.Reaction(r, p, name='1-2_shift')
+
+# +
+# reaction.calculate_reaction_profile()
+# -
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# +
 # reactions = hf.pload("/Users/janestrada/Documents/Stanford/Retropaths/retropaths/data/reactions.p")
 
 # +
 n_waters = 20
 
-smi = "[C](C)(H)([H])F"
+smi = "[C](C)(C)(C)F"
 smi+= ".O"*n_waters
 
 # +
@@ -32,30 +68,36 @@ mol = Molecule.from_smiles(smi)
 d = {'charges': [(0,1),(4,-1)], 'delete':[(0, 4)]}
 
 cg = []
-deleting_list = [Changes3D(start=s, end=e, bond_order=1) for s, e in [(0,4)]]
+deleting_list = [Changes3D(start=s, end=e, bond_order=1) for s, e in d['delete']]
 forming_list = []
 
 
 # -
 
 
-mol.draw(mode='d3')
+mol.draw(mode='d3',size=(800,800))
 
 # +
 conds = Conditions()
 rules = Rules()
-temp = ReactionTemplate.from_components(name='Wittig', reactants=mol, changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
+temp = ReactionTemplate.from_components(name='Jan_is_cool', reactants=mol, changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
 
-c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[])
+# c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[])
+c3d_list = Changes3DList(deleted=forming_list, forming=deleting_list, charges=[])
 # -
 
-root = TDStructure.from_RP(temp.reactants)
+root = TDStructure.from_RP(temp.products)
 root = root.pseudoalign(c3d_list)
-root = root.xtb_geom_optimization()
-
-root.to_xyz("./cme1f_solv.xyz")
-
+root.mm_optimization("gaff", steps=5000)
+root.mm_optimization("uff", steps=5000)
+root.mm_optimization("mmff94", steps=5000)
 root
+# root = root.xtb_geom_optimization()
+
+root.xtb_geom_optimization()
+
+# +
+# root.to_xyz("./cme1f_solv.xyz")
 
 # +
 target = root.copy()

@@ -1,8 +1,10 @@
 #!/home/jdep/.conda/envs/rp/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
-from neb_dynamics.trajectory import Trajectory
-from neb_dynamics.NEB import NEB, Node3D, Chain, NoneConvergedException
+from retropaths.abinitio.trajectory import Trajectory
+from neb_dynamics.NEB import NEB, NoneConvergedException
+from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Chain import Chain
 import numpy as np
 
 def read_single_arguments():
@@ -50,7 +52,7 @@ def main():
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
 
-    tol = 4.5e-3
+    tol = 0.01
     chain = Chain.from_traj(traj=traj, k=.1, delta_k=0.0, step_size=2, node_class=Node3D)
     n = NEB(initial_chain=chain, grad_thre=tol, en_thre=tol/450, rms_grad_thre=tol*(2/3), climb=False, vv_force_thre=0, max_steps=10000)
     try: 

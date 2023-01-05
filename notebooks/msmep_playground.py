@@ -5,6 +5,8 @@ from retropaths.abinitio.trajectory import Trajectory
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.molecules.molecule import Molecule
 
+from IPython.core.display import HTML
+
 
 from retropaths.reactions.changes import Changes3DList, Changes3D
 from retropaths.reactions.template import ReactionTemplate
@@ -13,140 +15,80 @@ from retropaths.reactions.rules import Rules
 from pathlib import Path
 
 reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
+HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
 # +
-n_waters = 10
+n_waters = 0
 # smi = "[C]([H])([H])[H]"
-smi = "[C+](C)(C)C"
+# smi = "[C+](C)(C)C"
+smi = "C12(C(=C)O[Si](C)(C)C)C(=O)OC3CCC1C23C4=CCCCC4"
+# smi = "[Rh@SP1H](C#[O])(C#[O])C#[O]"
 # smi = "[C]([H])([H])[H].[Cl]"
 # smi = "[O-][H].O.O.O.O.[C+](C)(C)C"
 # smi = "[O-][H]"
 smi+= ".O"*n_waters
 smi_ref = "O"*n_waters
 # orig_smi = "[C]([H])([H])[H].[O-][H]"
-orig_smi = "[C+](C)(C)C.[O-][H]"
+# orig_smi = "[C+](C)(C)C.[O-][H]"
 
 
 mol = Molecule.from_smiles(smi)
 
 # -
 
-mol.draw()
+mol.draw(mode='d3',size=(400,400))
 
-td = TDStructure.from_smiles(smi)
+# + endofcell="--"
+ind=0
 
-td
+single_list = [(1,2),(2,17), (17,16),(16,0)]
+double_list = [(15,14),(0,1)]
+delete_list = [(0, 15),(0,14)]
 
-td.xtb_geom_optimization()
+forming_list = [Changes3D(start=s, end=e, bond_order=1) for s, e in single_list]
+forming_list+= [Changes3D(start=s, end=e, bond_order=2) for s, e in double_list]
 
-td.to_xyz("cme3_and_waters.xyz")
+settings = [
 
-# fp = Path("/home/jdep/ch3_and_waters_and_oh.xyz")
-td2 = TDStructure.from_fp(fp,tot_charge=-1)
+    (
+        mol,
+        {'charges': [], 'delete':delete_list, 'single':single_list,"double":double_list},
+        [],
+        [Changes3D(start=s, end=e, bond_order=1) for s, e in delete_list], # deleting list
+        forming_list
 
-td2.xtb_geom_optimization()
+    )
+]
 
-ref = TDStructure.from_smiles(smi_ref)
-orig = TDStructure.from_smiles(orig_smi)
-
-td2.energy_xtb() - ref.energy_xtb()
-
-orig
-
-orig.energy_xtb()
+mol, d, cg, deleting_list, forming_list = settings[ind]
 
 
-def calc_stabilization(n_waters):
-    smi = "[O-][H]"
-    smi+= ".O"*n_waters
-    smi_ref = "O"*n_waters
+conds = Conditions()
+rules = Rules()
+temp = ReactionTemplate.from_components(name='Wittig', reactants=mol, changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
 
-    
-    td = TDStructure.from_smiles(smi, tot_spinmult=1)
-    td_ref = TDStructure.from_smiles(smi_ref, tot_spinmult=1)
-    if not td.energy_xtb() : return np.nan, None
-    
-    init_en = td.energy_xtb() - td_ref.energy_xtb()
-
-    td = td.xtb_geom_optimization()
-    td_ref = td_ref.xtb_geom_optimization()
-    
-    if not td.energy_xtb() : return np.nan, None
-    
-    final_en = td.energy_xtb() - td_ref.energy_xtb()
-    stabilization = final_en - init_en
-    return stabilization, td
-
-import numpy as np
-
-# +
-n_vals = [1,2,3,4,5,6,7,8,9,10]
-n_iter = 5
-tds = []
-mean_s_vals = []
-std_s_vals = []
-for n_wat in n_vals:
-    s_vals = []
-    for x in range(n_iter):
-        s,t = calc_stabilization(n_wat)
-        s_vals.append(s)
-        tds.append(t)
-    mean_s_vals.append(np.mean(s_vals))
-    std_s_vals.append(np.std(s_vals))
-    
-    
-    
+c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[])
 # -
-
-import matplotlib.pyplot as plt
-
-# +
-
-plt.errorbar(x=n_vals, y=mean_s_vals, yerr=std_s_vals, fmt='o')
-# -
-
-td = TDStructure.from_smiles(smi, tot_spinmult=1)
-td_ref = TDStructure.from_smiles(smi_ref, tot_spinmult=1)
-
-init_en = td.energy_xtb() - td_ref.energy_xtb()
-
-td = td.xtb_geom_optimization()
-td_ref = td_ref.xtb_geom_optimization()
-
-final_en = td.energy_xtb() - td_ref.energy_xtb()
-stabilization = final_en - init_en
+# --
 
 # +
-# for i in mol.nodes:
-#     print(i, mol.nodes[i])
+# ind=0
 
-# +
-# ind=2
+# single_list = [(2,17),(2,1),(17,16)]
+# double_list = [(15,16), (0,1)]
+# delete_list = [(0, 15)]
+
+# forming_list = [Changes3D(start=s, end=e, bond_order=1) for s, e in single_list]
+# forming_list+= [Changes3D(start=s, end=e, bond_order=2) for s, e in double_list]
+
 # settings = [
 
 #     (
-#         Molecule.from_smiles("C.Cl-Cl"),
-#         {'charges': [], 'delete':[(0, 3), (1, 2)], 'single':[(0, 1), (2, 3)]},
+#         mol,
+#         {'charges': [], 'delete':delete_list, 'single':single_list,"double":double_list},
 #         [],
-#         [Changes3D(start=s, end=e, bond_order=1) for s, e in [(0, 3), (1, 2)]],
-#         [Changes3D(start=s, end=e, bond_order=2) for s, e in [(0, 1), (2, 3)]]
-
-#     ),
-#     (
-#         Molecule.from_smiles("[C]([H])([H])[H].[Cl]"),
-#         {'charges': [], 'delete':[], 'single':[(0, 1)]},
-#         [],
-#         [],
-#         [Changes3D(start=s, end=e, bond_order=1) for s, e in [(0, 1)]]
-
-#     ),
-#     (
-#         Molecule.from_smiles("Cl-Cl"),
-#         {'charges': [], 'single':[], 'delete':[(0, 1)]},
-#         [],
-#         [Changes3D(start=s, end=e, bond_order=1) for s, e in [(0, 1)]],
-#         []
-        
+#         [Changes3D(start=s, end=e, bond_order=1) for s, e in delete_list], # deleting list
+#         forming_list
 
 #     )
 # ]
@@ -160,31 +102,33 @@ stabilization = final_en - init_en
 
 # c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[])
 # # -
-
-# root = TDStructure.from_smiles(temp.reactants.smiles,tot_spinmult=1)
-# # root = root.pseudoalign(c3d_list)
-# root = root.xtb_geom_optimization()
-
-# +
-# target = root.copy()
-# target.set_spinmult(3)
-# target.add_bonds(c3d_list.forming)
-# target.delete_bonds(c3d_list.deleted)
-# target.mm_optimization("gaff", steps=5000)
-# target.mm_optimization("uff", steps=5000)
-# target.mm_optimization("mmff94", steps=5000)
-# target = target.xtb_geom_optimization()
-
-# +
-# m = MSMEP(max_steps=2000,v=True,tol=0.01, nudge=0,step_size=1)
-# result = m.find_mep_multistep((root, target),do_alignment=False)
 # -
 
-n, chain = result
+root = TDStructure.from_smiles(smi,tot_spinmult=1)
+# root = root.pseudoalign(c3d_list)
+# root = root.xtb_geom_optimization()
 
-chain.plot_chain()
+root.molecule_rp.draw(mode='d3')
 
-chain.to_trajectory()
+temp.reactants.draw()
+
+temp.products.draw(mode='rdkit')
+
+target = root.copy()
+target.add_bonds(c3d_list.forming)
+target.delete_bonds(c3d_list.deleted)
+target.mm_optimization('gaff')
+target.mm_optimization("uff")
+target.mm_optimization('mmff94')
+# target = target.xtb_geom_optimization()
+
+target = target.xtb_geom_optimization()
+
+target
+
+m = MSMEP(v=True,tol=0.01)
+
+output = m.find_mep_multistep((root, target), do_alignment=False)
 
 # # Diels Alder
 
