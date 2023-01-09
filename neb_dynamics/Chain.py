@@ -80,6 +80,9 @@ class Chain:
     def __len__(self):
         return len(self.nodes)
 
+    def insert(self, index, node):
+        self.nodes.insert(index, node)
+
     def copy(self):
         list_of_nodes = [node.copy() for node in self.nodes]
         chain_copy = Chain(
