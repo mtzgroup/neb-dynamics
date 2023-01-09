@@ -18,8 +18,8 @@ from neb_dynamics.remapping_helpers import create_correct_product
 class MSMEP:
 
     # electronic structure params
-    charge = 0
-    spinmult = 1
+    charge: int = 0
+    spinmult: int = 1
 
     # chain params
     k: float = 0.1
@@ -27,7 +27,7 @@ class MSMEP:
     step_size: float = 1.0
 
     # neb params
-    tol: float = 0.03
+    tol: float = 0.01
     max_steps: int = 500
     en_thre: float = None
     rms_grad_thre: float = None
@@ -120,13 +120,11 @@ class MSMEP:
             traj = Trajectory([start, end], charge=self.charge, spinmult=self.spinmult)
         else:
             traj = Trajectory([node.tdstructure for node in input_chain], charge=self.charge, spinmult=self.spinmult)
-
+ 
         gi = traj.run_geodesic(
             nimages=self.nimages, friction=self.friction, nudge=self.nudge
         )
 
-        # if self.actual_reaction_happened_based_on_gi(gi):
-        # if self.actual_reaction_happened_based_on_gi(gi) and not start.molecule_rp == end.molecule_rp:
         if input_chain[0].tdstructure.molecule_rp == input_chain[-1].tdstructure.molecule_rp:
             print("Endpoints are identical. Returning nothing")
             return None, None
@@ -145,6 +143,7 @@ class MSMEP:
                 self.rms_grad_thre if self.rms_grad_thre else self.tol * (2 / 3)
             )
             grad_thre = self.grad_thre if self.grad_thre else self.tol
+            
             n = NEB(
                 initial_chain=chain,
                 max_steps=max_steps,

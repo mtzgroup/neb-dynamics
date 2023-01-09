@@ -35,7 +35,7 @@ class NEB:
     # mag_grad_thre: float = 1e-4
     max_steps: float = 1000
 
-    vv_force_thre: float = 1.0
+    vv_force_thre: float = 0.0
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
@@ -69,7 +69,7 @@ class NEB:
             max_grad_val = chain_previous.get_maximum_grad_magnitude()
             if max_grad_val <= 3 * self.grad_thre and self.climb:
                 self.set_climbing_nodes(chain=chain_previous)
-                self.climb = False
+                self.climb = False # no need to set climbing nodes again
 
             new_chain = self.update_chain(chain=chain_previous)
             if self.v:
