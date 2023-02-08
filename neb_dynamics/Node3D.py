@@ -77,7 +77,7 @@ class Node3D(Node):
 
     def get_nudged_pe_grad(self, unit_tangent, gradient):
         '''
-        Alessio to Jan: comment your functions motherfucker.
+        Returns the component of the gradient that acts perpendicular to the path tangent
         '''
         pe_grad = gradient
         pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)

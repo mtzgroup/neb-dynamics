@@ -61,10 +61,7 @@ def _attempt_step(chain: Chain, t):
 
     new_chain = Chain(
         new_nodes,
-        k=chain.k,
-        delta_k=chain.delta_k,
-        step_size=chain.step_size,
-        velocity=chain.velocity,
+        parameters=chain.parameters
     )
     
     new_grad = new_chain.gradients

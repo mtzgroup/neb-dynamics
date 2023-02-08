@@ -5,6 +5,9 @@ from retropaths.abinitio.trajectory import Trajectory
 
 
 from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.Chain import Chain
+from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Inputs import NEBInputs, ChainInputs
 
 from retropaths.reactions.template import ReactionTemplate
 from retropaths.reactions.conditions import Conditions
@@ -62,24 +65,27 @@ c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[]
 
 root = TDStructure.from_RP(temp.reactants)
 root = root.pseudoalign(c3d_list)
+root.gum_mm_optimization()
 root = root.xtb_geom_optimization()
 
 target = root.copy()
 target.add_bonds(c3d_list.forming)
 target.delete_bonds(c3d_list.deleted)
-target.mm_optimization("gaff", steps=5000)
-target.mm_optimization("uff", steps=5000)
-target.mm_optimization("mmff94", steps=5000)
+target.gum_mm_optimization()
 target = target.xtb_geom_optimization()
 
 start = time.time()
 
-m = MSMEP(max_steps=2000, v=True, tol=0.01)
+nbi = NEBInputs(v=True)
+cbi = ChainInputs()
+m = MSMEP(neb_inputs=nbi, chain_inputs=cbi, recycle_chain=False)
 
 # n_obj, out_chain = m.get_neb_chain(root, target,do_alignment=False)
 # t = Trajectory([node.tdstructure for node in out_chain])
 # t.write_trajectory("./example_chain.xyz")
-n_obj2, out_chain2 = m.find_mep_multistep((root, target), do_alignment=True)
+
+chain = Chain(nodes=[Node3D(root), Node3D(target)],k=0.1)
+n_obj2, out_chain2 = m.find_mep_multistep(chain, do_alignment=False)
 
 end = time.time()
 
@@ -87,4 +93,5 @@ print(f"Time (s): {end - start}")
 
 t = Trajectory([node.tdstructure for node in out_chain2])
 t.write_trajectory("./example_mep.xyz")
+# t.write_trajectory("./example_mep_2.xyz")
 # t.write_trajectory("./example_mep_phenyl.xyz")

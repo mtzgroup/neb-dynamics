@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass, field
+
 # from hashlib import new
 from pathlib import Path
 
@@ -13,6 +14,9 @@ from neb_dynamics.Chain import Chain
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Node import Node
 from neb_dynamics import ALS
+from neb_dynamics.Inputs import NEBInputs
+
+import matplotlib.pyplot as plt
 
 
 @dataclass
@@ -25,26 +29,15 @@ class NoneConvergedException(Exception):
 @dataclass
 class NEB:
     initial_chain: Chain
-
-    redistribute: bool = False
-    remove_folding: bool = False
-    climb: bool = False
-    en_thre: float = 0.0045 / 450
-    rms_grad_thre: float = 450 * (2 / 3)
-    grad_thre: float = 0.0045
-    # mag_grad_thre: float = 1e-4
-    max_steps: float = 1000
-
-    vv_force_thre: float = 0.0
+    parameters: NEBInputs
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
     gradient_trajectory: list[np.array] = field(default_factory=list)
-    v: bool = True
 
     def do_velvel(self, chain: Chain):
         max_force_on_node = max([np.linalg.norm(grad) for grad in chain.gradients])
-        return max_force_on_node < self.vv_force_thre
+        return max_force_on_node < self.parameters.vv_force_thre
 
     def _reset_node_convergence(self, chain):
         for node in chain:
@@ -55,7 +48,7 @@ class NEB:
         self._reset_node_convergence(chain=chain)
 
         inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
-        if self.v > 1:
+        if self.parameters.v > 1:
             print(f"----->Setting {len(inds_maxima)} nodes to climb")
 
         for ind in inds_maxima:
@@ -65,36 +58,25 @@ class NEB:
         nsteps = 1
         chain_previous = self.initial_chain.copy()
 
-        while nsteps < self.max_steps + 1:
+        while nsteps < self.parameters.max_steps + 1:
             max_grad_val = chain_previous.get_maximum_grad_magnitude()
-            if max_grad_val <= 3 * self.grad_thre and self.climb:
+            if max_grad_val <= 3 * self.parameters.grad_thre and self.parameters.climb:
                 self.set_climbing_nodes(chain=chain_previous)
-                self.climb = False # no need to set climbing nodes again
+                self.parameters.climb = False  # no need to set climbing nodes again
 
             new_chain = self.update_chain(chain=chain_previous)
-            if self.v:
-                print(f"step {nsteps} // max |gradient| {max_grad_val}{' '*20}", end="\r")
+            if self.parameters.v:
+                print(
+                    f"step {nsteps} // max |gradient| {max_grad_val}{' '*20}", end="\r"
+                )
             sys.stdout.flush()
 
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)
 
             if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
-                if self.v:
+                if self.parameters.v:
                     print("\nChain converged!")
-                original_chain_len = len(new_chain)
-
-                if self.remove_folding:
-                    new_chain = self.remove_chain_folding(chain=new_chain.copy())
-                    self.chain_trajectory.append(new_chain)
-
-                if self.redistribute:
-
-                    new_chain = self.redistribute_chain(
-                        chain=new_chain.copy(),
-                        requested_length_of_chain=original_chain_len,
-                    )
-                    self.chain_trajectory.append(new_chain)
 
                 self.optimized = new_chain
                 return
@@ -111,14 +93,18 @@ class NEB:
             )
 
     def get_chain_velocity(self, chain: Chain) -> np.array:
-        prev_velocity = chain.velocity
+        prev_velocity = chain.parameters.velocity
 
-        step = self.grad_thre / 10  # make the step size rel. to threshold we want
+        step = (
+            self.parameters.grad_thre / 10
+        )  # make the step size rel. to threshold we want
 
         new_force = -(chain.gradients) * step
 
         directions = prev_velocity * new_force
-        prev_velocity[directions < 0] = 0  # zero the velocities for which we overshot the minima
+        prev_velocity[
+            directions < 0
+        ] = 0  # zero the velocities for which we overshot the minima
 
         new_velocity = prev_velocity + new_force
         return new_velocity
@@ -132,7 +118,13 @@ class NEB:
             new_chain_coordinates = chain.coordinates + velocity
 
         else:
-            disp = ALS.ArmijoLineSearch(chain=chain, t=chain.step_size, alpha=0.01, beta=0.5, grad=chain.gradients)
+            disp = ALS.ArmijoLineSearch(
+                chain=chain,
+                t=chain.parameters.step_size,
+                alpha=0.01,
+                beta=0.5,
+                grad=chain.gradients,
+            )
             new_chain_coordinates = chain.coordinates - chain.gradients * disp
 
         new_nodes = []
@@ -140,13 +132,7 @@ class NEB:
 
             new_nodes.append(node.update_coords(new_coords))
 
-        new_chain = Chain(
-            new_nodes,
-            k=chain.k,
-            delta_k=chain.delta_k,
-            step_size=chain.step_size,
-            velocity=chain.velocity,
-        )
+        new_chain = Chain(new_nodes, parameters=chain.parameters)
         if do_vv:
             new_chain.velocity = velocity
 
@@ -161,7 +147,7 @@ class NEB:
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
-        indices_converged = np.where(differences < self.en_thre)
+        indices_converged = np.where(differences < self.parameters.en_thre)
 
         return indices_converged[0], differences
 
@@ -174,10 +160,10 @@ class NEB:
         for grad in gradients:
             max_grad = np.amax(grad)
             max_grad_components.append(max_grad)
-            # print(f'{max_grad=} < {self.grad_thre=}')
-            bools.append(max_grad < self.grad_thre)
+            # print(f'{max_grad=} < {self.parameters.grad_thre=}')
+            bools.append(max_grad < self.parameters.grad_thre)
 
-        # grad_converged = np.where(delta_grad < self.grad_thre)
+        # grad_converged = np.where(delta_grad < self.parameters.grad_thre)
         # mag_converged = np.where(mag_grad < self.mag_grad_thre)
         # mag_converged = mag_grad < self.mag_grad_thre
 
@@ -192,7 +178,7 @@ class NEB:
         for grad in grads:
             rms_gradient = np.sqrt(np.mean(np.square(grad)))
             rms_grads.append(rms_gradient)
-            rms_grad_converged = rms_gradient < self.rms_grad_thre
+            rms_grad_converged = rms_gradient < self.parameters.rms_grad_thre
             bools.append(rms_grad_converged)
 
         return np.where(bools), rms_grads
@@ -200,17 +186,26 @@ class NEB:
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
 
         rms_grad_conv_ind, max_rms_grads = self._check_rms_grad_converged(chain_new)
-        en_converged_indices, en_deltas = self._check_en_converged(chain_prev=chain_prev, chain_new=chain_new)
+        en_converged_indices, en_deltas = self._check_en_converged(
+            chain_prev=chain_prev, chain_new=chain_new
+        )
 
         grad_conv_ind, max_grad_components = self._check_grad_converged(chain=chain_new)
 
-        converged_nodes_indices = np.intersect1d(en_converged_indices, rms_grad_conv_ind)
+        converged_nodes_indices = np.intersect1d(
+            en_converged_indices, rms_grad_conv_ind
+        )
         converged_nodes_indices = np.intersect1d(converged_nodes_indices, grad_conv_ind)
 
         # [print(f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(∆Grad) : { np.amax(grad_deltas[i])} | |Grad| : {mag_grad_deltas[i]} | Converged? : {chain_new.nodes[i].converged}") for i in range(len(chain_new))]
-        if self.v > 1:
-            [print(f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(RMS Grad): {max_rms_grads[i]} | Max(Grad components): {max_grad_components[i]} | Converged? : {chain_new.nodes[i].converged}") for i in range(len(chain_new))]
-        if self.v > 1:
+        if self.parameters.v > 1:
+            [
+                print(
+                    f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(RMS Grad): {max_rms_grads[i]} | Max(Grad components): {max_grad_components[i]} | Converged? : {chain_new.nodes[i].converged}"
+                )
+                for i in range(len(chain_new))
+            ]
+        if self.parameters.v > 1:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
 
         self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
@@ -219,7 +214,7 @@ class NEB:
         return len(converged_nodes_indices) == len(chain_new)
 
         # return np.all(
-        #     [np.linalg.norm(grad) <= self.grad_thre for grad in chain_new.gradients]
+        #     [np.linalg.norm(grad) <= self.parameters.grad_thre for grad in chain_new.gradients]
         # )
 
         # return en_bool and grad_bool
@@ -229,7 +224,7 @@ class NEB:
         count = 0
         points_removed = []
         while not_converged:
-            if self.v > 1:
+            if self.parameters.v > 1:
                 print(f"anti-folding: on count {count}...")
             new_chain = []
             new_chain.append(chain[0])
@@ -244,7 +239,7 @@ class NEB:
                     points_removed.append(current_node)
 
             new_chain.append(chain[-1])
-            new_chain = Chain(nodes=new_chain, k=chain.k)
+            new_chain = Chain(nodes=new_chain, parameters=chain.parameters)
             if self._check_dot_product_converged(new_chain):
                 not_converged = False
             chain = new_chain.copy()
@@ -270,7 +265,12 @@ class NEB:
         #     ]
         #     chain = fixed_chain
 
-        direction = np.array([next_node.coords - current_node.coords for current_node, next_node in pairwise(chain)])
+        direction = np.array(
+            [
+                next_node.coords - current_node.coords
+                for current_node, next_node in pairwise(chain)
+            ]
+        )
         distances = np.linalg.norm(direction, axis=1)
         tot_dist = np.sum(distances)
         cumsum = np.cumsum(distances)  # cumulative sum
@@ -285,7 +285,7 @@ class NEB:
         distributed_chain[0] = chain[0]
         distributed_chain[-1] = chain[-1]
 
-        return Chain(distributed_chain, k=chain.k)
+        return Chain(distributed_chain, parameters=chain)
 
     def redistribution_helper(self, num, cum, chain: Chain) -> Node:
         """
@@ -295,7 +295,9 @@ class NEB:
 
         """
 
-        for ii, ((cum_sum_init, node_start), (cum_sum_end, node_end)) in enumerate(pairwise(zip(cum, chain))):
+        for ii, ((cum_sum_init, node_start), (cum_sum_end, node_end)) in enumerate(
+            pairwise(zip(cum, chain))
+        ):
 
             if cum_sum_init <= num < cum_sum_end:
                 direction = node_end.coords - node_start.coords
@@ -307,6 +309,40 @@ class NEB:
 
                 return new_node
 
-    def write_to_disk(self, fp: Path):
-        out_traj = Trajectory([node.tdstructure for node in self.chain_trajectory[-1].nodes])
+    def write_to_disk(self, fp: Path, write_history=False):
+        out_traj = self.chain_trajectory[-1].to_trajectory()
         out_traj.write_trajectory(fp)
+
+        if write_history:
+            out_folder = fp.resolve().parent / fp.stem + "_history"
+            if not out_folder.exists():
+                out_folder.mkdir()
+
+            for i, chain in enumerate(self.chain_trajectory):
+                traj = chain.to_trajectory()
+                traj.write_trajectory(out_folder / f"traj_{i}.xyz")
+
+    def plot_opt_history(self):
+
+        s = 8
+        fs = 18
+        f, ax = plt.subplots(figsize=(1.16 * s, s))
+
+        for i, chain in enumerate(self.chain_trajectory):
+            if i == len(self.chain_trajectory) - 1:
+                plt.plot(chain.integrated_path_length, chain.energies, "o-", alpha=1)
+            else:
+                plt.plot(
+                    chain.integrated_path_length,
+                    chain.energies,
+                    "o-",
+                    alpha=0.1,
+                    color="gray",
+                )
+
+        plt.xlabel("Integrated path length", fontsize=fs)
+
+        plt.ylabel("Energy (kcal/mol)", fontsize=fs)
+        plt.xticks(fontsize=fs)
+        plt.yticks(fontsize=fs)
+        plt.show()

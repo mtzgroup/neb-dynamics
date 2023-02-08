@@ -71,6 +71,16 @@ class Node2D(Node):
         new_node = self.copy()
         new_node.pair_of_coordinates = coords
         return new_node
+    
+    
+    def get_nudged_pe_grad(self, unit_tangent, gradient):
+        '''
+        Returns the component of the gradient that acts perpendicular to the path tangent
+        '''
+        pe_grad = gradient
+        pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
+        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+        return pe_grad_nudged
 
 
 @dataclass
@@ -170,6 +180,15 @@ class Node2D_2(Node):
         new_node = self.copy()
         new_node.pair_of_coordinates = coords
         return new_node
+    
+    def get_nudged_pe_grad(self, unit_tangent, gradient):
+        '''
+        Returns the component of the gradient that acts perpendicular to the path tangent
+        '''
+        pe_grad = gradient
+        pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
+        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+        return pe_grad_nudged
 
 
 @dataclass
@@ -228,6 +247,15 @@ class Node2D_ITM(Node):
         new_node = self.copy()
         new_node.pair_of_coordinates = coords
         return new_node
+    
+    def get_nudged_pe_grad(self, unit_tangent, gradient):
+        '''
+        Returns the component of the gradient that acts perpendicular to the path tangent
+        '''
+        pe_grad = gradient
+        pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
+        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+        return pe_grad_nudged
 
 
 @dataclass
@@ -379,3 +407,12 @@ class Node2D_LEPS(Node):
         new_node = self.copy()
         new_node.pair_of_coordinates = coords
         return new_node
+    
+    def get_nudged_pe_grad(self, unit_tangent, gradient):
+        '''
+        Returns the component of the gradient that acts perpendicular to the path tangent
+        '''
+        pe_grad = gradient
+        pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
+        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+        return pe_grad_nudged

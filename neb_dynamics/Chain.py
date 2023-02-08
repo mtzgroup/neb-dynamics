@@ -13,6 +13,7 @@ from neb_dynamics.helper_functions import quaternionrmsd
 from neb_dynamics.Node import Node
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+from neb_dynamics.Inputs import ChainInputs
 
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
@@ -24,16 +25,25 @@ import multiprocessing as mp
 @dataclass
 class Chain:
     nodes: List[Node]
-    k: Union[List[float], float]
-    delta_k: float = 0
-    step_size: float = 1
-    velocity: np.array = np.zeros(1)
-    node_class: Node = Node3D
+    parameters: ChainInputs
+    # k: Union[List[float], float]
+    # delta_k: float = 0
+    # step_size: float = 1
+    # velocity: np.array = np.zeros(1)
+    # node_class: Node = Node3D
+    # do_local_xtb: bool = True
 
     @classmethod
-    def from_xyz(cls, fp: Path, k=0.1, delta_k=0, step_size=1, velocity=np.zeros(1), node_class=Node3D):
+    def from_xyz(
+        cls,
+        fp: Path,
+        parameters: ChainInputs
+    ):
         traj = Trajectory.from_xyz(fp)
-        chain = cls.from_traj(traj, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity, node_class=node_class)
+        chain = cls.from_traj(
+            traj,
+            parameters=parameters
+        )
         return chain
 
     @property
@@ -56,19 +66,26 @@ class Chain:
         int_path_len = cum_sums / cum_sums[-1]
         return np.array(int_path_len)
 
-    def _k_between_nodes(self, node0: Node, node1: Node, e_ref: float, k_max: float, e_max: float):
+    def _k_between_nodes(
+        self, node0: Node, node1: Node, e_ref: float, k_max: float, e_max: float
+    ):
         e_i = max(node1.energy, node0.energy)
         if e_i > e_ref:
-            new_k = k_max - self.delta_k * ((e_max - e_i) / (e_max - e_ref))
+            new_k = k_max - self.parameters.delta_k * ((e_max - e_i) / (e_max - e_ref))
         elif e_i <= e_ref:
-            new_k = k_max - self.delta_k
+            new_k = k_max - self.parameters.delta_k
         return new_k
 
     def plot_chain(self):
         s = 8
         fs = 18
         f, ax = plt.subplots(figsize=(1.16 * s, s))
-        plt.plot(self.integrated_path_length, (self.energies - self.energies[0]) * 627.5, "o--", label="neb")
+        plt.plot(
+            self.integrated_path_length,
+            (self.energies - self.energies[0]) * 627.5,
+            "o--",
+            label="neb",
+        )
         plt.ylabel("Energy (kcal/mol)", fontsize=fs)
         plt.xticks(fontsize=fs)
         plt.yticks(fontsize=fs)
@@ -87,39 +104,30 @@ class Chain:
         list_of_nodes = [node.copy() for node in self.nodes]
         chain_copy = Chain(
             nodes=list_of_nodes,
-            k=self.k,
-            delta_k=self.delta_k,
-            step_size=self.step_size,
-            velocity=self.velocity,
+            parameters=self.parameters
         )
         return chain_copy
 
     def iter_triplets(self) -> list[list[Node]]:
         for i in range(1, len(self.nodes) - 1):
-            yield self.nodes[i - 1: i + 2]
+            yield self.nodes[i - 1 : i + 2]
 
     @classmethod
-    def from_traj(cls, traj, k, delta_k, step_size, node_class, velocity=None):
-        if velocity is None:
-            velocity = np.zeros_like([struct.coords for struct in traj])
-        nodes = [node_class(s) for s in traj]
-        return Chain(nodes, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity)
+    def from_traj(cls, traj: Trajectory, parameters: ChainInputs):
+        nodes = [parameters.node_class(s) for s in traj]
+        return Chain(
+            nodes,
+            parameters=parameters
+        )
 
     @classmethod
     def from_list_of_coords(
         cls,
-        k,
         list_of_coords: List,
-        node_class: Node,
-        delta_k: float,
-        step_size: float,
-        velocity=None,
+        parameters: ChainInputs
     ) -> Chain:
-
-        if velocity is None:
-            velocity = np.zeros_like([c for c in list_of_coords])
-        nodes = [node_class(point) for point in list_of_coords]
-        return cls(nodes=nodes, k=k, delta_k=delta_k, step_size=step_size, velocity=velocity)
+        nodes = [parameters.node_class(point) for point in list_of_coords]
+        return cls(nodes=nodes, parameters=parameters)
 
     @property
     def path_distances(self):
@@ -149,13 +157,17 @@ class Chain:
 
     def neighs_grad_func(self, prev_node: Node, current_node: Node, next_node: Node):
 
-        vec_tan_path = self._create_tangent_path(prev_node=prev_node, current_node=current_node, next_node=next_node)
+        vec_tan_path = self._create_tangent_path(
+            prev_node=prev_node, current_node=current_node, next_node=next_node
+        )
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
         pe_grad = current_node.gradient
 
         if not current_node.do_climb:
-            pe_grads_nudged = current_node.get_nudged_pe_grad(unit_tan_path, gradient=pe_grad)
+            pe_grads_nudged = current_node.get_nudged_pe_grad(
+                unit_tan_path, gradient=pe_grad
+            )
             spring_forces_nudged = self.get_force_spring_nudged(
                 prev_node=prev_node,
                 current_node=current_node,
@@ -175,7 +187,9 @@ class Chain:
             zero = np.zeros_like(pe_grad)
             spring_forces_nudged = zero
         else:
-            raise ValueError(f"current_node.do_climb is not a boolean: {current_node.do_climb=}")
+            raise ValueError(
+                f"current_node.do_climb is not a boolean: {current_node.do_climb=}"
+            )
 
         return pe_grads_nudged, spring_forces_nudged  # , anti_kinking_grads
 
@@ -220,25 +234,41 @@ class Chain:
         calc.set_verbosity(VERBOSITY_MUTED)
         res = calc.singlepoint()
 
-        return res.get_energy(), res.get_gradient()*BOHR_TO_ANGSTROMS
+        return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
     def calculate_energy_and_gradients_parallel(self):
-        iterator = ((n.tdstructure.atomic_numbers,  n.tdstructure.coords_bohr, n.tdstructure.charge, n.tdstructure.spinmult) for n in self.nodes)
+        iterator = (
+            (
+                n.tdstructure.atomic_numbers,
+                n.tdstructure.coords_bohr,
+                n.tdstructure.charge,
+                n.tdstructure.spinmult,
+            )
+            for n in self.nodes
+        )
         with mp.Pool() as p:
             ene_gradients = p.map(self.calc_xtb_ene_grad_from_input_tuple, iterator)
         return ene_gradients
 
     @cached_property
     def gradients(self) -> np.array:
-        energy_gradient_tuples = self.calculate_energy_and_gradients_parallel()
+        if self.parameters.do_parallel:
+            if self.parameters.do_local_xtb:
+                energy_gradient_tuples = self.calculate_energy_and_gradients_parallel()
+            else:
+                ens_grads_lists = self.to_trajectory().energies_and_gradients_tc()
+                energy_gradient_tuples = list(zip(ens_grads_lists[0], ens_grads_lists[1]))
+        else:
+            energies = [node.energy for node in self.nodes]
+            gradients = [node.gradient for node in self.nodes]
+            energy_gradient_tuples  = list(zip(energies, gradients))
+
         for (ene, grad), node in zip(energy_gradient_tuples, self.nodes):
             node._cached_energy = ene
             node._cached_gradient = grad
         pe_grads_nudged, spring_forces_nudged = self.pe_grads_spring_forces_nudged()
 
-        # anti_kinking_grads = np.array(anti_kinking_grads)
-
-        grads = pe_grads_nudged - spring_forces_nudged  # + self.k * anti_kinking_grads
+        grads = pe_grads_nudged - spring_forces_nudged  # + self.parameters.k * anti_kinking_grads
 
         zero = np.zeros_like(grads[0])
         grads = np.insert(grads, 0, zero, axis=0)
@@ -256,7 +286,9 @@ class Chain:
     def unit_tangents(self):
         tan_list = []
         for prev_node, current_node, next_node in self.iter_triplets():
-            tan_vec = self._create_tangent_path(prev_node=prev_node, current_node=current_node, next_node=next_node)
+            tan_vec = self._create_tangent_path(
+                prev_node=prev_node, current_node=current_node, next_node=next_node
+            )
             unit_tan = tan_vec / np.linalg.norm(tan_vec)
             tan_list.append(unit_tan)
 
@@ -267,7 +299,9 @@ class Chain:
 
         return np.array([node.coords for node in self.nodes])
 
-    def _create_tangent_path(self, prev_node: Node, current_node: Node, next_node: Node):
+    def _create_tangent_path(
+        self, prev_node: Node, current_node: Node, next_node: Node
+    ):
         en_2 = next_node.energy
         en_1 = current_node.energy
         en_0 = prev_node.energy
@@ -299,7 +333,9 @@ class Chain:
         # ANTI-KINK FORCE
         vec_2_to_1 = next_node.coords - current_node.coords
         vec_1_to_0 = current_node.coords - prev_node.coords
-        cos_phi = current_node.dot_function(vec_2_to_1, vec_1_to_0) / (np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0))
+        cos_phi = current_node.dot_function(vec_2_to_1, vec_1_to_0) / (
+            np.linalg.norm(vec_2_to_1) * np.linalg.norm(vec_1_to_0)
+        )
 
         f_phi = 0.5 * (1 + np.cos(np.pi * cos_phi))
         return f_phi
@@ -312,7 +348,7 @@ class Chain:
         unit_tan_path: np.array,
     ):
 
-        k_max = max(self.k) if hasattr(self.k, "__iter__") else self.k
+        k_max = max(self.parameters.k) if hasattr(self.parameters.k, "__iter__") else self.parameters.k
         e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
         e_max = max(self.energies)
         # print(f"***{e_max=}//{e_ref=}//{k_max=}")
@@ -335,9 +371,10 @@ class Chain:
 
         # print(f"***{k12=} // {k01=}")
 
-        force_spring = k12 * np.linalg.norm(next_node.coords - current_node.coords) - k01 * np.linalg.norm(current_node.coords - prev_node.coords)
+        force_spring = k12 * np.linalg.norm(
+            next_node.coords - current_node.coords
+        ) - k01 * np.linalg.norm(current_node.coords - prev_node.coords)
         return force_spring * unit_tan_path
-
 
     def to_trajectory(self):
         t = Trajectory([n.tdstructure for n in self.nodes])

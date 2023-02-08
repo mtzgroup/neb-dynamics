@@ -55,7 +55,3 @@ class Node(ABC):
     @abstractmethod
     def update_coords(self, coords):
         ...
-
-    @abstractmethod
-    def get_nudged_pe_grad(self, unit_tangent, gradient):
-        ...

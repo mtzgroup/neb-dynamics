@@ -12,40 +12,29 @@ from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Node import Node
 from neb_dynamics.remapping_helpers import create_correct_product
+from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
 
 
 @dataclass
 class MSMEP:
 
+    neb_inputs: NEBInputs = NEBInputs()
+    chain_inputs: ChainInputs = ChainInputs()
+    gi_inputs: GIInputs = GIInputs()
+
     # electronic structure params
     charge: int = 0
     spinmult: int = 1
 
-    # chain params
-    k: float = 0.1
-    delta_k: float = 0.0
-    step_size: float = 1.0
-
-    # neb params
-    tol: float = 0.01
-    max_steps: int = 500
-    en_thre: float = None
-    rms_grad_thre: float = None
-    grad_thre: float = None
-    v: bool = False
-    node_class: Node = Node3D
-
-    # geodesic interpolation params
-    nimages: int = 15
-    friction: float = 0.1
-    nudge: float = 0.001
-
     # msmep params
     optimize_hydrogen: bool = False
+
+    recycle_chain: bool = False
 
     def create_endpoints_from_rxn_name(self, rxn_name, reactions_object):
         rxn = reactions_object[rxn_name]
         root = TDStructure.from_rxn_name(rxn_name, reactions_object)
+
         c3d_list = root.get_changes_in_3d(rxn)
 
         root = root.pseudoalign(c3d_list)
@@ -75,17 +64,14 @@ class MSMEP:
             return chain
 
     def find_mep_multistep(self, input_chain, do_alignment):
-        n, chain = self.get_neb_chain(
+        root_neb_obj, chain = self.get_neb_chain(
             input_chain=input_chain, do_alignment=do_alignment
         )
+        history = [root_neb_obj]
         if not chain:
             return None, None
         if self.is_elem_step(chain):
-            if self.optimize_hydrogen:
-                chain_opt = self.optimize_hydrogen_label(chain)
-                return None, chain_opt
-            else:
-                return None, chain
+            return history, chain
         else:
             sequence_of_chains = self.make_sequence_of_chains(chain)
             elem_steps = []
@@ -94,21 +80,27 @@ class MSMEP:
                 if i <= len(sequence_of_chains) - 2:
                     next_chain_frag = sequence_of_chains[i + 1]
                     do_alignment = (
-                        chain_frag[-1].tdstructure.molecule_rp != next_chain_frag[0].tdstructure.molecule_rp
+                        chain_frag[-1].tdstructure.molecule_rp
+                        != next_chain_frag[0].tdstructure.molecule_rp
                     )  # i.e. if minima found is not just a conformer rearrangment
                     print(f"\t{do_alignment=}")
-                    neb_obj, chain = self.find_mep_multistep(
+                    out_history, chain = self.find_mep_multistep(
                         chain_frag, do_alignment=False
                     )
                     elem_steps.append(chain)
+                    history.append(out_history)
 
                 else:  # i.e. the final pair
-                    neb_obj, chain = self.find_mep_multistep(chain_frag, do_alignment=False)
+                    out_history, chain = self.find_mep_multistep(
+                        chain_frag, do_alignment=False
+                    )
                     elem_steps.append(chain)
+                    history.append(out_history)
+
 
             stitched_elem_steps = self.stitch_elem_steps(elem_steps)
             return (
-                None,
+                history,
                 stitched_elem_steps,
             )  # the first 'None' will hold the DataTree that holds all NEB objects
 
@@ -119,38 +111,30 @@ class MSMEP:
             start, end = self._align_endpoints(start, end)
             traj = Trajectory([start, end], charge=self.charge, spinmult=self.spinmult)
         else:
-            traj = Trajectory([node.tdstructure for node in input_chain], charge=self.charge, spinmult=self.spinmult)
- 
+            traj = Trajectory(
+                [node.tdstructure for node in input_chain],
+                charge=self.charge,
+                spinmult=self.spinmult,
+            )
+
         gi = traj.run_geodesic(
-            nimages=self.nimages, friction=self.friction, nudge=self.nudge
+            nimages=self.gi_inputs.nimages,
+            friction=self.gi_inputs.friction,
+            nudge=self.gi_inputs.nudge,**self.gi_inputs.extra_kwds
         )
 
-        if input_chain[0].tdstructure.molecule_rp == input_chain[-1].tdstructure.molecule_rp:
+        if (
+            input_chain[0].tdstructure.molecule_rp
+            == input_chain[-1].tdstructure.molecule_rp
+        ):
             print("Endpoints are identical. Returning nothing")
             return None, None
         else:
-            chain = Chain.from_traj(
-                gi,
-                k=self.k,
-                delta_k=self.delta_k,
-                step_size=self.step_size,
-                node_class=self.node_class,
-            )
+            chain = Chain.from_traj(traj=gi, parameters=self.chain_inputs)
 
-            max_steps = self.max_steps
-            en_thre = self.en_thre if self.en_thre else self.tol / 450
-            rms_grad_thre = (
-                self.rms_grad_thre if self.rms_grad_thre else self.tol * (2 / 3)
-            )
-            grad_thre = self.grad_thre if self.grad_thre else self.tol
-            
             n = NEB(
                 initial_chain=chain,
-                max_steps=max_steps,
-                en_thre=en_thre,
-                rms_grad_thre=rms_grad_thre,
-                grad_thre=grad_thre,
-                v=self.v,
+                parameters=self.neb_inputs
             )
 
             try:
@@ -190,6 +174,17 @@ class MSMEP:
 
         return chain_frag
 
+    def _make_chain_pair(self, chain, pair_of_inds):
+        start, end = pair_of_inds
+        start_opt_td = chain[start].tdstructure.xtb_geom_optimization()
+        end_opt_td = chain[end].tdstructure.xtb_geom_optimization()
+
+        start_opt = Node3D(start_opt_td)
+        end_opt = Node3D(end_opt_td)
+        chain_frag = Chain(nodes=[start_opt,end_opt], parameters=chain.parameters)
+
+        return chain_frag
+
     def make_sequence_of_chains(self, chain):
         all_inds = [0]
         ind_minima = self._get_ind_minima(chain)
@@ -200,7 +195,10 @@ class MSMEP:
 
         chains = []
         for ind_pair in pairs_inds:
-            chains.append(self._make_chain_frag(chain, ind_pair))
+            if self.recycle_chain:
+                chains.append(self._make_chain_frag(chain, ind_pair))
+            else:
+                chains.append(self._make_chain_pair(chain, ind_pair))
 
         return chains
 
@@ -214,10 +212,7 @@ class MSMEP:
         t = Trajectory(list_of_tds, charge=self.charge, spinmult=self.spinmult)
         return Chain.from_traj(
             t,
-            k=self.k,
-            delta_k=self.delta_k,
-            step_size=self.step_size,
-            node_class=self.node_class,
+            parameters=self.chain_inputs
         )
 
     def _align_endpoints(self, start: TDStructure, end: TDStructure):
