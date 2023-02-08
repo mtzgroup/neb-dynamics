@@ -18,7 +18,7 @@ from neb_dynamics.potential_functions import (
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
 
 sfs = [sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3]
-index = 0
+index = 1
 nodes = [Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS]
 min_sizes = [-4, -2, -2, 0.5]
 max_sizes = [4, 2, 2, 4]
@@ -152,18 +152,18 @@ def plot_2D(neb_obj: NEB):
 
 
 def main():
-    nimages = 5
+    nimages = 8
 
     ### node 2d
     # end_point = (3.00002182, 1.99995542)
-    end_point = (2.129, 2.224)
-    start_point = (-3.77928812, -3.28320392)
+    # end_point = (2.129, 2.224)
+    # start_point = (-3.77928812, -3.28320392)
 
     ### node 2d - 2
-    # start_point = (-1, 1)
+    start_point = (-1, 1)
     # end_point = (1, 1)
     # end_point = (1, -1)
-    # end_point = (1.01, -1.01)
+    end_point = (1.01, -1.01)
 
     # ## node 2d - ITM
     # start_point = (0, 0)
@@ -184,8 +184,10 @@ def main():
     # ks = np.array([1]*(len(coords)-2)).reshape(-1,1)
     # kval = .01
     ks = 0.1
-    cni = ChainInputs(k=ks, node_class=presets["node"], delta_k=0, step_size=0.1, do_parallel=False)
-    nbi = NEBInputs(tol=0.01)
+    cni = ChainInputs(
+        k=ks, node_class=presets["node"], delta_k=0, step_size=.1, do_parallel=False
+    )
+    nbi = NEBInputs(tol=0.1, v=True, max_steps=2000,climb=True)
     chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
     n = NEB(initial_chain=chain, parameters=nbi)
 
@@ -201,7 +203,7 @@ def main():
         node = n.optimized[node_ind]
         print(f"Finding TS using node_index {node_ind} as guess >> {node.coords}")
 
-        tsopt = TS_PRFO(initial_node=node)
+        tsopt = TS_PRFO(initial_node=node, dr=1, max_step_size=1)
         print(f"SP = {tsopt.ts.coords}")
 
     except AlessioError as e:
@@ -211,64 +213,6 @@ def main():
         # plot_2D(e.obj)
         animate_func(e.obj)
         plot_func(e.obj)
-
-
-#     fp = Path("../example_cases/DA_geodesic_opt.xyz")
-#     fp = Path("./example_cases/debug_geodesic_claisen.xyz")
-# # # # # # #     fp = Path(f"../example_cases/neb_DA_k0.1.xyz")
-# # # # # # # #     # fp = Path("../example_cases/pdda_traj_xtb_optmized_geo_att2.xyz")
-# # # # # # # #     # fp = Path("./example_cases/PDDA_geodesic.xyz")
-
-#     kval = .001
-#     traj = Trajectory.from_xyz(fp)
-#     chain = Chain.from_traj(traj=traj,k=kval, node_class=Node3D, delta_k=0, step_size=0.37)
-
-
-#     # n = NEB(initial_chain=chain, grad_thre_per_atom=0.1, en_thre=0.0001, mag_grad_thre=100, max_steps=1000, redistribute=False, remove_folding=False,
-#     # climb=True)0
-#     n = NEB(initial_chain=chain, grad_thre_per_atom=0.0016, max_steps=2000, redistribute=False, remove_folding=False,
-#     climb=False, vv_force_thre=0.0)
-
-#     try:
-#         n.optimize_chain()
-#         plot_2D(n)
-
-
-#         # n.write_to_disk(fp.parent / f"cneb_DA_k{kval}.xyz")
-#         # n.write_to_disk(fp.parent / f"neb_CR_k{kval}_neb.xyz")
-#         # n.write_to_disk(fp.parent / f"neb_PDDA_k{kval}.xyz")
-
-
-#         opt_chain = n.optimized
-#         all_dists = []
-#         for i in range(len(opt_chain)-2):
-#             c0 = opt_chain[i].coords
-#             c1 = opt_chain[i+1].coords
-
-
-#             dist = np.linalg.norm(c1 - c0)
-#             all_dists.append(dist)
-
-#         plt.bar(x=list(range(len(all_dists))), height=all_dists)
-#         plt.show()
-
-
-# #         # now make it climb
-
-# #         # n = NEB(initial_chain=opt_chain, grad_thre=0.01, max_steps=2000, redistribute=False, remove_folding=False,
-# #         #   climb=True, vv_force_thre=0) # i.e. dont do VV
-
-# #         # n.climb_chain(opt_chain)
-
-# #         # plot_2D(n)
-# #         # n.write_to_disk(fp.parent / f"neb_DA_k{kval}_cneb.xyz")
-
-
-#     except AlessioError as e:
-#         print(e.message)
-
-#     except NoneConvergedException as e:
-#         plot_2D(e.obj)
 
 
 if __name__ == "__main__":

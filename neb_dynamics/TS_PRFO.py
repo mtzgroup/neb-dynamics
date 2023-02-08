@@ -16,6 +16,8 @@ class TS_PRFO:
     max_nsteps: int = 2000
     dr: float = 0.1
     grad_thre: float = 1e-6
+    
+    max_step_size: float = 1.0
 
     @property
     def ts(self):
@@ -33,7 +35,7 @@ class TS_PRFO:
 
     def get_lambda_n(self, all_eigenvalues, f_vector, tol=10e-3, break_limit=1e6):
         """
-        f_vector and all_eigsenvalues need to be ordered
+        f_vector and all_eigenvalues need to be ordered
         from lowest to highest based on eigenvalue value
         """
         break_ind = 0
@@ -72,6 +74,13 @@ class TS_PRFO:
         hrest = sum([(-1 * F_vec[i] * H_evecs[:, i]) / (H_evals[i] - lambda_n) for i in range(1, len(F_vec))])
         step = h0 + hrest
         step_reshaped = step.reshape(orig_dim)
+        
+        length_step = np.linalg.norm(step_reshaped)
+        
+        if length_step  > self.max_step_size:
+            step_rescaled = step_reshaped / length_step
+            step_reshaped = step_rescaled*self.max_step_size
+        
         return step_reshaped
 
     def find_ts(self):
