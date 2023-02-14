@@ -5,7 +5,6 @@ from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.helper_functions import pairwise
 from retropaths.reactions.changes import Changes3D, Changes3DList
-from scipy.signal import argrelextrema
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException
@@ -13,6 +12,7 @@ from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Node import Node
 from neb_dynamics.remapping_helpers import create_correct_product
 from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
+from neb_dynamics.helper_functions import _get_ind_minima
 
 
 @dataclass
@@ -152,15 +152,13 @@ class MSMEP:
 
     def is_elem_step(self, chain):
         if len(chain) > 1:
-            ind_minima = self._get_ind_minima(chain)
+            ind_minima = _get_ind_minima(chain)
 
             return len(ind_minima) == 0
         else:
             return True
 
-    def _get_ind_minima(self, chain):
-        ind_minima = argrelextrema(chain.energies, np.less, order=1)[0]
-        return ind_minima
+    
 
     def _make_chain_frag(self, chain, pair_of_inds):
         start, end = pair_of_inds
@@ -170,7 +168,7 @@ class MSMEP:
         opt_end = chain[end].tdstructure.xtb_geom_optimization()
 
         chain_frag.insert(0, Node3D(opt_start))
-        chain_frag.insert(-1, Node3D(opt_end))
+        chain_frag.append(Node3D(opt_end))
 
         return chain_frag
 
@@ -187,7 +185,7 @@ class MSMEP:
 
     def make_sequence_of_chains(self, chain):
         all_inds = [0]
-        ind_minima = self._get_ind_minima(chain)
+        ind_minima = _get_ind_minima(chain)
         all_inds.extend(ind_minima)
         all_inds.append(len(chain) - 1)
 

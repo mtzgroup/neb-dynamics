@@ -14,7 +14,7 @@ from neb_dynamics.Chain import Chain
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Node import Node
 from neb_dynamics import ALS
-from neb_dynamics.Inputs import NEBInputs
+from neb_dynamics.Inputs import NEBInputs, ChainInputs
 
 import matplotlib.pyplot as plt
 
@@ -314,7 +314,7 @@ class NEB:
         out_traj.write_trajectory(fp)
 
         if write_history:
-            out_folder = fp.resolve().parent / fp.stem + "_history"
+            out_folder = fp.resolve().parent / (fp.stem + "_history")
             if not out_folder.exists():
                 out_folder.mkdir()
 
@@ -346,3 +346,26 @@ class NEB:
         plt.xticks(fontsize=fs)
         plt.yticks(fontsize=fs)
         plt.show()
+
+    def read_from_disk(fp: Path, history_folder: Path = None):
+        if history_folder is None:
+            history_folder = fp.parent / (str(fp.stem) + "_history")
+
+        if not history_folder.exists():
+            raise ValueError("No history exists for this. Cannot load object.")
+        else:
+            history_files = list(history_folder.glob("*.xyz"))
+            history = [
+                Chain.from_xyz(
+                    history_folder / f"traj_{i}.xyz", parameters=ChainInputs()
+                )
+                for i, _ in enumerate(history_files)
+            ]
+
+        n = NEB(
+            initial_chain=history[0],
+            parameters=NEBInputs(),
+            optimized=history[-1],
+            chain_trajectory=history,
+        )
+        return n

@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from IPython.core.display import HTML
+from scipy.signal import argrelextrema
 
 
 def print_matrix_2D(mat: np.array, precision: float = 6, threshold: float = 0.0):
@@ -117,12 +118,16 @@ def wrapper(fn, tup1, tup2):
 
 def execute_parallel(function, iterator, repeated_arguments):
     with mp.Pool() as pool:
-        pool.starmap(wrapper, zip(repeat(function), iterator, repeat(repeated_arguments)))
+        pool.starmap(
+            wrapper, zip(repeat(function), iterator, repeat(repeated_arguments))
+        )
 
 
 def execute_serial(function, iterator, repeated_arguments):
     for iter in iterator:
-        print(f"\n\nI am executing {function} in {iter} with {len(repeated_arguments)} repeated arguments")
+        print(
+            f"\n\nI am executing {function} in {iter} with {len(repeated_arguments)} repeated arguments"
+        )
         function(*iter, *repeated_arguments)
 
 
@@ -143,9 +148,10 @@ def profile_this_function(func):
 
 # --------------
 
+
 def get_atom_xyz(struct, atom_ind):
 
-    atom_r = struct.molecule_obmol.GetAtom(atom_ind+1)
+    atom_r = struct.molecule_obmol.GetAtom(atom_ind + 1)
     return np.array((atom_r.x(), atom_r.y(), atom_r.z()))
 
 
@@ -153,7 +159,7 @@ def get_neighs(struct, ind):
 
     neighs = []  # indices of the single bonds
     for neigh in struct.molecule_rp[ind]:
-        if struct.molecule_rp[ind][neigh]['bond_order'] == "double":
+        if struct.molecule_rp[ind][neigh]["bond_order"] == "double":
             continue
         else:
             neighs.append(neigh)
@@ -169,13 +175,13 @@ def perp(a):
 
 
 def get_intersect(a1, a2, b1, b2):
-    da = a2-a1
-    db = b2-b1
-    dp = a1-b1
+    da = a2 - a1
+    db = b2 - b1
+    dp = a1 - b1
     dap = perp(da)
     denom = np.dot(dap, db)
     num = np.dot(dap, dp)
-    return (num / denom.astype(float))*db + b1
+    return (num / denom.astype(float)) * db + b1
 
 
 def _check_point_in_both_lines(point, line1, line2):
@@ -208,7 +214,9 @@ def _check_point_in_both_lines(point, line1, line2):
 def check_if_lines_intersect(p1_var, p2_var, p3_var, p4_var):
     poi = get_intersect(p1_var, p2_var, p3_var, p4_var)  # point of intersection (POI)
     # print(poi)
-    return _check_point_in_both_lines(poi, line1=(p1_var, p2_var), line2=(p3_var, p4_var))
+    return _check_point_in_both_lines(
+        poi, line1=(p1_var, p2_var), line2=(p3_var, p4_var)
+    )
 
 
 def get_points(struct, indices):
@@ -248,13 +256,20 @@ def flip_coordinates(struct, a1, a2):
 
 
 def check_if_structure_needs_to_be_flipped(react_struc, product_struc, rs):
-    a1, a2, b1, b2 = get_neigh_inds(product_struc, rs._get_bonds_between_fragments()['single'][0])
+    a1, a2, b1, b2 = get_neigh_inds(
+        product_struc, rs._get_bonds_between_fragments()["single"][0]
+    )
     p_a1, p_a2, p_b1, p_b2 = get_points(product_struc, [a1, a2, b1, b2])
 
     # print((a1, a2, b1, b2))
 
     # make sure that the correct mapping is a1 --> b1 and a2 --> b2
-    if check_if_lines_intersect(p1_var=p_a1[[0, 2]], p2_var=p_b1[[0, 2]], p3_var=p_a2[[0, 2]], p4_var=p_b2[[0, 2]]):
+    if check_if_lines_intersect(
+        p1_var=p_a1[[0, 2]],
+        p2_var=p_b1[[0, 2]],
+        p3_var=p_a2[[0, 2]],
+        p4_var=p_b2[[0, 2]],
+    ):
         b1_copy = b1
         b2_copy = b2
 
@@ -267,7 +282,12 @@ def check_if_structure_needs_to_be_flipped(react_struc, product_struc, rs):
     # now, check if the initial structure needs to be flipped
 
     p_a1, p_a2, p_b1, p_b2 = get_points(react_struc, [a1, a2, b1, b2])
-    if check_if_lines_intersect(p1_var=p_a1[[0, 2]], p2_var=p_b1[[0, 2]], p3_var=p_a2[[0, 2]], p4_var=p_b2[[0, 2]]):
+    if check_if_lines_intersect(
+        p1_var=p_a1[[0, 2]],
+        p2_var=p_b1[[0, 2]],
+        p3_var=p_a2[[0, 2]],
+        p4_var=p_b2[[0, 2]],
+    ):
         return True
 
     else:
@@ -275,13 +295,20 @@ def check_if_structure_needs_to_be_flipped(react_struc, product_struc, rs):
 
 
 def flip_structure_if_necessary(react_struc, product_struc, rs):
-    a1, a2, b1, b2 = get_neigh_inds(product_struc, rs._get_bonds_between_fragments()['single'][0])
+    a1, a2, b1, b2 = get_neigh_inds(
+        product_struc, rs._get_bonds_between_fragments()["single"][0]
+    )
     p_a1, p_a2, p_b1, p_b2 = get_points(product_struc, [a1, a2, b1, b2])
 
     # print((a1, a2, b1, b2))
 
     # make sure that the correct mapping is a1 --> b1 and a2 --> b2
-    if check_if_lines_intersect(p1_var=p_a1[[0, 2]], p2_var=p_b1[[0, 2]], p3_var=p_a2[[0, 2]], p4_var=p_b2[[0, 2]]):
+    if check_if_lines_intersect(
+        p1_var=p_a1[[0, 2]],
+        p2_var=p_b1[[0, 2]],
+        p3_var=p_a2[[0, 2]],
+        p4_var=p_b2[[0, 2]],
+    ):
         b1_copy = b1
         b2_copy = b2
 
@@ -294,15 +321,30 @@ def flip_structure_if_necessary(react_struc, product_struc, rs):
     # now, check if the initial structure needs to be flipped
 
     p_a1, p_a2, p_b1, p_b2 = get_points(react_struc, [a1, a2, b1, b2])
-    if check_if_lines_intersect(p1_var=p_a1[[0, 2]], p2_var=p_b1[[0, 2]], p3_var=p_a2[[0, 2]], p4_var=p_b2[[0, 2]]):
+    if check_if_lines_intersect(
+        p1_var=p_a1[[0, 2]],
+        p2_var=p_b1[[0, 2]],
+        p3_var=p_a2[[0, 2]],
+        p4_var=p_b2[[0, 2]],
+    ):
 
         react_struct = flip_coordinates(react_struc, a1, a2)
 
         p_a1, p_a2, p_b1, p_b2 = get_points(react_struct, [a1, a2, b1, b2])
-        assert not check_if_lines_intersect(p1_var=p_a1[[0, 2]], p2_var=p_b1[[0, 2]], p3_var=p_a2[[0, 2]], p4_var=p_b2[[0, 2]])
+        assert not check_if_lines_intersect(
+            p1_var=p_a1[[0, 2]],
+            p2_var=p_b1[[0, 2]],
+            p3_var=p_a2[[0, 2]],
+            p4_var=p_b2[[0, 2]],
+        )
 
         return react_struct
     return False
+
+
+def _get_ind_minima(chain):
+    ind_minima = argrelextrema(chain.energies, np.less, order=1)[0]
+    return ind_minima
 
 
 # -------
@@ -310,32 +352,4 @@ def flip_structure_if_necessary(react_struc, product_struc, rs):
 # @author: alexchang
 
 
-def quaternionrmsd(c1, c2):
-    N = len(c1)
-    if len(c2) != N:
-        raise "Dimensions not equal!"
-    bary1 = np.mean(c1, axis=0)
-    bary2 = np.mean(c2, axis=0)
 
-    c1 = c1 - bary1
-    c2 = c2 - bary2
-
-    R = np.dot(np.transpose(c1), c2)
-
-    F = np.array([[(R[0, 0] + R[1, 1] + R[2, 2]), (R[1, 2] - R[2, 1]), (R[2, 0] - R[0, 2]), (R[0, 1] - R[1, 0])],
-                  [(R[1, 2] - R[2, 1]), (R[0, 0] - R[1, 1] - R[2, 2]), (R[1, 0] + R[0, 1]), (R[2, 0] + R[0, 2])],
-                  [(R[2, 0] - R[0, 2]), (R[1, 0] + R[0, 1]), (-R[0, 0] + R[1, 1] - R[2, 2]), (R[1, 2] + R[2, 1])],
-                  [(R[0, 1] - R[1, 0]), (R[2, 0] + R[0, 2]), (R[1, 2] + R[2, 1]), (-R[0, 0] - R[1, 1] + R[2, 2])]])
-    eigen = scipy.sparse.linalg.eigs(F, k=1, which='LR')
-    lmax = float(eigen[0][0])
-    qmax = np.array(eigen[1][0:4])
-    qmax = np.float_(qmax)
-    qmax = np.ndarray.flatten(qmax)
-    rmsd = ((np.sum(np.square(c1)) + np.sum(np.square(c2)) - 2 * lmax)/N) ** 0.5
-    rot = np.array([[(qmax[0]**2 + qmax[1]**2 - qmax[2]**2 - qmax[3]**2), 2*(qmax[1]*qmax[2] - qmax[0]*qmax[3]), 2*(qmax[1]*qmax[3] + qmax[0]*qmax[2])],
-                    [2*(qmax[1]*qmax[2] + qmax[0]*qmax[3]), (qmax[0]**2 - qmax[1]**2 + qmax[2]**2 - qmax[3]**2), 2*(qmax[2]*qmax[3] - qmax[0]*qmax[1])],
-                    [2*(qmax[1]*qmax[3] - qmax[0]*qmax[2]), 2*(qmax[2]*qmax[3] + qmax[0]*qmax[1]), (qmax[0]**2 - qmax[1]**2 - qmax[2]**2 + qmax[3]**2)]])
-    # g_rmsd = (c1 - np.matmul(c2, rot))/(N*rmsd)
-
-    return rmsd
-    # return g_rmsd

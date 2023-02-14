@@ -3,15 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import List, Union
+from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
 from retropaths.abinitio.trajectory import Trajectory
 
-from neb_dynamics.helper_functions import quaternionrmsd
 from neb_dynamics.Node import Node
-from neb_dynamics.Node3D import Node3D
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.Inputs import ChainInputs
 
@@ -20,6 +18,7 @@ from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
 import multiprocessing as mp
+import scipy
 
 
 @dataclass
@@ -34,16 +33,9 @@ class Chain:
     # do_local_xtb: bool = True
 
     @classmethod
-    def from_xyz(
-        cls,
-        fp: Path,
-        parameters: ChainInputs
-    ):
+    def from_xyz(cls, fp: Path, parameters: ChainInputs):
         traj = Trajectory.from_xyz(fp)
-        chain = cls.from_traj(
-            traj,
-            parameters=parameters
-        )
+        chain = cls.from_traj(traj, parameters=parameters)
         return chain
 
     @property
@@ -100,12 +92,12 @@ class Chain:
     def insert(self, index, node):
         self.nodes.insert(index, node)
 
+    def append(self, node):
+        self.nodes.append(node)
+
     def copy(self):
         list_of_nodes = [node.copy() for node in self.nodes]
-        chain_copy = Chain(
-            nodes=list_of_nodes,
-            parameters=self.parameters
-        )
+        chain_copy = Chain(nodes=list_of_nodes, parameters=self.parameters)
         return chain_copy
 
     def iter_triplets(self) -> list[list[Node]]:
@@ -115,16 +107,11 @@ class Chain:
     @classmethod
     def from_traj(cls, traj: Trajectory, parameters: ChainInputs):
         nodes = [parameters.node_class(s) for s in traj]
-        return Chain(
-            nodes,
-            parameters=parameters
-        )
+        return Chain(nodes, parameters=parameters)
 
     @classmethod
     def from_list_of_coords(
-        cls,
-        list_of_coords: List,
-        parameters: ChainInputs
+        cls, list_of_coords: List, parameters: ChainInputs
     ) -> Chain:
         nodes = [parameters.node_class(point) for point in list_of_coords]
         return cls(nodes=nodes, parameters=parameters)
@@ -138,7 +125,7 @@ class Chain:
             start = self.nodes[i - 1]
             end = self.nodes[i]
 
-            dist.append(quaternionrmsd(start.coords, end.coords))
+            dist.append(self.quaternionrmsd(start.coords, end.coords))
 
         return np.array(dist)
 
@@ -257,18 +244,22 @@ class Chain:
                 energy_gradient_tuples = self.calculate_energy_and_gradients_parallel()
             else:
                 ens_grads_lists = self.to_trajectory().energies_and_gradients_tc()
-                energy_gradient_tuples = list(zip(ens_grads_lists[0], ens_grads_lists[1]))
+                energy_gradient_tuples = list(
+                    zip(ens_grads_lists[0], ens_grads_lists[1])
+                )
         else:
             energies = [node.energy for node in self.nodes]
             gradients = [node.gradient for node in self.nodes]
-            energy_gradient_tuples  = list(zip(energies, gradients))
+            energy_gradient_tuples = list(zip(energies, gradients))
 
         for (ene, grad), node in zip(energy_gradient_tuples, self.nodes):
             node._cached_energy = ene
             node._cached_gradient = grad
         pe_grads_nudged, spring_forces_nudged = self.pe_grads_spring_forces_nudged()
 
-        grads = pe_grads_nudged - spring_forces_nudged  # + self.parameters.k * anti_kinking_grads
+        grads = (
+            pe_grads_nudged - spring_forces_nudged
+        )  # + self.parameters.k * anti_kinking_grads
 
         zero = np.zeros_like(grads[0])
         grads = np.insert(grads, 0, zero, axis=0)
@@ -348,7 +339,11 @@ class Chain:
         unit_tan_path: np.array,
     ):
 
-        k_max = max(self.parameters.k) if hasattr(self.parameters.k, "__iter__") else self.parameters.k
+        k_max = (
+            max(self.parameters.k)
+            if hasattr(self.parameters.k, "__iter__")
+            else self.parameters.k
+        )
         e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
         e_max = max(self.energies)
         # print(f"***{e_max=}//{e_ref=}//{k_max=}")
@@ -379,3 +374,72 @@ class Chain:
     def to_trajectory(self):
         t = Trajectory([n.tdstructure for n in self.nodes])
         return t
+
+    @classmethod
+    def quaternionrmsd(cls, c1, c2):
+        N = len(c1)
+        if len(c2) != N:
+            raise "Dimensions not equal!"
+        bary1 = np.mean(c1, axis=0)
+        bary2 = np.mean(c2, axis=0)
+
+        c1 = c1 - bary1
+        c2 = c2 - bary2
+
+        R = np.dot(np.transpose(c1), c2)
+
+        F = np.array(
+            [
+                [
+                    (R[0, 0] + R[1, 1] + R[2, 2]),
+                    (R[1, 2] - R[2, 1]),
+                    (R[2, 0] - R[0, 2]),
+                    (R[0, 1] - R[1, 0]),
+                ],
+                [
+                    (R[1, 2] - R[2, 1]),
+                    (R[0, 0] - R[1, 1] - R[2, 2]),
+                    (R[1, 0] + R[0, 1]),
+                    (R[2, 0] + R[0, 2]),
+                ],
+                [
+                    (R[2, 0] - R[0, 2]),
+                    (R[1, 0] + R[0, 1]),
+                    (-R[0, 0] + R[1, 1] - R[2, 2]),
+                    (R[1, 2] + R[2, 1]),
+                ],
+                [
+                    (R[0, 1] - R[1, 0]),
+                    (R[2, 0] + R[0, 2]),
+                    (R[1, 2] + R[2, 1]),
+                    (-R[0, 0] - R[1, 1] + R[2, 2]),
+                ],
+            ]
+        )
+        eigen = scipy.sparse.linalg.eigs(F, k=1, which="LR")
+        lmax = float(eigen[0][0])
+        qmax = np.array(eigen[1][0:4])
+        qmax = np.float_(qmax)
+        qmax = np.ndarray.flatten(qmax)
+        rmsd = ((np.sum(np.square(c1)) + np.sum(np.square(c2)) - 2 * lmax) / N) ** 0.5
+        rot = np.array(
+            [
+                [
+                    (qmax[0] ** 2 + qmax[1] ** 2 - qmax[2] ** 2 - qmax[3] ** 2),
+                    2 * (qmax[1] * qmax[2] - qmax[0] * qmax[3]),
+                    2 * (qmax[1] * qmax[3] + qmax[0] * qmax[2]),
+                ],
+                [
+                    2 * (qmax[1] * qmax[2] + qmax[0] * qmax[3]),
+                    (qmax[0] ** 2 - qmax[1] ** 2 + qmax[2] ** 2 - qmax[3] ** 2),
+                    2 * (qmax[2] * qmax[3] - qmax[0] * qmax[1]),
+                ],
+                [
+                    2 * (qmax[1] * qmax[3] - qmax[0] * qmax[2]),
+                    2 * (qmax[2] * qmax[3] + qmax[0] * qmax[1]),
+                    (qmax[0] ** 2 - qmax[1] ** 2 - qmax[2] ** 2 + qmax[3] ** 2),
+                ],
+            ]
+        )
+
+        return rmsd

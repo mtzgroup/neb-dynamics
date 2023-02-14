@@ -55,3 +55,7 @@ class Node(ABC):
     @abstractmethod
     def update_coords(self, coords):
         ...
+
+    @abstractmethod
+    def do_geometry_optimization(self):
+        ... 

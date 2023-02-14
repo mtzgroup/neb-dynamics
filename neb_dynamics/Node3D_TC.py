@@ -7,17 +7,14 @@ import numpy as np
 from ase import Atoms
 from ase.optimize import LBFGS
 from retropaths.abinitio.tdstructure import TDStructure
-from xtb.ase.calculator import XTB
-from xtb.interface import Calculator
-from xtb.libxtb import VERBOSITY_MUTED
-from xtb.utils import get_method
+
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 
 
 @dataclass
-class Node3D(Node):
+class Node3D_TC(Node):
     tdstructure: TDStructure
     converged: bool = False
     do_climb: bool = False
@@ -33,13 +30,13 @@ class Node3D(Node):
         return self.tdstructure.coords * ANGSTROM_TO_BOHR
 
     @staticmethod
-    def en_func(node: Node3D):
-        res = Node3D.run_xtb_calc(node.tdstructure)
+    def en_func(node: Node3D_TC):
+        res = Node3D_TC.run_tc_calc(node.tdstructure)
         return res.get_energy()
 
     @staticmethod
-    def grad_func(node: Node3D):
-        res = Node3D.run_xtb_calc(node.tdstructure)
+    def grad_func(node: Node3D_TC):
+        res = Node3D_TC.run_tc_calc(node.tdstructure)
         return res.get_gradient() * BOHR_TO_ANGSTROMS
 
     @cached_property
@@ -47,51 +44,32 @@ class Node3D(Node):
         if self._cached_energy is not None:
             return self._cached_energy
         else:
-            return Node3D.run_xtb_calc(self.tdstructure).get_energy()
-
-    def do_geometry_optimization(self):
-        td_opt = self.tdstructure.xtb_geom_optimization()
-        return Node3D(tdstructure=td_opt)
+            return self.tdstructure.energy_tc()
 
     @cached_property
     def gradient(self):
         if self._cached_gradient is not None:
             return self._cached_gradient
         else:
-            return (
-                Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
-            )
+            return self.tdstructure.gradient_tc()
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
         # return np.sum(first * second, axis=1).reshape(-1, 1)
         return np.tensordot(first, second)
 
-    # i want to cache the result of this but idk how caching works
-    def run_xtb_calc(tdstruct: TDStructure):
-        atomic_numbers = tdstruct.atomic_numbers
-        calc = Calculator(
-            get_method("GFN2-xTB"),
-            numbers=np.array(atomic_numbers),
-            positions=tdstruct.coords_bohr,
-            charge=tdstruct.charge,
-            uhf=tdstruct.spinmult - 1,
-        )
-        calc.set_verbosity(VERBOSITY_MUTED)
-        res = calc.singlepoint()
-        return res
 
     def get_nudged_pe_grad(self, unit_tangent, gradient):
-        """
-        Returns the component of the gradient that acts perpendicular to the path tangent
-        """
+        '''
+        Alessio to Jan: comment your functions motherfucker.
+        '''
         pe_grad = gradient
         pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
         return pe_grad_nudged
 
     def copy(self):
-        return Node3D(
+        return Node3D_TC(
             tdstructure=self.tdstructure.copy(),
             converged=self.converged,
             do_climb=self.do_climb,
@@ -102,37 +80,16 @@ class Node3D(Node):
         copy_tdstruct = self.tdstructure.copy()
 
         copy_tdstruct = copy_tdstruct.update_coords(coords=coords)
-        return Node3D(
-            tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb
-        )
+        return Node3D_TC(tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb)
 
     def opt_func(self, v=True):
-        atoms = Atoms(
-            symbols=self.tdstructure.symbols.tolist(),
-            positions=self.coords,  # ASE works in angstroms
-        )
-
-        atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1)
-        if not v:
-            opt = LBFGS(atoms, logfile=None)
-        else:
-            opt = LBFGS(atoms)
-        opt.run(fmax=0.1)
-
-        opt_struct = TDStructure.from_coords_symbols(
-            coords=atoms.positions,
-            symbols=self.tdstructure.symbols,
-            tot_charge=self.tdstructure.charge,
-            tot_spinmult=self.tdstructure.spinmult,
-        )  # ASE works in agnstroms
-
-        return opt_struct
+        return self.tdstructure.tc_geom_optimization()
 
     def check_symmetric(self, a, rtol=1e-05, atol=1e-08):
         return np.allclose(a, a.T, rtol=rtol, atol=atol)
 
     @property
-    def hessian(self: Node3D):
+    def hessian(self: Node3D_TC):
         dr = 0.01  # displacement vector, Bohr
         numatoms = self.tdstructure.atomn
         approx_hess = []
@@ -160,17 +117,6 @@ class Node3D(Node):
         # raise AlessioError(f"{approx_hess.shape}")
 
         approx_hess_sym = 0.5 * (approx_hess + approx_hess.T)
-        assert self.check_symmetric(
-            approx_hess_sym, rtol=1e-3, atol=1e-3
-        ), "Hessian not symmetric for some reason"
+        assert self.check_symmetric(approx_hess_sym, rtol=1e-3, atol=1e-3), "Hessian not symmetric for some reason"
 
         return approx_hess_sym
-
-    @property
-    def input_tuple(self):
-        return (
-            self.tdstructure.atomic_numbers,
-            self.tdstructure.coords_bohr,
-            self.tdstructure.charge,
-            self.tdstructure.spinmult,
-        )

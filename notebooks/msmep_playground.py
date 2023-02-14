@@ -3,7 +3,7 @@ from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.Chain import Chain
-from neb_dynamics.Inputs import ChainInputs, NEBInputs 
+from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 
 
@@ -27,6 +27,7 @@ from retropaths.reactions.template_utilities import (
 
 
 from dataclasses import dataclass 
+import numpy as np
 
 reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
@@ -165,6 +166,8 @@ from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
+from neb_dynamics.HistoryTree import HistoryTree
+from neb_dynamics.TreeNode import TreeNode
 
 from retropaths.reactions.template import ReactionTemplate
 from retropaths.reactions.conditions import Conditions
@@ -211,8 +214,6 @@ target.delete_bonds(c3d_list.deleted)
 target.gum_mm_optimization()
 target = target.xtb_geom_optimization()
 
-target
-
 cni = ChainInputs()
 nbi = NEBInputs(v=True)
 
@@ -225,86 +226,51 @@ m2 = MSMEP(neb_inputs=nbi, recycle_chain=True)
 
 history, out_chain = m2.find_mep_multistep(start_chain,do_alignment=False)
 
-history2, out_chain2 = m.find_mep_multistep(start_chain,do_alignment=False)
-
-
 # +
-@dataclass
-class TreeNode:
-    data: NEB
-    children: list
-    
-    @classmethod
-    def from_node_list(cls, recursive_list):
-        fixed_list = [val for val in recursive_list if val is not None]
-        if len(fixed_list) == 1:
-            if isinstance(fixed_list[0], NEB):
-                return cls(data=fixed_list[0],children=[])
-            elif isinstance(fixed_list[0], list):
-                list_of_nodes =  [cls.from_node_list(recursive_list=l) for l in fixed_list[0]]
-                return cls(data=list_of_nodes[0], children=list_of_nodes[1:])
-        else:
-            children =  [cls.from_node_list(recursive_list=l) for l in fixed_list[1:]]
-            
-            return cls(data=fixed_list[0],children=children)
-        
-@dataclass
-class HistoryTree:
-    root: TreeNode
-    
-    @classmethod
-    def from_history_list(self, history_list):
-        children = [TreeNode.from_node_list(node) for node in history_list[1:]]
-        root_node = TreeNode(data=history_list[0], children=children)
-        return HistoryTree(root=root_node)
-    
-    
-    
-    def write_to_disk(folder_name: Path):
-        """
-        fp -> Path to a folder that will contain all of this massive amount of data
-        """
-        if not folder_name.exists():
-            folder_name.mkdir()
-        
-        write_to_disk(neb_obj=self.root.data, fp=folder_name/"root.xyz", write_history=True)
-
-
-    
-
-
-# +
-def read_from_disk(fp: Path, history_folder: Path = None):
-    if history_folder is None:
-        history_folder = fp.parent / (str(fp.stem) + "_history")
-    
-    if not history_folder.exists():
-        raise ValueError("No history exists for this. Cannot load object.")
-    else:
-        history_files = list(history_folder.glob("*.xyz"))
-        history = [Chain.from_xyz(history_folder / f"traj_{i}.xyz", parameters=ChainInputs()) for i, _ in enumerate(history_files)]
-
-        
-    n = NEB(initial_chain=history[0], parameters=NEBInputs(),optimized=history[-1],chain_trajectory=history)
-    return n
-    
-    
-    
-    
+# history2, out_chain2 = m.find_mep_multistep(start_chain,do_alignment=False)
 # -
 
-def write_to_disk(neb_obj, fp: Path, write_history=False):
-    out_traj = neb_obj.chain_trajectory[-1].to_trajectory()
-    out_traj.write_trajectory(fp)
+ht = HistoryTree.from_history_list(history)
 
-    if write_history:
-        out_folder = fp.resolve().parent / (str(fp.stem) + "_history")
-        if not out_folder.exists():
-            out_folder.mkdir()
 
-        for i, chain in enumerate(neb_obj.chain_trajectory):
-            traj = chain.to_trajectory()
-            traj.write_trajectory(out_folder / f"traj_{i}.xyz")
+# ? ht.write_to_disk
+
+def write_to_disk_neb(self, fp: Path, write_history=False):
+        out_traj = self.chain_trajectory[-1].to_trajectory()
+        out_traj.write_trajectory(fp)
+
+        if write_history:
+            out_folder = fp.resolve().parent / (fp.stem + "_history")
+            if not out_folder.exists():
+                out_folder.mkdir()
+
+            for i, chain in enumerate(self.chain_trajectory):
+                traj = chain.to_trajectory()
+                traj.write_trajectory(out_folder / f"traj_{i}.xyz")
+
+
+def write_to_disk_2(self, folder_name: Path):
+    if not folder_name.exists():
+        folder_name.mkdir()
+
+    for i, node in enumerate(self.depth_first_ordered_nodes):
+        write_to_disk_neb(node.data,
+            fp=folder_name / f"node_{i}.xyz", write_history=True
+        )
+
+    np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
+
+
+ht.root.children[1].data.optimized.plot_chain()
+
+write_to_disk_2(ht, fn)
+
+out_chain.plot_chain()
+
+ht.root.data.optimized.plot_chain()
+
+ht.write_to_disk(folder_name=Path("/home/jdep/T3D_data/msmep_draft/history_tree"))
+
 
 
 write_to_disk(ht.root.data, fp=Path("/home/jdep/T3D_data/msmep_draft/history_tree_root_neb.xyz"), write_history=True)
@@ -444,6 +410,84 @@ root4, target4 = m.create_endpoints_from_rxn_name(rn, reactions)
 
 # %%time
 n_obj4, out_chain4 = m.find_mep_multistep((root4, target4), do_alignment=True)
+
+# # Ugi
+
+nbi = NEBInputs(v=True, tol=0.005,max_steps=2000)
+gii = GIInputs(friction=.01, extra_kwds={'sweep':False})
+
+root = TDStructure.from_rxn_name("Ugi-Reaction",reactions)
+root.gum_mm_optimization()
+
+# +
+c3d_list = root.get_changes_in_3d(reactions["Ugi-Reaction"])
+
+root = root.pseudoalign(c3d_list)
+# -
+
+target = root.copy()
+target.apply_changed3d_list(c3d_list)
+target.gum_mm_optimization()
+
+root
+
+root_opt  = root.xtb_geom_optimization()
+target_opt = target.xtb_geom_optimization()
+
+root_opt
+
+reference_ugi = Trajectory.from_xyz("/home/jdep/neb_dynamics/example_cases/ugi/msmep_tol0.01_max_2000.xyz")
+
+root_opt = reference_ugi[0]
+target_opt = reference_ugi[-1]
+
+gi = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=1,sweep=False)
+
+gi.draw();
+
+gi_01 = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=.1,sweep=False)
+gi_001 = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=.01,sweep=False)
+
+import matplotlib.pyplot as plt
+
+plt.plot(gi.energies_xtb(), 'o-',label='friction=1')
+plt.plot(gi_01.energies_xtb(), 'o-',label='friction=0.1')
+plt.plot(gi_001.energies_xtb(), 'o-',label='friction=0.01')
+plt.legend()
+
+cni = ChainInputs(k=0.01,step_size=1)
+m = MSMEP(neb_inputs=nbi, recycle_chain=False, gi_inputs=gii)
+chain = Chain.from_traj(gi_001,cni)
+
+out_chain.plot_chain()
+
+out_chain.to_trajectory().draw();
+
+history, out_chain = m.find_mep_multistep(chain,do_alignment=False)
+
+from neb_dynamics.HistoryTree import HistoryTree
+
+ht = HistoryTree.from_history_list(history)
+
+from pathlib import Path
+
+
+def draw(self):
+    foo = self.adj_matrix - np.identity(len(self.adj_matrix))
+    g = nx.from_numpy_matrix(foo)
+    nx.draw_networkx(g)
+
+
+import networkx as nx
+draw(ht)
+
+type(ht)
+
+out_chain.to_trajectory().draw();
+
+out_chain.to_trajectory().write_trajectory(("/home/jdep/T3D_data/msmep_draft/ugi_tree_canonical/out_chain.xyz"))
+
+ht.write_to_disk(Path("/home/jdep/T3D_data/msmep_draft/ugi_tree_canonical"))
 
 # # Claisen-Rearrangement
 
