@@ -37,6 +37,13 @@ class Chain:
         traj = Trajectory.from_xyz(fp)
         chain = cls.from_traj(traj, parameters=parameters)
         return chain
+    
+    @classmethod
+    def from_list_of_chains(cls, list_of_chains, parameters):
+        nodes = []
+        for chain in list_of_chains:
+            nodes.extend(chain.nodes)
+        return cls(nodes=nodes, parameters=parameters)
 
     @property
     def integrated_path_length(self):

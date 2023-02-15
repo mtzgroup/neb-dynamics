@@ -57,5 +57,9 @@ class Node(ABC):
         ...
 
     @abstractmethod
-    def do_geometry_optimization(self):
+    def do_geometry_optimization(self) -> Node:
         ... 
+        
+    @abstractmethod
+    def is_identical(self, other):
+        ...

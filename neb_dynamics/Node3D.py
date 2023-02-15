@@ -49,9 +49,14 @@ class Node3D(Node):
         else:
             return Node3D.run_xtb_calc(self.tdstructure).get_energy()
 
-    def do_geometry_optimization(self):
+    def do_geometry_optimization(self) -> Node3D:
         td_opt = self.tdstructure.xtb_geom_optimization()
         return Node3D(tdstructure=td_opt)
+
+    def is_identical(self, other) -> bool:
+        return self.tdstructure.molecule_rp.is_bond_isomorphic_to(
+            other.tdstructure.molecule_rp
+        )
 
     @cached_property
     def gradient(self):

@@ -4,13 +4,9 @@ import numpy as np
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.helper_functions import pairwise
-from retropaths.reactions.changes import Changes3D, Changes3DList
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Node3D import Node3D
-from neb_dynamics.Node import Node
-from neb_dynamics.remapping_helpers import create_correct_product
 from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
 from neb_dynamics.helper_functions import _get_ind_minima
 
@@ -25,9 +21,6 @@ class MSMEP:
     # electronic structure params
     charge: int = 0
     spinmult: int = 1
-
-    # msmep params
-    optimize_hydrogen: bool = False
 
     recycle_chain: bool = False
 
@@ -48,25 +41,8 @@ class MSMEP:
 
         return root, target
 
-    def optimize_hydrogen_label(self, chain):
-        start = chain[0].tdstructure
-        end = chain[-1].tdstructure
-        correct_endpoint = create_correct_product(start, end, kcal_window=10)[
-            0
-        ]  # currently only selecting the best, need to fix so that you do some more sampling
-        if not np.all(correct_endpoint.coords != end.coords):
-            print("Making chain with optimal hydrogen")
-            _, new_chain = self.get_neb_chain(
-                start=start, end=correct_endpoint, do_alignment=False
-            )
-            return new_chain
-        else:
-            return chain
-
-    def find_mep_multistep(self, input_chain, do_alignment):
-        root_neb_obj, chain = self.get_neb_chain(
-            input_chain=input_chain, do_alignment=do_alignment
-        )
+    def find_mep_multistep(self, input_chain):
+        root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
         history = [root_neb_obj]
         if not chain:
             return None, None
@@ -78,25 +54,14 @@ class MSMEP:
             for i, chain_frag in enumerate(sequence_of_chains):
                 print(f"On chain {i+1} of {len(sequence_of_chains)}...")
                 if i <= len(sequence_of_chains) - 2:
-                    next_chain_frag = sequence_of_chains[i + 1]
-                    do_alignment = (
-                        chain_frag[-1].tdstructure.molecule_rp
-                        != next_chain_frag[0].tdstructure.molecule_rp
-                    )  # i.e. if minima found is not just a conformer rearrangment
-                    print(f"\t{do_alignment=}")
-                    out_history, chain = self.find_mep_multistep(
-                        chain_frag, do_alignment=False
-                    )
+                    out_history, chain = self.find_mep_multistep(chain_frag)
                     elem_steps.append(chain)
                     history.append(out_history)
 
                 else:  # i.e. the final pair
-                    out_history, chain = self.find_mep_multistep(
-                        chain_frag, do_alignment=False
-                    )
+                    out_history, chain = self.find_mep_multistep(chain_frag)
                     elem_steps.append(chain)
                     history.append(out_history)
-
 
             stitched_elem_steps = self.stitch_elem_steps(elem_steps)
             return (
@@ -104,39 +69,42 @@ class MSMEP:
                 stitched_elem_steps,
             )  # the first 'None' will hold the DataTree that holds all NEB objects
 
-    def get_neb_chain(self, input_chain, do_alignment):
+    def _create_interpolation(self, chain: Chain):
 
-        if do_alignment:
-            start, end = input_chain[0].tdstructure, input_chain[-1].tdstructure
-            start, end = self._align_endpoints(start, end)
-            traj = Trajectory([start, end], charge=self.charge, spinmult=self.spinmult)
-        else:
+        if chain.parameters.use_geodesic_interpolation:
             traj = Trajectory(
-                [node.tdstructure for node in input_chain],
+                [node.tdstructure for node in chain],
                 charge=self.charge,
                 spinmult=self.spinmult,
             )
 
-        gi = traj.run_geodesic(
-            nimages=self.gi_inputs.nimages,
-            friction=self.gi_inputs.friction,
-            nudge=self.gi_inputs.nudge,**self.gi_inputs.extra_kwds
-        )
+            gi = traj.run_geodesic(
+                nimages=self.gi_inputs.nimages,
+                friction=self.gi_inputs.friction,
+                nudge=self.gi_inputs.nudge,
+                **self.gi_inputs.extra_kwds,
+            )
+            interpolation = Chain.from_traj(traj=gi, parameters=self.chain_inputs)
 
-        if (
-            input_chain[0].tdstructure.molecule_rp
-            == input_chain[-1].tdstructure.molecule_rp
-        ):
+        else:  # do a linear interpolation using numpy
+            start_point = chain[0].coords
+            end_point = chain[-1].coords
+            coords = np.linspace(start_point, end_point, self.gi_inputs.nimages)
+            interpolation = Chain.from_list_of_coords(
+                list_of_coords=coords, parameters=self.chain_inputs
+            )
+
+        return interpolation
+
+    def get_neb_chain(self, input_chain: Chain):
+        interpolation = self._create_interpolation(input_chain)
+        # if (input_chain[0].tdstructure.molecule_rp == input_chain[-1].tdstructure.molecule_rp):
+        if input_chain[0].is_identical(input_chain[-1]):
             print("Endpoints are identical. Returning nothing")
             return None, None
         else:
-            chain = Chain.from_traj(traj=gi, parameters=self.chain_inputs)
 
-            n = NEB(
-                initial_chain=chain,
-                parameters=self.neb_inputs
-            )
-
+            n = NEB(initial_chain=interpolation, parameters=self.neb_inputs)
             try:
                 print("Running NEB calculation...")
                 n.optimize_chain()
@@ -153,33 +121,30 @@ class MSMEP:
     def is_elem_step(self, chain):
         if len(chain) > 1:
             ind_minima = _get_ind_minima(chain)
-
             return len(ind_minima) == 0
         else:
             return True
 
-    
-
-    def _make_chain_frag(self, chain, pair_of_inds):
+    def _make_chain_frag(self, chain: Chain, pair_of_inds):
         start, end = pair_of_inds
         chain_frag = chain.copy()
         chain_frag.nodes = chain[start : end + 1]
-        opt_start = chain[start].tdstructure.xtb_geom_optimization()
-        opt_end = chain[end].tdstructure.xtb_geom_optimization()
+        opt_start = chain[start].do_geometry_optimization()
+        opt_end = chain[end].do_geometry_optimization()
 
-        chain_frag.insert(0, Node3D(opt_start))
-        chain_frag.append(Node3D(opt_end))
+        chain_frag.insert(0, chain.parameters.node_class(opt_start))
+        chain_frag.append(chain.parameters.node_class(opt_end))
 
         return chain_frag
 
-    def _make_chain_pair(self, chain, pair_of_inds):
+    def _make_chain_pair(self, chain: Chain, pair_of_inds):
         start, end = pair_of_inds
-        start_opt_td = chain[start].tdstructure.xtb_geom_optimization()
-        end_opt_td = chain[end].tdstructure.xtb_geom_optimization()
+        start_opt_td = chain[start].do_geometry_optimization()
+        end_opt_td = chain[end].do_geometry_optimization()
 
-        start_opt = Node3D(start_opt_td)
-        end_opt = Node3D(end_opt_td)
-        chain_frag = Chain(nodes=[start_opt,end_opt], parameters=chain.parameters)
+        start_opt = chain.parameters.node_class(start_opt_td)
+        end_opt = chain.parameters.node_class(end_opt_td)
+        chain_frag = Chain(nodes=[start_opt, end_opt], parameters=chain.parameters)
 
         return chain_frag
 
@@ -201,66 +166,7 @@ class MSMEP:
         return chains
 
     def stitch_elem_steps(self, list_of_chains):
-        list_of_tds = []
-        for chain in list_of_chains:
-            if (
-                chain
-            ):  # list of chains will contain None values for whenever an interpolation between identical structures was given
-                [list_of_tds.append(n.tdstructure) for n in chain]
-        t = Trajectory(list_of_tds, charge=self.charge, spinmult=self.spinmult)
-        return Chain.from_traj(
-            t,
-            parameters=self.chain_inputs
+        out_list_of_chains = [chain for chain in list_of_chains if chain is not None]
+        return Chain.from_list_of_chains(
+            out_list_of_chains, parameters=self.chain_inputs
         )
-
-    def _align_endpoints(self, start: TDStructure, end: TDStructure):
-        """
-        this function gets the bond changes between the start and end structure,
-        then applies these changes to the start structure in order to generate a
-        modified end structure. the idea is to generate the closest structure to the
-        starting structure.
-
-        this function can (and often does!) lead to a change in conformers of the endpoints,
-        so it should not be used if you want to conserve the initial and final input conformers
-        """
-        bc = start.molecule_rp.get_bond_changes(end.molecule_rp)
-        c3d_list = self.from_bonds_changes(bc)
-
-        if len(c3d_list.deleted + c3d_list.forming + c3d_list.charges) == 0:
-            return start, end
-        start = start.pseudoalign(c3d_list)
-        start.mm_optimization("uff", steps=2000)
-        start.mm_optimization("gaff", steps=2000)
-        start.mm_optimization("mmff94", steps=2000)
-        start = start.xtb_geom_optimization()
-
-        end_mod = start.copy()
-        end_mod.add_bonds(c3d_list.forming)
-        end_mod.delete_bonds(c3d_list.deleted)
-        end_mod.mm_optimization("uff", steps=2000)
-        end_mod.mm_optimization("gaff", steps=2000)
-        end_mod.mm_optimization("mmff94", steps=2000)
-        end_mod = end_mod.xtb_geom_optimization()
-        return start, end_mod
-
-    def actual_reaction_happened_based_on_gi(self, traj: Trajectory):
-        ens = traj.energies_xtb()
-        delta_e = max(ens) - min(ens)
-        print(f"{delta_e=}")
-        if (
-            delta_e <= 1
-        ):  # if the difference between the highest energy point in Geodesic traj and the lowest energy point is less than 1kcal/mol
-            return False
-        else:
-            return True
-
-    def from_bonds_changes(self, bc):
-        forming_list = []
-        deleted_list = []
-
-        for s, e in bc.forming:
-            forming_list.append(Changes3D(start=s, end=e, bond_order=1))
-
-        for s, e in bc.breaking:
-            deleted_list.append(Changes3D(start=s, end=e, bond_order=-1))
-        return Changes3DList(forming=forming_list, deleted=deleted_list, charges=[])

@@ -1,5 +1,8 @@
 # +
-from neb_dynamics.NEB import Node2D, TS_PRFO, Node3D, Chain
+from neb_dynamics.TS_PRFO import TS_PRFO
+from neb_dynamics.Node2d import Node2D
+from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Chain import Chain
 from retropaths.abinitio.tdstructure import TDStructure
 from pathlib import Path
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
@@ -9,8 +12,17 @@ from IPython.core.display import HTML
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
-node_att = Node2D(pair_of_coordinates=(-2,1))
+node_att = Node2D(pair_of_coordinates=(2,3))
 tsopt = TS_PRFO(initial_node=node_att, max_nsteps=10000, dr=0.1, grad_thre=1e-8)
+
+node_att.do_geometry_optimization()
+
+tsopt.ts.do_geometry_optimization()
+
+tsopt.ts.do_geometry_optimization()
+
+node_att = Node2D(pair_of_coordinates=[0.086, 2.8842547])
+node_att.do_geometry_optimization()
 
 print(tsopt.ts.coords), tsopt.plot_path()
 

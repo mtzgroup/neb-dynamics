@@ -35,6 +35,7 @@ class ChainInputs:
     node_class: Node = Node3D
     do_local_xtb: bool = True
     do_parallel: bool = True
+    use_geodesic_interpolation: bool = True
 
 
 
