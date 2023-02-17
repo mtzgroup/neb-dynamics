@@ -20,6 +20,11 @@ def sorry_func_2(inp):
     return -1*(Ax*np.cos(2*np.pi*x) + Ay*np.cos(2*np.pi*y))
 
 
+def flower_func(inp):
+    x, y = inp
+    return (1./20.)*(( x**2 + y**2 - 5*np.sqrt(x**2 + y**2))**2+ 30 ) * np.abs(.4 * np.cos(6  * np.arctan(x/y))+1)
+
+
 ####### -------
 
 def coulomb(r, d, r0, alpha):

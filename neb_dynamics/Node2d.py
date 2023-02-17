@@ -30,12 +30,14 @@ class Node2D(Node):
 
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
-        return out.x
+        out_node = self.copy()
+        out_node.pair_of_coordinates = out.x
+        return out_node
 
     def is_identical(self, other: Node):
         other_opt = other.do_geometry_optimization()
         self_opt = self.do_geometry_optimization()
-        return all(other_opt == self_opt)
+        return all(other_opt.coords == self_opt.coords)
 
     @staticmethod
     def grad_func(node: Node2D):
@@ -123,7 +125,9 @@ class Node2D_2(Node):
     
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
-        return out.x
+        out_node = self.copy()
+        out_node.pair_of_coordinates = out.x
+        return out_node
 
     def is_identical(self, other: Node):
         other_opt = other.do_geometry_optimization()
@@ -256,7 +260,9 @@ class Node2D_ITM(Node):
     
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
-        return out.x
+        out_node = self.copy()
+        out_node.pair_of_coordinates = out.x
+        return out_node
 
     def is_identical(self, other: Node):
         other_opt = other.do_geometry_optimization()
@@ -319,7 +325,9 @@ class Node2D_LEPS(Node):
     
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
-        return out.x
+        out_node = self.copy()
+        out_node.pair_of_coordinates = out.x
+        return out_node
 
     def is_identical(self, other: Node):
         other_opt = other.do_geometry_optimization()
@@ -530,6 +538,107 @@ class Node2D_LEPS(Node):
 
     def copy(self):
         return Node2D_LEPS(
+            pair_of_coordinates=self.pair_of_coordinates,
+            converged=self.converged,
+            do_climb=self.do_climb,
+        )
+
+    def update_coords(self, coords: np.array):
+        new_node = self.copy()
+        new_node.pair_of_coordinates = coords
+        return new_node
+
+    def get_nudged_pe_grad(self, unit_tangent, gradient):
+        """
+        Returns the component of the gradient that acts perpendicular to the path tangent
+        """
+        pe_grad = gradient
+        pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
+        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+        return pe_grad_nudged
+
+
+@dataclass
+class Node2D_Flower(Node):
+    pair_of_coordinates: np.array
+    converged: bool = False
+    do_climb: bool = False
+
+    @property
+    def coords(self):
+        return self.pair_of_coordinates
+
+    @staticmethod
+    def en_func(node):
+        x, y = node.coords
+        
+        return (1./20.)*(( x**2 + y**2 - 5*np.sqrt(x**2 + y**2))**2+ 30 ) * np.abs(.4 * np.cos(6  * np.arctan(x/y))+1)
+        
+    @staticmethod
+    def en_func_arr(xy_vals):
+        x, y = xy_vals
+        return (1./20.)*(( x**2 + y**2 - 5*np.sqrt(x**2 + y**2))**2+ 30 ) * np.abs(.4 * np.cos(6  * np.arctan(x/y))+1)
+    
+    def do_geometry_optimization(self) -> Node:
+        out = minimize(self.en_func_arr, self.coords)
+        out_node = self.copy()
+        out_node.pair_of_coordinates = out.x
+        return out_node
+
+    def is_identical(self, other: Node):
+        other_opt = other.do_geometry_optimization()
+        self_opt = self.do_geometry_optimization()
+        return all(other_opt.coords == self_opt.coords)
+
+    @staticmethod
+    def grad_func(node):
+        x, y = node.coords
+        x2y2 = x**2 + y**2
+        
+        
+        # d/dx
+        A = 0.1*(2*x - 5*x/(np.sqrt(x2y2)))*\
+                (-5*np.sqrt(x2y2)+ x2y2)*\
+                np.abs(0.4*np.cos(6*np.arctan(x/y))+1)
+        
+        B = 0.12*((-5*np.sqrt(x2y2) + x2y2)**2 + 30)*\
+                (np.sin(6*np.arctan(x/y)))*\
+                 (0.4*np.cos(6*np.arctan(x/y)) + 1)
+        
+        
+        C = y*(x**2 / y**2 + 1)*np.abs(0.4*np.cos(6*np.arctan(x/y)) +1 )
+        dx = A - B/C
+        
+        # d/dy
+        Ay = 0.1*(2*y - 5*y/(np.sqrt(x2y2)))*\
+                (-5*np.sqrt(x2y2)+ x2y2)*\
+                np.abs(0.4*np.cos(6*np.arctan(x/y))+1)
+        
+        By = 0.12*x*((-5*np.sqrt(x2y2) + x2y2)**2 + 30)*\
+                (np.sin(6*np.arctan(x/y)))*\
+                 (0.4*np.cos(6*np.arctan(x/y)) + 1)
+        
+        
+        Cy = y**2*(x**2 / y**2 + 1)*np.abs(0.4*np.cos(6*np.arctan(x/y)) +1 )
+        dy = Ay + By/Cy
+        
+        return np.array([dx,dy])
+        
+        
+    @property
+    def energy(self) -> float:
+        return self.en_func(self)
+
+    @property
+    def gradient(self) -> np.array:
+        return self.grad_func(self)
+
+    @staticmethod
+    def dot_function(self, other) -> float:
+        return np.dot(self, other)
+
+    def copy(self):
+        return Node2D_Flower(
             pair_of_coordinates=self.pair_of_coordinates,
             converged=self.converged,
             do_climb=self.do_climb,

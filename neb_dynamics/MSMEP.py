@@ -53,16 +53,10 @@ class MSMEP:
             elem_steps = []
             for i, chain_frag in enumerate(sequence_of_chains):
                 print(f"On chain {i+1} of {len(sequence_of_chains)}...")
-                if i <= len(sequence_of_chains) - 2:
-                    out_history, chain = self.find_mep_multistep(chain_frag)
-                    elem_steps.append(chain)
-                    history.append(out_history)
-
-                else:  # i.e. the final pair
-                    out_history, chain = self.find_mep_multistep(chain_frag)
-                    elem_steps.append(chain)
-                    history.append(out_history)
-
+                out_history, chain = self.find_mep_multistep(chain_frag)
+                elem_steps.append(chain)
+                history.append(out_history)
+            
             stitched_elem_steps = self.stitch_elem_steps(elem_steps)
             return (
                 history,
@@ -132,18 +126,18 @@ class MSMEP:
         opt_start = chain[start].do_geometry_optimization()
         opt_end = chain[end].do_geometry_optimization()
 
-        chain_frag.insert(0, chain.parameters.node_class(opt_start))
-        chain_frag.append(chain.parameters.node_class(opt_end))
+        chain_frag.insert(0, opt_start)
+        chain_frag.append(opt_end)
 
         return chain_frag
 
     def _make_chain_pair(self, chain: Chain, pair_of_inds):
         start, end = pair_of_inds
-        start_opt_td = chain[start].do_geometry_optimization()
-        end_opt_td = chain[end].do_geometry_optimization()
+        start_opt = chain[start].do_geometry_optimization()
+        end_opt = chain[end].do_geometry_optimization()
 
-        start_opt = chain.parameters.node_class(start_opt_td)
-        end_opt = chain.parameters.node_class(end_opt_td)
+        opt_start = chain[start].do_geometry_optimization()
+        opt_end = chain[end].do_geometry_optimization()
         chain_frag = Chain(nodes=[start_opt, end_opt], parameters=chain.parameters)
 
         return chain_frag
