@@ -68,7 +68,7 @@ class HistoryTree:
         for i, node in enumerate(all_nodes):
             mat = self._update_adj_matrix(row_ind=i, matrix=mat, node=node)
         return mat
-
+    
     def _update_adj_matrix(self, row_ind, matrix, node: TreeNode):
         matrix_copy = matrix.copy()
         children = node.children

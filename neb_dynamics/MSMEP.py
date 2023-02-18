@@ -9,6 +9,8 @@ from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
 from neb_dynamics.helper_functions import _get_ind_minima
+from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.HistoryTree import HistoryTree
 
 
 @dataclass
@@ -43,7 +45,8 @@ class MSMEP:
 
     def find_mep_multistep(self, input_chain):
         root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
-        history = [root_neb_obj]
+        # history = [root_neb_obj]
+        history = TreeNode(data=root_neb_obj,children=[])
         if not chain:
             return None, None
         if self.is_elem_step(chain):
@@ -54,8 +57,10 @@ class MSMEP:
             for i, chain_frag in enumerate(sequence_of_chains):
                 print(f"On chain {i+1} of {len(sequence_of_chains)}...")
                 out_history, chain = self.find_mep_multistep(chain_frag)
-                elem_steps.append(chain)
-                history.append(out_history)
+                if chain: # << TODO:!!!! i remove None's by this. think about this later...
+                    elem_steps.append(chain)
+                    history.children.append(out_history)
+                # history.append(out_history)
             
             stitched_elem_steps = self.stitch_elem_steps(elem_steps)
             return (
@@ -84,6 +89,8 @@ class MSMEP:
             start_point = chain[0].coords
             end_point = chain[-1].coords
             coords = np.linspace(start_point, end_point, self.gi_inputs.nimages)
+            coords += np.random.normal(scale=.05, size=coords.shape)
+            
             interpolation = Chain.from_list_of_coords(
                 list_of_coords=coords, parameters=self.chain_inputs
             )
@@ -91,26 +98,28 @@ class MSMEP:
         return interpolation
 
     def get_neb_chain(self, input_chain: Chain):
-        interpolation = self._create_interpolation(input_chain)
-        # if (input_chain[0].tdstructure.molecule_rp == input_chain[-1].tdstructure.molecule_rp):
         if input_chain[0].is_identical(input_chain[-1]):
             print("Endpoints are identical. Returning nothing")
             return None, None
+        
+        if len(input_chain) < self.gi_inputs.nimages:
+            interpolation = self._create_interpolation(input_chain)
         else:
+            interpolation = input_chain
+        
+        n = NEB(initial_chain=interpolation, parameters=self.neb_inputs)
+        try:
+            print("Running NEB calculation...")
+            n.optimize_chain()
+            out_chain = n.optimized
 
-            n = NEB(initial_chain=interpolation, parameters=self.neb_inputs)
-            try:
-                print("Running NEB calculation...")
-                n.optimize_chain()
-                out_chain = n.optimized
+        except NoneConvergedException:
+            print(
+                "\nWarning! A chain did not converge. Returning an unoptimized chain..."
+            )
+            out_chain = n.chain_trajectory[-1]
 
-            except NoneConvergedException:
-                print(
-                    "\nWarning! A chain did not converge. Returning an unoptimized chain..."
-                )
-                out_chain = n.chain_trajectory[-1]
-
-            return n, out_chain
+        return n, out_chain
 
     def is_elem_step(self, chain):
         if len(chain) > 1:

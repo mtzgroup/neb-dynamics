@@ -558,6 +558,7 @@ class Node2D_LEPS(Node):
         return pe_grad_nudged
 
 
+
 @dataclass
 class Node2D_Flower(Node):
     pair_of_coordinates: np.array
@@ -572,12 +573,12 @@ class Node2D_Flower(Node):
     def en_func(node):
         x, y = node.coords
         
-        return (1./20.)*(( x**2 + y**2 - 5*np.sqrt(x**2 + y**2))**2+ 30 ) * np.abs(.4 * np.cos(6  * np.arctan(x/y))+1)
+        return (1./20.)*(( 1*(x**2 + y**2) - 6*np.sqrt(x**2 + y**2))**2 + 30 ) * -1*np.abs(.4 * np.cos(6  * np.arctan(x/y))+1) 
         
     @staticmethod
     def en_func_arr(xy_vals):
         x, y = xy_vals
-        return (1./20.)*(( x**2 + y**2 - 5*np.sqrt(x**2 + y**2))**2+ 30 ) * np.abs(.4 * np.cos(6  * np.arctan(x/y))+1)
+        return (1./20.)*(( 1*(x**2 + y**2) - 6*np.sqrt(x**2 + y**2))**2 + 30 ) * -1*np.abs(.4 * np.cos(6  * np.arctan(x/y))+1) 
     
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
@@ -588,39 +589,35 @@ class Node2D_Flower(Node):
     def is_identical(self, other: Node):
         other_opt = other.do_geometry_optimization()
         self_opt = self.do_geometry_optimization()
-        return all(other_opt.coords == self_opt.coords)
+        return all(other_opt.coords.astype(int) == self_opt.coords.astype(int))
 
     @staticmethod
     def grad_func(node):
         x, y = node.coords
         x2y2 = x**2 + y**2
         
-        
+        cos_term  = 0.4*np.cos(6*np.arctan(x/y)) + 1
         # d/dx
-        A = 0.1*(2*x - 5*x/(np.sqrt(x2y2)))*\
-                (-5*np.sqrt(x2y2)+ x2y2)*\
-                np.abs(0.4*np.cos(6*np.arctan(x/y))+1)
+        Ax = 0.12*((-6*np.sqrt(x2y2) + x2y2)**2 + 30) 
         
-        B = 0.12*((-5*np.sqrt(x2y2) + x2y2)**2 + 30)*\
-                (np.sin(6*np.arctan(x/y)))*\
-                 (0.4*np.cos(6*np.arctan(x/y)) + 1)
+        Bx = np.sin(6*np.arctan(x/y))*(cos_term)
         
+        Cx = y*(x**2 / y**2 + 1)*np.abs(cos_term)
+                                       
+        Dx = (1/10)*(2*x - (6*x / np.sqrt(x2y2) ))*(-6*np.sqrt(x2y2) + x2y2)*np.abs(cos_term)
         
-        C = y*(x**2 / y**2 + 1)*np.abs(0.4*np.cos(6*np.arctan(x/y)) +1 )
-        dx = A - B/C
+        dx = (Ax*Bx)/Cx - Dx
         
         # d/dy
-        Ay = 0.1*(2*y - 5*y/(np.sqrt(x2y2)))*\
-                (-5*np.sqrt(x2y2)+ x2y2)*\
-                np.abs(0.4*np.cos(6*np.arctan(x/y))+1)
+        Ay = (-1/10)*(2*y - 6*y/(np.sqrt(x2y2)))*(-6*np.sqrt(x2y2) + x2y2)*(np.abs(cos_term))
         
-        By = 0.12*x*((-5*np.sqrt(x2y2) + x2y2)**2 + 30)*\
-                (np.sin(6*np.arctan(x/y)))*\
-                 (0.4*np.cos(6*np.arctan(x/y)) + 1)
+        By = 0.12*x*((-6*np.sqrt(x2y2) + x2y2)**2 + 30)*np.sin(6*np.arctan(x/y))
         
+        Cy = cos_term
         
-        Cy = y**2*(x**2 / y**2 + 1)*np.abs(0.4*np.cos(6*np.arctan(x/y)) +1 )
-        dy = Ay + By/Cy
+        Dy = y**2 * (x**2 / y**2 + 1)*np.abs(cos_term)
+        
+        dy =   Ay - (By*Cy)/Dy
         
         return np.array([dx,dy])
         

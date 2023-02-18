@@ -22,7 +22,7 @@ def sorry_func_2(inp):
 
 def flower_func(inp):
     x, y = inp
-    return (1./20.)*(( x**2 + y**2 - 5*np.sqrt(x**2 + y**2))**2+ 30 ) * np.abs(.4 * np.cos(6  * np.arctan(x/y))+1)
+    return (1./20.)*(( 1*(x**2 + y**2) - 6*np.sqrt(x**2 + y**2))**2 + 30 ) * -1*np.abs(.4 * np.cos(6  * np.arctan(x/y))+1)
 
 
 ####### -------
