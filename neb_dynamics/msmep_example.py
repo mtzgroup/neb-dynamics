@@ -184,7 +184,7 @@ def plot_2D(neb_obj: NEB):
 
 
 def main():
-    nimages = 18
+    nimages = 10
 
     ### node 2d
     # end_point = (3.00002182, 1.99995542)
@@ -214,7 +214,8 @@ def main():
     
     
     coords = np.linspace(start_point, end_point, nimages)
-    coords += np.random.normal(scale=.1, size=coords.shape)
+    coords[1:-1] += np.random.normal(scale=.2, size=coords[1:-1].shape)
+    # coords[1:-1] -= np.random.normal(scale=.15)
     # coords[5]+= np.array([0,.2])
     
     
@@ -231,7 +232,7 @@ def main():
     
     
     
-    ks = .0001
+    ks = .01
     cni = ChainInputs(
         k=ks,
         node_class=presets["node"],
@@ -264,7 +265,7 @@ def main():
     # print(f'{h[2][0].optimized.coordinates=}')
     # print(f"{out_chain.coordinates=}")
     # plot_func(frankenstein)
-
+    
 
 if __name__ == "__main__":
     main()

@@ -89,7 +89,7 @@ class MSMEP:
             start_point = chain[0].coords
             end_point = chain[-1].coords
             coords = np.linspace(start_point, end_point, self.gi_inputs.nimages)
-            coords += np.random.normal(scale=.05, size=coords.shape)
+            coords[1:-1] += np.random.normal(scale=.05)
             
             interpolation = Chain.from_list_of_coords(
                 list_of_coords=coords, parameters=self.chain_inputs

@@ -5,6 +5,7 @@ from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
+from neb_dynamics.Node2d import Node2D_Flower
 
 
 import retropaths.helper_functions as hf
@@ -29,12 +30,40 @@ from retropaths.reactions.template_utilities import (
 from dataclasses import dataclass 
 import numpy as np
 
-reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
-HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+# reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
+# HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
 # -
+# # 2D Potentials
 
+nimages = 10
 
+# +
+start_point = [-2.59807434, -1.499999  ]
+end_point = [2.5980755 , 1.49999912]
+
+coords = np.linspace(start_point, end_point, nimages)
+coords[1:-1] -= np.random.normal(scale=.2, size=coords[1:-1].shape)
+
+ks = .01
+cni = ChainInputs(
+    k=ks,
+    node_class=Node2D_Flower,
+    delta_k=0,
+    step_size=.5,
+    do_parallel=False,
+    use_geodesic_interpolation=False,
+)
+gii = GIInputs(nimages=nimages)
+nbi = NEBInputs(tol=.1, v=1, max_steps=1000, climb=False)
+chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
+h_root_node, out_chain = m.find_mep_multistep(input_chain=chain)
+# -
+
+from neb_dynamics.msmep_example import plot_2D, plot_func
+
+plot_func(h_root_node.data)
 
 # # Some BS
 
