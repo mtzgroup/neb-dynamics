@@ -27,6 +27,10 @@ class TreeNode:
             return cls(data=fixed_list[0], children=children)
 
     @property
+    def n_children(self):
+        return len(self.children)
+
+    @property
     def depth_first_ordered_nodes(self) -> list:
         if self.is_leaf:
             return [self]
@@ -53,12 +57,12 @@ class TreeNode:
             max_depths = []
             for child in node.children:
                 max_depths.append(cls.max_depth(child, depth+1))
-            
+
             return max(max_depths)
 
     @property
     def total_nodes(self):
-        return len(self.depth_first_ordered_nodes)
+        return len(self.depth_first_ordered_nodes())
 
     def get_nodes_at_depth(self, depth):
         curr_depth = 0
@@ -73,15 +77,19 @@ class TreeNode:
         return nodes_to_iter_through        
 
     def write_to_disk(self, folder_name: Path):
+        
+        np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
+        
         if not folder_name.exists():
             folder_name.mkdir()
 
-        for i, node in enumerate(self.depth_first_ordered_nodes()): # gotta change this
+        for node in self.depth_first_ordered_nodes():
+            i = node.index
             node.data.write_to_disk(
                 fp=folder_name / f"node_{i}.xyz", write_history=True
             )
 
-        np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
+        
 
 
     def draw(self):
@@ -95,10 +103,12 @@ class TreeNode:
             matrix_copy = matrix.copy()
             
             if node.is_leaf:
+                node.index = ind
                 return matrix_copy
             else:
                 for i, child in enumerate(node.children,start=1):
                     child_ind = free_inds[0]
+                    child.index = child_ind
                     free_inds.pop(0)
                     matrix_copy[ind, child_ind] = 1
                     
@@ -109,6 +119,7 @@ class TreeNode:
     @property
     def adj_matrix(self):
         mat = np.identity(self.total_nodes)
+        self.index = 0
         free_inds = list(range(1,self.total_nodes))
         mat = self._update_adj_matrix(ind=0, matrix=mat, node=self, free_inds=free_inds)
         
