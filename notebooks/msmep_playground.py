@@ -29,6 +29,9 @@ from retropaths.reactions.template_utilities import (
 
 from dataclasses import dataclass 
 import numpy as np
+from neb_dynamics.msmep_example import plot_2D, plot_func, plot_ethan, animate_func
+import matplotlib.pyplot as plt
+import networkx as nx
 
 # reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 # HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
@@ -37,13 +40,16 @@ import numpy as np
 # # 2D Potentials
 
 nimages = 10
+np.random.seed(0)
 
 # +
 start_point = [-2.59807434, -1.499999  ]
 end_point = [2.5980755 , 1.49999912]
 
+
 coords = np.linspace(start_point, end_point, nimages)
-coords[1:-1] -= np.random.normal(scale=.2, size=coords[1:-1].shape)
+coords[1:-1] += np.random.normal(scale=.1, size=coords[1:-1].shape)
+# coords[1:-1] += np.random.normal(scale=.15)
 
 ks = .01
 cni = ChainInputs(
@@ -61,9 +67,11 @@ m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
 h_root_node, out_chain = m.find_mep_multistep(input_chain=chain)
 # -
 
-from neb_dynamics.msmep_example import plot_2D, plot_func
+h_root_node.draw()
 
-plot_func(h_root_node.data)
+f = plot_ethan(out_chain)
+plt.plot(h_root_node.data.chain_trajectory[-1].coordinates[:,0],h_root_node.data.chain_trajectory[-1].coordinates[:,1],
+           c='white',linestyle='--',marker='o')
 
 # # Some BS
 

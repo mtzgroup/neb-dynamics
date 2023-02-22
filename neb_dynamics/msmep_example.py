@@ -121,7 +121,8 @@ def plot_ethan(chain):
     # plt.plot([toy_potential_2(point) for point in new_chain])
     plt.plot(points_x, points_y, "o--", c="white", label="NEB", ms=9)
     # psave(new_chain, "new_chain.p")
-    plt.show()
+    # plt.show()
+    return f
 
 def plot_func(neb_obj: NEB):
     size = 8
@@ -250,7 +251,8 @@ def main():
     h_root_node.draw()
     # plot_func(h[0])
     [animate_func(obj) for obj in h_root_node.get_optimization_history()]
-    plot_ethan(out_chain)
+    f = plot_ethan(out_chain)
+    plt.show()
     
     
     # frankenstein = h[0]

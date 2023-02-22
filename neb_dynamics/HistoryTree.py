@@ -90,7 +90,7 @@ class HistoryTree:
             ind_parent=0, matrix=adj_mat, list_of_nodes=neb_nodes
         )
 
-        return cls(root=root)
+        return root
 
     def draw(self):
         foo = self.adj_matrix - np.identity(len(self.adj_matrix))

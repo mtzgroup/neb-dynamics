@@ -26,24 +26,26 @@ class TreeNode:
 
             return cls(data=fixed_list[0], children=children)
 
-    
+
     @property
     def depth_first_ordered_nodes(self) -> list:
         nodes = []
-        for d in range(0, self.max_depth + 1):
+        for d in range(0, self.max_depth(node=self) + 1):
             n = self.get_nodes_at_depth(d)
             nodes.extend(n)
 
         return nodes
 
-    @property
-    def max_depth(self):
-        d = 0
-        n_nodes = len(self.get_nodes_at_depth(d))
-        while n_nodes > 0:
-            d += 1
-            n_nodes = len(self.get_nodes_at_depth(d))
-        return d - 1
+    @classmethod
+    def max_depth(cls, node, depth=0):
+        if node.is_leaf:
+            return depth
+        else:
+            max_depths = []
+            for child in node.children:
+                max_depths.append(cls.max_depth(child, depth+1))
+            
+            return max(max_depths)
 
     @property
     def total_nodes(self):
@@ -51,7 +53,7 @@ class TreeNode:
 
     def get_nodes_at_depth(self, depth):
         curr_depth = 0
-        nodes_to_iter_through = self.children
+        nodes_to_iter_through = [self]
         while curr_depth < depth:
             new_nodes_to_iter_through = []
             for node in nodes_to_iter_through:
@@ -59,7 +61,7 @@ class TreeNode:
             curr_depth += 1
             nodes_to_iter_through = new_nodes_to_iter_through
 
-        return nodes_to_iter_through
+        return nodes_to_iter_through        
 
     def write_to_disk(self, folder_name: Path):
         if not folder_name.exists():
@@ -72,23 +74,36 @@ class TreeNode:
 
         np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
 
+
+    def draw(self):
+        foo = self.adj_matrix - np.identity(len(self.adj_matrix))
+        g = nx.from_numpy_matrix(foo)
+        nx.draw_networkx(g)
+
+
+
+    def _update_adj_matrix(self, ind, matrix, node, free_inds):
+            matrix_copy = matrix.copy()
+            
+            if node.is_leaf:
+                return matrix_copy
+            else:
+                for i, child in enumerate(node.children,start=1):
+                    child_ind = free_inds[0]
+                    free_inds.pop(0)
+                    matrix_copy[ind, child_ind] = 1
+                    
+                    matrix_copy = self._update_adj_matrix(ind=ind+i, matrix=matrix_copy, node=child, free_inds=free_inds)
+
+            return matrix_copy
+        
     @property
     def adj_matrix(self):
         mat = np.identity(self.total_nodes)
-        all_nodes = self.depth_first_ordered_nodes
-        for i, node in enumerate(all_nodes):
-            mat = self._update_adj_matrix(row_ind=i, matrix=mat, node=node)
+        free_inds = list(range(1,self.total_nodes))
+        mat = self._update_adj_matrix(ind=0, matrix=mat, node=self, free_inds=free_inds)
+        
         return mat
-    
-    def _update_adj_matrix(self, row_ind, matrix, node):
-        matrix_copy = matrix.copy()
-        children = node.children
-        if len(children) > 0:
-            start_col = row_ind + 1
-            end_col = start_col + len(children)
-            matrix_copy[row_ind, start_col:end_col] = 1
-
-        return matrix_copy
 
     @classmethod
     def read_from_disk(cls, folder_name):
@@ -103,18 +118,6 @@ class TreeNode:
 
         return root
 
-    def draw(self):
-        foo = self.adj_matrix - np.identity(len(self.adj_matrix))
-        g = nx.from_numpy_matrix(foo)
-        plt.figure()
-        nx.draw_networkx(g)
-        plt.show()
-
-
-    def draw(self):
-        foo = self.adj_matrix - np.identity(len(self.adj_matrix))
-        g = nx.from_numpy_matrix(foo)
-        nx.draw_networkx(g)
 
     @classmethod
     def _get_node_helper(cls, ind_parent, matrix, list_of_nodes):
