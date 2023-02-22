@@ -26,16 +26,25 @@ class TreeNode:
 
             return cls(data=fixed_list[0], children=children)
 
-
     @property
     def depth_first_ordered_nodes(self) -> list:
-        nodes = []
-        for d in range(0, self.max_depth(node=self) + 1):
-            n = self.get_nodes_at_depth(d)
-            nodes.extend(n)
-
+        if self.is_leaf:
+            return [self]
+        else:
+            nodes = [self]
+            for child in self.children:
+                out_nodes = child.depth_first_ordered_nodes
+                nodes.extend(out_nodes)
         return nodes
-
+        
+    @property
+    def ordered_leaves(self):
+        leaves = []
+        for node in self.depth_first_ordered_nodes:
+            if node.is_leaf: 
+                leaves.append(node)
+        return leaves
+    
     @classmethod
     def max_depth(cls, node, depth=0):
         if node.is_leaf:
@@ -67,7 +76,7 @@ class TreeNode:
         if not folder_name.exists():
             folder_name.mkdir()
 
-        for i, node in enumerate(self.depth_first_ordered_nodes):
+        for i, node in enumerate(self.depth_first_ordered_nodes()): # gotta change this
             node.data.write_to_disk(
                 fp=folder_name / f"node_{i}.xyz", write_history=True
             )
