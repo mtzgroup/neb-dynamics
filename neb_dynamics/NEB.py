@@ -57,13 +57,20 @@ class NEB:
     def optimize_chain(self):
         nsteps = 1
         chain_previous = self.initial_chain.copy()
+        self.chain_trajectory.append(chain_previous)
 
         while nsteps < self.parameters.max_steps + 1:
             max_grad_val = chain_previous.get_maximum_grad_magnitude()
+            
             if max_grad_val <= 3 * self.parameters.grad_thre and self.parameters.climb:
                 self.set_climbing_nodes(chain=chain_previous)
                 self.parameters.climb = False  # no need to set climbing nodes again
-
+            
+            if max_grad_val <= self.parameters.stopping_threshold*self.parameters.grad_thre:
+                print(f"\nStopped early because: {max_grad_val=} <= {self.parameters.stopping_threshold}*{self.parameters.grad_thre}\nSetting it to optimized???")
+                self.optimized = chain_previous
+                return
+            
             new_chain = self.update_chain(chain=chain_previous)
             if self.parameters.v:
                 print(

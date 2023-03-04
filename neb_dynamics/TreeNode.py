@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
+from neb_dynamics.Chain import Chain
 
 @dataclass
 class TreeNode:
@@ -62,7 +63,7 @@ class TreeNode:
 
     @property
     def total_nodes(self):
-        return len(self.depth_first_ordered_nodes())
+        return len(self.depth_first_ordered_nodes)
 
     def get_nodes_at_depth(self, depth):
         curr_depth = 0
@@ -101,17 +102,17 @@ class TreeNode:
 
     def _update_adj_matrix(self, ind, matrix, node, free_inds):
             matrix_copy = matrix.copy()
+            node.index = free_inds[0]
+            free_inds.pop(0)
             
             if node.is_leaf:
-                node.index = ind
+                
+
                 return matrix_copy
             else:
                 for i, child in enumerate(node.children,start=1):
                     child_ind = free_inds[0]
-                    child.index = child_ind
-                    free_inds.pop(0)
                     matrix_copy[ind, child_ind] = 1
-                    
                     matrix_copy = self._update_adj_matrix(ind=ind+i, matrix=matrix_copy, node=child, free_inds=free_inds)
 
             return matrix_copy
@@ -119,8 +120,8 @@ class TreeNode:
     @property
     def adj_matrix(self):
         mat = np.identity(self.total_nodes)
-        self.index = 0
-        free_inds = list(range(1,self.total_nodes))
+        free_inds = list(range(self.total_nodes))
+
         mat = self._update_adj_matrix(ind=0, matrix=mat, node=self, free_inds=free_inds)
         
         return mat
@@ -173,3 +174,13 @@ class TreeNode:
             return opt_history
         else:
             return self.get_optimization_history(node=self)
+    
+    @property
+    def output_chain(self):
+        leaves = self.ordered_leaves
+        chains = []
+        for leaf in leaves:
+            c = leaf.data.optimized
+            chains.append(c)
+        out = Chain.from_list_of_chains(chains, parameters=chains[0].parameters)
+        return out

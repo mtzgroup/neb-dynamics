@@ -589,7 +589,10 @@ class Node2D_Flower(Node):
     def is_identical(self, other: Node):
         other_opt = other.do_geometry_optimization()
         self_opt = self.do_geometry_optimization()
-        return all(other_opt.coords.astype(int) == self_opt.coords.astype(int))
+        
+        dist = np.linalg.norm(other_opt.coords - self_opt.coords)
+        
+        return abs(dist) < .1
 
     @staticmethod
     def grad_func(node):

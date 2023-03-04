@@ -12,6 +12,7 @@ class NEBInputs:
     rms_grad_thre: float = None
     grad_thre: float = None
     max_steps: float = 1000
+    stopping_threshold: float = 0.0
 
     vv_force_thre: float = 0.0
     v: bool = False

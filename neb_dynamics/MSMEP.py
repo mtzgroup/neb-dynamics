@@ -10,8 +10,6 @@ from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
 from neb_dynamics.helper_functions import _get_ind_minima
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.HistoryTree import HistoryTree
-
 
 @dataclass
 class MSMEP:
