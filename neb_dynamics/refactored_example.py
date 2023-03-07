@@ -6,7 +6,7 @@ from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
-from neb_dynamics.Node2d import Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS
+from neb_dynamics.Node2d import Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, Node2D_Flower
 from neb_dynamics.Node import AlessioError
 from neb_dynamics.TS_PRFO import TS_PRFO
 from neb_dynamics.potential_functions import (
@@ -14,14 +14,15 @@ from neb_dynamics.potential_functions import (
     sorry_func_1,
     sorry_func_2,
     sorry_func_3,
+    flower_func
 )
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
 
-sfs = [sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3]
-index = 1
-nodes = [Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS]
-min_sizes = [-4, -2, -2, 0.5]
-max_sizes = [4, 2, 2, 4]
+sfs = [sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3, flower_func]
+index = 4
+nodes = [Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, Node2D_Flower]
+min_sizes = [-4, -2, -2, 0.5, -4]
+max_sizes = [4, 2, 2, 4, 4]
 
 presets = {
     "pot_func": sfs[index],
@@ -152,7 +153,7 @@ def plot_2D(neb_obj: NEB):
 
 
 def main():
-    nimages = 8
+    nimages = 10
 
     ### node 2d
     # end_point = (3.00002182, 1.99995542)
@@ -160,10 +161,10 @@ def main():
     # start_point = (-3.77928812, -3.28320392)
 
     ### node 2d - 2
-    start_point = (-1, 1)
+    # start_point = (-1, 1)
     # end_point = (1, 1)
     # end_point = (1, -1)
-    end_point = (1.01, -1.01)
+    # end_point = (1.01, -1.01)
 
     # ## node 2d - ITM
     # start_point = (0, 0)
@@ -174,9 +175,13 @@ def main():
     # ## node 2d - LEPS
     # start_point = [0.74200203, 4]
     # end_point = [4, 0.74200311]
+    
+    # ## node 2d - flower
+    start_point = [-2.59807434, -1.499999  ]
+    end_point = [2.5980755 , 1.49999912]
+
     coords = np.linspace(start_point, end_point, nimages)
     # coords[5]+= np.array([0,.2])
-
     # coords = np.linspace(start_point, (-1.2, 1), 15)
     # coords = np.append(coords, np.linspace(end_point, (1.2, -1), 15), axis=0)
 
