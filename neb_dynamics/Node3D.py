@@ -14,6 +14,9 @@ from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
+import multiprocessing as mp
+
+
 
 
 @dataclass
@@ -179,3 +182,37 @@ class Node3D(Node):
             self.tdstructure.charge,
             self.tdstructure.spinmult,
         )
+    
+    
+    @staticmethod
+    def calc_xtb_ene_grad_from_input_tuple(tuple):
+        atomic_numbers, coords_bohr, charge, spinmult = tuple
+
+        calc = Calculator(
+            get_method("GFN2-xTB"),
+            numbers=np.array(atomic_numbers),
+            positions=coords_bohr,
+            charge=charge,
+            uhf=spinmult - 1,
+        )
+        calc.set_verbosity(VERBOSITY_MUTED)
+        res = calc.singlepoint()
+
+        return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
+
+    
+    
+    @classmethod
+    def calculate_energy_and_gradients_parallel(cls, chain):
+        iterator = (
+            (
+                n.tdstructure.atomic_numbers,
+                n.tdstructure.coords_bohr,
+                n.tdstructure.charge,
+                n.tdstructure.spinmult,
+            )
+            for n in chain.nodes
+        )
+        with mp.Pool() as p:
+            ene_gradients = p.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator)
+        return ene_gradients

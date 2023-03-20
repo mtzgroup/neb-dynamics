@@ -17,7 +17,6 @@ from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
-import multiprocessing as mp
 import scipy
 
 
@@ -26,11 +25,14 @@ class Chain:
     nodes: List[Node]
     parameters: ChainInputs
     # k: Union[List[float], float]
-    # delta_k: float = 0
+    # delta_k : float = 0
     # step_size: float = 1
     # velocity: np.array = np.zeros(1)
     # node_class: Node = Node3D
     # do_local_xtb: bool = True
+    def __post_init__(self):
+        if not hasattr(self.parameters, "velocity"):
+            self.parameters.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords), 3))
 
     @classmethod
     def from_xyz(cls, fp: Path, parameters: ChainInputs):
@@ -230,30 +232,19 @@ class Chain:
 
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
-    def calculate_energy_and_gradients_parallel(self):
-        iterator = (
-            (
-                n.tdstructure.atomic_numbers,
-                n.tdstructure.coords_bohr,
-                n.tdstructure.charge,
-                n.tdstructure.spinmult,
-            )
-            for n in self.nodes
-        )
-        with mp.Pool() as p:
-            ene_gradients = p.map(self.calc_xtb_ene_grad_from_input_tuple, iterator)
-        return ene_gradients
 
     @cached_property
     def gradients(self) -> np.array:
         if self.parameters.do_parallel:
-            if self.parameters.do_local_xtb:
-                energy_gradient_tuples = self.calculate_energy_and_gradients_parallel()
-            else:
-                ens_grads_lists = self.to_trajectory().energies_and_gradients_tc()
-                energy_gradient_tuples = list(
-                    zip(ens_grads_lists[0], ens_grads_lists[1])
-                )
+            # if self.parameters.do_local_xtb:
+            #     energy_gradient_tuples = self.calculate_energy_and_gradients_parallel()
+            # else:
+            #     ens_grads_lists = self.to_trajectory().energies_and_gradients_tc()
+            #     energy_gradient_tuples = list(
+            #         zip(ens_grads_lists[0], ens_grads_lists[1])
+            #     )
+            
+            energy_gradient_tuples = self.parameters.node_class.calculate_energy_and_gradients_parallel(chain=self)
         else:
             energies = [node.energy for node in self.nodes]
             gradients = [node.gradient for node in self.nodes]

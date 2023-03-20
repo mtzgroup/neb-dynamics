@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from retropaths.abinitio.trajectory import Trajectory
 from scipy.signal import argrelextrema
 
 from neb_dynamics.Chain import Chain
@@ -36,8 +35,8 @@ class NEB:
     gradient_trajectory: list[np.array] = field(default_factory=list)
 
     def do_velvel(self, chain: Chain):
-        max_force_on_node = max([np.linalg.norm(grad) for grad in chain.gradients])
-        return max_force_on_node < self.parameters.vv_force_thre
+        max_grad_val = chain.get_maximum_grad_magnitude()
+        return max_grad_val < self.parameters.vv_force_thre
 
     def _reset_node_convergence(self, chain):
         for node in chain:
@@ -74,7 +73,7 @@ class NEB:
             new_chain = self.update_chain(chain=chain_previous)
             if self.parameters.v:
                 print(
-                    f"step {nsteps} // max |gradient| {max_grad_val}{' '*20}", end="\r"
+                    f"step {nsteps} // max |gradient| {max_grad_val}// |velocity| {np.linalg.norm(new_chain.parameters.velocity)}{' '*20}", end="\r"
                 )
             sys.stdout.flush()
 
@@ -102,27 +101,37 @@ class NEB:
     def get_chain_velocity(self, chain: Chain) -> np.array:
         prev_velocity = chain.parameters.velocity
 
-        step = (
-            self.parameters.grad_thre / 10
-        )  # make the step size rel. to threshold we want
-
-        new_force = -(chain.gradients) * step
-
-        directions = prev_velocity * new_force
-        prev_velocity[
-            directions < 0
-        ] = 0  # zero the velocities for which we overshot the minima
-
-        new_velocity = prev_velocity + new_force
-        return new_velocity
+        step = ALS.ArmijoLineSearch(
+                chain=chain,
+                t=chain.parameters.step_size,
+                alpha=0.01,
+                beta=0.5,
+                grad=chain.gradients,
+        )
+        
+        # step = chain.parameters.step_size
+        new_force = -(chain.gradients) * step        
+        directions = np.dot(prev_velocity.flatten(),new_force.flatten())
+        
+        if directions < 0:
+            total_force = new_force
+            new_vel = np.zeros_like(chain.gradients)
+        else:
+            
+            new_velocity = directions*new_force # keep the velocity component in direcition of force
+            total_force = new_velocity + new_force
+            new_vel = total_force
+            # print(f"\n\n keeping part of velocity! {np.linalg.norm(new_vel)}\n\n")
+        return new_vel, total_force
 
     def update_chain(self, chain: Chain) -> Chain:
 
         do_vv = self.do_velvel(chain=chain)
 
         if do_vv:
-            velocity = self.get_chain_velocity(chain=chain)
-            new_chain_coordinates = chain.coordinates + velocity
+            new_vel, force = self.get_chain_velocity(chain=chain)
+            new_chain_coordinates = chain.coordinates + force
+            chain.parameters.velocity = new_vel
 
         else:
             disp = ALS.ArmijoLineSearch(
@@ -140,9 +149,6 @@ class NEB:
             new_nodes.append(node.update_coords(new_coords))
 
         new_chain = Chain(new_nodes, parameters=chain.parameters)
-        if do_vv:
-            new_chain.velocity = velocity
-
         return new_chain
 
     def _update_node_convergence(self, chain: Chain, indices: np.array) -> None:

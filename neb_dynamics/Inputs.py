@@ -39,7 +39,6 @@ class ChainInputs:
     use_geodesic_interpolation: bool = True
 
 
-
 @dataclass
 class GIInputs:
     nimages: int = 15

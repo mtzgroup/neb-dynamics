@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from functools import cached_property
 
 import numpy as np
-from ase import Atoms
-from ase.optimize import LBFGS
 from retropaths.abinitio.tdstructure import TDStructure
 
 
@@ -120,3 +118,21 @@ class Node3D_TC(Node):
         assert self.check_symmetric(approx_hess_sym, rtol=1e-3, atol=1e-3), "Hessian not symmetric for some reason"
 
         return approx_hess_sym
+    
+    
+    @staticmethod
+    def calculate_energy_and_gradients_parallel(chain):
+        ens_grads_lists = chain.to_trajectory().energies_and_gradients_tc()
+        energy_gradient_tuples = list(
+            zip(ens_grads_lists[0], ens_grads_lists[1])
+        )
+        return energy_gradient_tuples
+    
+    def do_geometry_optimization(self) -> Node3D_TC:
+        td_opt = self.tdstructure.tc_geom_optimization()
+        return Node3D_TC(tdstructure=td_opt)
+    
+    def is_identical(self, other) -> bool:
+        return self.tdstructure.molecule_rp.is_bond_isomorphic_to(
+            other.tdstructure.molecule_rp
+        )

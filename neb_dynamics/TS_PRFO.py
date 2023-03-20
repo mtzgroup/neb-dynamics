@@ -18,16 +18,13 @@ class TS_PRFO:
     grad_thre: float = 1e-6
     
     max_step_size: float = 1.0
+    
+    traj = []
 
     @property
     def ts(self):
         ts, _ = self.ts_and_traj
         return ts
-
-    @property
-    def traj(self):
-        _, traj = self.ts_and_traj
-        return traj
 
     @cached_property
     def ts_and_traj(self):
@@ -84,8 +81,7 @@ class TS_PRFO:
         return step_reshaped
 
     def find_ts(self):
-        traj = []
-        traj.append(self.initial_node)
+        self.traj.append(self.initial_node)
 
         steps_taken = 0
         converged = False
@@ -110,15 +106,15 @@ class TS_PRFO:
                 print(f"Converged in {steps_taken} steps!")
                 new_node.converged = True
 
-            traj.append(new_node)
+            self.traj.append(new_node)
             start_node = new_node
 
         if converged:
-            return new_node, traj
+            return new_node, self.traj
 
         if not converged:
             print(f"Did not converge in {steps_taken} steps.")
-            return new_node, traj
+            return new_node, self.traj
 
     def plot_path(self):
         traj = self.traj
