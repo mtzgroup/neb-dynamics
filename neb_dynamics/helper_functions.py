@@ -341,15 +341,10 @@ def flip_structure_if_necessary(react_struc, product_struc, rs):
         return react_struct
     return False
 
-
 def _get_ind_minima(chain):
     ind_minima = argrelextrema(chain.energies, np.less, order=1)[0]
     return ind_minima
 
-
-# -------
-
-# @author: alexchang
-
-
-
+def _get_ind_maxima(chain):
+    ind_minima = argrelextrema(chain.energies, np.greater, order=1)[0]
+    return ind_minima

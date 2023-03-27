@@ -29,7 +29,20 @@ from pathlib import Path
 
 
 # +
-nimages = 30
+def plot_chain(chain,linestyle='--',ax=None, marker='o',**kwds):
+    if ax:
+        ax.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
+    else:
+        plt.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
+
+        
+def plot_neb(neb,linestyle='--',marker='o',ax=None,**kwds):
+    plot_chain(chain=neb.chain_trajectory[-1],linestyle='-',marker=marker,ax=ax,**kwds)
+    plot_chain(chain=neb.initial_chain,linestyle='--',marker=marker,ax=ax,**kwds)
+
+
+# +
+nimages = 5
 np.random.seed(0)
 ks = .1
 
@@ -57,8 +70,8 @@ chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
 n_ref = NEB(initial_chain=chain_ref,parameters=nbi )
 n_ref.optimize_chain()
 
-gii = GIInputs(nimages=10)
-m = MSMEP(neb_inputs=nbi,chain_inputs=cni_ref, gi_inputs=gii)
+gii = GIInputs(nimages=5)
+m = MSMEP(neb_inputs=nbi,chain_inputs=cni_ref, gi_inputs=gii,split_method='maxima',recycle_chain=True)
 history, out_chain = m.find_mep_multistep(chain_ref)
 
 #### get energies for countourplot
@@ -69,31 +82,31 @@ min_val = -4
 max_val = 4
 x = np.linspace(start=min_val, stop=max_val, num=gridsize)
 y = x.reshape(-1, 1)
-h_flat = np.array([Node2D.en_func_arr(pair) for pair in product(x,x)])
-h = h_flat.reshape(gridsize,gridsize).T
 
 h_flat_ref = np.array([Node2D_Flower.en_func_arr(pair) for pair in product(x,x)])
 h_ref = h_flat_ref.reshape(gridsize,gridsize).T
+
+n_ref.optimized.plot_chain()
 
 # +
 fig = 8
 min_val = -5.3
 max_val = 5.3
 fs = 18
-
-f, ax = plt.subplots(figsize=(2.3 * fig, fig),ncols=2)
+f, ax = plt.subplots(figsize=(1.3 * fig, fig),ncols=1)
 # x = np.linspace(start=min_val, stop=max_val, num=1000)
 # y = x.reshape(-1, 1)
 
-cs = ax[0].contourf(x, x, h_ref, cmap="Greys",alpha=.8)
-_ = f.colorbar(cs,ax=ax[0])
+# cs = ax[0].contourf(x, x, h_ref, cmap="Greys",alpha=.8)
+cs = ax.contourf(x, x, h_ref,alpha=1)
+_ = f.colorbar(cs)
 
-plot_chain(n_ref.initial_chain,ax=ax[0], c='orange')
-plot_chain(n_ref.optimized,ax=ax[0], c='blue')
-# plot_chain(out_chain,ax=ax[0], c='red')
+plot_chain(n_ref.initial_chain, c='orange')
+plot_chain(n_ref.optimized, c='skyblue',linestyle='-')
+plot_chain(out_chain, c='red')
+plt.show()
 
-# plot_chain(out_chain,ax=ax[0],c='blue')
-# plot_chain(out_final,c='orange',ax=ax[0])
+
 # -
 
 # # Other Stuff
@@ -351,20 +364,6 @@ nbi = NEBInputs(tol=1, v=1, max_steps=200, climb=False, stopping_threshold=0)
 
 n = NEB(initial_chain=chain,parameters=nbi)
 n.optimize_chain()
-
-
-# +
-def plot_chain(chain,linestyle='--',ax=None, marker='o',**kwds):
-    if ax:
-        ax.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
-    else:
-        plt.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
-
-        
-def plot_neb(neb,linestyle='--',marker='o',ax=None,**kwds):
-    plot_chain(chain=neb.chain_trajectory[-1],linestyle='-',marker=marker,ax=ax,**kwds)
-    plot_chain(chain=neb.initial_chain,linestyle='--',marker=marker,ax=ax,**kwds)
-
 
 # +
 fig = 8

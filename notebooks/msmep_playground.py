@@ -7,7 +7,7 @@ from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Node2d import Node2D_Flower
 
-""
+
 import retropaths.helper_functions as hf
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.abinitio.tdstructure import TDStructure
@@ -36,10 +36,12 @@ import networkx as nx
 reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
-"""
-# 2D Potentials
-"""
 
+# -
+
+# """
+# # 2D Potentials
+# """
 
 # +
 def plot_node(node,linestyle='--',marker='o',ax=None,**kwds):
@@ -602,7 +604,7 @@ root.gum_mm_optimization()
 root
 
 # +
-c3d_list = root.get_changes_in_3d(reactions["Ugi-Reaction"])
+# c3d_list = root.get_changes_in_3d(reactions["Ugi-Reaction"])
 
 root = root.pseudoalign(c3d_list)
 root.gum_mm_optimization()
@@ -619,13 +621,10 @@ target_opt = target.xtb_geom_optimization()
 
 root_opt
 
-# +
-# reference_ugi = Trajectory.from_xyz("/home/jdep/neb_dynamics/example_cases/ugi/msmep_tol0.01_max_2000.xyz")
+reference_ugi = Trajectory.from_xyz("/home/jdep/neb_dynamics/example_cases/ugi/msmep_tol0.01_max_2000.xyz")
 
-# +
-# root_opt = reference_ugi[0]
-# target_opt = reference_ugi[-1]
-# -
+root_opt = reference_ugi[0]
+target_opt = reference_ugi[-1]
 
 gi = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=1,sweep=False)
 
@@ -640,7 +639,7 @@ plt.plot(gi_001.energies_xtb(), 'o-',label='friction=0.01')
 plt.legend()
 
 cni = ChainInputs(k=0.1,step_size=1)
-m = MSMEP(neb_inputs=nbi, recycle_chain=True, gi_inputs=gii)
+m = MSMEP(neb_inputs=nbi, recycle_chain=True, gi_inputs=gii,split_method='maxima')
 chain = Chain.from_traj(gi_001,cni)
 
 history, out_chain = m.find_mep_multistep(chain)
