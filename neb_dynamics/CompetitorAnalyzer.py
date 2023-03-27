@@ -14,6 +14,13 @@ class CompetitorAnalyzer:
 
     DLFIND_NAMES = ["dlfind", "dl-find"]
     PYGSM_NAMES = ["pygsm", "py-gsm"]
+    NEB_DYNAMICS_NAMES = [
+        "nebd",
+        "neb-d",
+        "nebdynamics",
+        "neb-dynamics",
+        "neb_dynamics",
+    ]
 
     def __post_init__(self):
         self.structures_dir = self.comparisons_dir / "structures"
@@ -27,26 +34,45 @@ class CompetitorAnalyzer:
 
         if self.method.lower() in self.DLFIND_NAMES:
             self.out_folder = self.comparisons_dir / "dlfind"
-            self.command = "source activate rp \nml TeraChem/2020.11-intel-2017.0.098-MPICH2-1.4.1p1-CUDA-9.0.176\nterachem input.in"
             self.input_file = self.inputs_dir / "dlfind_input.txt"
+            self.command = """
+source activate rp
+ml TeraChem/2020.11-intel-2017.0.098-MPICH2-1.4.1p1-CUDA-9.0.176
+terachem input.in
+"""
 
         elif self.method.lower() in self.PYGSM_NAMES:
             self.out_folder = self.comparisons_dir / "pygsm"
             self.input_file = self.inputs_dir / "pygsm_input.txt"
-            self.command = "source activate gsm_env \ngsm  -xyzfile initial_guess.xyz -mode DE_GSM -num_nodes 15 -package TeraChem -lot_inp_file input.in -interp_method Geodesic -coordinate_type DLC -CONV_TOL 0.001 -reactant_geom_fixed -product_geom_fixed > log 2>&1"
+            self.command = """
+ml TeraChem/2020.11-intel-2017.0.098-MPICH2-1.4.1p1-CUDA-9.0.176
+eval "$(conda shell.bash hook)"
+conda activate gsm_env
+/home/jdep/.conda/envs/gsm_env/bin/gsm  -xyzfile initial_guess.xyz -mode DE_GSM -num_nodes 15 -package TeraChem -lot_inp_file input.in -interp_method Geodesic -coordinate_type DLC -CONV_TOL 0.001 -reactant_geom_fixed -product_geom_fixed > log 2>&1
+            """
+
+        elif self.method.lower() in self.NEB_DYNAMICS_NAMES:
+            self.out_folder = self.comparisons_dir / "nebd"
+            self.input_file = self.inputs_dir / "nebd_input.txt"
+            self.command = """
+eval "$(conda shell.bash hook)"
+export OMP_NUM_THREADS=1
+conda activate rp
+create_neb_from_geodesic.py  -f initial_guess.xyz -c 0 -s 1 &> out.txt   
+            """
         else:
             raise ValueError(f"Invalid input method: {self.method}")
 
+    def create_all_files_and_folders(self):
+        for rn_path in self.reaction_initial_guesses_dirs:
+            self.create_directory_and_input_file(rn_path)
+
     def edit_submit_file(self, path):
         submit_path = path / "submit.sh"
-        f = open(submit_path)
-        data = f.read()
-        lines = data.splitlines()
 
-        if lines[-1] == "#endfile":
-            f2 = open(submit_path, "a+")
-            f2.write(self.command)
-            f2.close()
+        f = open(submit_path, "a+")
+        f.write(self.command)
+        f.close()
 
     def create_directory_and_input_file(self, path):
         rn = path.stem
@@ -86,5 +112,5 @@ class CompetitorAnalyzer:
         for fp in self.out_folder.iterdir():
             submit_file = fp / "submit.sh"
             with self.working_directory(fp):
-                subprocess.Popen(["sbatch", str(submit_file.resolve())])
+                subprocess.Popen(["sbatch", "submit.sh"])
                 time.sleep(0.1)

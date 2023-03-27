@@ -5,6 +5,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Chain import Chain
+from neb_dynamics.Inputs import ChainInputs, NEBInputs
 import numpy as np
 
 def read_single_arguments():
@@ -52,13 +53,15 @@ def main():
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
 
-    tol = 0.01
-    chain = Chain.from_traj(traj=traj, k=.1, delta_k=0.0, step_size=2, node_class=Node3D)
-    n = NEB(initial_chain=chain, grad_thre=tol, en_thre=tol/450, rms_grad_thre=tol*(2/3), climb=False, vv_force_thre=0, max_steps=10000)
+    tol = 0.001
+    cni = ChainInputs(k=0.01)
+    nbi = NEBInputs(tol=tol, v=True, max_steps=2000)
+    chain = Chain.from_traj(traj=traj, parameters=cni)
+    n = NEB(initial_chain=chain, parameters=nbi)
     try: 
         n.optimize_chain()
         data_dir = fp.parent
-        n.write_to_disk(data_dir/f"{fp.stem}_cneb.xyz")
+        n.write_to_disk(data_dir/f"{fp.stem}_neb.xyz")
     except NoneConvergedException as e:
         e.obj.write_to_disk(data_dir/f"{fp.stem}_failed.xyz")
         

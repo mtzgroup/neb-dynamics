@@ -7,7 +7,7 @@ from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Node2d import Node2D_Flower
 
-
+""
 import retropaths.helper_functions as hf
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.abinitio.tdstructure import TDStructure
@@ -33,54 +33,190 @@ from neb_dynamics.msmep_example import plot_2D, plot_func, plot_ethan, animate_f
 import matplotlib.pyplot as plt
 import networkx as nx
 
-# reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
-# HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
+HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
-# -
-# # 2D Potentials
+"""
+# 2D Potentials
+"""
 
+
+# +
+def plot_node(node,linestyle='--',marker='o',ax=None,**kwds):
+    plot_chain(chain=node.data.chain_trajectory[-1],linestyle=linestyle,marker=marker,ax=ax,**kwds)
+
+def plot_chain(chain,linestyle='--',ax=None, marker='o',**kwds):
+    if ax:
+        ax.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
+    else:
+        plt.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
+
+
+def plot_node2d(node,linestyle='--',marker='o',ax=None,start_point=0,end_point=1,
+                **kwds):
+    plot_chain2d(chain=node.data.chain_trajectory[-1],linestyle=linestyle,marker=marker,ax=ax,start_point=start_point,end_point=end_point,
+                 **kwds)
+
+def plot_chain2d(chain,linestyle='--',marker='o',ax=None,start_point=0,end_point=1,
+                 **kwds):
+    if ax:
+        ax.plot((chain.integrated_path_length*end_point)+start_point,chain.energies,linestyle=linestyle,marker=marker,**kwds)
+    else:
+        plt.plot((chain.integrated_path_length*end_point)+start_point,chain.energies,linestyle=linestyle,marker=marker,**kwds)
+
+
+""
+# +
 nimages = 10
 np.random.seed(0)
 
-# +
 start_point = [-2.59807434, -1.499999  ]
 end_point = [2.5980755 , 1.49999912]
 
 
 coords = np.linspace(start_point, end_point, nimages)
-coords[1:-1] += np.random.normal(scale=.1, size=coords[1:-1].shape)
+coords[1:-1] += [-1,1] # i.e. good initial guess
+# coords[1:-1] += [-.05,.05] # i.e. bad initial guess
+# coords[1:-1] -= np.random.normal(scale=.1, size=coords[1:-1].shape)
+# coords[1:-1] -= 0.1
+# coords[1:-1] -= 1
 # coords[1:-1] += np.random.normal(scale=.15)
 
-ks = .01
+ks = .1
 cni = ChainInputs(
     k=ks,
     node_class=Node2D_Flower,
     delta_k=0,
-    step_size=.5,
+    step_size=.3,
     do_parallel=False,
     use_geodesic_interpolation=False,
 )
 gii = GIInputs(nimages=nimages)
-nbi = NEBInputs(tol=.1, v=1, max_steps=1000, climb=False)
+nbi = NEBInputs(tol=.1, v=1, max_steps=500, climb=False, stopping_threshold=0)
 chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
+
+# +
+
+n = NEB(initial_chain=chain,parameters=nbi)
+n.optimize_chain()
+# -
+
+""
 m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
 h_root_node, out_chain = m.find_mep_multistep(input_chain=chain)
-# -
 
 h_root_node.draw()
 
-f = plot_ethan(out_chain)
-plt.plot(h_root_node.data.chain_trajectory[-1].coordinates[:,0],h_root_node.data.chain_trajectory[-1].coordinates[:,1],
-           c='white',linestyle='--',marker='o')
 
-# # Some BS
+""
+def plot_node_recursively(node, ax):
+    if node.is_leaf:
+        plot_chain(node.data.initial_chain, label=f'node{node.index} guess',linestyle='--', marker='x',ax=ax) 
+        plot_node(node, label=f'node{node.index} neb',linestyle='-',ax=ax)
+    else:
+        plot_chain(node.data.initial_chain, label=f'node{node.index} guess',linestyle='--', marker='x',ax=ax) 
+        plot_node(node, label=f'node{node.index} neb',linestyle='-',ax=ax)
+        [plot_node_recursively(child,ax=ax) for child in node.children]
+
+
+""
+opt_hists = [h_root_node.data.initial_chain.coordinates]
+for opt_hist in h_root_node.get_optimization_history():
+    chain_traj_matrix = np.array([c.coordinates for c in opt_hist.chain_trajectory])
+    opt_hists.extend(chain_traj_matrix)
+# [animate_func(obj) for obj in h_root_node.get_optimization_history()]
+output_matrix = np.array(opt_hists)
+print(output_matrix.shape)
+# np.savetxt(fname="msmep_traj_flat.txt",X=output_matrix.flatten())
+
+""
+# +
+fig = 8
+min_val = -5.3
+max_val = 5.3
+fs = 18
+
+f, ax = plt.subplots(figsize=(2.3 * fig, fig),ncols=2)
+x = np.linspace(start=min_val, stop=max_val, num=1000)
+y = x.reshape(-1, 1)
+
+h = Node2D_Flower.en_func_arr([x, y])
+cs = ax[0].contourf(x, x, h, cmap="Greys",alpha=.8)
+_ = f.colorbar(cs,ax=ax[0])
+
+# plot_chain(n.initial_chain,ax=ax[0], label='initial guess', linestyle='--')
+# plot_chain(n.chain_trajectory[-1],ax=ax[0], label='neb', linestyle='-')
+
+a = .1
+b = 1
+plot_node_recursively(h_root_node,ax=ax[0])
+
+plot_chain(chain, label='initial guess',marker='x',color='blue',ax=ax[0],alpha=a)
+plot_chain2d(chain, label='initial guess',marker='x',color='blue',ax=ax[1],alpha=a)
+
+plot_chain(h_root_node.data.chain_trajectory[-1], label='root neb', marker='o',linestyle='-',color='blue',ax=ax[0],alpha=a)
+plot_chain2d(h_root_node.data.chain_trajectory[-1], label='root neb', marker='o',linestyle='-',color='blue',ax=ax[1],alpha=a)
+
+plot_chain(h_root_node.children[0].data.initial_chain, c='red', label='foo1 guess',linestyle='--', marker='x',ax=ax[0],alpha=a) 
+plot_chain2d(h_root_node.children[0].data.initial_chain, c='red', label='foo1 guess',linestyle='--', marker='x',ax=ax[1],alpha=a,
+            end_point=.61) 
+
+plot_node(h_root_node.children[0], c='red', label='foo1 neb',ax=ax[0],linestyle='-',alpha=a) 
+plot_node2d(h_root_node.children[0], c='red', label='foo1 neb',ax=ax[1],linestyle='-',alpha=a,
+            end_point=.61) 
+
+
+
+plot_chain(h_root_node.ordered_leaves[0].data.initial_chain, c='green', label='leaf1 guess',linestyle='--', marker='x',ax=ax[0],alpha=a) 
+plot_chain2d(h_root_node.ordered_leaves[0].data.initial_chain, c='green', label='leaf1 guess',linestyle='--', marker='x',ax=ax[1],alpha=a,
+            end_point=.25) 
+
+
+plot_node(h_root_node.ordered_leaves[0], c='green', label='leaf1 neb',ax=ax[0],alpha=b) 
+plot_node2d(h_root_node.ordered_leaves[0], c='green', linestyle='-',label='leaf1 neb',ax=ax[1],end_point=.25,alpha=b) 
+
+plot_chain(h_root_node.ordered_leaves[1].data.initial_chain, c='purple', label='leaf2 guess',linestyle='--', marker='x',ax=ax[0],alpha=a) 
+plot_chain2d(h_root_node.ordered_leaves[1].data.initial_chain, c='purple', label='leaf2 guess',linestyle='--', marker='x',ax=ax[1],alpha=a,
+            start_point=.25,end_point=.36) 
+
+plot_node(h_root_node.ordered_leaves[1], c='purple', label='leaf2 guess',linestyle='-', marker='o',ax=ax[0],alpha=b) 
+plot_node2d(h_root_node.ordered_leaves[1], c='purple', label='leaf2 guess',linestyle='-', marker='o',ax=ax[1],alpha=b,
+           start_point=.25,end_point=.36) 
+
+plot_chain(h_root_node.ordered_leaves[2].data.initial_chain, c='darkorange', label='leaf2 guess',linestyle='--', marker='x',ax=ax[0],alpha=a) 
+plot_chain2d(h_root_node.ordered_leaves[2].data.initial_chain, c='darkorange', label='leaf2 guess',linestyle='--', marker='x',ax=ax[1],alpha=a,
+            start_point=.61, end_point=.4) 
+
+
+plot_node(h_root_node.ordered_leaves[2], c='darkorange', label='leaf2 guess',linestyle='-', marker='o',ax=ax[0],alpha=b) 
+plot_node2d(h_root_node.ordered_leaves[2], c='darkorange', label='leaf2 guess',linestyle='-', marker='o',ax=ax[1],alpha=b,
+           start_point=.61, end_point=.4) 
+
+# plot_node(h_root_node.ordered_leaves[2], c='orange', label='leaf3 neb') 
+
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+# legend = ax[0].legend(fontsize=fs, bbox_to_anchor=(1.70,1.03))
+# legend = ax[0].legend(fontsize=fs)
+
+# frame = legend.get_frame()
+# frame.set_color('gray')
+
+# plt.savefig("/home/jdep/T3D_data/msmep_draft/flower_potential.svg",format='svg',bbox_inches='tight')
+plt.tight_layout()
+plt.show()
+
+###############################################################################
+# #### Some BS
 
 c = Chain.from_xyz("/home/jdep/neb_dynamics/example_mep.xyz")
 
+""
 from scipy.signal import argrelextrema
 import numpy as np
 from retropaths.helper_functions import pairwise
 
+""
 # +
 n_waters = 0
 # smi = "[C]([H])([H])[H]"
@@ -95,14 +231,16 @@ smi_ref = "O"*n_waters
 # orig_smi = "[C]([H])([H])[H].[O-][H]"
 # orig_smi = "[C+](C)(C)C.[O-][H]"
 
-
+""
 mol = Molecule.from_smiles(smi)
 
+""
 # -
 
+""
 mol.draw(mode='d3',size=(700,700))
 
-# + endofcell="--"
+""
 ind=0
 
 single_list = [(1,2),(2,17), (17,16),(16,0)]
@@ -205,7 +343,6 @@ from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
-from neb_dynamics.HistoryTree import HistoryTree
 from neb_dynamics.TreeNode import TreeNode
 
 from retropaths.reactions.template import ReactionTemplate
@@ -263,7 +400,11 @@ start_chain = Chain.from_traj(tr,parameters=cni)
 
 m2 = MSMEP(neb_inputs=nbi, recycle_chain=True)
 
-history, out_chain = m2.find_mep_multistep(start_chain,do_alignment=False)
+history, out_chain = m2.find_mep_multistep(start_chain)
+
+history.draw()
+
+history.data.write_to_disk("/home/jdep/neb_dynamics/example_cases/wittig/wittig_root",write_history=True)
 
 # +
 # history2, out_chain2 = m.find_mep_multistep(start_chain,do_alignment=False)
@@ -458,31 +599,35 @@ gii = GIInputs(friction=.01, extra_kwds={'sweep':False})
 root = TDStructure.from_rxn_name("Ugi-Reaction",reactions)
 root.gum_mm_optimization()
 
+root
+
 # +
 c3d_list = root.get_changes_in_3d(reactions["Ugi-Reaction"])
 
 root = root.pseudoalign(c3d_list)
+root.gum_mm_optimization()
 # -
+
+root
 
 target = root.copy()
 target.apply_changed3d_list(c3d_list)
 target.gum_mm_optimization()
-
-root
 
 root_opt  = root.xtb_geom_optimization()
 target_opt = target.xtb_geom_optimization()
 
 root_opt
 
-reference_ugi = Trajectory.from_xyz("/home/jdep/neb_dynamics/example_cases/ugi/msmep_tol0.01_max_2000.xyz")
+# +
+# reference_ugi = Trajectory.from_xyz("/home/jdep/neb_dynamics/example_cases/ugi/msmep_tol0.01_max_2000.xyz")
 
-root_opt = reference_ugi[0]
-target_opt = reference_ugi[-1]
+# +
+# root_opt = reference_ugi[0]
+# target_opt = reference_ugi[-1]
+# -
 
 gi = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=1,sweep=False)
-
-gi.draw();
 
 gi_01 = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=.1,sweep=False)
 gi_001 = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=.01,sweep=False)
@@ -494,35 +639,15 @@ plt.plot(gi_01.energies_xtb(), 'o-',label='friction=0.1')
 plt.plot(gi_001.energies_xtb(), 'o-',label='friction=0.01')
 plt.legend()
 
-cni = ChainInputs(k=0.01,step_size=1)
-m = MSMEP(neb_inputs=nbi, recycle_chain=False, gi_inputs=gii)
+cni = ChainInputs(k=0.1,step_size=1)
+m = MSMEP(neb_inputs=nbi, recycle_chain=True, gi_inputs=gii)
 chain = Chain.from_traj(gi_001,cni)
 
+history, out_chain = m.find_mep_multistep(chain)
+
+out_chain.to_trajectory().draw();
+
 out_chain.plot_chain()
-
-out_chain.to_trajectory().draw();
-
-history, out_chain = m.find_mep_multistep(chain,do_alignment=False)
-
-from neb_dynamics.HistoryTree import HistoryTree
-
-ht = HistoryTree.from_history_list(history)
-
-from pathlib import Path
-
-
-def draw(self):
-    foo = self.adj_matrix - np.identity(len(self.adj_matrix))
-    g = nx.from_numpy_matrix(foo)
-    nx.draw_networkx(g)
-
-
-import networkx as nx
-draw(ht)
-
-type(ht)
-
-out_chain.to_trajectory().draw();
 
 out_chain.to_trajectory().write_trajectory(("/home/jdep/T3D_data/msmep_draft/ugi_tree_canonical/out_chain.xyz"))
 
@@ -533,14 +658,22 @@ ht.write_to_disk(Path("/home/jdep/T3D_data/msmep_draft/ugi_tree_canonical"))
 # t = Trajectory.from_xyz("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement-cNEB_v3/traj_0-0_0_cneb.xyz")
 t = Trajectory.from_xyz("/home/jdep/T3D_data/msmep_draft/claisen-0-0_with_conf_rearr.xyz")
 
+cni = ChainInputs(node_class=Node3D)
+nbi = NEBInputs(v=True)
+gi = Trajectory([start, p.xtb_geom_optimization()]).run_geodesic(nimages=30)
+c = Chain.from_traj(gi,cni)
+n = NEB(c,nbi)
+
+n.optimize_chain()
+
+n.optimized.plot_chain()
+
 start = t[0]
 p = t[15]
 pprime = t[-1]
 
 start.tc_model_basis = "gfn2xtb"
 start.tc_model_method = 'gfn2xtb'
-
-start
 
 p.tc_model_basis = "gfn2xtb"
 p.tc_model_method = 'gfn2xtb'
@@ -597,4 +730,5 @@ plt.ylabel("Energy (kcal/mol)",fontsize=fs)
 plt.xlabel("Integrated path length",fontsize=fs)
 plt.show()
 
+""
 

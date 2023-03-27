@@ -42,7 +42,7 @@ class ChainInputs:
 @dataclass
 class GIInputs:
     nimages: int = 15
-    friction: float = 0.1
+    friction: float = 0.01
     nudge: float = 0.001
     extra_kwds: dict = field(default_factory=dict)
     

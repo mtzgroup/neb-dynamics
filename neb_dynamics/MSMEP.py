@@ -31,20 +31,30 @@ class MSMEP:
         c3d_list = root.get_changes_in_3d(rxn)
 
         root = root.pseudoalign(c3d_list)
-        root = root.xtb_geom_optimization()
+        root.gum_mm_optimization()
+        root_opt = root.xtb_geom_optimization()
 
         target = root.copy()
         target.apply_changed3d_list(c3d_list)
-        target.mm_optimization("gaff", steps=5000)
-        target.mm_optimization("uff", steps=5000)
-        target = target.xtb_geom_optimization()
+        target.gum_mm_optimization()
+        target_opt = target.xtb_geom_optimization()
 
-        return root, target
+        if not root_opt.molecule_rp == root.molecule_rp:
+            raise ValueError(
+                "Pseudoaligned start molecule was not a minimum at this level of theory. Exiting."
+            )
+
+        if not root_opt.molecule_rp == root.molecule_rp:
+            raise ValueError(
+                "Product molecule was not a minimum at this level of theory. Exiting."
+            )
+
+        return root_opt, target_opt
 
     def find_mep_multistep(self, input_chain):
         root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
         # history = [root_neb_obj]
-        history = TreeNode(data=root_neb_obj,children=[])
+        history = TreeNode(data=root_neb_obj, children=[])
         if not chain:
             return None, None
         if self.is_elem_step(chain):
@@ -55,11 +65,13 @@ class MSMEP:
             for i, chain_frag in enumerate(sequence_of_chains):
                 print(f"On chain {i+1} of {len(sequence_of_chains)}...")
                 out_history, chain = self.find_mep_multistep(chain_frag)
-                if chain: # << TODO:!!!! i remove None's by this. think about this later...
+                if (
+                    chain
+                ):  # << TODO:!!!! i remove None's by this. think about this later...
                     elem_steps.append(chain)
                     history.children.append(out_history)
                 # history.append(out_history)
-            
+
             stitched_elem_steps = self.stitch_elem_steps(elem_steps)
             return (
                 history,
@@ -87,8 +99,8 @@ class MSMEP:
             start_point = chain[0].coords
             end_point = chain[-1].coords
             coords = np.linspace(start_point, end_point, self.gi_inputs.nimages)
-            coords[1:-1] += np.random.normal(scale=.05)
-            
+            coords[1:-1] += np.random.normal(scale=0.05)
+
             interpolation = Chain.from_list_of_coords(
                 list_of_coords=coords, parameters=self.chain_inputs
             )
@@ -99,12 +111,12 @@ class MSMEP:
         if input_chain[0].is_identical(input_chain[-1]):
             print("Endpoints are identical. Returning nothing")
             return None, None
-        
+
         if len(input_chain) < self.gi_inputs.nimages:
             interpolation = self._create_interpolation(input_chain)
         else:
             interpolation = input_chain
-        
+
         n = NEB(initial_chain=interpolation, parameters=self.neb_inputs)
         try:
             print("Running NEB calculation...")
@@ -119,12 +131,29 @@ class MSMEP:
 
         return n, out_chain
 
+    def _chain_is_concave(self, chain):
+        ind_minima = _get_ind_minima(chain)
+        return len(ind_minima) == 0
+
+    def _approx_irc(self, chain):
+        arg_max = np.argmax(chain.energies)
+        candidate_r = chain[arg_max - 1]
+        candidate_p = chain[arg_max + 1]
+        r = candidate_r.do_geometry_optimization()
+        p = candidate_p.do_geometry_optimization()
+        return r.is_identical(chain[0]) and p.is_identical(chain[-1])
+
     def is_elem_step(self, chain):
-        if len(chain) > 1:
-            ind_minima = _get_ind_minima(chain)
-            return len(ind_minima) == 0
-        else:
+        if len(chain) <= 1:
             return True
+
+        conditions = []
+        is_concave = self._chain_is_concave(chain)
+        conditions.append(is_concave)
+        if is_concave:  # i.e. we only have one maxima
+            minimizing_gives_endpoints = self._approx_irc(chain)
+            conditions.append(minimizing_gives_endpoints)
+        return all(conditions)
 
     def _make_chain_frag(self, chain: Chain, pair_of_inds):
         start, end = pair_of_inds

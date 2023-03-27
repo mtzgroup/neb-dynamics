@@ -50,7 +50,6 @@ from neb_dynamics.NEB import Chain
 # #         t = beta*t
 # #     return t
 def _attempt_step(chain: Chain, t):
-    
     # print(f'{grad=} // {t=}')
     
     new_chain_coordinates = (chain.coordinates - chain.gradients * t)
@@ -74,22 +73,18 @@ def _attempt_step(chain: Chain, t):
 def ArmijoLineSearch(chain: Chain, t, alpha, beta,grad):
     max_steps = 10
     count = 0
-
-    en_struct_prime, t =  _attempt_step(chain=chain, t=t)
     en_struct = np.linalg.norm(grad)
-    # en_struct = np.amax(grad)
-    # en_struct = np.sqrt(np.mean(np.square(grad)))
-    # en_struct = np.sum(chain.energies)
-    condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
-
+    t*= 1+beta
+    condition = True
     while condition and count < max_steps:
-        t *= beta
-        count += 1
+        try :
+            t *= beta
+            count += 1
 
-        en_struct_prime, t = _attempt_step(chain=chain, t=t)
-        condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
-
-    # print(f"\t\t\t{t=} {count=} || force0: {en_struct} || force1: {en_struct_prime}")
+            en_struct_prime, t = _attempt_step(chain=chain, t=t)
+            condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+        except:
+            t *= .01
     sys.stdout.flush()
     return t
 
