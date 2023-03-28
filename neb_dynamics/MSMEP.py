@@ -24,6 +24,7 @@ class MSMEP:
 
     recycle_chain: bool = False
     split_method: str = "minima"
+    root_early_stopping: bool = False
 
     def create_endpoints_from_rxn_name(self, rxn_name, reactions_object):
         rxn = reactions_object[rxn_name]
@@ -63,8 +64,11 @@ class MSMEP:
         else:
             sequence_of_chains = self.make_sequence_of_chains(chain)
             elem_steps = []
+            if self.root_early_stopping:
+                self.neb_inputs.stopping_threshold = 0
             for i, chain_frag in enumerate(sequence_of_chains):
                 print(f"On chain {i+1} of {len(sequence_of_chains)}...")
+
                 out_history, chain = self.find_mep_multistep(chain_frag)
                 if (
                     chain
@@ -137,8 +141,11 @@ class MSMEP:
         return len(ind_minima) == 0
     
 
-    def _approx_irc(self, chain):
-        arg_max = np.argmax(chain.energies)
+    def _approx_irc(self, chain, index=None):
+        if index is None:
+            arg_max = np.argmax(chain.energies)
+        else:
+            arg_max = index
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
         r = candidate_r.do_geometry_optimization()
@@ -181,7 +188,7 @@ class MSMEP:
 
     def make_sequence_of_chains(self, chain):
         if self.split_method == 'minima':
-        
+
             all_inds = [0]
             ind_minima = _get_ind_minima(chain)
             all_inds.extend(ind_minima)
@@ -197,7 +204,7 @@ class MSMEP:
                     chains.append(self._make_chain_pair(chain, ind_pair))
 
             return chains
-        
+
         elif self.split_method == 'maxima':
             all_inds = []
             ind_maxima = _get_ind_maxima(chain)
@@ -206,7 +213,7 @@ class MSMEP:
             chains = []
             for ind_maxima in all_inds:
                 if self.recycle_chain:
-                    r, p = self._approx_irc(chain)
+                    r, p = self._approx_irc(chain,index=ind_maxima)
                     if not chains:
                         # add the start point
                         nodes = [chain[0], r]
@@ -232,11 +239,13 @@ class MSMEP:
                     chain_frag.nodes = nodes
 
                     chains.append(chain_frag)
-            # add the end point
-            nodes = [p, chain[len(chain)-1]]
-            chain_frag = chain.copy()
-            chain_frag.nodes = nodes
-            chains.append(chain_frag)
+
+            if chains:
+                # add the end point
+                nodes = [p, chain[len(chain)-1]]
+                chain_frag = chain.copy()
+                chain_frag.nodes = nodes
+                chains.append(chain_frag)
 
             return chains
 
