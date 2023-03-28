@@ -13,6 +13,7 @@ class NEBInputs:
     grad_thre: float = None
     max_steps: float = 1000
     stopping_threshold: float = 0.0
+    node_freezing: bool = False
 
     vv_force_thre: float = 0.0
     v: bool = False
@@ -26,6 +27,8 @@ class NEBInputs:
 
         if self.grad_thre is None:
             self.grad_thre = self.tol
+            
+            
 
 
 @dataclass

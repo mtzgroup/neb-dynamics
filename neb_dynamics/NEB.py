@@ -220,8 +220,8 @@ class NEB:
             ]
         if self.parameters.v > 1:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
-
-        self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
+        if self.parameters.node_freezing:
+            self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
         # return len(converged_node_indices) == len(chain_new.nodes)
 
         return len(converged_nodes_indices) == len(chain_new)
