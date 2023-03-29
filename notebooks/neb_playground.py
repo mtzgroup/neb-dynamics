@@ -42,9 +42,9 @@ def plot_neb(neb,linestyle='--',marker='o',ax=None,**kwds):
 
 
 # +
-nimages = 5
+nimages = 15
 np.random.seed(0)
-ks = .1
+ks = .05
 
 
 start_point = [-2.59807434, -1.499999  ]
@@ -53,6 +53,7 @@ end_point = [2.5980755 , 1.49999912]
 
 coords = np.linspace(start_point, end_point, nimages)
 coords[1:-1] += [-1,1] # i.e. good initial guess
+# coords[1:-1] += [-.1,.1] # i.e. poor initial guess
 cni_ref = ChainInputs(
     k=ks,
     node_class=Node2D_Flower,
@@ -63,15 +64,38 @@ cni_ref = ChainInputs(
 )
 gii = GIInputs(nimages=nimages)
 # chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
-nbi = NEBInputs(tol=.1, v=1, max_steps=8000, climb=False, stopping_threshold=0)
+nbi = NEBInputs(tol=.1, v=1, max_steps=2000, climb=False, stopping_threshold=0)
 chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
+
+# +
+nimages = 45
+
+coords_long = np.linspace(start_point, end_point, nimages)
+coords_long[1:-1] += [-1,1] # i.e. good initial guess
+# coords[1:-1] += [-.1,.1] # i.e. poor initial guess
+cni_ref = ChainInputs(
+    k=ks,
+    node_class=Node2D_Flower,
+    delta_k=0,
+    step_size=.1,
+    do_parallel=False,
+    use_geodesic_interpolation=False,
+)
+gii = GIInputs(nimages=nimages)
+# chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
+nbi = NEBInputs(tol=.1, v=1, max_steps=2000, climb=False, stopping_threshold=0)
+chain_ref = Chain.from_list_of_coords(list_of_coords=coords_long, parameters=cni_ref)
 # -
+
+n_ref_long = NEB(initial_chain=chain_ref,parameters=nbi )
+n_ref_long.optimize_chain()
 
 n_ref = NEB(initial_chain=chain_ref,parameters=nbi )
 n_ref.optimize_chain()
 
-gii = GIInputs(nimages=5)
-m = MSMEP(neb_inputs=nbi,chain_inputs=cni_ref, gi_inputs=gii,split_method='maxima',recycle_chain=True)
+gii = GIInputs(nimages=15)
+nbi_msmep = NEBInputs(tol=.1, v=1, max_steps=2000, climb=False, stopping_threshold=5)
+m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni_ref, gi_inputs=gii,split_method='minima',recycle_chain=True, root_early_stopping=True)
 history, out_chain = m.find_mep_multistep(chain_ref)
 
 #### get energies for countourplot
@@ -85,8 +109,6 @@ y = x.reshape(-1, 1)
 
 h_flat_ref = np.array([Node2D_Flower.en_func_arr(pair) for pair in product(x,x)])
 h_ref = h_flat_ref.reshape(gridsize,gridsize).T
-
-n_ref.optimized.plot_chain()
 
 # +
 fig = 8
@@ -102,14 +124,40 @@ cs = ax.contourf(x, x, h_ref,alpha=1)
 _ = f.colorbar(cs)
 
 plot_chain(n_ref.initial_chain, c='orange')
+plot_chain(n_ref.chain_trajectory[-1], c='skyblue',linestyle='-')
+
 plot_chain(n_ref.optimized, c='skyblue',linestyle='-')
-plot_chain(out_chain, c='red')
+plot_chain(out_chain, c='red',marker='o',linestyle='-')
+# plot_chain(n_ref_long.optimized, c='yellow',linestyle='-')
+
+plt.show()
+
+# +
+n_steps_orig_neb = len(n_ref.chain_trajectory)
+n_steps_msmep = sum([len(obj.chain_trajectory) for obj in history.get_optimization_history()]) 
+n_steps_long_neb = len(n_ref_long.chain_trajectory)
+
+print(f'{n_steps_msmep=}')
+
+print(f'{n_steps_orig_neb=}')
+
+print(f'{n_steps_long_neb=}')
+# -
+
+fig = 8
+min_val = -5.3
+max_val = 5.3
+fs = 18
+plt.figure(figsize=(1.16*fig,fig))
+plt.bar(x=["AS-NEB","NEB","NEB(many nodes)"],
+       height=[n_steps_msmep, n_steps_orig_neb, n_steps_long_neb])
+plt.yticks(fontsize=fs)
+plt.ylabel("Number of optimization steps",fontsize=fs)
+plt.xticks(fontsize=fs)
 plt.show()
 
 
-# -
-
-# # Other Stuff
+# n_steps_msmepuff
 
 def get_distance(x1,y1,x2,y2):
     dist = np.linalg.norm([(x2-x1)  ,(y2 - y1)])

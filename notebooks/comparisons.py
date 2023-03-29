@@ -44,10 +44,10 @@ def plot_neb(neb,linestyle='--',marker='o',ax=None,**kwds):
 # # 2D potentials
 
 # +
-ind = 0
+ind = 1
 
 noises_bool = [
-    False,#True,
+    True,
     False
 
 ]
@@ -61,26 +61,26 @@ start_points = [
 ]
 
 end_points = [
-    [0,3],#[2.5980755 , 1.49999912],
+    [2.5980755 , 1.49999912],
     [2.99999996, 1.99999999]
 
 ]
 tols = [
     0.1,
-    .5,
+    .05,
 
 ]
 
 step_sizes = [
-    .1,
+    1,
     1
 
 ]
 
 
 k_values = [
-    .05,
-    1
+    1,#.05,
+    50
 
 ]
 
@@ -114,7 +114,7 @@ cni_ref = ChainInputs(
     use_geodesic_interpolation=False,
 )
 gii = GIInputs(nimages=nimages)
-nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, stopping_threshold=0)
+nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, stopping_threshold=0, node_freezing=False)
 chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
 # -
 
@@ -122,7 +122,7 @@ n_ref = NEB(initial_chain=chain_ref,parameters=nbi )
 n_ref.optimize_chain()
 
 gii = GIInputs(nimages=nimages)
-nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, stopping_threshold=3)
+nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, stopping_threshold=3, node_freezing=False)
 m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni_ref, gi_inputs=gii,split_method='minima',recycle_chain=True, root_early_stopping=True)
 history, out_chain = m.find_mep_multistep(chain_ref)
 
@@ -133,7 +133,7 @@ coords_long = np.linspace(start_point, end_point, nimages_long)
 if do_noise:
     coords_long[1:-1] += [-1,1] # i.e. good initial guess
 gii = GIInputs(nimages=nimages_long)
-nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, stopping_threshold=0)
+nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, stopping_threshold=0, node_freezing=False)
 chain_ref_long = Chain.from_list_of_coords(list_of_coords=coords_long, parameters=cni_ref)
 
 n_ref_long = NEB(initial_chain=chain_ref_long,parameters=nbi )
@@ -166,13 +166,15 @@ cs = ax.contourf(x, x, h_ref,alpha=1)
 _ = f.colorbar(cs)
 
 plot_chain(n_ref.initial_chain, c='orange',label='initial guess')
-plot_chain(n_ref.chain_trajectory[-1], c='skyblue',linestyle='-',label='neb(short)')
+plot_chain(n_ref.chain_trajectory[-1], c='skyblue',linestyle='-',label=f'neb({nimages} nodes)')
 plot_chain(out_chain, c='red',marker='o',linestyle='-',label='as-neb')
-plot_chain(n_ref_long.chain_trajectory[-1], c='yellow',linestyle='-',label='neb(long)')
-plt.legend()
+plot_chain(n_ref_long.chain_trajectory[-1], c='yellow',linestyle='-',label=f'neb({nimages_long} nodes)')
+plt.legend(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
 plt.show()
-# -
 
+# +
 n_steps_orig_neb = len(n_ref.chain_trajectory)
 n_steps_msmep = sum([len(obj.chain_trajectory) for obj in history.get_optimization_history()]) 
 n_steps_long_neb = len(n_ref_long.chain_trajectory)
@@ -182,12 +184,13 @@ min_val = -5.3
 max_val = 5.3
 fs = 18
 plt.figure(figsize=(1.16*fig,fig))
-plt.bar(x=["AS-NEB","NEB","NEB(many nodes)"],
+plt.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
        height=[n_steps_msmep, n_steps_orig_neb, n_steps_long_neb])
 plt.yticks(fontsize=fs)
 plt.ylabel("Number of optimization steps",fontsize=fs)
 plt.xticks(fontsize=fs)
 plt.show()
+# -
 
 import pandas as pd
 
