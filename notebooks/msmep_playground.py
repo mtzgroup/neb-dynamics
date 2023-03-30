@@ -15,7 +15,7 @@ from retropaths.molecules.molecule import Molecule
 
 from IPython.core.display import HTML
 
-
+import matplotlib.pyplot as plt
 from retropaths.reactions.changes import Changes3DList, Changes3D
 from retropaths.reactions.template import ReactionTemplate
 from retropaths.reactions.conditions import Conditions
@@ -32,16 +32,31 @@ import numpy as np
 from neb_dynamics.msmep_example import plot_2D, plot_func, plot_ethan, animate_func
 import matplotlib.pyplot as plt
 
+import warnings
+warnings.filterwarnings('ignore')
+from retropaths.molecules.molecule import Molecule
+from retropaths.reactions.changes import Changes3DList, Changes3D
+from retropaths.abinitio.tdstructure import TDStructure
+from retropaths.abinitio.trajectory import Trajectory
+
+
+from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.Chain import Chain
+from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Inputs import NEBInputs, ChainInputs
+from neb_dynamics.TreeNode import TreeNode
+
+from retropaths.reactions.template import ReactionTemplate
+from retropaths.reactions.conditions import Conditions
+from retropaths.reactions.rules import Rules
+
+
 import networkx as nx
 
 reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
-
-
 # -
-# """
-# # 2D Potentials
-# """
+
 
 # +
 def plot_node(node,linestyle='--',marker='o',ax=None,**kwds):
@@ -338,28 +353,123 @@ output = m.find_mep_multistep((root, target), do_alignment=False)
 
 # # Wittig
 
-# +
-from retropaths.molecules.molecule import Molecule
-from retropaths.reactions.changes import Changes3DList, Changes3D
-from retropaths.abinitio.tdstructure import TDStructure
-from retropaths.abinitio.trajectory import Trajectory
-
-
-from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.Chain import Chain
-from neb_dynamics.Node3D import Node3D
-from neb_dynamics.Inputs import NEBInputs, ChainInputs
-from neb_dynamics.TreeNode import TreeNode
-
-from retropaths.reactions.template import ReactionTemplate
-from retropaths.reactions.conditions import Conditions
-from retropaths.reactions.rules import Rules
+cni = ChainInputs()
+start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz", parameters=cni)
+# tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz")
 
 # +
-# history.write_to_disk(Path("/home/jdep/T3D_data/msmep_draft/reaction_trees/wittig_early_stopping"))
-# history = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/reaction_trees/wittig_early_stopping"))
+# history, out_chain = m.find_mep_multistep(start_chain)
 
 # +
+# cleanup_nebs = cleanup_nebs(start_chain, history, m)
+
+# +
+# cleanup_nebs[0].write_to_disk(Path("./cleanup_neb"),write_history=True)
+
+# +
+# clean_out_chain = Chain.from_list_of_chains([cleanup_nebs[0].optimized, history.output_chain], parameters=cni)
+
+# +
+# nbi = NEBInputs(v=True, stopping_threshold=0, tol=0.01)
+# tr_long = Trajectory([clean_out_chain[0].tdstructure, clean_out_chain[-1].tdstructure]).run_geodesic(nimages=len(clean_out_chain), sweep=False)
+# initial_chain_long = Chain.from_traj(tr_long,parameters=cni)
+
+# +
+# nbi = NEBInputs(v=True, stopping_threshold=0, tol=0.01, max_steps=4000)
+# neb_long = NEB(initial_chain_long,parameters=nbi)
+
+# +
+# neb_long.optimize_chain()
+
+# +
+# neb_long.write_to_disk(Path("./neb_long_45nodes"), write_history=True)
+
+# +
+# write_to_disk(history,Path("./wittig_early_stop/"))
+
+# +
+# history = TreeNode.read_from_disk(Path("./wittig_early_stop/"))
+
+# +
+# out_chain = history.output_chain
+
+# +
+# neb_long = NEB.read_from_disk(Path("./neb_long_unconverged"))
+
+# +
+# neb_long_continued = NEB.read_from_disk(Path("./neb_long_continuation"))
+# -
+
+neb_short = NEB.read_from_disk(Path("./neb_short"))
+
+neb_long = NEB.read_from_disk(Path("./neb_long_45nodes"))
+
+neb_cleanup = NEB.read_from_disk(Path("./cleanup_neb"))
+
+history = TreeNode.read_from_disk(Path("./wittig_early_stop/"))
+
+cni = ChainInputs()
+nbi = NEBInputs(v=True, stopping_threshold=3, tol=0.01)
+m  = MSMEP(neb_inputs=nbi, root_early_stopping=True)
+
+insertion_points = m._get_insertion_points_leaves(history.ordered_leaves,original_start=start_chain[0])
+
+insertion_points
+
+# +
+list_of_cleanup_nebs = [TreeNode(data=neb_cleanup, children=[])]
+new_leaves = history.ordered_leaves
+print('before:',len(new_leaves))
+for insertion_ind, neb_obj in zip(insertion_points, list_of_cleanup_nebs):
+    new_leaves.insert(insertion_ind, neb_obj)
+print('after:',len(new_leaves))
+
+new_chains = [leaf.data.optimized for leaf in new_leaves]
+clean_out_chain = Chain.from_list_of_chains(new_chains,parameters=start_chain.parameters)
+
+# +
+fig = 8
+min_val = -5.3
+max_val = 5.3
+fs = 18
+plt.figure(figsize=(1.618*fig,fig))
+
+# plt.plot(neb_long_continued.optimized.integrated_path_length, (neb_long_continued.optimized.energies-out_chain.energies[0])*627.5,'o-',label="NEB (30 nodes)")
+plt.plot(neb_long.optimized.integrated_path_length, (neb_long.optimized.energies-clean_out_chain.energies[0])*627.5,'o-',label="NEB (45 nodes)")
+plt.plot(neb_short.optimized.integrated_path_length, (neb_short.optimized.energies-clean_out_chain.energies[0])*627.5,'o-',label="NEB (15 nodes)")
+plt.plot(clean_out_chain.integrated_path_length, (clean_out_chain.energies-clean_out_chain.energies[0])*627.5,'o-',label="AS-NEB")
+plt.yticks(fontsize=fs)
+plt.ylabel("Energy (kcal/mol)",fontsize=fs)
+plt.legend(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.show()
+
+
+# +
+nimages= 15
+nimages_long = 45
+n_steps_orig_neb = len(neb_short.chain_trajectory)
+n_steps_msmep = sum([len(obj.chain_trajectory) for obj in history.get_optimization_history()])\
++ len(list_of_cleanup_nebs[0].data.chain_trajectory)
+# n_steps_long_neb = len(neb_long.chain_trajectory+neb_long_continued.chain_trajectory)
+n_steps_long_neb = len(neb_long.chain_trajectory)
+
+fig = 8
+min_val = -5.3
+max_val = 5.3
+fs = 18
+plt.figure(figsize=(1.16*fig,fig))
+plt.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
+       height=[n_steps_msmep, n_steps_orig_neb, n_steps_long_neb])
+plt.yticks(fontsize=fs)
+plt.ylabel("Number of optimization steps",fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.show()
+# -
+
+# ### Wittig Terachem
+
+# + endofcell="--"
 ind=0
 settings = [
 
@@ -380,7 +490,6 @@ settings = [
 
 mol, d, cg, deleting_list, forming_list = settings[ind]
 
-# + endofcell="--"
 conds = Conditions()
 rules = Rules()
 temp = ReactionTemplate.from_components(name='Wittig', reactants=mol, changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
@@ -392,256 +501,40 @@ root = TDStructure.from_RP(temp.reactants)
 root = root.pseudoalign(c3d_list)
 root.gum_mm_optimization()
 
-root.tc_model_basis = 'gfn2xtb'
-root.tc_model_method = 'gfn2xtb'
+root.tc_model_basis = '6-31gs'
+root.tc_model_method = 'b3lyp'
 
 root = root.xtb_geom_optimization()
-# root = root.tc_geom_optimization()
-# --
+root = root.tc_geom_optimization()
 
 target = root.copy()
 target.add_bonds(c3d_list.forming)
 target.delete_bonds(c3d_list.deleted)
 target.gum_mm_optimization()
 target = target.xtb_geom_optimization()
-# target = target.tc_geom_optimization()
+target = target.tc_geom_optimization()
 
-
-
-m  = MSMEP(neb_inputs=nbi, recycle_chain=True, root_early_stopping=True, split_method='maxima')
+tr = Trajectory([root, target]).run_geodesic(nimages=15, sweep=False)
+# --
 
 # +
-# tr = Trajectory([root, target]).run_geodesic(nimages=15, sweep=False)
-# start_chain = Chain.from_traj(tr,parameters=cni)
+# tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_b3lyp.xyz")
 # -
 
-cni = ChainInputs()
+# cni = ChainInputs()
+# start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_b3lyp.xyz", parameters=cni)
+
+
+cni = ChainInputs(node_class=Node3D_TC)
+# start_chain = Chain.from_traj(tr,parameters=cni)
+start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_b3lyp.xyz", parameters=cni)
+
 nbi = NEBInputs(v=True, stopping_threshold=3, tol=0.01)
-start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz", parameters=cni)
-# tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz")
+m  = MSMEP(neb_inputs=nbi, root_early_stopping=True, chain_inputs=cni, gi_inputs=GIInputs())
+
+
 
 history, out_chain = m.find_mep_multistep(start_chain)
-
-sum([len(obj.chain_trajectory) for obj in history.get_optimization_history()])
-
-out_chain.plot_chain()
-
-neb_long.chain_trajectory[-1].plot_chain()
-
-nbi = NEBInputs(v=True, stopping_threshold=0, tol=0.01)
-neb_long_continued = NEB(initial_chain=neb_long.chain_trajectory[-1],parameters=nbi)
-
-neb_long_continued.optimize_chain()
-
-nbi = NEBInputs(v=True, stopping_threshold=0, tol=0.01)
-neb_short = NEB(initial_chain=start_chain,parameters=nbi)
-
-neb_short.optimize_chain()
-
-neb_long_continued.write_to_disk(Path("./neb_long_continuation"),write_history=True)
-
-neb_short.write_to_disk(Path("./neb_short"),write_history=True)
-
-
-
-write_to_disk(history,Path("./wittig_early_stop/"))
-
-history = TreeNode.read_from_disk(Path("./wittig_early_stop/"))
-
-out_chain = history.output_chain
-
-neb_long = NEB.read_from_disk(Path("./neb_long_unconverged"))
-
-neb_long_continued = NEB.read_from_disk(Path("./neb_long_continuation"))
-
-neb_short = NEB.read_from_disk(Path("./neb_short"))
-
-
-
-# +
-fig = 8
-min_val = -5.3
-max_val = 5.3
-fs = 18
-plt.figure(figsize=(1.618*fig,fig))
-
-plt.plot(neb_long_continued.optimized.integrated_path_length, (neb_long_continued.optimized.energies-out_chain.energies[0])*627.5,'o-',label="NEB (30 nodes)")
-# plt.plot(neb_short.optimized.integrated_path_length, (neb_short.optimized.energies-out_chain.energies[0])*627.5,'o-',label="NEB (15 nodes)")
-plt.plot(out_chain.integrated_path_length, (out_chain.energies-out_chain.energies[0])*627.5,'o-',label="AS-NEB")
-plt.yticks(fontsize=fs)
-plt.ylabel("Energy (kcal/mol)",fontsize=fs)
-plt.legend(fontsize=fs)
-plt.xticks(fontsize=fs)
-plt.show()
-
-
-# +
-nimages= 15
-nimages_long = 30
-n_steps_orig_neb = len(neb_short.chain_trajectory)
-n_steps_msmep = sum([len(obj.chain_trajectory) for obj in history.get_optimization_history()]) 
-n_steps_long_neb = len(neb_long.chain_trajectory+neb_long_continued.chain_trajectory)
-
-fig = 8
-min_val = -5.3
-max_val = 5.3
-fs = 18
-plt.figure(figsize=(1.16*fig,fig))
-plt.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
-       height=[n_steps_msmep, n_steps_orig_neb, n_steps_long_neb])
-plt.yticks(fontsize=fs)
-plt.ylabel("Number of optimization steps",fontsize=fs)
-plt.xticks(fontsize=fs)
-plt.show()
-# -
-
-neb_long = NEB.read_from_disk(Path("./neb_long_unconverged"))
-
-len(neb_long.chain_trajectory)
-
-# +
-# tr_long = Trajectory([out_chain[0].tdstructure, out_chain[-1].tdstructure]).run_geodesic(nimages=len(out_chain), sweep=False)
-tr_long = Trajectory([root, target]).run_geodesic(nimages=len(out_chain), sweep=False)
-
-start_chain_long = Chain.from_traj(tr_long,parameters=cni)
-# -
-
-len(start_chain_long)
-
-
-def write_to_disk(obj, folder_name: Path):
-        
-        fname = folder_name / "adj_matrix.txt"
-        
-        
-        if not folder_name.exists():
-            folder_name.mkdir()
-
-        np.savetxt(fname=fname, X=obj.adj_matrix)
-        for node in obj.depth_first_ordered_nodes:
-            i = node.index
-            node.data.write_to_disk(
-                fp=folder_name / f"node_{i}.xyz", write_history=True
-            )
-
-write_to_disk(history, Path("./wittig_early_stop"))
-
-neb_long.write_to_disk(Path("./neb_long_unconverged"),write_history=True)
-
-# +
-nbi = NEBInputs(v=True, stopping_threshold=0, tol=0.01)
-neb_long = NEB(initial_chain=start_chain_long,parameters=nbi)
-
-neb_long.optimize_chain()
-# -
-
-neb_long.optimized.to_trajectory().draw();
-
-fig = 8
-min_val = -5.3
-max_val = 5.3
-fs = 18
-plt.figure(figsize=(1.16*fig,fig))
-plt.plot(out_chain.integrated_path_length, (out_chain.energies-out_chain.energies[0])*627.5,'o-', label='AS-NEB')
-plt.plot(neb_long.optimized.integrated_path_length, (neb_long.optimized.energies-out_chain.energies[0])*627.5,'o-',label='NEB')
-plt.ylabel("Energy (kcal/mol)",fontsize=fs)
-plt.yticks(fontsize=fs)
-plt.xticks(fontsize=fs)
-plt.xlabel("Integrated path length",fontsize=fs)
-plt.legend(fontsize=fs)
-plt.show()
-
-neb_long.optimized.plot_chain()
-
-neb_long.optimized.to_trajectory()
-
-history.data.write_to_disk("/home/jdep/neb_dynamics/example_cases/wittig/wittig_root",write_history=True)
-
-# +
-# history2, out_chain2 = m.find_mep_multistep(start_chain,do_alignment=False)
-# -
-
-ht = HistoryTree.from_history_list(history)
-
-
-# ? ht.write_to_disk
-
-def write_to_disk_neb(self, fp: Path, write_history=False):
-        out_traj = self.chain_trajectory[-1].to_trajectory()
-        out_traj.write_trajectory(fp)
-
-        if write_history:
-            out_folder = fp.resolve().parent / (fp.stem + "_history")
-            if not out_folder.exists():
-                out_folder.mkdir()
-
-            for i, chain in enumerate(self.chain_trajectory):
-                traj = chain.to_trajectory()
-                traj.write_trajectory(out_folder / f"traj_{i}.xyz")
-
-
-def write_to_disk_2(self, folder_name: Path):
-    if not folder_name.exists():
-        folder_name.mkdir()
-
-    for i, node in enumerate(self.depth_first_ordered_nodes):
-        write_to_disk_neb(node.data,
-            fp=folder_name / f"node_{i}.xyz", write_history=True
-        )
-
-    np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
-
-
-ht.root.children[1].data.optimized.plot_chain()
-
-write_to_disk_2(ht, fn)
-
-out_chain.plot_chain()
-
-ht.root.data.optimized.plot_chain()
-
-ht.write_to_disk(folder_name=Path("/home/jdep/T3D_data/msmep_draft/history_tree"))
-
-
-
-write_to_disk(ht.root.data, fp=Path("/home/jdep/T3D_data/msmep_draft/history_tree_root_neb.xyz"), write_history=True)
-
-
-
-fp = Path("./hey.xyz")
-
-fp.resolve().parent
-
-ht = HistoryTree.from_history_list(history)
-
-ht2 = HistoryTree.from_history_list(history2)
-
-plot_opt_history(ht.root.children[1].data)
-
-
-def plot_opt_history(obj: NEB):
-    
-    s = 8
-    fs = 18
-    f, ax = plt.subplots(figsize=(1.16 * s, s))
-    
-    
-    for i, chain in enumerate(obj.chain_trajectory):
-        if i == len(obj.chain_trajectory)-1:
-            plt.plot(chain.integrated_path_length, chain.energies, 'o-',alpha=1)
-        else:
-            plt.plot(chain.integrated_path_length, chain.energies, 'o-',alpha=.1,color='gray')
-            
-    
-    plt.xlabel("Integrated path length", fontsize=fs)
-            
-    plt.ylabel("Energy (kcal/mol)", fontsize=fs)
-    plt.xticks(fontsize=fs)
-    plt.yticks(fontsize=fs)
-    plt.show()
-
-
-plot_opt_history(history2[0])
 
 # # Knoevenangel Condensation
 
@@ -889,7 +782,10 @@ pprime_opt = pprime.xtb_geom_optimization()
 cni = ChainInputs(node_class=Node3D_TC)
 nbi = NEBInputs(v=True)
 
+# +
+
 m = MSMEP(neb_inputs=nbi,recycle_chain=False)
+# -
 
 # %%time
 c = Chain([Node3D(start),Node3D(end)],parameters=cni)

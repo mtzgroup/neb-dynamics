@@ -9,6 +9,9 @@ from retropaths.abinitio.tdstructure import TDStructure
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
+from neb_dynamics.helper_functions import RMSD
+RMSD_CUTOFF = 0.1
+KCAL_MOL_CUTOFF = 0.1
 
 
 @dataclass
@@ -132,7 +135,30 @@ class Node3D_TC(Node):
         td_opt = self.tdstructure.tc_geom_optimization()
         return Node3D_TC(tdstructure=td_opt)
     
-    def is_identical(self, other) -> bool:
-        return self.tdstructure.molecule_rp.is_bond_isomorphic_to(
+    def _is_connectivity_identical(self, other) -> bool:
+        connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
             other.tdstructure.molecule_rp
         )
+        return connectivity_identical
+    
+    def _is_conformer_identical(self, other) -> bool:
+        aligned_self = self.tdstructure.align_to_td(other.tdstructure)
+        rmsd_identical = RMSD(aligned_self.coords, other.tdstructure.coords)[0] < RMSD_CUTOFF
+        energies_identical = np.abs((self.energy - other.energy)*627.5) < KCAL_MOL_CUTOFF
+        if rmsd_identical and energies_identical:
+            conformer_identical = True
+        
+        if not rmsd_identical and energies_identical:
+            # going to assume this is a permutation issue. To address later
+            conformer_identical = True
+        
+        if not rmsd_identical and not energies_identical:
+            conformer_identical = False
+
+        return conformer_identical
+
+    def is_identical(self, other) -> bool:
+
+        return self._is_connectivity_identical(other)
+        # return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
+        

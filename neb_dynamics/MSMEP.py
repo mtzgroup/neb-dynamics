@@ -14,16 +14,14 @@ from neb_dynamics.TreeNode import TreeNode
 @dataclass
 class MSMEP:
 
-    neb_inputs: NEBInputs = NEBInputs()
-    chain_inputs: ChainInputs = ChainInputs()
-    gi_inputs: GIInputs = GIInputs()
+    neb_inputs: NEBInputs
+    chain_inputs: ChainInputs 
+    gi_inputs: GIInputs 
 
     # electronic structure params
     charge: int = 0
     spinmult: int = 1
 
-    recycle_chain: bool = False
-    split_method: str = "minima"
     root_early_stopping: bool = False
 
     def create_endpoints_from_rxn_name(self, rxn_name, reactions_object):
@@ -54,15 +52,20 @@ class MSMEP:
         return root_opt, target_opt
 
     def find_mep_multistep(self, input_chain):
-        root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
-        # history = [root_neb_obj]
-        history = TreeNode(data=root_neb_obj, children=[])
-        if not chain:
+        if input_chain[0].is_identical(input_chain[-1]):
+            print("Endpoints are identical. Returning nothing")
             return None, None
-        if self.is_elem_step(chain):
+        
+        root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
+        history = TreeNode(data=root_neb_obj, children=[])
+        
+        elem_step, split_method = self.is_elem_step(chain)
+        
+        if elem_step:
             return history, chain
+       
         else:
-            sequence_of_chains = self.make_sequence_of_chains(chain)
+            sequence_of_chains = self.make_sequence_of_chains(chain,split_method)
             elem_steps = []
             if self.root_early_stopping:
                 self.neb_inputs.stopping_threshold = 0
@@ -70,18 +73,12 @@ class MSMEP:
                 print(f"On chain {i+1} of {len(sequence_of_chains)}...")
 
                 out_history, chain = self.find_mep_multistep(chain_frag)
-                if (
-                    chain
-                ):  # << TODO:!!!! i remove None's by this. think about this later...
+                if chain:
                     elem_steps.append(chain)
                     history.children.append(out_history)
-                # history.append(out_history)
 
             stitched_elem_steps = self.stitch_elem_steps(elem_steps)
-            return (
-                history,
-                stitched_elem_steps,
-            )  # the first 'None' will hold the DataTree that holds all NEB objects
+            return history, stitched_elem_steps
 
     def _create_interpolation(self, chain: Chain):
 
@@ -113,10 +110,7 @@ class MSMEP:
         return interpolation
 
     def get_neb_chain(self, input_chain: Chain):
-        if input_chain[0].is_identical(input_chain[-1]):
-            print("Endpoints are identical. Returning nothing")
-            return None, None
-
+        
         if len(input_chain) < self.gi_inputs.nimages:
             interpolation = self._create_interpolation(input_chain)
         else:
@@ -146,6 +140,10 @@ class MSMEP:
             arg_max = np.argmax(chain.energies)
         else:
             arg_max = index
+            
+        if arg_max == len(chain)-1: # monotonically increasing function, 
+            return chain[0], chain[-1]
+
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
         r = candidate_r.do_geometry_optimization()
@@ -156,14 +154,27 @@ class MSMEP:
         if len(chain) <= 1:
             return True
 
-        conditions = []
+        conditions = {}
         is_concave = self._chain_is_concave(chain)
-        conditions.append(is_concave)
-        if is_concave:  # i.e. we only have one maxima
-            r,p = self._approx_irc(chain)
-            minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
-            conditions.append(minimizing_gives_endpoints)
-        return all(conditions)
+        conditions['concavity'] = is_concave
+
+        r,p = self._approx_irc(chain)
+        minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
+        conditions['irc'] = minimizing_gives_endpoints
+
+        split_method = self._select_split_method(conditions)
+        elem_step = True if split_method is None else False
+        return elem_step, split_method
+
+    def _select_split_method(self, conditions: dict):
+        all_conditions_met = all([val for key,val in conditions.items()])
+        if all_conditions_met: 
+            return None
+
+        if conditions['irc'] is False:
+            return 'maxima'
+        elif conditions['concavity'] is False:
+            return 'minima'
 
     def _make_chain_frag(self, chain: Chain, pair_of_inds):
         start, end = pair_of_inds
@@ -186,68 +197,56 @@ class MSMEP:
 
         return chain_frag
 
-    def make_sequence_of_chains(self, chain):
-        if self.split_method == 'minima':
 
-            all_inds = [0]
-            ind_minima = _get_ind_minima(chain)
-            all_inds.extend(ind_minima)
-            all_inds.append(len(chain) - 1)
+    def _do_minima_based_split(self, chain):
+        all_inds = [0]
+        ind_minima = _get_ind_minima(chain)
+        all_inds.extend(ind_minima)
+        all_inds.append(len(chain) - 1)
 
-            pairs_inds = list(pairwise(all_inds))
+        pairs_inds = list(pairwise(all_inds))
 
-            chains = []
-            for ind_pair in pairs_inds:
-                if self.recycle_chain:
-                    chains.append(self._make_chain_frag(chain, ind_pair))
-                else:
-                    chains.append(self._make_chain_pair(chain, ind_pair))
+        chains = []
+        for ind_pair in pairs_inds:
+            chains.append(self._make_chain_frag(chain, ind_pair))
 
-            return chains
+        return chains
 
-        elif self.split_method == 'maxima':
-            all_inds = []
-            ind_maxima = _get_ind_maxima(chain)
-            all_inds.extend(ind_maxima)
+    def _do_maxima_based_split(self, chain, chains_list):
+        all_inds = []
+        ind_maxima = _get_ind_maxima(chain)
+        all_inds.extend(ind_maxima)
 
-            chains = []
-            for ind_maxima in all_inds:
-                if self.recycle_chain:
-                    r, p = self._approx_irc(chain,index=ind_maxima)
-                    if not chains:
-                        # add the start point
-                        nodes = [chain[0], r]
-                        chain_frag = chain.copy()
-                        chain_frag.nodes = nodes
-                        chains.append(chain_frag)
-
-                    nodes = [r, chain[ind_maxima], p]
-                    chain_frag = chain.copy()
-                    chain_frag.nodes = nodes
-                    chains.append(chain_frag)
-                else:
-                    r, p = self._approx_irc(chain)
-                    if not chains:
-                        # add the start point
-                        nodes = [chain[0], r]
-                        chain_frag = chain.copy()
-                        chain_frag.nodes = nodes
-                        chains.append(chain_frag)
-
-                    nodes = [r, p]
-                    chain_frag = chain.copy()
-                    chain_frag.nodes = nodes
-
-                    chains.append(chain_frag)
-
-            if chains:
-                # add the end point
-                nodes = [p, chain[len(chain)-1]]
+        for ind_maxima in all_inds:
+            r, p = self._approx_irc(chain, index=ind_maxima)
+            if not chains_list:
+                # add the start point
+                nodes = [chain[0], r]
                 chain_frag = chain.copy()
                 chain_frag.nodes = nodes
-                chains.append(chain_frag)
+                chains_list.append(chain_frag)
 
-            return chains
+            nodes = [r, chain[ind_maxima], p]
+            chain_frag = chain.copy()
+            chain_frag.nodes = nodes
+            chains_list.append(chain_frag)
+
+        # add the end point
+        nodes = [p, chain[len(chain)-1]]
+        chain_frag = chain.copy()
+        chain_frag.nodes = nodes
+        chains_list.append(chain_frag)
+        return chains_list
+
+    def make_sequence_of_chains(self, chain, split_method):
+        chains_list = []
+        if split_method == 'minima':
+            chains = self._do_minima_based_split(chain, chains_list)
+
+        elif split_method == 'maxima':
+            chains = self._do_maxima_based_split(chain, chains_list)
+
+        return chains
 
 
     def stitch_elem_steps(self, list_of_chains):
@@ -255,3 +254,43 @@ class MSMEP:
         return Chain.from_list_of_chains(
             out_list_of_chains, parameters=self.chain_inputs
         )
+        
+
+        
+    def cleanup_nebs(self, starting_chain, history_obj):
+        leaves = history_obj.ordered_leaves
+        cleanup_results = []
+        original_start = starting_chain[0]
+        insertion_indices = self._get_insertion_points_leaves(leaves=leaves,original_start=original_start)
+        for index in insertion_indices:
+            if index == 0:
+                prev_end = original_start
+            else:
+                prev_end = leaves[index-1].data.optimized[-1]
+
+            curr_start = leaves[index].data.optimized
+            chain_pair = Chain(nodes=[prev_end, curr_start], parameters=starting_chain.parameters)
+            neb_obj, _ = self.get_neb_chain(chain_pair)
+            cleanup_results.append(neb_obj)
+
+        return cleanup_results
+    
+    def _get_insertion_points_leaves(self, leaves, original_start):
+        """
+        returns a list of indices 
+        """
+        insertion_indices = []
+        for i, leaf in enumerate(leaves):
+            if i == 0:
+                prev_end = original_start
+            else:
+                prev_end = leaves[i-1].data.optimized[-1]
+            
+            leaf_chain = leaf.data.optimized
+            curr_start = leaf_chain[0]
+            if not prev_end._is_conformer_identical(curr_start):
+                insertion_indices.append(i)
+        return insertion_indices
+
+
+

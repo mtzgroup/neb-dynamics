@@ -3,7 +3,6 @@ from neb_dynamics.NEB import NEB
 from pathlib import Path
 import numpy as np
 import networkx as nx
-import matplotlib.pyplot as plt
 from neb_dynamics.Chain import Chain
 
 @dataclass
@@ -78,12 +77,11 @@ class TreeNode:
         return nodes_to_iter_through        
 
     def write_to_disk(self, folder_name: Path):
-        
-        np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
-        
         if not folder_name.exists():
             folder_name.mkdir()
 
+        np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
+        
         for node in self.depth_first_ordered_nodes():
             i = node.index
             node.data.write_to_disk(
