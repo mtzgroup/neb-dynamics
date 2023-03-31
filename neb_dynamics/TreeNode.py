@@ -82,7 +82,7 @@ class TreeNode:
 
         np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
         
-        for node in self.depth_first_ordered_nodes():
+        for node in self.depth_first_ordered_nodes:
             i = node.index
             node.data.write_to_disk(
                 fp=folder_name / f"node_{i}.xyz", write_history=True
