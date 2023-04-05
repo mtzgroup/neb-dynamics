@@ -335,30 +335,64 @@ class NEB:
                 traj = chain.to_trajectory()
                 traj.write_trajectory(out_folder / f"traj_{i}.xyz")
 
-    def plot_opt_history(self):
+    def plot_opt_history(self, do_3d=False):
 
         s = 8
         fs = 18
-        f, ax = plt.subplots(figsize=(1.16 * s, s))
+        
+        if do_3d:
+            all_chains = self.chain_trajectory
 
-        for i, chain in enumerate(self.chain_trajectory):
-            if i == len(self.chain_trajectory) - 1:
-                plt.plot(chain.integrated_path_length, chain.energies, "o-", alpha=1)
-            else:
-                plt.plot(
-                    chain.integrated_path_length,
-                    chain.energies,
-                    "o-",
-                    alpha=0.1,
-                    color="gray",
-                )
 
-        plt.xlabel("Integrated path length", fontsize=fs)
+            ens = np.array([c.energies for c in all_chains])
+            all_integrated_path_lengths = np.array([c.integrated_path_length for c in all_chains])
+            opt_step = np.array(list(range(len(all_chains))))
+            ax = plt.figure().add_subplot(projection='3d')
 
-        plt.ylabel("Energy (kcal/mol)", fontsize=fs)
-        plt.xticks(fontsize=fs)
-        plt.yticks(fontsize=fs)
-        plt.show()
+            # Plot a sin curve using the x and y axes.
+            x = opt_step
+            ys = all_integrated_path_lengths
+            zs = ens
+            for i, (xind, y) in enumerate(zip(x, ys)):
+                if i < len(ys) -1:
+                    ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='gray',markersize=3,alpha=.1)
+                else:
+                    ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='blue',markersize=3)
+            ax.grid(False)
+
+            ax.set_xlabel('optimization step')
+            ax.set_ylabel('integrated path length')
+            ax.set_zlabel('energy (hartrees)')
+
+            # Customize the view angle so it's easier to see that the scatter points lie
+            # on the plane y=0
+            ax.view_init(elev=20., azim=-45, roll=0)
+            plt.tight_layout()
+            plt.show()
+        
+        else:
+            f, ax = plt.subplots(figsize=(1.16 * s, s))
+
+            
+            for i, chain in enumerate(self.chain_trajectory):
+                if i == len(self.chain_trajectory) - 1:
+                    plt.plot(chain.integrated_path_length, chain.energies, "o-", alpha=1)
+                else:
+                    plt.plot(
+                        chain.integrated_path_length,
+                        chain.energies,
+                        "o-",
+                        alpha=0.1,
+                        color="gray",
+                    )
+
+            plt.xlabel("Integrated path length", fontsize=fs)
+
+            plt.ylabel("Energy (kcal/mol)", fontsize=fs)
+            plt.xticks(fontsize=fs)
+            plt.yticks(fontsize=fs)
+            plt.show()
+
 
     def read_from_disk(fp: Path, history_folder: Path = None):
         if history_folder is None:

@@ -35,8 +35,8 @@ def _get_ind_minima(chain):
 
 
 def _get_ind_maxima(chain):
-    ind_minima = argrelextrema(chain.energies, np.greater, order=1)[0]
-    return ind_minima
+    ind_maxima = argrelextrema(chain.energies, np.greater, order=1)[0]
+    return ind_maxima
 
 
 def RMSD(structure, reference):

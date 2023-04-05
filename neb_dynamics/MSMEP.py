@@ -141,7 +141,7 @@ class MSMEP:
         else:
             arg_max = index
             
-        if arg_max == len(chain)-1: # monotonically increasing function, 
+        if arg_max == len(chain)-1 or arg_max == 0: # monotonically changing function, 
             return chain[0], chain[-1]
 
         candidate_r = chain[arg_max - 1]
@@ -198,7 +198,7 @@ class MSMEP:
         return chain_frag
 
 
-    def _do_minima_based_split(self, chain):
+    def _do_minima_based_split(self, chain, chains_list):
         all_inds = [0]
         ind_minima = _get_ind_minima(chain)
         all_inds.extend(ind_minima)
@@ -217,26 +217,30 @@ class MSMEP:
         ind_maxima = _get_ind_maxima(chain)
         all_inds.extend(ind_maxima)
 
-        for ind_maxima in all_inds:
-            r, p = self._approx_irc(chain, index=ind_maxima)
-            if not chains_list:
-                # add the start point
-                nodes = [chain[0], r]
+        if all_inds:
+            for ind_maxima in all_inds:
+                r, p = self._approx_irc(chain, index=ind_maxima)
+                if not chains_list:
+                    # add the start point
+                    nodes = [chain[0], r]
+                    chain_frag = chain.copy()
+                    chain_frag.nodes = nodes
+                    chains_list.append(chain_frag)
+
+                nodes = [r, chain[ind_maxima], p]
                 chain_frag = chain.copy()
                 chain_frag.nodes = nodes
                 chains_list.append(chain_frag)
 
-            nodes = [r, chain[ind_maxima], p]
+            # add the end point
+            nodes = [p, chain[len(chain)-1]]
             chain_frag = chain.copy()
             chain_frag.nodes = nodes
             chains_list.append(chain_frag)
-
-        # add the end point
-        nodes = [p, chain[len(chain)-1]]
-        chain_frag = chain.copy()
-        chain_frag.nodes = nodes
-        chains_list.append(chain_frag)
-        return chains_list
+            return chains_list
+        else:
+            print("There were no maxima found for some reason?")
+            print(f"{ind_maxima=}\n{chain.energies=}")
 
     def make_sequence_of_chains(self, chain, split_method):
         chains_list = []
