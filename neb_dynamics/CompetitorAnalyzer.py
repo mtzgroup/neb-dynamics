@@ -22,6 +22,14 @@ class CompetitorAnalyzer:
         "neb_dynamics",
     ]
 
+    ASNEB_NAMES = [
+        "as-neb",
+        'asneb',
+        'msmep',
+        'autosplitneb',
+        'autosplittingneb'
+    ]
+
     def __post_init__(self):
         self.structures_dir = self.comparisons_dir / "structures"
         self.inputs_dir = self.comparisons_dir / "input_files"
@@ -59,6 +67,16 @@ eval "$(conda shell.bash hook)"
 export OMP_NUM_THREADS=1
 conda activate rp
 create_neb_from_geodesic.py  -f initial_guess.xyz -c 0 -s 1 &> out.txt   
+            """
+
+        elif self.method.lower() in self.ASNEB_NAMES:
+            self.out_folder = self.comparisons_dir / "asneb"
+            self.input_file = self.inputs_dir / "nebd_input.txt"
+            self.command = """
+eval "$(conda shell.bash hook)"
+export OMP_NUM_THREADS=1
+conda activate rp
+create_msmep_from_geodesic.py -f ./initial_guess_tc_xtb.xyz  -c 0 -s 1 &> out.txt
             """
         else:
             raise ValueError(f"Invalid input method: {self.method}")

@@ -22,8 +22,6 @@ class MSMEP:
     charge: int = 0
     spinmult: int = 1
 
-    root_early_stopping: bool = False
-
     def create_endpoints_from_rxn_name(self, rxn_name, reactions_object):
         rxn = reactions_object[rxn_name]
         root = TDStructure.from_rxn_name(rxn_name, reactions_object)
@@ -59,7 +57,7 @@ class MSMEP:
         root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
         history = TreeNode(data=root_neb_obj, children=[])
         
-        elem_step, split_method = self.is_elem_step(chain)
+        elem_step, split_method = chain.is_elem_step()
         
         if elem_step:
             return history, chain
@@ -67,8 +65,7 @@ class MSMEP:
         else:
             sequence_of_chains = self.make_sequence_of_chains(chain,split_method)
             elem_steps = []
-            if self.root_early_stopping:
-                self.neb_inputs.stopping_threshold = 0
+
             for i, chain_frag in enumerate(sequence_of_chains):
                 print(f"On chain {i+1} of {len(sequence_of_chains)}...")
 
@@ -130,51 +127,51 @@ class MSMEP:
 
         return n, out_chain
 
-    def _chain_is_concave(self, chain):
-        ind_minima = _get_ind_minima(chain)
-        return len(ind_minima) == 0
+    # def _chain_is_concave(self, chain):
+    #     ind_minima = _get_ind_minima(chain)
+    #     return len(ind_minima) == 0
     
 
-    def _approx_irc(self, chain, index=None):
-        if index is None:
-            arg_max = np.argmax(chain.energies)
-        else:
-            arg_max = index
+    # def _approx_irc(self, chain, index=None):
+    #     if index is None:
+    #         arg_max = np.argmax(chain.energies)
+    #     else:
+    #         arg_max = index
             
-        if arg_max == len(chain)-1 or arg_max == 0: # monotonically changing function, 
-            return chain[0], chain[-1]
+    #     if arg_max == len(chain)-1 or arg_max == 0: # monotonically changing function, 
+    #         return chain[0], chain[-1]
 
-        candidate_r = chain[arg_max - 1]
-        candidate_p = chain[arg_max + 1]
-        r = candidate_r.do_geometry_optimization()
-        p = candidate_p.do_geometry_optimization()
-        return r, p
+    #     candidate_r = chain[arg_max - 1]
+    #     candidate_p = chain[arg_max + 1]
+    #     r = candidate_r.do_geometry_optimization()
+    #     p = candidate_p.do_geometry_optimization()
+    #     return r, p
 
-    def is_elem_step(self, chain):
-        if len(chain) <= 1:
-            return True
+    # def is_elem_step(self, chain):
+    #     if len(chain) <= 1:
+    #         return True
 
-        conditions = {}
-        is_concave = self._chain_is_concave(chain)
-        conditions['concavity'] = is_concave
+    #     conditions = {}
+    #     is_concave = self._chain_is_concave(chain)
+    #     conditions['concavity'] = is_concave
 
-        r,p = self._approx_irc(chain)
-        minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
-        conditions['irc'] = minimizing_gives_endpoints
+    #     r,p = self._approx_irc(chain)
+    #     minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
+    #     conditions['irc'] = minimizing_gives_endpoints
 
-        split_method = self._select_split_method(conditions)
-        elem_step = True if split_method is None else False
-        return elem_step, split_method
+    #     split_method = self._select_split_method(conditions)
+    #     elem_step = True if split_method is None else False
+    #     return elem_step, split_method
 
-    def _select_split_method(self, conditions: dict):
-        all_conditions_met = all([val for key,val in conditions.items()])
-        if all_conditions_met: 
-            return None
+    # def _select_split_method(self, conditions: dict):
+    #     all_conditions_met = all([val for key,val in conditions.items()])
+    #     if all_conditions_met: 
+    #         return None
 
-        if conditions['irc'] is False:
-            return 'maxima'
-        elif conditions['concavity'] is False:
-            return 'minima'
+    #     if conditions['irc'] is False:
+    #         return 'maxima'
+    #     elif conditions['concavity'] is False:
+    #         return 'minima'
 
     def _make_chain_frag(self, chain: Chain, pair_of_inds):
         start, end = pair_of_inds
@@ -212,14 +209,14 @@ class MSMEP:
 
         return chains
 
-    def _do_maxima_based_split(self, chain, chains_list):
+    def _do_maxima_based_split(self, chain: Chain, chains_list):
         all_inds = []
         ind_maxima = _get_ind_maxima(chain)
         all_inds.extend(ind_maxima)
 
         if all_inds:
             for ind_maxima in all_inds:
-                r, p = self._approx_irc(chain, index=ind_maxima)
+                r, p = chain._approx_irc(index=ind_maxima)
                 if not chains_list:
                     # add the start point
                     nodes = [chain[0], r]

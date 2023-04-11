@@ -1,569 +1,250 @@
 # +
 from pathlib import Path
 
-from retropaths.abinitio.inputs import Inputs
-from retropaths.abinitio.tdstructure import TDStructure
-# from retropaths.abinitio.trajectory import Trajectory
-from retropaths.abinitio.rootstructure import RootStructure
-from retropaths.abinitio.sampler import Sampler
-
-from neb_dynamics.NEB import Chain, Node3D 
-from neb_dynamics.trajectory import Trajectory
-
 import numpy as np
 
 import matplotlib.pyplot as plt
-
-# +
-rxn_name = 'Claisen-Rearrangement'
-reaction_path = Path("/Users/janestrada/Retropaths/retropaths/data/reactions.p")
-
-out_path=Path("/Users/janestrada/T3D_data/template_rxns/Claisen-Rearrangement")
-inp = Inputs(rxn_name=rxn_name, reaction_file=reaction_path)
-root_structure = RootStructure(
-    root=TDStructure.from_rxn_name(rxn_name, data_folder=reaction_path.parent),
-    master_path=out_path,
-    rxn_args=inp,
-    trajectory=Trajectory([]),
-)
+from IPython.core.display import HTML
+from neb_dynamics.MSMEP import MSMEP
+import retropaths.helper_functions as hf
+from neb_dynamics.CompetitorAnalyzer import CompetitorAnalyzer
+from retropaths.abinitio.trajectory import Trajectory
+from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
+from neb_dynamics.Chain import Chain
+from neb_dynamics.NEB import NEB
+from neb_dynamics.helper_functions import RMSD
+from kneed import KneeLocator
+from neb_dynamics.TreeNode import TreeNode
+from retropaths.molecules.elements import ElementData
+import warnings
+warnings.filterwarnings('ignore')
+HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
-root_conformers, root_energies = root_structure.crest(
-    tdstruct=root_structure.root, id="root"
-).conf_and_energy
-transformed_conformers, transformed_energies = root_structure.crest(
-    tdstruct=root_structure.transformed,
-    id="transformed"
-).conf_and_energy
-
-# +
-sampler = Sampler(mode="distance")
-sub_root_conformers, _  = sampler.run(
-conformers_to_subsample=root_conformers,
-bonds_between_frags=root_structure._get_bonds_between_fragments(),
-energies=root_energies,
-cutoff=7
-) 
-sub_trans_conformers, _ = sampler.run(
-conformers_to_subsample=transformed_conformers,
-bonds_between_frags=root_structure._get_bonds_between_fragments(),
-energies=transformed_energies,
-cutoff=7
-)
-
-subselected_conf_pairs = sampler._get_conf_pairs(
-start_conformers=sub_root_conformers,
-end_conformers=sub_trans_conformers
-)
-
-# -
-
-root_conformers = sub_root_conformers
-transformed_conformers = sub_trans_conformers
-
-# # Let's try to figure this shit out
-
-# +
-r_ind = 0
-p_ind = 3
-
-
-r = root_conformers[r_ind]
-p = transformed_conformers[p_ind]
-
-# +
-traj = Trajectory.from_xyz(Path(f"/Users/janestrada/T3D_data/template_rxns/Claisen-Rearrangement/traj_{r_ind}-{p_ind}_neb.xyz"))
-chain = Chain.from_traj(traj, k=1,delta_k=1,step_size=0,node_class=Node3D)
-
-plt.plot(chain.energies, 'o--')
-
-
-# +
-def get_atom_xyz(struct, atom_ind):
-    
-    atom_r = struct.molecule_obmol.GetAtom(atom_ind+1)
-    return np.array((atom_r.x(), atom_r.y(), atom_r.z()))
-
-get_atom_xyz(r, 5)
-
-
-# +
-def get_neighs(struct, ind):
-
-    neighs = [] # indices of the single bonds 
-    for neigh in r.molecule_rp[ind]:
-        if r.molecule_rp[ind][neigh]['bond_order']=="double": continue
-        else: neighs.append(neigh)
-        
-    return neighs
-
-get_neighs(r, 5)
-# -
-
-get_neighs(r, 0)
-
-get_neighs(r, 5)
-
-# +
-r_0 = get_atom_xyz(r, 0)
-r_6 = get_atom_xyz(r, 6)
-r_7 = get_atom_xyz(r, 7)
-
-
-r_5 = get_atom_xyz(r,5)
-r_12 = get_atom_xyz(r,12)
-r_13 = get_atom_xyz(r, 13)
-
-# +
-p_0 = get_atom_xyz(p, 0)
-p_6 = get_atom_xyz(p, 6)
-p_7 = get_atom_xyz(p, 7)
-
-
-p_5 = get_atom_xyz(p,5)
-p_12 = get_atom_xyz(p,12)
-p_13 = get_atom_xyz(p, 13)
-
-# +
-side_1 = np.linalg.norm(r_12 - r_6)
-cross_1 = np.linalg.norm(r_13 - r_6)
-
-side_2 = np.linalg.norm(r_13 - r_7)
-cross_2 = np.linalg.norm(r_12 - r_7)
-
-print((side_1, side_2))
-print((cross_1, cross_2))
-
-# +
-side_1_p = np.linalg.norm(p_12 - p_6)
-cross_1_p = np.linalg.norm(p_13 - p_6)
-
-side_2_p = np.linalg.norm(p_13 - p_7)
-cross_2_p = np.linalg.norm(p_12 - p_7)
-
-print((side_1_p, side_2_p))
-print((cross_1_p, cross_2_p))
-# -
-
-# # Checking if two lines cross
-
-# +
-p1 = np.array([0.0,0.0])
-p2 = np.array([1.0, 0.0])
-
-p3 = np.array([1,0.0])
-p4 = np.array([1,1.0])
-
-
-# +
-def perp( a ) :
-    b = np.empty_like(a)
-    b[0] = -a[1]
-    b[1] = a[0]
-    return b
-
-# line segment a given by endpoints a1, a2
-# line segment b given by endpoints b1, b2
-# return 
-def get_intersect(a1, a2, b1,b2) :
-    da = a2-a1
-    db = b2-b1
-    dp = a1-b1
-    dap = perp(da)
-    denom = np.dot( dap, db)
-    num = np.dot( dap, dp )
-    return (num / denom.astype(float))*db + b1
-
-
-# -
-
-def _check_point_in_both_lines(point,line1, line2):
-    poi_x, poi_y = point
-
-    
-    p1, p2 = line1
-    p3, p4 = line2
-    
-    
-    min_x1 = min(p1[0], p2[0])
-    min_y1 = min(p1[1], p2[1])
-    
-    max_x1 = max(p1[0], p2[0])
-    max_y1 = max(p1[1], p2[1])
-    
-    min_x2 = min(p3[0], p4[0])
-    min_y2 = min(p3[1], p4[1])
-    
-    max_x2 = max(p3[0], p4[0])
-    max_y2 = max(p3[1], p4[1])
-    
-    in_line1 =  min_x1 <= poi_x <= max_x1 and min_y1 <= poi_y <= max_y1
-    # print(in_line1)
-    # print(f"\t{p1[0]}//{p2[0]}")
-    in_line2 =  min_x2 <= poi_x <= max_x2 and min_y2 <= poi_y <= max_y2
-    # print(in_line2)
-
-
-    return in_line1 and in_line2
-poi = get_intersect(p1,p2,p3,p4)
-_check_point_in_both_lines(poi, (p1,p2), (p3,p4))
-
-
-def check_if_lines_intersect(p1_var, p2_var, p3_var, p4_var):
-    poi = get_intersect(p1_var,p2_var,p3_var,p4_var) # point of intersection (POI)
-    # print(poi)
-    return _check_point_in_both_lines(poi, line1=(p1_var,p2_var), line2=(p3_var,p4_var))
-
-
-def get_points(struct, indices):
-    a1, a2, b1, b2 = indices
-    p_a1 = get_atom_xyz(struct, a1)
-    p_a2 = get_atom_xyz(struct, a2)
-
-    p_b1 = get_atom_xyz(struct, b1)
-    p_b2 = get_atom_xyz(struct, b2)
-    
-    return p_a1, p_a2, p_b1, p_b2
-
-
-def get_neigh_inds(struct, ref_atoms_inds):
-    
-    ref_atom_1, ref_atom_2 = ref_atoms_inds
-    
-    a1, a2 = get_neighs(struct, ref_atom_1)
-
-    b1, b2 = get_neighs(struct, ref_atom_2)
-    
-    return a1, a2, b1, b2
-
-
-def flip_coordinates(struct, a1, a2):
-    struct_copy = struct.copy()
-    
-    original_a1 = get_atom_xyz(struct_copy, a1)
-    original_a2 = get_atom_xyz(struct_copy, a2)
-    all_coords = struct_copy.coords
-    new_coords = all_coords.copy()
-    new_coords[a1] = original_a2
-    new_coords[a2] = original_a1
-
-    struct_copy.update_coords(new_coords)
-    return struct_copy
-
-
-# +
-def check_if_structure_needs_to_be_flipped(react_struc, product_struc, rs):
-    a1, a2, b1, b2 = get_neigh_inds(product_struc, rs._get_bonds_between_fragments()['single'][0])
-    p_a1, p_a2, p_b1, p_b2 = get_points(product_struc, [a1,a2,b1,b2])
-
-    # print((a1, a2, b1, b2))
-
-    # make sure that the correct mapping is a1 --> b1 and a2 --> b2
-    if check_if_lines_intersect(p1_var=p_a1[[0,2]], p2_var=p_b1[[0,2]], p3_var=p_a2[[0,2]], p4_var=p_b2[[0,2]]):
-        b1_copy = b1
-        b2_copy = b2
-
-        b1 = b2_copy
-        b2 = b1_copy
-
-
-    # the mappings have been corrected at this point with respect to the final structure
-    a1, a2, b1, b2
-    
-    # now, check if the initial structure needs to be flipped
-
-    p_a1, p_a2, p_b1, p_b2 = get_points(react_struc, [a1,a2,b1,b2])
-    if check_if_lines_intersect(p1_var=p_a1[[0,2]], p2_var=p_b1[[0,2]], p3_var=p_a2[[0,2]], p4_var=p_b2[[0,2]]):
-        return True
-        print("react_struct_had_to_be_flipped")
-        react_struct = flip_coordinates(react_struc, a1, a2)
-
-        p_a1, p_a2, p_b1, p_b2 = get_points(react_struc, [a1,a2,b1,b2])
-        assert check_if_lines_intersect(p1_var=p_a1[[0,2]], p2_var=p_b1[[0,2]], p3_var=p_a2[[0,2]], p4_var=p_b2[[0,2]])
-    else: 
-        return False
-    
-
-        
-        
-check_if_structure_needs_to_be_flipped(react_struc=root_conformers[0], product_struc=transformed_conformers[1], rs=root_structure)
-
-# +
-subselected_conf_pairs = sampler._get_conf_pairs(
-    start_conformers=sub_root_conformers,
-    end_conformers=sub_trans_conformers
-)
-
-count=0
-pairs_to_fix = []
-print(f"I now have: {len(subselected_conf_pairs)} pairs")
-for conf_pair in subselected_conf_pairs:
-    # print(conf_pair)
-    start_conf, end_conf = conf_pair
-    if check_if_structure_needs_to_be_flipped(react_struc=root_conformers[start_conf], product_struc=transformed_conformers[end_conf], rs=root_structure):
-        count+=1
-        pairs_to_fix.append((start_conf, end_conf))
-# -
-
-count
-
-pairs_to_fix
-
-f = open("./pairs_to_fix.txt", "w+")
-for r, p in pairs_to_fix:
-    f.write(f"{r} {p}\n")
-f.close()
-
-# # Use GI to filter
+# # Could  I have split based on initial guess? 
 #
-# Plan: 
-# 1. Get all isomorphisms of product conformer
-# 2. Interpolate between each, getting max barrier from GI
-# 3. Select isomorphism with lowest barrier
+# **preliminary answer**: maybe
 
-from neb_dynamics.geodesic_input import GeodesicInput
-from neb_dynamics.NEB import Chain, Node3D, NEB
-from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
+reactions = hf.pload("../../retropaths/data/reactions.p")
 
-# +
-root_conformers, root_energies = root_structure.crest(
-    tdstruct=root_structure.root, id="root"
-).conf_and_energy
-transformed_conformers, transformed_energies = root_structure.crest(
-    tdstruct=root_structure.transformed,
-    id="transformed"
-).conf_and_energy
 
-sampler = Sampler(mode="distance")
-sub_root_conformers, _  = sampler.run(
-conformers_to_subsample=root_conformers,
-bonds_between_frags=root_structure._get_bonds_between_fragments(),
-energies=root_energies,
-cutoff=7
-) 
-sub_trans_conformers, _ = sampler.run(
-conformers_to_subsample=transformed_conformers,
-bonds_between_frags=root_structure._get_bonds_between_fragments(),
-energies=transformed_energies,
-cutoff=7
-)
+directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons")
 
-root_conformers = sub_root_conformers
-transformed_conformers = sub_trans_conformers
+ca = CompetitorAnalyzer(comparisons_dir=directory,method='dlfind')
 
+rns = ca.available_reaction_names
 
 # +
-# start_ind = 15
-# end_ind = 20
-
-start_ind = 28
-end_ind = 3
+# elem_rns = []
+# multi_step_rns = []
+# failed = []
 
 # +
-from retropaths.molecules.molecule import Molecule
-from retropaths.molecules.isomorphism_tools import SubGraphMatcherApplyPermute
-
-mol = root_conformers[start_ind].molecule_rp
-sgmap = SubGraphMatcherApplyPermute(mol)
-isoms = sgmap.get_isomorphisms(mol)
-
-# -
-
-def create_isomorphic_structure(struct, iso):
-
-    orig_coords = struct.coords
-    new_coords = orig_coords.copy()
-
-    for orig_ind,remap_ind in iso.items():
-        new_coords[orig_ind] = orig_coords[remap_ind]
+# for ind in range(len(rns)):
 
 
-    new_struct = struct.copy()
-    new_struct.update_coords(new_coords*ANGSTROM_TO_BOHR)
-    return new_struct
+#     rn = rns[ind]
+#     reaction_structs = ca.structures_dir / rn
 
+#     guess_path = reaction_structs / 'initial_guess.xyz'
 
-# +
-start_struct = root_conformers[start_ind]
-start_struct_coords = start_struct.coords
-start_struct.update_coords(start_struct_coords*ANGSTROM_TO_BOHR)
+#     tr = Trajectory.from_xyz(guess_path)
 
+#     nbi = NEBInputs()
+#     cni = ChainInputs()
+#     gii = GIInputs()
+#     m = MSMEP(neb_inputs=nbi, gi_inputs=gii, chain_inputs=cni)
 
-end_struct = transformed_conformers[end_ind]
-new_structs = []
-for isom in isoms:
-    new_structs.append(create_isomorphic_structure(struct=end_struct, iso=isom))
-# -
-
-max_gi_vals = []
-works = []
-trajs = []
-out_dir = Path("./GI_filter")
-for i, end_point in enumerate(new_structs):
-    gi = GeodesicInput.from_endpoints(initial=start_struct, final=end_point)
-    # traj = gi.run(nimages=15, friction=0.01, nudge=0.001)
-    traj = gi.run(nimages=40, friction=0.01, nudge=0.001)
-    # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
-    trajs.append(traj)
-    
-    chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
-    max_gi_vals.append(max(chain.energies))
-    works.append(chain.work)
-
-np.argmin(max_gi_vals)
-
-np.argmin(works)
-
-# ## Trial by fire. NEB on each of the GIs
-
-# gis = []
-# for fp in out_dir.iterdir():
-#     gis.append(Trajectory.from_xyz(Path(fp)))
-
-
-# gis_chains = [Chain.from_traj(gi, k=1, delta_k=0, node_class=Node3D, step_size=9) for gi in gis]
-gis_chains = [Chain.from_traj(t, k=.1, delta_k=0, node_class=Node3D, step_size=1) for t in trajs]
-
-for i, gi in enumerate(gis_chains):
-    print(i, gi.work)
-
-# +
-f, ax = plt.subplots()
-for i, c in enumerate(gis_chains):
-    plt.plot(c.energies, 'o--', label=f'gi_{i}')
-
-plt.legend()
-# -
-
-nebs = []
-for gi in gis_chains:
-    n = NEB(initial_chain=gi, grad_thre_per_atom=0.0016, vv_force_thre=0, climb=False)
-    try:
-        n.optimize_chain()
-        nebs.append(n)
-    except:
-        nebs.append(None)
-
-for i, n in enumerate(nebs):
-    try:
-        c = n.optimized
-        print(i, c.work)
-        # n.write_to_disk(Path(f'./neb_{i}.xyz'))
-        
-        # if i == 7 or i==5 : plt.plot(c.energies, 'o-', label=f'neb_{i}', linewidth=4)
-        # else: plt.plot(c.energies, '--', label=f'neb_{i}')
-    except:
-        continue
-
-
-# +
-f, ax = plt.subplots()
-for i, n in enumerate(nebs):
-    try:
-        c = n.optimized
-        plt.plot(c.energies, 'o-', label=f'neb_{i}')
-        # if i == 7 or i == 4: plt.plot(c.energies, 'o-', label=f'neb_{i}', linewidth=4)
-        # else: plt.plot(c.energies, '--', label=f'neb_{i}')
-    except:
-        continue
-
-plt.legend()
-
-# +
-long_gis = []
-
-for i, end_point in enumerate(new_structs):
-    if i==4 or i==7:
-        gi = GeodesicInput.from_endpoints(initial=start_struct, final=end_point)
-        traj = gi.run(nimages=40, friction=0.01, nudge=0.001)
-        # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
-        long_gis.append(traj)
-
-        # chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
-        # max_gi_vals.append(max(chain.energies))
-        # works.append(chain.work)
-# -
-
-gi_4 = long_gis[0]
-gi_4_chain = Chain.from_traj(gi_4, k=0.1, delta_k=0, step_size=1, node_class=Node3D)
-print(max(gi_4_chain.energies))
-plt.plot(gi_4_chain.energies)
-
-gi_7 = long_gis[1]
-gi_7_chain = Chain.from_traj(gi_7, k=0.1, delta_k=0, step_size=1, node_class=Node3D)
-print(max(gi_7_chain.energies))
-plt.plot(gi_7_chain.energies)
-
-n_4 = NEB(gi_4_chain, grad_thre_per_atom=0.0016, vv_force_thre=0)
-n_4.optimize_chain()
-
-n_7 = NEB(gi_7_chain, grad_thre_per_atom=0.0016, vv_force_thre=0)
-n_7.optimize_chain()
-
-plt.plot((n_4.optimized.energies-n_4.optimized.energies[0])*627.5,'o--', label='neb_4')
-plt.plot((n_7.optimized.energies-n_4.optimized.energies[0])*627.5,'o--', label='neb_7')
-plt.legend()
-
-print(n_7.optimized.work)
-print(n_4.optimized.work)
-
-n_7.write_to_disk(Path('./n7.xyz'))
-n_4.write_to_disk(Path('./n4.xyz'))
-
-
-# +
-# for i in range(len(nebs)):
+#     chain = Chain.from_traj(tr,parameters=cni)
 #     try:
-#         nebs[i].write_to_disk(out_dir/f'neb_{i}.xyz')
+#         r,p = m._approx_irc(chain)
+#         minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
+
+
+#         if minimizing_gives_endpoints:
+#             elem_rns.append(rn)
+#         else:
+#             multi_step_rns.append(rn)
 #     except:
-#         continue
+#         failed.append(rn)
 # -
 
-# ## functions
+elem_rns=['Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Fries-Rearrangement-ortho', 'Elimination-Alkene-Lg-Iodine', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Oxindole-Synthesis-X-Iodine', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Baker-Venkataraman-Rearrangement', 'Oxazole-Synthesis', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Buchner-Ring-Expansion-O', 'Meyer-Schuster-Rearrangement', 'Chan-Rearrangement', 'Irreversable-Azo-Cope-Rearrangement', 'Claisen-Rearrangement', 'Aza-Grob-Fragmentation-X-Iodine', 'Chapman-Rearrangement', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Elimination-Amine-Imine', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Oxindole-Synthesis-X-Fluorine', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Aza-Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Indole-Synthesis-Hemetsberger-Knittel', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Bradsher-Cyclization-2', 'Claisen-Rearrangement-Aromatic', 'Elimination-To-Form-Cyclopropanone-Bromine', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Bradsher-Cyclization-1', 'Azaindole-Synthesis', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Decarboxylation-CG-Carboxyl', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Benzimidazolone-Synthesis-1-X-Iodine', '1-2-Amide-Phthalamide-Synthesis', 'Elimination-Acyl-Bromine', 'Elimination-Lg-Sulfonate', 'Decarboxylation-Carbamic-Acid', 'Oxa-Vinylcyclopropane-Rearrangement', 'Grob-Fragmentation-X-Iodine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Enolate-Claisen-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Buchner-Ring-Expansion-C', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Robinson-Gabriel-Synthesis', 'Newman-Kwart-Rearrangement', 'Azo-Vinylcyclopropane-Rearrangement', 'Elimination-Lg-Bromine', 'Bamberger-Rearrangement', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Ester-Pyrolysis', 'Lossen-Rearrangement', 'Pinacol-Rearrangement']
 
-def get_all_product_isomorphisms(end_struct):
-    new_structs = []
-    for isom in isoms:
-        new_structs.append(create_isomorphic_structure(struct=end_struct, iso=isom))
+multi_step_rns=['Semmler-Wolff-Reaction', 'Ramberg-Backlund-Reaction-Bromine', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Fries-Rearrangement-para', 'Ramberg-Backlund-Reaction-Iodine', 'Paal-Knorr-Furan-Synthesis', 'Oxindole-Synthesis-X-Chlorine', 'Ramberg-Backlund-Reaction-Chlorine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Bamford-Stevens-Reaction', 'Ramberg-Backlund-Reaction-Fluorine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Buchner-Ring-Expansion-N', 'Knorr-Quinoline-Synthesis', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis']
+
+failed=['Nazarov-Cyclization']
+
+# reaction_structs = ca.structures_dir / 'Thio-Claisen-Rearrangement'
+reaction_structs = ca.structures_dir / 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile'
+guess_path = reaction_structs / 'initial_guess.xyz'
+
+tr = Trajectory.from_xyz(guess_path)
+
+nbi = NEBInputs(v=True,early_stop_chain_rms_thre=0.002,tol=0.00045)
+cni = ChainInputs()
+gii = GIInputs()
+m = MSMEP(neb_inputs=nbi, gi_inputs=gii, chain_inputs=cni)
+
+c = Chain.from_traj(tr,parameters=cni)
+
+history, out_chain = m.find_mep_multistep(c)
+
+out_chain.plot_chain()
+
+ nbi_complete = nbi = NEBInputs(v=True,early_stop_chain_rms_thre=0.0,tol=0.00045)
+neb_complete = NEB(initial_chain=c,parameters=nbi_complete)
+
+neb_complete.optimize_chain()
+
+
+# # Let's get error bars for an optimization
+
+# +
+def get_mass(symbol):
+    ED = ElementData()
+    return ED.from_symbol(symbol).mass_amu
+
+def get_mass_weighed_coords(chain):
+    traj = chain.to_trajectory()
+    coords = traj.coords
+    weights = np.array([np.sqrt(get_mass(s)) for s in traj.symbols])
+    mass_weighed_coords = coords  * weights.reshape(-1,1)
+    return mass_weighed_coords
+
+def integrated_path_length(chain):
+    coords = get_mass_weighed_coords(chain)
+
+    cum_sums = [0]
+
+    int_path_len = [0]
+    for i, frame_coords in enumerate(coords):
+        if i == len(coords) - 1:
+            continue
+        next_frame = coords[i + 1]
+        dist_vec = next_frame - frame_coords
+        cum_sums.append(cum_sums[-1] + np.linalg.norm(dist_vec))
+
+    cum_sums = np.array(cum_sums)
+    int_path_len = cum_sums / cum_sums[-1]
+    return np.array(int_path_len)
+
+
+# -
+
+history = TreeNode.read_from_disk(Path("./wittig_early_stop/"))
+
+neb_short = NEB.read_from_disk(Path("./neb_short"))
+
+neb_short.plot_opt_history(do_3d=True)
+
+neb_short.plot_grad_delta_mag_history()
+
+neb_short.plot_projector_history()
+
+
+def get_projector(chain1,chain2, var = 'gradients'):
+    if var == 'tangents':
+        chain1_vec = chain1.unit_tangents  
+        chain2_vec = chain2   .unit_tangents
+    
+    elif var == 'gradients':
+    
+        chain1_vec = chain1.gradients 
+        chain2_vec = chain2.gradients 
         
-    return new_structs
-
-
-def get_correct_product_structure(new_structs):
-    max_gi_vals = []
-    trajs = []
-    # out_dir = Path("./GI_filter")
-    for i, end_point in enumerate(new_structs):
-        gi = GeodesicInput.from_endpoints(initial=start_struct, final=end_point)
-        traj = gi.run(nimages=15, friction=0.01, nudge=0.001)
-        # traj.write_trajectory(out_dir/f"traj_{i}.xyz")
-        trajs.append(traj)
-
-        chain = Chain.from_traj(traj, k=99, delta_k=99, step_size=99, node_class=Node3D)
-        max_gi_vals.append(max(chain.energies))
-
-    return new_structs[np.argmin(max_gi_vals)], trajs[np.argmin(max_gi_vals)]
-
-
-def create_correct_interpolation(start_ind, end_ind):
-    start_struct = root_conformers[start_ind]
-    start_struct_coords = start_struct.coords
-    start_struct.update_coords(start_struct_coords*ANGSTROM_TO_BOHR)
+    else:
+        raise ValueError(f"Incorrect input method: {var}")
     
-    end_struct = transformed_conformers[end_ind]
+    # projector = sum([np.dot(t1.flatten(),t2.flatten()) for t1,t2  in zip(chain1_vec, chain2_vec)]) / len(chain1_vec)
+    projector = sum([np.dot(t1.flatten(),t2.flatten()) for t1,t2  in zip(chain1_vec, chain2_vec)]) 
+    return projector
+
+
+var = 'gradients'
+traj = [ ]
+for ind in range(1,296):
+    proj = get_projector(neb_short.chain_trajectory[ind - 1], neb_short.chain_trajectory[ind], var=var) 
+    normalization = get_projector(neb_short.chain_trajectory[ind - 1], neb_short.chain_trajectory[ind - 1], var=var)
+    traj.append(proj / normalization)
+
+list(enumerate(traj))
+
+plt.plot(traj)
+plt.ylim(0,1.1)
+
+# +
+chain1_tangentsst_per_opt_step = []
+# end_cost_per_opt_step = []
+
+# running_knee_dist = []
+
+# running_std_dist = []
+# running_std_ene = []
+
+
+
+# for end_chain in range(1, len(neb_complete.chain_trajectory)):
+#     chain1 = neb_complete.chain_trajectory[end_chain-1]
+#     chain2 = neb_complete.chain_trajectory[end_chain]
+
+#     distances = []
+#     en_diffs = []
+
+#     for node1,node2 in zip(chain1.nodes, chain2.nodes):
+#         dist,_ = RMSD(node1.coords, node2.coords)
+#         distances.append(dist)
+
+#         en_diff = node2.energy - node1.energy
+#         en_diffs.append(abs(en_diff))
+
+#     # print(distances)
+#     # dist_cost_per_opt_step.append(sum(distances)/len(chain1))
+#     dist_cost_per_opt_step.append(chain1._distance_to_chain(chain2))
+#     end_cost_per_opt_step.append(sum(en_diffs)/len(chain1))
     
-    new_structs = get_all_product_isomorphisms(end_struct)
-    correct_end_struct, correct_gi_traj = get_correct_product_structure(new_structs)
     
-    return correct_gi_traj
+    
+#     running_std_dist.append(np.std(dist_cost_per_opt_step))
+#     running_std_ene.append(np.std(end_cost_per_opt_step))
 
 
-out = Path('./GI_filter_data/')
-for r, p in pairs_to_fix:
-    # print(f"{r=} {p=}")
-    traj = create_correct_interpolation(r, p)
-    traj.write_trajectory(out/f'traj_{r}-{p}.xyz')
+# -
 
-print("done")
+
+def get_elbow(list_of_vals):
+    kn = KneeLocator(list(range(len(list_of_vals))), list_of_vals, curve='convex',direction='decreasing',S=1,online=True)
+    return kn.elbow
+
+
+list_of_vals = dist_cost_per_opt_step
+kn = KneeLocator(list(range(len(list_of_vals))), list_of_vals, curve='convex',direction='decreasing',S=1,online=True)
+kn.elbow_y
+
+# +
+start = 0
+end = -1
+
+
+xvals = list(range(len(dist_cost_per_opt_step[start:end])))
+
+plt.plot(xvals, dist_cost_per_opt_step[start:end],'o-', label='distances change')
+# plt.plot(xvals, end_cost_per_opt_step[start:end],'o-',label='energies change')
+axes = plt.gca()
+
+elbow = get_elbow(dist_cost_per_opt_step)
+# elbow = get_elbow(end_cost_per_opt_step)
+print(elbow)
+miny,maxy = axes.get_ylim()
+# plt.vlines(x=26,ymin=miny,ymax=maxy, linestyle='--',color='gray', label='force thre')
+# plt.vlines(x=33,ymin=miny,ymax=maxy, linestyle='--',color='purple', label='chain rms thre')
+plt.vlines(x=elbow,ymin=miny,ymax=maxy, linestyle='--',color='green', label='elbow energy')
+
+
+
+
+plt.legend()
+plt.show()
+# -
 
 

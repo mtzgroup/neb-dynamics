@@ -53,6 +53,37 @@ class NEB:
         for ind in inds_maxima:
             chain[ind].do_climb = True
 
+
+    def _check_if_early_stop(self, chain):
+        max_grad_val = chain.get_maximum_grad_magnitude()
+        dist_to_prev_chain = chain._distance_to_chain(self.chain_trajectory[-2]) # the -1 is the chain im looking at
+        correlation = self.chain_trajectory[-2]._gradient_correlation(chain)
+        conditions = [ 
+                      max_grad_val <= self.parameters.early_stop_force_thre*self.parameters.grad_thre,
+                      dist_to_prev_chain <= self.parameters.early_stop_chain_rms_thre,
+                      correlation >= self.parameters.early_stop_corr_thre
+        ]
+        if any(conditions):
+            is_elem_step, split_method = chain.is_elem_step()
+            
+            if not is_elem_step:
+                print(f"\nStopped early because chain is not an elementary step.")
+                print(f"Split chain based on: {split_method}")
+                self.optimized = chain
+                return True
+            
+            else:
+                # reset early stop checks
+                self.parameters.early_stop_force_thre = 0.0
+                self.parameters.early_stop_chain_rms_thre = 0.0
+                self.parameters.early_stop_corr_thre = 10.
+                
+                return False
+
+        else:
+            return False
+            
+
     def optimize_chain(self):
         nsteps = 1
         chain_previous = self.initial_chain.copy()
@@ -60,16 +91,15 @@ class NEB:
 
         while nsteps < self.parameters.max_steps + 1:
             max_grad_val = chain_previous.get_maximum_grad_magnitude()
-            
             if max_grad_val <= 3 * self.parameters.grad_thre and self.parameters.climb:
                 self.set_climbing_nodes(chain=chain_previous)
                 self.parameters.climb = False  # no need to set climbing nodes again
-            
-            if max_grad_val <= self.parameters.stopping_threshold*self.parameters.grad_thre:
-                print(f"\nStopped early because: {max_grad_val=} <= {self.parameters.stopping_threshold}*{self.parameters.grad_thre}\nSetting it to optimized???")
-                self.optimized = chain_previous
-                return
-            
+
+            if nsteps > 1:    
+                stop_early = self._check_if_early_stop(chain_previous)
+                if stop_early: 
+                    return
+                
             new_chain = self.update_chain(chain=chain_previous)
             if self.parameters.v:
                 print(
@@ -165,23 +195,15 @@ class NEB:
         return indices_converged[0], differences
 
     def _check_grad_converged(self, chain: Chain) -> bool:
-        # delta_grad = np.abs(chain_prev.gradients - chain_new.gradients)
-        # mag_grad = np.array([np.linalg.norm(grad) for grad in chain_new.gradients])
+       
         bools = []
         max_grad_components = []
         gradients = chain.gradients
         for grad in gradients:
             max_grad = np.amax(grad)
             max_grad_components.append(max_grad)
-            # print(f'{max_grad=} < {self.parameters.grad_thre=}')
             bools.append(max_grad < self.parameters.grad_thre)
 
-        # grad_converged = np.where(delta_grad < self.parameters.grad_thre)
-        # mag_converged = np.where(mag_grad < self.mag_grad_thre)
-        # mag_converged = mag_grad < self.mag_grad_thre
-
-        # return delta_converged[0], mag_converged[0], delta_grad, mag_grad
-        # return delta_converged[0], delta_grad
         return np.where(bools), max_grad_components
 
     def _check_rms_grad_converged(self, chain: Chain):
@@ -197,6 +219,9 @@ class NEB:
         return np.where(bools), rms_grads
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
+        """
+        https://chemshell.org/static_files/py-chemshell/manual/build/html/opt.html?highlight=nudged
+        """
 
         rms_grad_conv_ind, max_rms_grads = self._check_rms_grad_converged(chain_new)
         en_converged_indices, en_deltas = self._check_en_converged(
@@ -210,7 +235,6 @@ class NEB:
         )
         converged_nodes_indices = np.intersect1d(converged_nodes_indices, grad_conv_ind)
 
-        # [print(f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(∆Grad) : { np.amax(grad_deltas[i])} | |Grad| : {mag_grad_deltas[i]} | Converged? : {chain_new.nodes[i].converged}") for i in range(len(chain_new))]
         if self.parameters.v > 1:
             [
                 print(
@@ -222,15 +246,7 @@ class NEB:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
         if self.parameters.node_freezing:
             self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
-        # return len(converged_node_indices) == len(chain_new.nodes)
-
         return len(converged_nodes_indices) == len(chain_new)
-
-        # return np.all(
-        #     [np.linalg.norm(grad) <= self.parameters.grad_thre for grad in chain_new.gradients]
-        # )
-
-        # return en_bool and grad_bool
 
     def remove_chain_folding(self, chain: Chain) -> Chain:
         not_converged = True
@@ -334,6 +350,51 @@ class NEB:
             for i, chain in enumerate(self.chain_trajectory):
                 traj = chain.to_trajectory()
                 traj.write_trajectory(out_folder / f"traj_{i}.xyz")
+                
+      
+    def plot_grad_delta_mag_history(self):
+        s = 8
+        fs = 18
+        f, ax = plt.subplots(figsize=(1.16 * s, s))
+        projs = []
+        
+        for i, chain in enumerate(self.chain_trajectory):
+            if i == 0: continue
+            prev_chain = self.chain_trajectory[i-1]
+            projs.append(prev_chain._gradient_delta_mags(chain))
+
+        plt.plot(projs)
+        plt.ylabel("NEB |∆gradient|",fontsize=fs)
+        plt.yticks(fontsize=fs)
+        plt.xticks(fontsize=fs)
+        # plt.ylim(0,1.1)
+        plt.xlabel("Optimization step",fontsize=fs)
+        plt.show()  
+      
+                
+    def plot_projector_history(self, var='gradients'):
+        s = 8
+        fs = 18
+        f, ax = plt.subplots(figsize=(1.16 * s, s))
+        projs = []
+        
+        for i, chain in enumerate(self.chain_trajectory):
+            if i == 0: continue
+            prev_chain = self.chain_trajectory[i-1]
+            if var == 'gradients':
+                projs.append(prev_chain._gradient_correlation(chain))
+            elif var == 'tangents':
+                projs.append(prev_chain._tangent_correlations(chain))
+            else:
+                raise ValueError(f"Unrecognized var: {var}")
+        plt.plot(projs)
+        plt.ylabel(f"NEB {var} correlation",fontsize=fs)
+        plt.yticks(fontsize=fs)
+        plt.xticks(fontsize=fs)
+        plt.ylim(-1.1,1.1)
+        plt.xlabel("Optimization step",fontsize=fs)
+        plt.show()
+        
 
     def plot_opt_history(self, do_3d=False):
 

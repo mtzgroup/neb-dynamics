@@ -16,9 +16,6 @@ ca3.submit_all_jobs()
 f = open(ca2.out_folder / 'Chan-Rearrangement' / 'log')
 foobar = f.read().splitlines()
 
-
-
-
 hey = ca2.out_folder / 'Chan-Rearrangement' / "string_trajectory.xyz"
 c = Chain.from_xyz(str(hey.resolve()),parameters=ChainInputs())
 

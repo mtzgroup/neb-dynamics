@@ -81,6 +81,9 @@ class Node3D_TC(Node):
         copy_tdstruct = self.tdstructure.copy()
 
         copy_tdstruct = copy_tdstruct.update_coords(coords=coords)
+        copy_tdstruct.update_tc_parameters(td_ref=self.tdstructure)
+        
+        
         return Node3D_TC(tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb)
 
     def opt_func(self, v=True):

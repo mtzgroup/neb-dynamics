@@ -8,6 +8,7 @@ from neb_dynamics.NEB import NEB
 from neb_dynamics.Node2d import Node2D_Flower
 
 
+
 import retropaths.helper_functions as hf
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.abinitio.tdstructure import TDStructure
@@ -57,311 +58,115 @@ reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
+# # Wittig
+
+mol1 =  Molecule.from_smiles('[P](=CC)(C1=CC=CC=C1)(C2=CC=CC=C2)C3=CC=CC=C3')
+mol2 =  Molecule.from_smiles('C(=O)C')
+
+
+tds = TDStructure.from_RP(mol1)
+tds2 = TDStructure.from_RP(mol2)
+
+from retropaths.abinitio.solvator import Solvator
+solv = Solvator(sphere_rad=4)
+td_list = [tds, tds2]
+adj_td_list = solv.adjust_td_list_coords(td_list)
+td_joined = solv.join_td_list(adj_td_list)
+
+td_joined.molecule_rp.draw(mode='d3', size=(700,700))
 
 # +
-def plot_node(node,linestyle='--',marker='o',ax=None,**kwds):
-    plot_chain(chain=node.data.chain_trajectory[-1],linestyle=linestyle,marker=marker,ax=ax,**kwds)
-
-def plot_chain(chain,linestyle='--',ax=None, marker='o',**kwds):
-    if ax:
-        ax.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
-    else:
-        plt.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
-
-
-def plot_node2d(node,linestyle='--',marker='o',ax=None,start_point=0,end_point=1,
-                **kwds):
-    plot_chain2d(chain=node.data.chain_trajectory[-1],linestyle=linestyle,marker=marker,ax=ax,start_point=start_point,end_point=end_point,
-                 **kwds)
-
-def plot_chain2d(chain,linestyle='--',marker='o',ax=None,start_point=0,end_point=1,
-                 **kwds):
-    if ax:
-        ax.plot((chain.integrated_path_length*end_point)+start_point,chain.energies,linestyle=linestyle,marker=marker,**kwds)
-    else:
-        plt.plot((chain.integrated_path_length*end_point)+start_point,chain.energies,linestyle=linestyle,marker=marker,**kwds)
-
-
-""
-# +
-nimages = 10
-np.random.seed(0)
-
-start_point = [-2.59807434, -1.499999  ]
-end_point = [2.5980755 , 1.49999912]
-
-
-coords = np.linspace(start_point, end_point, nimages)
-coords[1:-1] += [-1,1] # i.e. good initial guess
-# coords[1:-1] += [-.05,.05] # i.e. bad initial guess
-# coords[1:-1] -= np.random.normal(scale=.1, size=coords[1:-1].shape)
-# coords[1:-1] -= 0.1
-# coords[1:-1] -= 1
-# coords[1:-1] += np.random.normal(scale=.15)
-
-ks = .1
-cni = ChainInputs(
-    k=ks,
-    node_class=Node2D_Flower,
-    delta_k=0,
-    step_size=.3,
-    do_parallel=False,
-    use_geodesic_interpolation=False,
-)
-gii = GIInputs(nimages=nimages)
-nbi = NEBInputs(tol=.1, v=1, max_steps=500, climb=False, stopping_threshold=0)
-chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
-
-# +
-
-n = NEB(initial_chain=chain,parameters=nbi)
-n.optimize_chain()
-# -
-
-""
-m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
-h_root_node, out_chain = m.find_mep_multistep(input_chain=chain)
-
-h_root_node.draw()
-
-
-""
-def plot_node_recursively(node, ax):
-    if node.is_leaf:
-        plot_chain(node.data.initial_chain, label=f'node{node.index} guess',linestyle='--', marker='x',ax=ax) 
-        plot_node(node, label=f'node{node.index} neb',linestyle='-',ax=ax)
-    else:
-        plot_chain(node.data.initial_chain, label=f'node{node.index} guess',linestyle='--', marker='x',ax=ax) 
-        plot_node(node, label=f'node{node.index} neb',linestyle='-',ax=ax)
-        [plot_node_recursively(child,ax=ax) for child in node.children]
-
-
-opt_hists = [h_root_node.data.initial_chain.coordinates]
-for opt_hist in h_root_node.get_optimization_history():
-    chain_traj_matrix = np.array([c.coordinates for c in opt_hist.chain_trajectory])
-    opt_hists.extend(chain_traj_matrix)
-# [animate_func(obj) for obj in h_root_node.get_optimization_history()]
-output_matrix = np.array(opt_hists)
-# print(output_matrix.shape)
-# np.savetxt(fname="msmep_traj_flat.txt",X=output_matrix.flatten())
-
-heyo = neb_long.chain_trajectory[-1][5].tdstructure.xtb_geom_optimization()
-
-heyo.energy_xtb()
-
-out_chain[0].energy
-
-# +
-fig = 8
-min_val = -5.3
-max_val = 5.3
-fs = 18
-
-f, ax = plt.subplots(figsize=(2.3 * fig, fig),ncols=2)
-x = np.linspace(start=min_val, stop=max_val, num=1000)
-y = x.reshape(-1, 1)
-
-h = Node2D_Flower.en_func_arr([x, y])
-cs = ax[0].contourf(x, x, h, cmap="Greys",alpha=.8)
-_ = f.colorbar(cs,ax=ax[0])
-
-# plot_chain(n.initial_chain,ax=ax[0], label='initial guess', linestyle='--')
-# plot_chain(n.chain_trajectory[-1],ax=ax[0], label='neb', linestyle='-')
-
-a = .1
-b = 1
-plot_node_recursively(h_root_node,ax=ax[0])
-
-plot_chain(chain, label='initial guess',marker='x',color='blue',ax=ax[0],alpha=a)
-plot_chain2d(chain, label='initial guess',marker='x',color='blue',ax=ax[1],alpha=a)
-
-plot_chain(h_root_node.data.chain_trajectory[-1], label='root neb', marker='o',linestyle='-',color='blue',ax=ax[0],alpha=a)
-plot_chain2d(h_root_node.data.chain_trajectory[-1], label='root neb', marker='o',linestyle='-',color='blue',ax=ax[1],alpha=a)
-
-plot_chain(h_root_node.children[0].data.initial_chain, c='red', label='foo1 guess',linestyle='--', marker='x',ax=ax[0],alpha=a) 
-plot_chain2d(h_root_node.children[0].data.initial_chain, c='red', label='foo1 guess',linestyle='--', marker='x',ax=ax[1],alpha=a,
-            end_point=.61) 
-
-plot_node(h_root_node.children[0], c='red', label='foo1 neb',ax=ax[0],linestyle='-',alpha=a) 
-plot_node2d(h_root_node.children[0], c='red', label='foo1 neb',ax=ax[1],linestyle='-',alpha=a,
-            end_point=.61) 
-
-
-
-plot_chain(h_root_node.ordered_leaves[0].data.initial_chain, c='green', label='leaf1 guess',linestyle='--', marker='x',ax=ax[0],alpha=a) 
-plot_chain2d(h_root_node.ordered_leaves[0].data.initial_chain, c='green', label='leaf1 guess',linestyle='--', marker='x',ax=ax[1],alpha=a,
-            end_point=.25) 
-
-
-plot_node(h_root_node.ordered_leaves[0], c='green', label='leaf1 neb',ax=ax[0],alpha=b) 
-plot_node2d(h_root_node.ordered_leaves[0], c='green', linestyle='-',label='leaf1 neb',ax=ax[1],end_point=.25,alpha=b) 
-
-plot_chain(h_root_node.ordered_leaves[1].data.initial_chain, c='purple', label='leaf2 guess',linestyle='--', marker='x',ax=ax[0],alpha=a) 
-plot_chain2d(h_root_node.ordered_leaves[1].data.initial_chain, c='purple', label='leaf2 guess',linestyle='--', marker='x',ax=ax[1],alpha=a,
-            start_point=.25,end_point=.36) 
-
-plot_node(h_root_node.ordered_leaves[1], c='purple', label='leaf2 guess',linestyle='-', marker='o',ax=ax[0],alpha=b) 
-plot_node2d(h_root_node.ordered_leaves[1], c='purple', label='leaf2 guess',linestyle='-', marker='o',ax=ax[1],alpha=b,
-           start_point=.25,end_point=.36) 
-
-plot_chain(h_root_node.ordered_leaves[2].data.initial_chain, c='darkorange', label='leaf2 guess',linestyle='--', marker='x',ax=ax[0],alpha=a) 
-plot_chain2d(h_root_node.ordered_leaves[2].data.initial_chain, c='darkorange', label='leaf2 guess',linestyle='--', marker='x',ax=ax[1],alpha=a,
-            start_point=.61, end_point=.4) 
-
-
-plot_node(h_root_node.ordered_leaves[2], c='darkorange', label='leaf2 guess',linestyle='-', marker='o',ax=ax[0],alpha=b) 
-plot_node2d(h_root_node.ordered_leaves[2], c='darkorange', label='leaf2 guess',linestyle='-', marker='o',ax=ax[1],alpha=b,
-           start_point=.61, end_point=.4) 
-
-# plot_node(h_root_node.ordered_leaves[2], c='orange', label='leaf3 neb') 
-
-plt.yticks(fontsize=fs)
-plt.xticks(fontsize=fs)
-# legend = ax[0].legend(fontsize=fs, bbox_to_anchor=(1.70,1.03))
-# legend = ax[0].legend(fontsize=fs)
-
-# frame = legend.get_frame()
-# frame.set_color('gray')
-
-# plt.savefig("/home/jdep/T3D_data/msmep_draft/flower_potential.svg",format='svg',bbox_inches='tight')
-plt.tight_layout()
-plt.show()
-# +
-# ################################################################################
-# # #### Some BS
-# +
-c = Chain.from_xyz("/home/jdep/neb_dynamics/example_mep.xyz")
-
-""
-from scipy.signal import argrelextrema
-import numpy as np
-from retropaths.helper_functions import pairwise
-
-""
-# +
-n_waters = 0
-# smi = "[C]([H])([H])[H]"
-# smi = "[C+](C)(C)C"
-smi = "C12(C(=C)O[Si](C)(C)C)C(=O)OC3CCC1C23C4=CCCCC4"
-# smi = "[Rh@SP1H](C#[O])(C#[O])C#[O]"
-# smi = "[C]([H])([H])[H].[Cl]"
-# smi = "[O-][H].O.O.O.O.[C+](C)(C)C"
-# smi = "[O-][H]"
-smi+= ".O"*n_waters
-smi_ref = "O"*n_waters
-# orig_smi = "[C]([H])([H])[H].[O-][H]"
-# orig_smi = "[C+](C)(C)C.[O-][H]"
-
-""
-mol = Molecule.from_smiles(smi)
-
-""
-# -
-
-""
-mol.draw(mode='d3',size=(700,700))
-
-""
 ind=0
-
-single_list = [(1,2),(2,17), (17,16),(16,0)]
-double_list = [(15,14),(0,1)]
-delete_list = [(0, 15),(0,14)]
-
-forming_list = [Changes3D(start=s, end=e, bond_order=1) for s, e in single_list]
-forming_list+= [Changes3D(start=s, end=e, bond_order=2) for s, e in double_list]
-
 settings = [
 
     (
-        mol,
-        {'charges': [], 'delete':delete_list, 'single':single_list,"double":double_list},
-        [],
-        [Changes3D(start=s, end=e, bond_order=1) for s, e in delete_list], # deleting list
-        forming_list
+        td_joined.molecule_rp,
+        {'charges': [], 'delete':[(40, 41), (1, 0)], 'double':[(41, 0), (1, 40)]},
+        [
+            (3, 0, 'Me'),
+            (15, 0, 'Me'),
+            (9, 0, 'Me'),
+  
+        ],
+        [Changes3D(start=s, end=e, bond_order=1) for s, e in [(40, 41), (1, 0)]],
+        [Changes3D(start=s, end=e, bond_order=2) for s, e in [(41, 0), (1, 40)]]
 
-    )
-]
+    )]
 
 mol, d, cg, deleting_list, forming_list = settings[ind]
 
+# +
+# ind=0
+# settings = [
+
+#     (
+#         td_joined.molecule_rp,
+#         {'charges': [], 'delete':[(38, 39), (1, 0)], 'double':[(39, 0), (1, 38)]},
+#         [
+#             (2, 0, 'Me'),
+#             (14, 0, 'Me'),
+#             (8, 0, 'Me'),
+  
+#         ],
+#         [Changes3D(start=s, end=e, bond_order=1) for s, e in [(38, 39), (1, 0)]],
+#         [Changes3D(start=s, end=e, bond_order=2) for s, e in [(39, 0), (1, 38)]]
+
+#     )]
+
+# mol, d, cg, deleting_list, forming_list = settings[ind]
+# -
 
 conds = Conditions()
 rules = Rules()
 temp = ReactionTemplate.from_components(name='Wittig', reactants=mol, changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
 
+# + endofcell="--"
 c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[])
 # -
-# --
 
-# +
-# ind=0
+root = TDStructure.from_RP(temp.reactants)
+root = root.pseudoalign(c3d_list)
+root.gum_mm_optimization()
 
-# single_list = [(2,17),(2,1),(17,16)]
-# double_list = [(15,16), (0,1)]
-# delete_list = [(0, 15)]
-
-# forming_list = [Changes3D(start=s, end=e, bond_order=1) for s, e in single_list]
-# forming_list+= [Changes3D(start=s, end=e, bond_order=2) for s, e in double_list]
-
-# settings = [
-
-#     (
-#         mol,
-#         {'charges': [], 'delete':delete_list, 'single':single_list,"double":double_list},
-#         [],
-#         [Changes3D(start=s, end=e, bond_order=1) for s, e in delete_list], # deleting list
-#         forming_list
-
-#     )
-# ]
-
-# mol, d, cg, deleting_list, forming_list = settings[ind]
-
-
-# conds = Conditions()
-# rules = Rules()
-# temp = ReactionTemplate.from_components(name='Wittig', reactants=mol, changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
-
-# c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[])
-# # -
-# -
-
-root = TDStructure.from_smiles(smi,tot_spinmult=1)
-# root = root.pseudoalign(c3d_list)
-# root = root.xtb_geom_optimization()
-
-root.molecule_rp.draw(mode='d3')
-
-temp.reactants.draw()
-
-temp.products.draw(mode='rdkit')
+root = root.xtb_geom_optimization()
+# root = root.tc_geom_optimization()
 
 target = root.copy()
 target.add_bonds(c3d_list.forming)
 target.delete_bonds(c3d_list.deleted)
-target.mm_optimization('gaff')
-target.mm_optimization("uff")
-target.mm_optimization('mmff94')
-# target = target.xtb_geom_optimization()
-
+target.gum_mm_optimization()
 target = target.xtb_geom_optimization()
+# target = target.tc_geom_optimization()
+# --
 
-target
+tr = Trajectory([root, target]).run_geodesic(nimages=15, sweep=True)
 
-output = m.find_mep_multistep((root, target), do_alignment=False)
+tr.draw()
 
-# # Wittig
+# cni = ChainInputs()
+start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz", parameters=cni)
+# tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_phe.xyz")
 
 cni = ChainInputs()
-start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz", parameters=cni)
-# tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz")
+nbi = NEBInputs(v=True, early_stop_chain_rms_thre=0.002, tol=0.01,max_steps=2000)
+m  = MSMEP(neb_inputs=nbi, root_early_stopping=False, chain_inputs=cni, gi_inputs=GIInputs(nimages=15))
+# start_chain = Chain.from_traj(tr,parameters=cni)
 
-# +
-# history, out_chain = m.find_mep_multistep(start_chain)
+history, out_chain = m.find_mep_multistep(start_chain)
 
-# +
-# cleanup_nebs = cleanup_nebs(start_chain, history, m)
+out_chain.plot_chain()
+
+history.write_to_disk(Path("./wittig_triphenyl_2"))
+
+initial_chain = history.children[0].data.chain_trajectory[-1]
+
+
+n_cont = NEB(initial_chain=initial_chain,parameters=nbi)
+n_cont.optimize_chain()
+
+n_cont.optimized.plot_chain()
+
+out_chain.plot_chain()
 
 # +
 # cleanup_nebs[0].write_to_disk(Path("./cleanup_neb"),write_history=True)
@@ -410,11 +215,12 @@ history = TreeNode.read_from_disk(Path("./wittig_early_stop/"))
 
 cni = ChainInputs()
 nbi = NEBInputs(v=True, stopping_threshold=3, tol=0.01)
-m  = MSMEP(neb_inputs=nbi, root_early_stopping=True)
+m  = MSMEP(neb_inputs=nbi, root_early_stopping=True, chain_inputs=cni, gi_inputs=GIInputs(nimages=15))
+
+start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz", parameters=cni)
+
 
 insertion_points = m._get_insertion_points_leaves(history.ordered_leaves,original_start=start_chain[0])
-
-insertion_points
 
 # +
 list_of_cleanup_nebs = [TreeNode(data=neb_cleanup, children=[])]
@@ -435,9 +241,12 @@ fs = 18
 plt.figure(figsize=(1.618*fig,fig))
 
 # plt.plot(neb_long_continued.optimized.integrated_path_length, (neb_long_continued.optimized.energies-out_chain.energies[0])*627.5,'o-',label="NEB (30 nodes)")
-plt.plot(neb_long.optimized.integrated_path_length, (neb_long.optimized.energies-clean_out_chain.energies[0])*627.5,'o-',label="NEB (45 nodes)")
-plt.plot(neb_short.optimized.integrated_path_length, (neb_short.optimized.energies-clean_out_chain.energies[0])*627.5,'o-',label="NEB (15 nodes)")
-plt.plot(clean_out_chain.integrated_path_length, (clean_out_chain.energies-clean_out_chain.energies[0])*627.5,'o-',label="AS-NEB")
+# plt.plot(neb_long.optimized.integrated_path_length, (neb_long.optimized.energies-clean_out_chain.energies[0])*627.5,'o-',label="NEB (45 nodes)")
+# plt.plot(neb_short.optimized.integrated_path_length, (neb_short.optimized.energies-clean_out_chain.energies[0])*627.5,'o-',label="NEB (15 nodes)")
+# plt.plot(clean_out_chain.integrated_path_length, (clean_out_chain.energies-clean_out_chain.energies[0])*627.5,'o-',label="AS-NEB")
+plt.plot(integrated_path_length(neb_long.optimized), (neb_long.optimized.energies-clean_out_chain.energies[0])*627.5,'o-',label="NEB (45 nodes)")
+plt.plot(integrated_path_length(neb_short.optimized), (neb_short.optimized.energies-clean_out_chain.energies[0])*627.5,'o-',label="NEB (15 nodes)")
+plt.plot(integrated_path_length(clean_out_chain), (clean_out_chain.energies-clean_out_chain.energies[0])*627.5,'o-',label="AS-NEB")
 plt.yticks(fontsize=fs)
 plt.ylabel("Energy (kcal/mol)",fontsize=fs)
 plt.legend(fontsize=fs)
@@ -465,7 +274,84 @@ plt.yticks(fontsize=fs)
 plt.ylabel("Number of optimization steps",fontsize=fs)
 plt.xticks(fontsize=fs)
 plt.show()
+
+# +
+nimages= 15
+nimages_long = 45
+n_steps_orig_neb = len(neb_short.chain_trajectory)*nimages
+n_steps_msmep = sum([len(obj.chain_trajectory) for obj in history.get_optimization_history()])\
++ len(list_of_cleanup_nebs[0].data.chain_trajectory)
+n_steps_msmep*=15
+# n_steps_long_neb = len(neb_long.chain_trajectory+neb_long_continued.chain_trajectory)
+n_steps_long_neb = len(neb_long.chain_trajectory)*nimages_long
+
+fig = 8
+min_val = -5.3
+max_val = 5.3
+fs = 18
+plt.figure(figsize=(1.16*fig,fig))
+plt.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
+       height=[n_steps_msmep, n_steps_orig_neb, n_steps_long_neb],color='orange')
+plt.yticks(fontsize=fs)
+plt.ylabel("Number of gradient calls",fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.show()
+
+
+# +
+def get_mass_weighed_coords(chain):
+    traj = chain.to_trajectory()
+    coords = traj.coords
+    weights = np.array([np.sqrt(get_mass(s)) for s in traj.symbols])
+    mass_weighed_coords = coords  * weights.reshape(-1,1)
+    return mass_weighed_coords
+
+def integrated_path_length(chain):
+    coords = get_mass_weighed_coords(chain)
+
+    cum_sums = [0]
+
+    int_path_len = [0]
+    for i, frame_coords in enumerate(coords):
+        if i == len(coords) - 1:
+            continue
+        next_frame = coords[i + 1]
+        dist_vec = next_frame - frame_coords
+        cum_sums.append(cum_sums[-1] + np.linalg.norm(dist_vec))
+
+    cum_sums = np.array(cum_sums)
+    int_path_len = cum_sums / cum_sums[-1]
+    return np.array(int_path_len)
+
+
 # -
+
+plt.plot(integrated_path_length(neb_short.initial_chain), neb_short.initial_chain.energies,'o-')
+plt.plot(integrated_path_length(neb_short.optimized), neb_short.optimized.energies,'o-')
+
+
+neb_short.plot_opt_history(do_3d=True)
+
+
+
+conc_checks = [m._chain_is_concave(c) for c in neb_short.chain_trajectory]
+
+irc_checks = []
+for c in neb_short.chain_trajectory:
+    r,p = m._approx_irc(c)
+    minimizing_gives_endpoints = r.is_identical(c[0]) and p.is_identical(c[-1])
+    irc_checks.append(minimizing_gives_endpoints)
+
+r,p = m._approx_irc(neb_short.chain_trajectory[0])
+
+r.tdstructure
+
+p.tdstructure
+
+plt.plot(conc_checks,label='has no minima')
+plt.plot(irc_checks, label='irc gives input structs')
+plt.legend()
+plt.show()
 
 # ### Wittig Terachem
 
@@ -500,11 +386,12 @@ c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[]
 root = TDStructure.from_RP(temp.reactants)
 root = root.pseudoalign(c3d_list)
 root.gum_mm_optimization()
-
-root.tc_model_basis = '6-31gs'
-root.tc_model_method = 'b3lyp'
+# --
 
 root = root.xtb_geom_optimization()
+root.tc_model_basis = 'gfn2xtb'
+root.tc_model_method = 'gfn2xtb'
+
 root = root.tc_geom_optimization()
 
 target = root.copy()
@@ -512,29 +399,30 @@ target.add_bonds(c3d_list.forming)
 target.delete_bonds(c3d_list.deleted)
 target.gum_mm_optimization()
 target = target.xtb_geom_optimization()
+target.update_tc_parameters(root)
+
 target = target.tc_geom_optimization()
 
 tr = Trajectory([root, target]).run_geodesic(nimages=15, sweep=False)
-# --
 
-# +
-# tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_b3lyp.xyz")
-# -
-
-# cni = ChainInputs()
-# start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_b3lyp.xyz", parameters=cni)
-
+tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_tc_xtb.xyz")
 
 cni = ChainInputs(node_class=Node3D_TC)
 # start_chain = Chain.from_traj(tr,parameters=cni)
-start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_b3lyp.xyz", parameters=cni)
+# start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_b3lyp.xyz", parameters=cni)
+start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_tc_xtb.xyz", parameters=cni)
 
-nbi = NEBInputs(v=True, stopping_threshold=3, tol=0.01)
+# +
+# root, target = start_chain[0], start_chain[-1]
+# tr = Trajectory([root, target]).run_geodesic(nimages=45, sweep=False)
+# -
+
+nbi = NEBInputs(v=True, stopping_threshold=5, tol=0.01)
 m  = MSMEP(neb_inputs=nbi, root_early_stopping=True, chain_inputs=cni, gi_inputs=GIInputs())
 
+out_chain.plot_chain()
 
-
-history, out_chain = m.find_mep_multistep(start_chain)
+cleanup_neb = m.cleanup_nebs(start_chain,history)
 
 # # Knoevenangel Condensation
 

@@ -12,7 +12,9 @@ class NEBInputs:
     rms_grad_thre: float = None
     grad_thre: float = None
     max_steps: float = 1000
-    stopping_threshold: float = 0.0
+    early_stop_force_thre: float = 0.0
+    early_stop_chain_rms_thre: float = 0.0
+    early_stop_corr_thre: float = 10.
     node_freezing: bool = False
 
     vv_force_thre: float = 0.0

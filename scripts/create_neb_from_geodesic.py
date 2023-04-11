@@ -3,7 +3,7 @@ from pathlib import Path
 from argparse import ArgumentParser
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
 import numpy as np
@@ -53,17 +53,24 @@ def main():
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
 
-    tol = 0.001
-    cni = ChainInputs(k=0.01)
+    tol = 0.01
+    cni = ChainInputs(k=0.01, node_class=Node3D_TC)
+    method = 'gfn2xtb'
+    basis = 'gfn2xtb'
+    for td in traj:
+        td.tc_model_method = method
+        td.tc_model_basis = basis
+
     nbi = NEBInputs(tol=tol, v=True, max_steps=2000)
     chain = Chain.from_traj(traj=traj, parameters=cni)
     n = NEB(initial_chain=chain, parameters=nbi)
     try: 
         n.optimize_chain()
         data_dir = fp.parent
-        n.write_to_disk(data_dir/f"{fp.stem}_neb.xyz")
+        n.write_to_disk(data_dir/f"{fp.stem}_neb.xyz",write_history=True)
     except NoneConvergedException as e:
-        e.obj.write_to_disk(data_dir/f"{fp.stem}_failed.xyz")
+        data_dir = fp.parent
+        e.obj.write_to_disk(data_dir/f"{fp.stem}_failed.xyz",write_history=True)
         
 	    
 

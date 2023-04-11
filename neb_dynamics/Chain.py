@@ -12,6 +12,9 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Node import Node
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.Inputs import ChainInputs
+from neb_dynamics.helper_functions import RMSD
+from neb_dynamics.helper_functions import _get_ind_minima, _get_ind_maxima
+
 
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
@@ -24,15 +27,14 @@ import scipy
 class Chain:
     nodes: List[Node]
     parameters: ChainInputs
-    # k: Union[List[float], float]
-    # delta_k : float = 0
-    # step_size: float = 1
-    # velocity: np.array = np.zeros(1)
-    # node_class: Node = Node3D
-    # do_local_xtb: bool = True
+    
     def __post_init__(self):
         if not hasattr(self.parameters, "velocity"):
             self.parameters.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords), 3))
+
+    @property
+    def n_atoms(self):
+        return self.coordinates[0].shape[0]
 
     @classmethod
     def from_xyz(cls, fp: Path, parameters: ChainInputs):
@@ -46,6 +48,50 @@ class Chain:
         for chain in list_of_chains:
             nodes.extend(chain.nodes)
         return cls(nodes=nodes, parameters=parameters)
+
+
+    def _distance_to_chain(self, other_chain: Chain):
+        chain1 = self
+        chain2 = other_chain
+
+        distances = []
+        
+
+        for node1, node2 in zip(chain1.nodes, chain2.nodes):
+            if node1.coords.shape[0] > 2:
+                dist,_ = RMSD(node1.coords, node2.coords)
+            else:
+                dist = np.linalg.norm(node1.coords - node2.coords)
+            distances.append(dist)
+
+        return sum(distances) / len(chain1)
+    
+    def _tangent_correlations(self, other_chain: Chain):
+        chain1_vec = np.array(self.unit_tangents).flatten()
+        chain2_vec = np.array(other_chain.unit_tangents).flatten()
+        projector = np.dot(chain1_vec, chain2_vec)
+        normalization = np.dot(chain1_vec, chain1_vec)
+        
+        return projector / normalization
+    
+    def _gradient_correlation(self, other_chain: Chain):
+        
+        chain1_vec = np.array(self.gradients).flatten()
+        chain2_vec = np.array(other_chain.gradients).flatten()
+        projector = np.dot(chain1_vec, chain2_vec)
+        normalization = np.dot(chain1_vec, chain1_vec)
+        
+        return projector / normalization
+    
+    def _gradient_delta_mags(self, other_chain: Chain):
+        
+        chain1_vec = np.array(self.gradients).flatten()
+        chain2_vec = np.array(other_chain.gradients ).flatten()
+        diff = np.linalg.norm(chain2_vec - chain1_vec)
+        normalization = self.n_atoms * len(self.nodes)
+        
+        return diff / normalization
+
 
     @property
     def integrated_path_length(self):
@@ -236,14 +282,6 @@ class Chain:
     @cached_property
     def gradients(self) -> np.array:
         if self.parameters.do_parallel:
-            # if self.parameters.do_local_xtb:
-            #     energy_gradient_tuples = self.calculate_energy_and_gradients_parallel()
-            # else:
-            #     ens_grads_lists = self.to_trajectory().energies_and_gradients_tc()
-            #     energy_gradient_tuples = list(
-            #         zip(ens_grads_lists[0], ens_grads_lists[1])
-            #     )
-            
             energy_gradient_tuples = self.parameters.node_class.calculate_energy_and_gradients_parallel(chain=self)
         else:
             energies = [node.energy for node in self.nodes]
@@ -344,7 +382,6 @@ class Chain:
         )
         e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
         e_max = max(self.energies)
-        # print(f"***{e_max=}//{e_ref=}//{k_max=}")
 
         k01 = self._k_between_nodes(
             node0=prev_node,
@@ -372,72 +409,51 @@ class Chain:
     def to_trajectory(self):
         t = Trajectory([n.tdstructure for n in self.nodes])
         return t
+    
+    def is_elem_step(self):
+        chain = self.copy()
+        if len(self) <= 1:
+            return True
 
-    @classmethod
-    def quaternionrmsd(cls, c1, c2):
-        N = len(c1)
-        if len(c2) != N:
-            raise "Dimensions not equal!"
-        bary1 = np.mean(c1, axis=0)
-        bary2 = np.mean(c2, axis=0)
+        conditions = {}
+        is_concave = self._chain_is_concave()
+        conditions['concavity'] = is_concave
 
-        c1 = c1 - bary1
-        c2 = c2 - bary2
+        r,p = self._approx_irc()
+        minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
+        conditions['irc'] = minimizing_gives_endpoints
 
-        R = np.dot(np.transpose(c1), c2)
+        split_method = self._select_split_method(conditions)
+        elem_step = True if split_method is None else False
+        return elem_step, split_method
 
-        F = np.array(
-            [
-                [
-                    (R[0, 0] + R[1, 1] + R[2, 2]),
-                    (R[1, 2] - R[2, 1]),
-                    (R[2, 0] - R[0, 2]),
-                    (R[0, 1] - R[1, 0]),
-                ],
-                [
-                    (R[1, 2] - R[2, 1]),
-                    (R[0, 0] - R[1, 1] - R[2, 2]),
-                    (R[1, 0] + R[0, 1]),
-                    (R[2, 0] + R[0, 2]),
-                ],
-                [
-                    (R[2, 0] - R[0, 2]),
-                    (R[1, 0] + R[0, 1]),
-                    (-R[0, 0] + R[1, 1] - R[2, 2]),
-                    (R[1, 2] + R[2, 1]),
-                ],
-                [
-                    (R[0, 1] - R[1, 0]),
-                    (R[2, 0] + R[0, 2]),
-                    (R[1, 2] + R[2, 1]),
-                    (-R[0, 0] - R[1, 1] + R[2, 2]),
-                ],
-            ]
-        )
-        eigen = scipy.sparse.linalg.eigs(F, k=1, which="LR")
-        lmax = float(eigen[0][0])
-        qmax = np.array(eigen[1][0:4])
-        qmax = np.float_(qmax)
-        qmax = np.ndarray.flatten(qmax)
-        rmsd = ((np.sum(np.square(c1)) + np.sum(np.square(c2)) - 2 * lmax) / N) ** 0.5
-        rot = np.array(
-            [
-                [
-                    (qmax[0] ** 2 + qmax[1] ** 2 - qmax[2] ** 2 - qmax[3] ** 2),
-                    2 * (qmax[1] * qmax[2] - qmax[0] * qmax[3]),
-                    2 * (qmax[1] * qmax[3] + qmax[0] * qmax[2]),
-                ],
-                [
-                    2 * (qmax[1] * qmax[2] + qmax[0] * qmax[3]),
-                    (qmax[0] ** 2 - qmax[1] ** 2 + qmax[2] ** 2 - qmax[3] ** 2),
-                    2 * (qmax[2] * qmax[3] - qmax[0] * qmax[1]),
-                ],
-                [
-                    2 * (qmax[1] * qmax[3] - qmax[0] * qmax[2]),
-                    2 * (qmax[2] * qmax[3] + qmax[0] * qmax[1]),
-                    (qmax[0] ** 2 - qmax[1] ** 2 - qmax[2] ** 2 + qmax[3] ** 2),
-                ],
-            ]
-        )
+    def _chain_is_concave(self):
+        ind_minima = _get_ind_minima(self)
+        return len(ind_minima) == 0
 
-        return rmsd
+    def _approx_irc(self, index=None):
+        chain = self.copy()
+        if index is None:
+            arg_max = np.argmax(chain.energies)
+        else:
+            arg_max = index
+            
+        if arg_max == len(chain)-1 or arg_max == 0: # monotonically changing function, 
+            return chain[0], chain[-1]
+
+        candidate_r = chain[arg_max - 1]
+        candidate_p = chain[arg_max + 1]
+        r = candidate_r.do_geometry_optimization()
+        p = candidate_p.do_geometry_optimization()
+        return r, p
+
+    def _select_split_method(self, conditions: dict):
+        all_conditions_met = all([val for key,val in conditions.items()])
+        if all_conditions_met: 
+            return None
+
+        if conditions['irc'] is False:
+            return 'maxima'
+        elif conditions['concavity'] is False:
+            return 'minima'
+
