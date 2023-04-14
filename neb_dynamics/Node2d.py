@@ -14,6 +14,8 @@ class Node2D(Node):
     converged: bool = False
     do_climb: bool = False
 
+    is_a_molecule = False
+
     @property
     def coords(self):
         return self.pair_of_coordinates
@@ -101,6 +103,8 @@ class Node2D_2(Node):
     pair_of_coordinates: np.array
     converged: bool = False
     do_climb: bool = False
+
+    is_a_molecule = False
 
     @property
     def coords(self):
@@ -233,6 +237,8 @@ class Node2D_ITM(Node):
     converged: bool = False
     do_climb: bool = False
 
+    is_a_molecule = False
+
     @property
     def coords(self):
         return self.pair_of_coordinates
@@ -310,6 +316,8 @@ class Node2D_LEPS(Node):
     pair_of_coordinates: np.array
     converged: bool = False
     do_climb: bool = False
+
+    is_a_molecule = False
 
     @property
     def coords(self):
@@ -566,6 +574,8 @@ class Node2D_Flower(Node):
     pair_of_coordinates: np.array
     converged: bool = False
     do_climb: bool = False
+
+    is_a_molecule = False
 
     @property
     def coords(self):

@@ -50,9 +50,15 @@ class MSMEP:
         return root_opt, target_opt
 
     def find_mep_multistep(self, input_chain):
-        if input_chain[0].is_identical(input_chain[-1]):
-            print("Endpoints are identical. Returning nothing")
-            return None, None
+        
+        if input_chain[0].is_a_molecule:
+            if input_chain[0]._is_connectivity_identical(input_chain[-1]):
+                print("Endpoints are identical. Returning nothing")
+                return None, None
+        else:
+            if input_chain[0].is_identical(input_chain[-1]):
+                print("Endpoints are identical. Returning nothing")
+                return None, None
         
         root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
         history = TreeNode(data=root_neb_obj, children=[])
@@ -126,52 +132,29 @@ class MSMEP:
             out_chain = n.chain_trajectory[-1]
 
         return n, out_chain
-
-    # def _chain_is_concave(self, chain):
-    #     ind_minima = _get_ind_minima(chain)
-    #     return len(ind_minima) == 0
     
-
-    # def _approx_irc(self, chain, index=None):
-    #     if index is None:
-    #         arg_max = np.argmax(chain.energies)
-    #     else:
-    #         arg_max = index
-            
-    #     if arg_max == len(chain)-1 or arg_max == 0: # monotonically changing function, 
-    #         return chain[0], chain[-1]
-
-    #     candidate_r = chain[arg_max - 1]
-    #     candidate_p = chain[arg_max + 1]
-    #     r = candidate_r.do_geometry_optimization()
-    #     p = candidate_p.do_geometry_optimization()
-    #     return r, p
-
-    # def is_elem_step(self, chain):
-    #     if len(chain) <= 1:
-    #         return True
-
-    #     conditions = {}
-    #     is_concave = self._chain_is_concave(chain)
-    #     conditions['concavity'] = is_concave
-
-    #     r,p = self._approx_irc(chain)
-    #     minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
-    #     conditions['irc'] = minimizing_gives_endpoints
-
-    #     split_method = self._select_split_method(conditions)
-    #     elem_step = True if split_method is None else False
-    #     return elem_step, split_method
-
-    # def _select_split_method(self, conditions: dict):
-    #     all_conditions_met = all([val for key,val in conditions.items()])
-    #     if all_conditions_met: 
-    #         return None
-
-    #     if conditions['irc'] is False:
-    #         return 'maxima'
-    #     elif conditions['concavity'] is False:
-    #         return 'minima'
+    def _merge_cleanups_and_leaves(self, list_of_cleanup_nebs, history):
+        start_chain = history.data.initial_chain
+        insertion_points = self._get_insertion_points_leaves(history.ordered_leaves,original_start=start_chain[0])
+        list_of_cleanup_nodes = [TreeNode(data=neb_i, children=[]) for neb_i in list_of_cleanup_nebs]
+        new_leaves = history.ordered_leaves
+        print('before:',len(new_leaves))
+        for insertion_ind, tree_node in zip(insertion_points, list_of_cleanup_nodes):
+            new_leaves.insert(insertion_ind, tree_node)
+        print('after:',len(new_leaves))
+        new_chains = [leaf.data.optimized for leaf in new_leaves]
+        clean_out_chain = Chain.from_list_of_chains(new_chains,parameters=start_chain.parameters)
+        return clean_out_chain
+    
+    def create_clean_msmep(self, history):
+        start_chain = history.data.initial_chain
+        list_of_cleanup_nebs = self.cleanup_nebs(starting_chain=start_chain, history_obj=history)
+        
+        if len(list_of_cleanup_nebs) == 0:
+            return None
+        
+        clean_out_chain = self._merge_cleanups_and_leaves(list_of_cleanup_nebs=list_of_cleanup_nebs, history=history)
+        return clean_out_chain
 
     def _make_chain_frag(self, chain: Chain, pair_of_inds):
         start, end = pair_of_inds
@@ -269,7 +252,7 @@ class MSMEP:
             else:
                 prev_end = leaves[index-1].data.optimized[-1]
 
-            curr_start = leaves[index].data.optimized
+            curr_start = leaves[index].data.optimized[0]
             chain_pair = Chain(nodes=[prev_end, curr_start], parameters=starting_chain.parameters)
             neb_obj, _ = self.get_neb_chain(chain_pair)
             cleanup_results.append(neb_obj)

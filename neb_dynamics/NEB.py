@@ -14,6 +14,7 @@ from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Node import Node
 from neb_dynamics import ALS
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
+from kneed import KneeLocator
 
 import matplotlib.pyplot as plt
 
@@ -351,6 +352,39 @@ class NEB:
                 traj = chain.to_trajectory()
                 traj.write_trajectory(out_folder / f"traj_{i}.xyz")
                 
+      
+    def plot_chain_distances(self):
+        chain_traj = self.chain_trajectory
+        distances = [None] # None for the first chain
+        for i,chain in enumerate(chain_traj):
+            if i == 0 :
+                continue
+            
+            prev_chain = chain_traj[i-1]
+            dist = prev_chain._distance_to_chain(chain)
+            distances.append(dist)
+            
+
+
+        fs = 18
+        s = 8
+
+
+        
+        kn = KneeLocator(x=list(range(len(distances)))[1:], y=distances[1:], curve='convex', direction='decreasing')
+
+
+        f,ax = plt.subplots(figsize=(1.16*s, s))
+
+        plt.text(.65,.9, s=f"elbow: {kn.elbow}\nelbow_yval: {round(kn.elbow_y,4)}", transform=ax.transAxes,fontsize=fs)
+
+        plt.plot(distances,'o-')
+        plt.yticks(fontsize=fs)
+        plt.xticks(fontsize=fs)
+        plt.ylabel("Distance to previous chain",fontsize=fs)
+        plt.xlabel("Chain id",fontsize=fs)
+
+        plt.show()
       
     def plot_grad_delta_mag_history(self):
         s = 8

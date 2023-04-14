@@ -16,6 +16,7 @@ from neb_dynamics.helper_functions import RMSD
 from kneed import KneeLocator
 from neb_dynamics.TreeNode import TreeNode
 from retropaths.molecules.elements import ElementData
+from retropaths.abinitio.tdstructure import TDStructure
 import warnings
 warnings.filterwarnings('ignore')
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
@@ -75,27 +76,53 @@ multi_step_rns=['Semmler-Wolff-Reaction', 'Ramberg-Backlund-Reaction-Bromine', '
 
 failed=['Nazarov-Cyclization']
 
-# reaction_structs = ca.structures_dir / 'Thio-Claisen-Rearrangement'
-reaction_structs = ca.structures_dir / 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile'
-guess_path = reaction_structs / 'initial_guess.xyz'
+comparisons_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons/")
+ca = CompetitorAnalyzer(comparisons_dir,'asneb')
 
-tr = Trajectory.from_xyz(guess_path)
+foo = ca.out_folder / rn
 
-nbi = NEBInputs(v=True,early_stop_chain_rms_thre=0.002,tol=0.00045)
-cni = ChainInputs()
-gii = GIInputs()
-m = MSMEP(neb_inputs=nbi, gi_inputs=gii, chain_inputs=cni)
+t = Trajectory.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Aza-Grob-Fragmentation-X-Fluorine/initial_guess.xyz")
 
-c = Chain.from_traj(tr,parameters=cni)
+actual_failed = []
+actual_elem_step = []
+actual_multi_step = []
+for rn in rns:
+    try:
+        data_dir = ca.out_folder / rn / 'initial_guess_msmep.xyz'
+        c = Chain.from_xyz(data_dir, ChainInputs())
+        if c._chain_is_concave():
+            actual_elem_step.append(rn)
+        else:
+            actual_multi_step.append(rn)
+    except:
+        actual_failed.append(rn)
+        
 
-history, out_chain = m.find_mep_multistep(c)
+overlap_elem_steps = set(actual_elem_step) - set(elem_rns) 
 
-out_chain.plot_chain()
+overlap_multi = set(actual_multi_step) - set(multi_step_rns)
 
- nbi_complete = nbi = NEBInputs(v=True,early_stop_chain_rms_thre=0.0,tol=0.00045)
-neb_complete = NEB(initial_chain=c,parameters=nbi_complete)
 
-neb_complete.optimize_chain()
+# # How often do transient minima appear ? 
+
+def has_transient_minima(neb_obj):
+    for chain in neb_obj.chain_trajectory:
+        if not chain._chain_is_concave():
+            return True
+    return False
+
+
+count = 0
+examples = []
+wtf = []
+for elem_rn in actual_elem_step:
+    try:
+        neb_obj = NEB.read_from_disk(ca.out_folder / elem_rn / 'initial_guess_msmep' / 'node_0')
+        if has_transient_minima(neb_obj):
+            examples.append(elem_rn)
+            count+=1
+    except:
+        wtf.append(elem_rn)
 
 
 # # Let's get error bars for an optimization
@@ -139,6 +166,44 @@ neb_short = NEB.read_from_disk(Path("./neb_short"))
 neb_short.plot_opt_history(do_3d=True)
 
 neb_short.plot_grad_delta_mag_history()
+
+# +
+chain_traj = neb_short.chain_trajectory
+distances = [None] # None for the first chain
+for i,chain in enumerate(chain_traj):
+    if i == 0 :
+        continue
+    
+    prev_chain = chain_traj[i-1]
+    dist = prev_chain._distance_to_chain(chain)
+    distances.append(dist)
+    
+
+
+fs = 18
+s = 8
+
+
+from kneed import KneeLocator
+kn = KneeLocator(x=list(range(len(distances)))[1:], y=distances[1:], curve='convex', direction='decreasing')
+
+
+f,ax = plt.subplots(figsize=(1.16*s, s))
+
+plt.text(.65,.9, s=f"elbow: {kn.elbow}\nelbow_yval: {round(kn.elbow_y,4)}", transform=ax.transAxes,fontsize=fs)
+
+plt.plot(distances,'o-')
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.ylabel("Distance to previous chain",fontsize=fs)
+plt.xlabel("Chain id",fontsize=fs)
+
+plt.show()
+
+    
+
+neb_short.plot_grad_delta_mag_history()
+# -
 
 neb_short.plot_projector_history()
 

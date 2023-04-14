@@ -12,8 +12,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Node import Node
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.Inputs import ChainInputs
-from neb_dynamics.helper_functions import RMSD
-from neb_dynamics.helper_functions import _get_ind_minima, _get_ind_maxima
+from neb_dynamics.helper_functions import RMSD, get_mass, _get_ind_minima, _get_ind_maxima
 
 
 from xtb.interface import Calculator
@@ -77,7 +76,11 @@ class Chain:
     def _gradient_correlation(self, other_chain: Chain):
         
         chain1_vec = np.array(self.gradients).flatten()
+        chain1_vec = chain1_vec / np.linalg.norm(chain1_vec)
+        
         chain2_vec = np.array(other_chain.gradients).flatten()
+        chain2_vec = chain2_vec / np.linalg.norm(chain2_vec)
+        
         projector = np.dot(chain1_vec, chain2_vec)
         normalization = np.dot(chain1_vec, chain1_vec)
         
@@ -93,22 +96,30 @@ class Chain:
         return diff / normalization
 
 
+    def _get_mass_weighed_coords(self):
+        traj = self.to_trajectory()
+        coords = traj.coords
+        weights = np.array([np.sqrt(get_mass(s)) for s in traj.symbols]) 
+        weights = weights  / sum(weights)
+        mass_weighed_coords = coords  * weights.reshape(-1,1)
+        return mass_weighed_coords
+
     @property
     def integrated_path_length(self):
-
+        if self.nodes[0].is_a_molecule:
+            coords = self._get_mass_weighed_coords()
+        else:
+            coords = self.coordinates
         cum_sums = [0]
 
         int_path_len = [0]
-        for i, frame in enumerate(self.nodes):
-            if i == len(self.nodes) - 1:
+        for i, frame_coords in enumerate(coords):
+            if i == len(coords) - 1:
                 continue
-            next_frame = self.nodes[i + 1]
-            dist_vec = next_frame.coords - frame.coords
+            next_frame = coords[i + 1]
+            dist_vec = next_frame - frame_coords
             cum_sums.append(cum_sums[-1] + np.linalg.norm(dist_vec))
-            # proj = (frame.dot_function(dist_vec, endpoint_vec) / frame.dot_function(endpoint_vec, endpoint_vec))*endpoint_vec
 
-            # proj_dist = np.linalg.norm(proj)
-            # int_path_len.append(int_path_len[-1]+proj_dist)
         cum_sums = np.array(cum_sums)
         int_path_len = cum_sums / cum_sums[-1]
         return np.array(int_path_len)
@@ -260,7 +271,7 @@ class Chain:
         return pe_grads_nudged, spring_forces_nudged
 
     def get_maximum_grad_magnitude(self):
-        return np.max([np.linalg.norm(grad) for grad in self.gradients])
+        return np.max([np.amax(grad) for grad in self.gradients])
 
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):

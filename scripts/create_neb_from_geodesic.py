@@ -4,6 +4,8 @@ from argparse import ArgumentParser
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Node3D_TC import Node3D_TC
+from neb_dynamics.Node3D import Node3D
+
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
 import numpy as np
@@ -54,12 +56,14 @@ def main():
 
 
     tol = 0.01
-    cni = ChainInputs(k=0.01, node_class=Node3D_TC)
-    method = 'gfn2xtb'
-    basis = 'gfn2xtb'
-    for td in traj:
-        td.tc_model_method = method
-        td.tc_model_basis = basis
+    # cni = ChainInputs(k=0.01, node_class=Node3D_TC)
+    # method = 'gfn2xtb'
+    # basis = 'gfn2xtb'
+    # for td in traj:
+    #     td.tc_model_method = method
+    #     td.tc_model_basis = basis
+
+    cni = ChainInputs(k=0.01, node_class=Node3D)
 
     nbi = NEBInputs(tol=tol, v=True, max_steps=2000)
     chain = Chain.from_traj(traj=traj, parameters=cni)

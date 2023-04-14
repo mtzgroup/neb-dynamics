@@ -22,6 +22,9 @@ class Node3D_TC(Node):
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
 
+
+    is_a_molecule = True
+
     @property
     def coords(self):
         return self.tdstructure.coords

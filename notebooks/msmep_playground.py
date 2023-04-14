@@ -60,9 +60,16 @@ HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
 # # Wittig
 
-mol1 =  Molecule.from_smiles('[P](=CC)(C1=CC=CC=C1)(C2=CC=CC=C2)C3=CC=CC=C3')
+# +
+# mol1 =  Molecule.from_smiles('[P](=CC)(C1=CC=CC=C1)(C2=CC=CC=C2)C3=CC=CC=C3')
+mol1 =  Molecule.from_smiles('[P](=CC)(C)(C)C')
 mol2 =  Molecule.from_smiles('C(=O)C')
 
+mol = Molecule.from_smiles('[P](=CC)(C)(C)C.C(=O)C')
+# -
+
+
+td = TDStructure.from_RP(mol)
 
 tds = TDStructure.from_RP(mol1)
 tds2 = TDStructure.from_RP(mol2)
@@ -75,25 +82,57 @@ td_joined = solv.join_td_list(adj_td_list)
 
 td_joined.molecule_rp.draw(mode='d3', size=(700,700))
 
+td.molecule_rp.draw(mode='d3',size=(400,400))
+
 # +
+p_ind = 0
+cp_ind = 1
+
+me1 = 5
+me2 = 3
+me3 = 4
+
+o_ind = 7
+co_ind = 6
+
 ind=0
 settings = [
 
     (
-        td_joined.molecule_rp,
-        {'charges': [], 'delete':[(40, 41), (1, 0)], 'double':[(41, 0), (1, 40)]},
+        td.molecule_rp,
+        {'charges': [], 'delete':[(co_ind, o_ind), (cp_ind, p_ind)], 'double':[(o_ind, p_ind), (cp_ind, co_ind)]},
         [
-            (3, 0, 'Me'),
-            (15, 0, 'Me'),
-            (9, 0, 'Me'),
+            (me1, p_ind, 'Me'),
+            (me2, p_ind, 'Me'),
+            (me3, p_ind, 'Me'),
   
         ],
-        [Changes3D(start=s, end=e, bond_order=1) for s, e in [(40, 41), (1, 0)]],
-        [Changes3D(start=s, end=e, bond_order=2) for s, e in [(41, 0), (1, 40)]]
+        [Changes3D(start=s, end=e, bond_order=1) for s, e in [(co_ind, o_ind), (cp_ind, p_ind)]],
+        [Changes3D(start=s, end=e, bond_order=2) for s, e in [(o_ind, p_ind), (cp_ind, co_ind)]]
 
     )]
 
 mol, d, cg, deleting_list, forming_list = settings[ind]
+
+# +
+# ind=0
+# settings = [
+
+#     (
+#         td_joined.molecule_rp,
+#         {'charges': [], 'delete':[(40, 41), (1, 0)], 'double':[(41, 0), (1, 40)]},
+#         [
+#             (3, 0, 'Me'),
+#             (15, 0, 'Me'),
+#             (9, 0, 'Me'),
+  
+#         ],
+#         [Changes3D(start=s, end=e, bond_order=1) for s, e in [(40, 41), (1, 0)]],
+#         [Changes3D(start=s, end=e, bond_order=2) for s, e in [(41, 0), (1, 40)]]
+
+#     )]
+
+# mol, d, cg, deleting_list, forming_list = settings[ind]
 
 # +
 # ind=0
@@ -128,31 +167,47 @@ root = TDStructure.from_RP(temp.reactants)
 root = root.pseudoalign(c3d_list)
 root.gum_mm_optimization()
 
-root = root.xtb_geom_optimization()
-# root = root.tc_geom_optimization()
-
 target = root.copy()
 target.add_bonds(c3d_list.forming)
 target.delete_bonds(c3d_list.deleted)
 target.gum_mm_optimization()
+
+
+root = root.xtb_geom_optimization()
 target = target.xtb_geom_optimization()
-# target = target.tc_geom_optimization()
+
 # --
 
-tr = Trajectory([root, target]).run_geodesic(nimages=15, sweep=True)
+root
 
-tr.draw()
+target
 
+tr = Trajectory([root, target]).run_geodesic(nimages=15, sweep=False)
+
+# +
 # cni = ChainInputs()
-start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz", parameters=cni)
+# start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz", parameters=cni)
 # tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_phe.xyz")
 
-cni = ChainInputs()
+# +
+# history.write_to_disk(Path("wittig_gone_horrible"))
+
+# +
+# tr.draw()
+# -
+
+cni = ChainInputs(k=0.10, delta_k=0.009)
 nbi = NEBInputs(v=True, early_stop_chain_rms_thre=0.002, tol=0.01,max_steps=2000)
-m  = MSMEP(neb_inputs=nbi, root_early_stopping=False, chain_inputs=cni, gi_inputs=GIInputs(nimages=15))
-# start_chain = Chain.from_traj(tr,parameters=cni)
+m  = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15))
+start_chain = Chain.from_traj(tr,parameters=cni)
 
 history, out_chain = m.find_mep_multistep(start_chain)
+
+history.data.plot_chain_distances()
+
+out_chain.plot_chain()
+
+out_chain.to_trajectory().draw()
 
 out_chain.plot_chain()
 

@@ -8,8 +8,11 @@ from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Node2d import Node2D_Flower, Node2D
 from neb_dynamics.Node3D_TC import Node3D_TC
+from neb_dynamics.TreeNode import TreeNode
 from itertools import product
 import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings('ignore')
 
 from neb_dynamics.MSMEP import MSMEP
 from IPython.core.display import HTML
@@ -39,12 +42,25 @@ def plot_neb(neb,linestyle='--',marker='o',ax=None,**kwds):
     plot_chain(chain=neb.initial_chain,linestyle='--',marker=marker,ax=ax,**kwds)
 
 
+# +
+def plot_chain2d(chain,linestyle='--',ax=None, marker='o',**kwds):
+    if ax:
+        ax.plot(chain.integrated_path_length,chain.energies,linestyle=linestyle,marker=marker,**kwds)
+    else:
+        plt.plot(chain.integrated_path_length,chain.energies,linestyle=linestyle,marker=marker,**kwds)
+
+        
+def plot_neb2d(neb,linestyle='--',marker='o',ax=None,**kwds):
+    plot_chain2d(chain=neb.chain_trajectory[-1],linestyle='-',marker=marker,ax=ax,**kwds)
+    plot_chain2d(chain=neb.initial_chain,linestyle='--',marker=marker,ax=ax,**kwds)
+
+
 # -
 
 # # 2D potentials
 
 # +
-ind = 1
+ind = 0
 
 the_noise = [-1,1]
 
@@ -126,7 +142,8 @@ n_ref.optimize_chain()
 
 gii = GIInputs(nimages=nimages)
 nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_chain_rms_thre=0.002, node_freezing=False)
-m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni_ref, gi_inputs=gii, root_early_stopping=False)
+# nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=3, node_freezing=False)
+m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni_ref, gi_inputs=gii)
 history, out_chain = m.find_mep_multistep(chain_ref)
 
 # +
@@ -154,10 +171,10 @@ n_ref_long.optimize_chain()
 
 #### get energies for countourplot
 gridsize = 100
-# min_val = -5.3
-# max_val = 5.3
 min_val = -4
 max_val = 4
+# min_val = -.05
+# max_val = .05
 x = np.linspace(start=min_val, stop=max_val, num=gridsize)
 y = x.reshape(-1, 1)
 
@@ -166,8 +183,6 @@ h_ref = h_flat_ref.reshape(gridsize,gridsize).T
 
 # +
 fig = 8
-min_val = -5.3
-max_val = 5.3
 fs = 18
 f, ax = plt.subplots(figsize=(1.3 * fig, fig),ncols=1)
 # x = np.linspace(start=min_val, stop=max_val, num=1000)
@@ -180,29 +195,57 @@ _ = f.colorbar(cs)
 plot_chain(n_ref.initial_chain, c='orange',label='initial guess')
 plot_chain(n_ref.chain_trajectory[-1], c='skyblue',linestyle='-',label=f'neb({nimages} nodes)')
 plot_chain(out_chain, c='red',marker='o',linestyle='-',label='as-neb')
-plot_chain(n_ref_long.chain_trajectory[-1], c='yellow',linestyle='-',label=f'neb({nimages_long} nodes)')
+plot_chain(n_ref_long.chain_trajectory[-1], c='silver',linestyle='-',label=f'neb({nimages_long} nodes)')
 plt.legend(fontsize=fs)
 plt.yticks(fontsize=fs)
 plt.xticks(fontsize=fs)
 plt.show()
-# -
 
-n_ref_long.plot_grad_delta_mag_history()
+# +
+fig = 8
+min_val = -5.3
+max_val = 5.3
+fs = 18
+f, ax = plt.subplots(figsize=(1.3 * fig, fig),ncols=1)
+# ax.set_facecolor("lightgray")
+
+plot_chain2d(n_ref.initial_chain, c='orange',label='initial guess')
+plot_chain2d(n_ref.chain_trajectory[-1], c='skyblue',linestyle='-',label=f'neb({nimages} nodes)')
+plot_chain2d(out_chain, c='red',marker='o',linestyle='-',label='as-neb')
+plot_chain2d(n_ref_long.chain_trajectory[-1], c='silver',linestyle='-',label=f'neb({nimages_long} nodes)')
+plt.legend(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.show()
 
 # +
 n_steps_orig_neb = len(n_ref.chain_trajectory)
 n_steps_msmep = sum([len(obj.chain_trajectory) for obj in history.get_optimization_history()]) 
 n_steps_long_neb = len(n_ref_long.chain_trajectory)
 
+n_grad_orig_neb = n_steps_orig_neb*NIMAGES
+n_grad_msmep = n_steps_msmep*NIMAGES
+n_grad_long_neb = n_steps_long_neb*nimages_long
+
 fig = 8
 min_val = -5.3
 max_val = 5.3
 fs = 18
-plt.figure(figsize=(1.16*fig,fig))
-plt.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
-       height=[n_steps_msmep, n_steps_orig_neb, n_steps_long_neb])
+f,ax = plt.subplots(figsize=(1.16*fig,fig))
+# plt.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
+#        height=[n_steps_msmep, n_steps_orig_neb, n_steps_long_neb])
+
+bars = ax.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
+       height=[n_grad_msmep, n_grad_orig_neb, n_grad_long_neb])
+
+ax.bar_label(bars,fontsize=fs)
+
+
 plt.yticks(fontsize=fs)
-plt.ylabel("Number of optimization steps",fontsize=fs)
+# plt.ylabel("Number of optimization steps",fontsize=fs)
+plt.text(.03,.95, f"% improvement: {round((1 - n_grad_msmep / n_grad_long_neb)* 100, 3)}",transform=ax.transAxes,fontsize=fs,
+        bbox={'visible':True,'fill':False})
+plt.ylabel("Number of gradient calls",fontsize=fs)
 plt.xticks(fontsize=fs)
 plt.show()
 # -
@@ -324,5 +367,80 @@ plt.xlabel("N nodes",fontsize=fs)
 plt.yticks(fontsize=fs)
 plt.xticks(fontsize=fs)
 plt.show()
+
+# # Visualize Wittig
+
+neb_short = NEB.read_from_disk(Path("./neb_short"))
+
+neb_long = NEB.read_from_disk(Path("./neb_long_45nodes"))
+
+asneb_history = TreeNode.read_from_disk(Path("./wittig_early_stop/"))
+
+cleanups = NEB.read_from_disk(Path("./cleanup_neb"))
+
+m = MSMEP(NEBInputs(),ChainInputs(),GIInputs())
+clean_chain = m._merge_cleanups_and_leaves([cleanups], asneb_history)
+
+# +
+fig = 8
+min_val = -5.3
+max_val = 5.3
+fs = 18
+plt.figure(figsize=(1.62*fig,fig))
+
+plt.plot(neb_long.optimized.integrated_path_length, (neb_long.optimized.energies-clean_chain.energies[0])*627.5,'o-',label="NEB (45 nodes)")
+plt.plot(neb_short.optimized.integrated_path_length, (neb_short.optimized.energies-clean_chain.energies[0])*627.5,'o-',label="NEB (15 nodes)")
+plt.plot(clean_chain.integrated_path_length, (clean_chain.energies-clean_chain.energies[0])*627.5,'o-',label="AS-NEB")
+
+plt.yticks(fontsize=fs)
+plt.ylabel("Energy (kcal/mol)",fontsize=fs)
+plt.legend(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.show()
+
+# +
+n_steps_orig_neb = len(neb_short.chain_trajectory)
+
+n_steps_msmep = sum([len(obj.chain_trajectory) for obj in asneb_history.get_optimization_history()])
+n_steps_msmep += len(cleanups.chain_trajectory)
+
+n_steps_long_neb = len(neb_long.chain_trajectory)
+
+
+nimages = len(neb_short.initial_chain)
+nimages_long = len(neb_long.initial_chain)
+
+
+n_grad_orig_neb = n_steps_orig_neb*nimages
+n_grad_msmep = n_steps_msmep*nimages
+n_grad_long_neb = n_steps_long_neb*nimages_long
+
+fig = 8
+min_val = -5.3
+max_val = 5.3
+fs = 18
+f,ax = plt.subplots(figsize=(1.62*fig,fig))
+
+bars = ax.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
+       height=[n_grad_msmep, n_grad_orig_neb, n_grad_long_neb])
+
+ax.bar_label(bars,fontsize=fs)
+
+
+plt.yticks(fontsize=fs)
+# plt.ylabel("Number of optimization steps",fontsize=fs)
+plt.text(.03,.95, f"% improvement: {round((1 - n_grad_msmep / n_grad_long_neb)* 100, 3)}",transform=ax.transAxes,fontsize=fs,
+        bbox={'visible':True,'fill':False})
+plt.ylabel("Number of gradient calls",fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.show()
+# -
+neb_short.plot_chain_distances()
+
+
+
+neb_short.plot_opt_history(do_3d=True)
+
+neb_short.plot_projector_history()
 
 

@@ -9,13 +9,15 @@ import pickle
 import signal
 from itertools import repeat
 from pathlib import Path
-
+import warnings
 import math
 import numpy as np
 import pandas as pd
 from IPython.core.display import HTML
 from scipy.signal import argrelextrema
+from retropaths.molecules.elements import ElementData
 
+warnings.filterwarnings('ignore')
 
 def pairwise(iterable):
     """
@@ -28,7 +30,14 @@ def pairwise(iterable):
         yield (a, b)
         a = b
 
-
+def get_mass(s: str):
+    """
+    return atomic mass from symbol
+    """
+    ed = ElementData()
+    return ed.from_symbol(s).mass_amu
+    
+    
 def _get_ind_minima(chain):
     ind_minima = argrelextrema(chain.energies, np.less, order=1)[0]
     return ind_minima

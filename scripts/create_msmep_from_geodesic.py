@@ -5,8 +5,11 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D_TC import Node3D_TC
+from neb_dynamics.Node3D import Node3D
+
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.TreeNode import TreeNode
 import numpy as np
 
 def read_single_arguments():
@@ -43,6 +46,16 @@ def read_single_arguments():
 
     )
     
+    parser.add_argument(
+        '-dc',
+        '--do_cleanup',
+        dest='dc',
+        type=bool,
+        default=True,
+        help='whether to do conformer-conformer NEBs at the end'
+        
+    )
+    
     return parser.parse_args()
 
 
@@ -53,21 +66,31 @@ def main():
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
     tol = 0.01
-    cni = ChainInputs(k=0.01, node_class=Node3D_TC)
-    method = 'gfn2xtb'
-    basis = 'gfn2xtb'
-    for td in traj:
-        td.tc_model_method = method
-        td.tc_model_basis = basis
+    cni = ChainInputs(k=0.01, node_class=Node3D)
+    # cni = ChainInputs(k=0.01, node_class=Node3D_TC)
+    # method = 'gfn2xtb'
+    # basis = 'gfn2xtb'
+    # for td in traj:
+    #     td.tc_model_method = method
+    #     td.tc_model_basis = basis
 
     nbi = NEBInputs(tol=tol, v=True, max_steps=2000,early_stop_chain_rms_thre=0.002)
     chain = Chain.from_traj(traj=traj, parameters=cni)
-    m = MSMEP(neb_inputs=nbi, chain_inputs=cni,root_early_stopping=True, gi_inputs=GIInputs())
+    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs())
     history, out_chain = m.find_mep_multistep(chain)
     data_dir = fp.parent
     
     out_chain.to_trajectory().write_trajectory(data_dir/f"{fp.stem}_msmep.xyz")
     history.write_to_disk(data_dir/f"{fp.stem}_msmep")
+    
+    
+    if args.dc:
+        clean_msmep = m.create_clean_msmep(history=history)
+        
+        if clean_msmep:
+            clean_msmep.to_trajectory().write_trajectory(data_dir/f"{fp.stem}_msmep_clean.xyz")
+        
+    
         
 	    
 

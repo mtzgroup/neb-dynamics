@@ -13,6 +13,11 @@ class Node(ABC):
 
     @property
     @abstractmethod
+    def is_a_molecule(self):
+        ...
+
+    @property
+    @abstractmethod
     def converged(self):
         ...
 
@@ -63,3 +68,4 @@ class Node(ABC):
     @abstractmethod
     def is_identical(self, other):
         ...
+        

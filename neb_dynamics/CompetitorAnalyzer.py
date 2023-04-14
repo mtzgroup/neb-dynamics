@@ -76,7 +76,7 @@ create_neb_from_geodesic.py  -f initial_guess.xyz -c 0 -s 1 &> out.txt
 eval "$(conda shell.bash hook)"
 export OMP_NUM_THREADS=1
 conda activate rp
-create_msmep_from_geodesic.py -f ./initial_guess_tc_xtb.xyz  -c 0 -s 1 &> out.txt
+create_msmep_from_geodesic.py -f ./initial_guess.xyz  -c 0 -s 1 &> out.txt
             """
         else:
             raise ValueError(f"Invalid input method: {self.method}")
