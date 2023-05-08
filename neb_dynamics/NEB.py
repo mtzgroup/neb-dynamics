@@ -35,6 +35,9 @@ class NEB:
     chain_trajectory: list[Chain] = field(default_factory=list)
     gradient_trajectory: list[np.array] = field(default_factory=list)
 
+    def __post_init__(self):
+        self.n_steps_still_chain = 0
+        
     def do_velvel(self, chain: Chain):
         max_grad_val = chain.get_maximum_grad_magnitude()
         return max_grad_val < self.parameters.vv_force_thre
@@ -55,16 +58,26 @@ class NEB:
             chain[ind].do_climb = True
 
 
-    def _check_if_early_stop(self, chain):
+    def _check_early_stop(self, chain: Chain):
         max_grad_val = chain.get_maximum_grad_magnitude()
+        
         dist_to_prev_chain = chain._distance_to_chain(self.chain_trajectory[-2]) # the -1 is the chain im looking at
+        if dist_to_prev_chain < self.parameters.early_stop_chain_rms_thre:
+            self.n_steps_still_chain += 1
+        else:
+            self.n_steps_still_chain = 0
+        
+        
         correlation = self.chain_trajectory[-2]._gradient_correlation(chain)
         conditions = [ 
-                      max_grad_val <= self.parameters.early_stop_force_thre*self.parameters.grad_thre,
+                      max_grad_val <= self.parameters.early_stop_force_thre,
                       dist_to_prev_chain <= self.parameters.early_stop_chain_rms_thre,
-                      correlation >= self.parameters.early_stop_corr_thre
+                      correlation >= self.parameters.early_stop_corr_thre,
+                      self.n_steps_still_chain >= self.parameters.early_stop_still_steps_thre
         ]
-        if any(conditions):
+        # if any(conditions):
+        if (conditions[0] and conditions[1]) or conditions[3]: # if we've dipped below the force thre and chain rms is low
+                                                                # or chain has stayed still for a long time
             is_elem_step, split_method = chain.is_elem_step()
             
             if not is_elem_step:
@@ -74,10 +87,19 @@ class NEB:
                 return True
             
             else:
-                # reset early stop checks
-                self.parameters.early_stop_force_thre = 0.0
-                self.parameters.early_stop_chain_rms_thre = 0.0
-                self.parameters.early_stop_corr_thre = 10.
+                
+                if (conditions[0] and conditions[1]): # dont reset them if you stopped due to stillness
+                    # reset early stop checks
+                    self.parameters.early_stop_force_thre = 0.0
+                    self.parameters.early_stop_chain_rms_thre = 0.0
+                    self.parameters.early_stop_corr_thre = 10.
+                    self.parameters.early_stop_still_steps_thre = 100000
+                    
+                    self.set_climbing_nodes(chain=chain)
+                    self.parameters.climb = False  # no need to set climbing nodes again
+                else:
+                    self.n_steps_still_chain = 0
+                    
                 
                 return False
 
@@ -92,19 +114,16 @@ class NEB:
 
         while nsteps < self.parameters.max_steps + 1:
             max_grad_val = chain_previous.get_maximum_grad_magnitude()
-            if max_grad_val <= 3 * self.parameters.grad_thre and self.parameters.climb:
-                self.set_climbing_nodes(chain=chain_previous)
-                self.parameters.climb = False  # no need to set climbing nodes again
-
+            max_rms_grad_val = chain_previous.get_maximum_rms_grad()
             if nsteps > 1:    
-                stop_early = self._check_if_early_stop(chain_previous)
+                stop_early = self._check_early_stop(chain_previous)
                 if stop_early: 
                     return
                 
             new_chain = self.update_chain(chain=chain_previous)
             if self.parameters.v:
                 print(
-                    f"step {nsteps} // max |gradient| {max_grad_val}// |velocity| {np.linalg.norm(new_chain.parameters.velocity)}{' '*20}", end="\r"
+                    f"step {nsteps} // max |gradient| {max_grad_val}// rms grad {max_rms_grad_val} // |velocity| {np.linalg.norm(new_chain.parameters.velocity)}{' '*20}", end="\r"
                 )
             sys.stdout.flush()
 
@@ -191,12 +210,11 @@ class NEB:
 
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
-        indices_converged = np.where(differences < self.parameters.en_thre)
+        indices_converged = np.where(differences <= self.parameters.en_thre)
 
         return indices_converged[0], differences
 
     def _check_grad_converged(self, chain: Chain) -> bool:
-       
         bools = []
         max_grad_components = []
         gradients = chain.gradients
@@ -204,6 +222,17 @@ class NEB:
             max_grad = np.amax(grad)
             max_grad_components.append(max_grad)
             bools.append(max_grad < self.parameters.grad_thre)
+        # bools = [True] # start node
+        # max_grad_components = []
+        # gradients = np.array([node.gradient for node in chain.nodes[1:-1]])
+        # tans = chain.unit_tangents
+        # for grad, tan in zip(gradients,tans):
+        #     grad_perp = grad.flatten() - np.dot(grad.flatten(), tan.flatten())*tan.flatten()
+        #     max_grad = np.amax(grad_perp)
+        #     max_grad_components.append(max_grad)
+        #     bools.append(max_grad <= self.parameters.grad_thre)
+        
+        # bools.append(True) # end node
 
         return np.where(bools), max_grad_components
 
@@ -212,12 +241,12 @@ class NEB:
         rms_grads = []
         grads = chain.gradients
         for grad in grads:
-            rms_gradient = np.sqrt(np.mean(np.square(grad)))
+            rms_gradient = np.sqrt(np.mean(np.square(grad.flatten())) / len(grad))
             rms_grads.append(rms_gradient)
-            rms_grad_converged = rms_gradient < self.parameters.rms_grad_thre
+            rms_grad_converged = rms_gradient <= self.parameters.rms_grad_thre
             bools.append(rms_grad_converged)
 
-        return np.where(bools), rms_grads
+        return np.where(bools), max(rms_grads)
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         """
@@ -349,11 +378,11 @@ class NEB:
                 out_folder.mkdir()
 
             for i, chain in enumerate(self.chain_trajectory):
-                traj = chain.to_trajectory()
-                traj.write_trajectory(out_folder / f"traj_{i}.xyz")
+                fp = out_folder / f"traj_{i}.xyz"
+                chain.write_to_disk(fp)
                 
-      
-    def plot_chain_distances(self):
+                
+    def _calculate_chain_distances(self):
         chain_traj = self.chain_trajectory
         distances = [None] # None for the first chain
         for i,chain in enumerate(chain_traj):
@@ -363,14 +392,13 @@ class NEB:
             prev_chain = chain_traj[i-1]
             dist = prev_chain._distance_to_chain(chain)
             distances.append(dist)
-            
-
+        return np.array(distances)
+      
+    def plot_chain_distances(self):
+        distances = self._calculate_chain_distances()
 
         fs = 18
         s = 8
-
-
-        
         kn = KneeLocator(x=list(range(len(distances)))[1:], y=distances[1:], curve='convex', direction='decreasing')
 
 
@@ -439,7 +467,7 @@ class NEB:
             all_chains = self.chain_trajectory
 
 
-            ens = np.array([c.energies for c in all_chains])
+            ens = np.array([c.energies-c.energies[0] for c in all_chains])
             all_integrated_path_lengths = np.array([c.integrated_path_length for c in all_chains])
             opt_step = np.array(list(range(len(all_chains))))
             ax = plt.figure().add_subplot(projection='3d')
