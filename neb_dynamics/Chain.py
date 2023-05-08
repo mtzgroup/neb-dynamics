@@ -18,6 +18,7 @@ from neb_dynamics.helper_functions import RMSD, get_mass, _get_ind_minima, _get_
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
+from pathlib import Path
 
 import scipy
 
@@ -39,6 +40,20 @@ class Chain:
     def from_xyz(cls, fp: Path, parameters: ChainInputs):
         traj = Trajectory.from_xyz(fp)
         chain = cls.from_traj(traj, parameters=parameters)
+        energies_fp = fp.parent / Path(str(fp.stem)+".energies")
+        grad_path = fp.parent / Path(str(fp.stem)+".gradients")
+        grad_shape_path = fp.parent / "grad_shapes.txt"\
+        
+        if energies_fp.exists() and grad_path.exists() and grad_shape_path.exists():
+            energies = np.loadtxt(energies_fp)
+            gradients_flat = np.loadtxt(grad_path)
+            gradients_shape = np.loadtxt(grad_shape_path,dtype=int)
+            
+            gradients = gradients_flat.reshape(gradients_shape)
+            
+            for node,(ene, grad) in zip(chain.nodes, zip(energies, gradients)):
+                node._cached_energy = ene
+                node._cached_gradient = grad
         return chain
     
     @classmethod
@@ -271,7 +286,19 @@ class Chain:
         return pe_grads_nudged, spring_forces_nudged
 
     def get_maximum_grad_magnitude(self):
+        # gradients = gradients = np.array([node.gradient for node in self.nodes[1:-1]])
+        # tans = self.unit_tangents
+        # grad_perps = []
+        # for grad, tan in zip(gradients,tans):
+        #     grad_perp = grad.flatten() - np.dot(grad.flatten(), tan.flatten())*tan.flatten()
+        #     grad_perps.append(grad_perp)
+        
+        
+        # return np.abs(np.max([np.amax(grad) for grad in grad_perps]))
         return np.max([np.amax(grad) for grad in self.gradients])
+    
+    def get_maximum_rms_grad(self):
+        return np.max([np.sqrt(np.mean(np.square(grad.flatten())) / len(grad.flatten())) for grad in self.gradients])
 
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
@@ -292,16 +319,21 @@ class Chain:
 
     @cached_property
     def gradients(self) -> np.array:
-        if self.parameters.do_parallel:
-            energy_gradient_tuples = self.parameters.node_class.calculate_energy_and_gradients_parallel(chain=self)
-        else:
-            energies = [node.energy for node in self.nodes]
-            gradients = [node.gradient for node in self.nodes]
-            energy_gradient_tuples = list(zip(energies, gradients))
+        
+        all_grads = [node._cached_gradient for node in self.nodes]
+        
+        if not np.all([g is not None for g in all_grads]):
+            if self.parameters.do_parallel:
+                energy_gradient_tuples = self.parameters.node_class.calculate_energy_and_gradients_parallel(chain=self)
+            else:
+                energies = [node.energy for node in self.nodes]
+                gradients = [node.gradient for node in self.nodes]
+                energy_gradient_tuples = list(zip(energies, gradients))
 
-        for (ene, grad), node in zip(energy_gradient_tuples, self.nodes):
-            node._cached_energy = ene
-            node._cached_gradient = grad
+            for (ene, grad), node in zip(energy_gradient_tuples, self.nodes):
+                node._cached_energy = ene
+                node._cached_gradient = grad
+        
         pe_grads_nudged, spring_forces_nudged = self.pe_grads_spring_forces_nudged()
 
         grads = (
@@ -391,7 +423,7 @@ class Chain:
             if hasattr(self.parameters.k, "__iter__")
             else self.parameters.k
         )
-        e_ref = max(self.nodes[0].energy, self.nodes[-1].energy)
+        e_ref = max(self.nodes[0].energy, self.nodes[len(self.nodes)-1].energy)
         e_max = max(self.energies)
 
         k01 = self._k_between_nodes(
@@ -429,9 +461,9 @@ class Chain:
         conditions = {}
         is_concave = self._chain_is_concave()
         conditions['concavity'] = is_concave
-
+        
         r,p = self._approx_irc()
-        minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
+        minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[len(chain)-1])
         conditions['irc'] = minimizing_gives_endpoints
 
         split_method = self._select_split_method(conditions)
@@ -450,7 +482,7 @@ class Chain:
             arg_max = index
             
         if arg_max == len(chain)-1 or arg_max == 0: # monotonically changing function, 
-            return chain[0], chain[-1]
+            return chain[0], chain[len(chain)-1]
 
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
@@ -463,8 +495,28 @@ class Chain:
         if all_conditions_met: 
             return None
 
-        if conditions['irc'] is False:
-            return 'maxima'
-        elif conditions['concavity'] is False:
+        if conditions['concavity'] is False: # prioritize the minima condition
             return 'minima'
+        elif conditions['irc'] is False:
+            return 'maxima'
+        
+        
+    def write_ene_info_to_disk(self, fp):
+        ene_path = fp.parent / Path(str(fp.stem)+".energies")
+        grad_path = fp.parent / Path(str(fp.stem)+".gradients")
+        grad_shape_path = fp.parent / "grad_shapes.txt"
+        
+        np.savetxt(ene_path, self.energies)
+        np.savetxt(grad_path, self.gradients.flatten())
+        np.savetxt(grad_shape_path, self.gradients.shape)
+        
+    def write_to_disk(self, fp: Path):
+        if self.nodes[0].is_a_molecule:
+            traj = self.to_trajectory()
+            traj.write_trajectory(fp)
+            
+            self.write_ene_info_to_disk(fp)
+            
+        else:
+            raise NotImplementedError("Cannot write 2D chains yet.")
 
