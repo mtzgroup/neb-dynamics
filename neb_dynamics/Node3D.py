@@ -16,6 +16,7 @@ from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
 import multiprocessing as mp
+from pathlib import Path
 
 RMSD_CUTOFF = 0.1
 KCAL_MOL_CUTOFF = 0.1
@@ -67,20 +68,32 @@ class Node3D(Node):
         return connectivity_identical
     
     def _is_conformer_identical(self, other) -> bool:
-        aligned_self = self.tdstructure.align_to_td(other.tdstructure)
-        rmsd_identical = RMSD(aligned_self.coords, other.tdstructure.coords)[0] < RMSD_CUTOFF
-        energies_identical = np.abs((self.energy - other.energy)*627.5) < KCAL_MOL_CUTOFF
-        if rmsd_identical and energies_identical:
-            conformer_identical = True
-        
-        if not rmsd_identical and energies_identical:
-            # going to assume this is a permutation issue. To address later
-            conformer_identical = True
-        
-        if not rmsd_identical and not energies_identical:
-            conformer_identical = False
-
-        return conformer_identical
+        if self._is_connectivity_identical(other):
+            aligned_self = self.tdstructure.align_to_td(other.tdstructure)
+            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            en_delta = np.abs((self.energy - other.energy)*627.5)
+            
+            
+            rmsd_identical = dist < RMSD_CUTOFF
+            energies_identical = en_delta < KCAL_MOL_CUTOFF
+            if rmsd_identical and energies_identical:
+                conformer_identical = True
+            
+            if not rmsd_identical and energies_identical:
+                # going to assume this is a rotation issue. Need To address.
+                conformer_identical = False
+            
+            if not rmsd_identical and not energies_identical:
+                conformer_identical = False
+            
+            if rmsd_identical and not energies_identical:
+                conformer_identical = False
+            # print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
+            # aligned_self.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_self.xyz"))
+            # other.tdstructure.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_other.xyz"))
+            return conformer_identical
+        else:
+            return False
 
     def is_identical(self, other) -> bool:
 
