@@ -22,6 +22,9 @@ warnings.filterwarnings('ignore')
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
+import os
+del os.environ['OE_LICENSE']
+
 # # Could  I have split based on initial guess? 
 #
 # **preliminary answer**: maybe
@@ -79,28 +82,66 @@ failed=['Nazarov-Cyclization']
 comparisons_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons/")
 ca = CompetitorAnalyzer(comparisons_dir,'asneb')
 
-foo = ca.out_folder / rn
 
-t = Trajectory.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Aza-Grob-Fragmentation-X-Fluorine/initial_guess.xyz")
+# +
+# t = Trajectory.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Aza-Grob-Fragmentation-X-Fluorine/initial_guess.xyz")
+# -
+
+def plot_rxn(name):
+    s = 5
+    fs = 18
+    data_dir = ca.out_folder / name / 'initial_guess_msmep.xyz'
+    c = Chain.from_xyz(data_dir, ChainInputs())
+    f, ax = plt.subplots(figsize=(1.618*s, s))
+    
+    plt.plot(c.integrated_path_length, (c.energies-c.energies[0])*627.5,'o-')
+    plt.yticks(fontsize=fs)
+    plt.ylabel("Energy (kcal/mol)",fontsize=fs)
+    plt.xlabel("Normalized path length",fontsize=fs)
+    plt.xticks(fontsize=fs)
+    plt.title(name, fontsize=fs)
+    plt.show()
+
+
+plot_rxn('Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile')
 
 actual_failed = []
 actual_elem_step = []
 actual_multi_step = []
-for rn in rns:
+for rn in rns[10:20]:
     try:
         data_dir = ca.out_folder / rn / 'initial_guess_msmep.xyz'
         c = Chain.from_xyz(data_dir, ChainInputs())
+        # print(rn)
+        # c.plot_chain()
         if c._chain_is_concave():
             actual_elem_step.append(rn)
         else:
             actual_multi_step.append(rn)
     except:
         actual_failed.append(rn)
-        
 
-overlap_elem_steps = set(actual_elem_step) - set(elem_rns) 
 
-overlap_multi = set(actual_multi_step) - set(multi_step_rns)
+set_elem_rns = set(elem_rns) - set(actual_failed)
+set_multi_rns = set(multi_step_rns) - set(actual_failed)
+
+overlap_elem_steps = set(actual_elem_step).intersection(set_elem_rns)
+
+mispred_elem_steps = set_elem_rns - set(actual_elem_step)
+
+overlap_multi = set(actual_multi_step).intersection(set_multi_rns)
+
+mispred_multi_steps = set_multi_rns - set(actual_multi_step) 
+
+print(f"N predicted multistep: {len(set_multi_rns)}")
+print(f"N actual multistep: {len(actual_multi_step)}")
+print(f"\tN True Positives: {len(overlap_multi)}")
+print(f"\tN False Positives: {len(mispred_multi_steps)}")
+
+print(f"N predicted elemstep: {len(set_elem_rns)}")
+print(f"N actual elemstep: {len(actual_elem_step)}")
+print(f"\tN True Positives: {len(overlap_elem_steps)}")
+print(f"\tN False Positives: {len(mispred_elem_steps)}")
 
 
 # # How often do transient minima appear ? 
@@ -123,6 +164,14 @@ for elem_rn in actual_elem_step:
             count+=1
     except:
         wtf.append(elem_rn)
+
+len(wtf)
+
+neb_obj = NEB.read_from_disk(ca.out_folder / 'Chan-Rearrangement' / 'initial_guess_msmep' / 'node_0')
+
+neb_obj.optimized
+
+neb_obj.plot_opt_history(do_3d=True)
 
 
 # # Let's get error bars for an optimization

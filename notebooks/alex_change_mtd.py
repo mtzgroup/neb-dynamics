@@ -13,44 +13,17 @@ from pathlib import Path
 
 
 from neb_dynamics.NEB import NEB
+from neb_dynamics.helper_functions import RMSD, get_mass
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
 from neb_dynamics.MSMEP import MSMEP
-
-
 # -
 
-def RMSD(structure,reference):
-    c1 = np.array(structure)
-    c2 = np.array(reference)
-    bary1 = np.mean(c1, axis = 0) #barycenters
-    bary2 = np.mean(c2, axis = 0)
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
 
-    c1 = c1 - bary1 #shift origins to barycenter
-    c2 = c2 - bary2
-
-    N = len(c1)
-    R = np.dot(np.transpose(c1), c2) #correlation matrix
-
-    F = np.array([[(R[0, 0] + R[1, 1] + R[2, 2]), (R[1, 2] - R[2, 1]), (R[2, 0] - R[0, 2]), (R[0, 1] - R[1, 0])],
-                [(R[1, 2] - R[2, 1]), (R[0, 0] - R[1, 1] - R[2, 2]), (R[1, 0] + R[0, 1]), (R[2, 0] + R[0, 2])],
-                [(R[2, 0] - R[0, 2]), (R[1, 0] + R[0, 1]), (-R[0, 0] + R[1, 1] - R[2, 2]), (R[1, 2] + R[2, 1])],
-                [(R[0, 1] - R[1, 0]), (R[2, 0] + R[0, 2]), (R[1, 2] + R[2, 1]), (-R[0, 0] - R[1, 1] + R[2, 2])]]) #Eq. 10 in Dill Quaternion RMSD paper (DOI:10.1002/jcc.20110)
-
-    eigen = scipy.sparse.linalg.eigs(F, k = 1, which = 'LR') #find max eigenvalue and eigenvector
-    lmax = float(eigen[0][0])
-    qmax = np.array(eigen[1][0:4])
-    qmax = np.float_(qmax)
-    qmax = np.ndarray.flatten(qmax)
-    rmsd = math.sqrt(abs((np.sum(np.square(c1)) + np.sum(np.square(c2)) - 2 * lmax)/N))  #square root of the minimum residual
-
-    rot = np.array([[(qmax[0]**2 + qmax[1]**2 - qmax[2]**2 - qmax[3]**2), 2*(qmax[1]*qmax[2] - qmax[0]*qmax[3]), 2*(qmax[1]*qmax[3] + qmax[0]*qmax[2])],
-                    [2*(qmax[1]*qmax[2] + qmax[0]*qmax[3]), (qmax[0]**2 - qmax[1]**2 + qmax[2]**2 - qmax[3]**2), 2*(qmax[2]*qmax[3] - qmax[0]*qmax[1])],
-                    [2*(qmax[1]*qmax[3] - qmax[0]*qmax[2]), 2*(qmax[2]*qmax[3] + qmax[0]*qmax[1]), (qmax[0]**2 - qmax[1]**2 - qmax[2]**2 + qmax[3]**2)]]) #rotation matrix based on eigenvector corresponding $
-    g_rmsd = (c1 - np.matmul(c2, rot))/(N*rmsd) #gradient of the rmsd
-
-
-    return rmsd, g_rmsd
+import os
+del os.environ['OE_LICENSE']
 
 # +
 # REFERENCE=None
@@ -107,6 +80,9 @@ class Node3D_MTD(Node):
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
     
+    RMSD_CUTOFF = 0.5
+    KCAL_MOL_CUTOFF = 1
+    
     
     # reference_trajs = REFERENCE_OPT_TRAJ
     # reference_trajs = [n_orig.optimized.to_trajectory()]
@@ -132,6 +108,8 @@ class Node3D_MTD(Node):
         res = Node3D_MTD.run_xtb_calc(node.tdstructure)
         gradient =  res.get_gradient() * BOHR_TO_ANGSTROMS
         gradient_mtd, energy_mtd = node.mtd_grad_energy(node.tdstructure.coords)
+        
+        
         return gradient + gradient_mtd
         
     def mtd_grad_energy(self, structure: np.array):
@@ -151,7 +129,10 @@ class Node3D_MTD(Node):
 
                 gradient += biasgrad_i
                 energy += biaspot_i
-
+        weights = np.array([np.sqrt(get_mass(s)) for s in self.tdstructure.symbols]) 
+        weights = weights  / sum(weights)
+        gradient = gradient * weights.reshape(-1,1)
+                
         return gradient, energy
 
     @cached_property
@@ -162,8 +143,33 @@ class Node3D_MTD(Node):
             return Node3D_MTD.en_func(self)
 
     def do_geometry_optimization(self) -> Node3D_MTD:
-        td_opt = self.tdstructure.xtb_geom_optimization()
-        return Node3D_MTD(tdstructure=td_opt)
+        
+        max_steps=1000
+        ss=1
+        tol=0.001
+        nsteps = 0
+        traj = []
+        
+        node = self.copy()
+        while nsteps < max_steps:
+            traj.append(node)
+            grad, _ = node.mtd_grad_energy(node.tdstructure.coords)
+            grad_energy = node.tdstructure.gradient_xtb()
+            grad+=grad_energy
+
+            if np.linalg.norm(grad) < tol:
+                break
+            new_coords = node.coords - ss*grad
+            node = node.update_coords(new_coords)
+            print(f"|grad|={np.linalg.norm(grad)}",end='\r')
+            nsteps+=1
+
+        if np.linalg.norm(grad) < tol:
+            print(f"\nConverged in {nsteps} steps!")
+        else:
+            print(f"\nDid not converge in {nsteps} steps.")
+
+        return node
 
     def is_identical(self, other) -> bool:
         return self.tdstructure.molecule_rp.is_bond_isomorphic_to(
@@ -248,6 +254,9 @@ class Node3D_MTD(Node):
         )  # ASE works in agnstroms
 
         return opt_struct
+    
+    def is_a_molecule(self):
+        return True
 
     def check_symmetric(self, a, rtol=1e-05, atol=1e-08):
         return np.allclose(a, a.T, rtol=rtol, atol=atol)
@@ -363,7 +372,48 @@ class Node3D_MTD(Node):
                 energy += biaspot_i 
 
 
+                
         return energy, gradient * BOHR_TO_ANGSTROMS
+    
+    def is_identical(self, other) -> bool:
+        return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
+    
+    def _is_connectivity_identical(self, other) -> bool:
+        connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
+            other.tdstructure.molecule_rp
+        )
+        return connectivity_identical
+    
+    def _is_conformer_identical(self, other) -> bool:
+        if self._is_connectivity_identical(other):
+            aligned_self = self.tdstructure.align_to_td(other.tdstructure)
+            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            en_delta = np.abs((self.energy - other.energy)*627.5)
+            
+            
+            rmsd_identical = dist < RMSD_CUTOFF
+            energies_identical = en_delta < KCAL_MOL_CUTOFF
+            if rmsd_identical and energies_identical:
+                conformer_identical = True
+            
+            if not rmsd_identical and energies_identical:
+                # going to assume this is a rotation issue. Need To address.
+                conformer_identical = False
+            
+            if not rmsd_identical and not energies_identical:
+                conformer_identical = False
+            
+            if rmsd_identical and not energies_identical:
+                conformer_identical = False
+            print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
+            aligned_self.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_self.xyz"))
+            other.tdstructure.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_other.xyz"))
+            return conformer_identical
+        else:
+            return False
+        
+    
+        
     
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
@@ -488,6 +538,10 @@ class Node3D_MTD_NoEne(Node):
                 gradient += biasgrad_i
                 energy += biaspot_i
 
+                
+        weights = np.array([np.sqrt(get_mass(s)) for s in self.tdstructure.symbols]) 
+        weights = weights  / sum(weights)
+        gradient = gradient * weights.reshape(-1,1)
         return gradient, energy
 
     @cached_property
@@ -719,7 +773,7 @@ def geom_opt_mtd(node, max_steps=1000, ss=1, tol=0.001):
 
 import retropaths.helper_functions  as hf
 reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
-m = MSMEP()
+m = MSMEP(neb_inputs=NEBInputs(v=True),chain_inputs=ChainInputs(), gi_inputs=GIInputs())
 
 # rxn = "Diels-Alder-4+2"
 rxn = "Claisen-Rearrangement"
@@ -727,7 +781,7 @@ start, end = m.create_endpoints_from_rxn_name(rxn,reactions)
 start = start.xtb_geom_optimization()
 end = end.xtb_geom_optimization()
 
-gi = Trajectory([start, end]).run_geodesic(nimages=15)
+start
 
 n_orig = NEB.read_from_disk(Path("../example_cases/alex_chang/attempt0/neb_original"))
 # nbi = NEBInputs(tol=.005,v=True, vv_force_thre=0, climb=True)
@@ -735,6 +789,9 @@ n_orig = NEB.read_from_disk(Path("../example_cases/alex_chang/attempt0/neb_origi
 # chain_orig = Chain.from_traj(gi,parameters=cni_orig)
 # n_orig = NEB(initial_chain=chain_orig,parameters=nbi)
 # n_orig.optimize_chain()
+
+gi = Trajectory([start, end]).run_geodesic(nimages=15)
+
 
 def prepare_biased_neb(chain_inputs, 
                    collective_variable_list, 
@@ -798,11 +855,42 @@ def prepare_clean_neb(chain_inputs,
 
 # n = NEB(initial_chain=guess_chain,parameters=nbi)
 cv = [n_orig.optimized.coordinates[1:-1]]
-cni = ChainInputs(k=0,step_size=2,node_class=Node3D_MTD)
-cni.mtd_strength = .1
+cni = ChainInputs(k=0.00,step_size=2,node_class=Node3D_MTD)
+cni.mtd_strength = .01
 cni.mtd_alpha = 5
 cv = [n_orig.optimized.coordinates[1:-1]]
-nbi = NEBInputs(v=1, vv_force_thre=0, tol=0.1, max_steps=500)
+nbi = NEBInputs(v=1, vv_force_thre=0, tol=0.1, max_steps=1000, early_stop_force_thre=0.03,early_stop_chain_rms_thre=0.002,early_stop_still_steps_thre=200)
+# -
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs())
+
+neb = NEB(initial_chain=guess_chain, parameters=nbi)
+
+neb.optimize_chain()
+
+r, p = neb.optimized._approx_irc()
+
+r.tdstructure
+
+guess_chain[-1].tdstructure
+
+p.tdstructure
+
+# +
+# rfs = [
+#         n_orig.optimized.coordinates[1:-1]
+#       ]
+# guess_to_use = n_orig.initial_chain.nodes
+# guess_chain = Chain(nodes=[Node3D_MTD(node.tdstructure, 
+#                               reference_trajs=rfs,
+#                                  strength=cni.mtd_strength,
+#                                  alpha=cni.mtd_alpha) 
+#                                 for node in guess_to_use],parameters=cni)
+
+
+# h, out = m.find_mep_multistep(guess_chain)
+
+# +
 nbi_final = NEBInputs(v=1, vv_force_thre=0, tol=0.01, max_steps=500)
 
 out_n = prepare_biased_neb(chain_inputs=cni,collective_variable_list=cv,initial_chain=n_orig.initial_chain,neb_inputs=nbi)

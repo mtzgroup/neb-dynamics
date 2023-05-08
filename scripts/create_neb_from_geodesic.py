@@ -9,6 +9,8 @@ from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
 import numpy as np
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+
 
 def read_single_arguments():
     """
@@ -48,6 +50,8 @@ def read_single_arguments():
 
 
 def main():
+    import os
+    del os.environ['OE_LICENSE']
     args = read_single_arguments()
 
     fp = Path(args.f)
@@ -65,7 +69,12 @@ def main():
 
     cni = ChainInputs(k=0.01, node_class=Node3D)
 
-    nbi = NEBInputs(tol=tol, v=True, max_steps=2000)
+    nbi = NEBInputs(tol=tol, # tol means nothing in this case
+                    grad_thre=0.001*BOHR_TO_ANGSTROMS,
+                    rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
+                    en_thre=0.001*BOHR_TO_ANGSTROMS,
+                    v=True, 
+                    max_steps=10000)
     chain = Chain.from_traj(traj=traj, parameters=cni)
     n = NEB(initial_chain=chain, parameters=nbi)
     try: 

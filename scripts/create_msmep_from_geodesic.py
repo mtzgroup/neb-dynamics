@@ -5,11 +5,14 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D_TC import Node3D_TC
-from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
 
+from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 import numpy as np
 
 def read_single_arguments():
@@ -60,23 +63,41 @@ def read_single_arguments():
 
 
 def main():
+    import os
+    del os.environ['OE_LICENSE']
     args = read_single_arguments()
 
     fp = Path(args.f)
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
     tol = 0.01
-    cni = ChainInputs(k=0.01, node_class=Node3D)
-    # cni = ChainInputs(k=0.01, node_class=Node3D_TC)
-    # method = 'gfn2xtb'
-    # basis = 'gfn2xtb'
-    # for td in traj:
-    #     td.tc_model_method = method
-    #     td.tc_model_basis = basis
+    cni = ChainInputs(k=0.01,delta_k=0.00, node_class=Node3D, step_size=1)
+    # cni = ChainInputs(k=0.01, node_class=Node3D)
+    # cni = ChainInputs(k=0.01, node_class=Node3D_TC, do_parallel=False)
+    #method = 'gfn2xtb'
+    #basis = 'gfn2xtb'
+    #for td in traj:
+    #    td.tc_model_method = method
+    #    td.tc_model_basis = basis
 
-    nbi = NEBInputs(tol=tol, v=True, max_steps=2000,early_stop_chain_rms_thre=0.002)
+    # nbi = NEBInputs(tol=tol, v=True, max_steps=2000,early_stop_chain_rms_thre=0.001,
+    #                 early_stop_force_thre=0.03, early_stop_still_steps_thre=200)
+    nbi = NEBInputs(tol=tol, # tol means nothing in this case
+                    grad_thre=0.01,
+                    rms_grad_thre=0.005,
+                    en_thre=0.001,
+                    v=True, 
+                    max_steps=4000,
+                    early_stop_chain_rms_thre=0.001,
+                    early_stop_force_thre=0.1, 
+                    early_stop_still_steps_thre=200,
+                    node_freezing=False,
+                    
+                    
+                    
+                    vv_force_thre=0.0)
     chain = Chain.from_traj(traj=traj, parameters=cni)
-    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs())
+    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15,extra_kwds={"sweep":False}))
     history, out_chain = m.find_mep_multistep(chain)
     data_dir = fp.parent
     

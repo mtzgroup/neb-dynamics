@@ -15,6 +15,8 @@ class NEBInputs:
     early_stop_force_thre: float = 0.0
     early_stop_chain_rms_thre: float = 0.0
     early_stop_corr_thre: float = 10.
+    early_stop_still_steps_thre: int = 20
+    
     node_freezing: bool = False
 
     vv_force_thre: float = 0.0

@@ -50,7 +50,8 @@ from neb_dynamics.TreeNode import TreeNode
 from retropaths.reactions.template import ReactionTemplate
 from retropaths.reactions.conditions import Conditions
 from retropaths.reactions.rules import Rules
-
+import os
+del os.environ['OE_LICENSE']
 
 import networkx as nx
 
@@ -58,37 +59,89 @@ reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
+# # play
+
+orig_chain = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess.xyz"))
+new_chain = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/initial_guess.xyz"))
+
+# +
+
+plt.plot(orig_chain.energies_xtb(),'o-',label='orig_chain')
+plt.plot(new_chain.energies_xtb(),'o-',label='new_chain')
+plt.legend()
+plt.show()
+# -
+
+start, end = orig_chain[0], orig_chain[-1]
+
+start_opt = start.xtb_geom_optimization()
+end_opt = end.xtb_geom_optimization()
+
+frics = [0.0001, 0.001, 0.01, 0.1,1]
+gis = []
+
+for fric in frics:
+    tr = Trajectory([start_opt, end_opt]).run_geodesic(nimages=15,friction=fric,sweep=False)
+    gis.append(tr)
+# tr = Trajectory([start_opt, end_opt]).run_geodesic(nimages=15)
+
+
+gi_opt = orig_chain.get_conv_gi(orig_chain)
+
+# +
+for f,gi in zip(frics,gis):
+    plt.plot(gi.energies_xtb(),label=f'gi_fric{f}')
+
+
+plt.plot(orig_chain.energies_xtb(),'o-',label='orig')
+plt.plot(gi_opt[0].energies_xtb(),'o-',label='gi_opt')
+plt.legend()
+plt.show()
+
+# +
+cni = ChainInputs(k=0.01, delta_k=0.009, node_class=Node3D)
+nbi = NEBInputs(tol=0.01, # tol means nothing in this case
+                grad_thre=0.001,
+                rms_grad_thre=0.0005,
+                en_thre=0.001,
+                v=True, 
+                max_steps=2000,
+                early_stop_chain_rms_thre=0.002,
+                early_stop_force_thre=0.01
+               )
+init = Chain.from_traj(tr, cni)
+
+
+m = MSMEP(nbi,cni,GIInputs(nimages=5))
+
+
+# -
+
+h, out = m.find_mep_multistep(init)
+
+out.plot_chain()
+
 # # Wittig
 
 # +
 # mol1 =  Molecule.from_smiles('[P](=CC)(C1=CC=CC=C1)(C2=CC=CC=C2)C3=CC=CC=C3')
-mol1 =  Molecule.from_smiles('[P](=CC)(C)(C)C')
-mol2 =  Molecule.from_smiles('C(=O)C')
+# mol1 =  Molecule.from_smiles('[P](=CC)(C)(C)C')
+# mol2 =  Molecule.from_smiles('C(=O)C')
 
-mol = Molecule.from_smiles('[P](=CC)(C)(C)C.C(=O)C')
+# mol = Molecule.from_smiles('[P](=CC)(C)(C)C.C(=O)C')
+mol = Molecule.from_smiles('[P](=C)(C)(C)C.CC(=O)C')
 # -
 
 
+mol.draw(mode='d3')
+
 td = TDStructure.from_RP(mol)
-
-tds = TDStructure.from_RP(mol1)
-tds2 = TDStructure.from_RP(mol2)
-
-from retropaths.abinitio.solvator import Solvator
-solv = Solvator(sphere_rad=4)
-td_list = [tds, tds2]
-adj_td_list = solv.adjust_td_list_coords(td_list)
-td_joined = solv.join_td_list(adj_td_list)
-
-td_joined.molecule_rp.draw(mode='d3', size=(700,700))
-
-td.molecule_rp.draw(mode='d3',size=(400,400))
 
 # +
 p_ind = 0
 cp_ind = 1
 
-me1 = 5
+me1 = 2
 me2 = 3
 me3 = 4
 
@@ -173,20 +226,62 @@ target.delete_bonds(c3d_list.deleted)
 target.gum_mm_optimization()
 
 
-root = root.xtb_geom_optimization()
-target = target.xtb_geom_optimization()
+root_opt = root.xtb_geom_optimization()
+target_opt = target.xtb_geom_optimization()
 
 # --
 
-root
+node_start = Node3D(root_opt)
 
-target
+node_end = Node3D(target_opt)
 
-tr = Trajectory([root, target]).run_geodesic(nimages=15, sweep=False)
+from neb_dynamics.helper_functions import RMSD
+
+
+def get_vals(self, other):
+    aligned_self = self.tdstructure.align_to_td(other.tdstructure)
+    dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+    en_delta = np.abs((self.energy - other.energy)*627.5)
+    return dist, en_delta
+
+
+tr = Trajectory([root_opt, target_opt]).run_geodesic(nimages=15, sweep=False)
+
+tr.draw()
+
+tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/initial_guess_tight_endpoints.xyz")
+
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 # +
-# cni = ChainInputs()
-# start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess.xyz", parameters=cni)
+traj = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/initial_guess.xyz"), tot_charge=0, tot_spinmult=1)
+tol = 0.01
+cni = ChainInputs(k=0.01, node_class=Node3D)
+
+nbi = NEBInputs(tol=tol, # tol means nothing in this case
+    grad_thre=0.001*BOHR_TO_ANGSTROMS,
+    rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
+    en_thre=0.001*BOHR_TO_ANGSTROMS,
+    v=True,
+    max_steps=4000,
+    early_stop_chain_rms_thre=0.002,
+    early_stop_force_thre=0.02,vv_force_thre=0.00*BOHR_TO_ANGSTROMS,)
+chain = Chain.from_traj(traj=traj, parameters=cni)
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs())
+# -
+
+n = NEB(initial_chain=chain,parameters=nbi)
+
+n.optimize_chain()
+
+n.optimized.plot_chain()
+
+
+
+h, out = m.find_mep_multistep(chain)
+
+cni = ChainInputs()
+start_chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/initial_guess.xyz", parameters=cni)
 # tr.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/initial_guess_phe.xyz")
 
 # +

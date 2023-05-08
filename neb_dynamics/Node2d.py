@@ -15,6 +15,9 @@ class Node2D(Node):
     do_climb: bool = False
 
     is_a_molecule = False
+    
+    _cached_energy: float | None = None
+    _cached_gradient: np.array | None = None
 
     @property
     def coords(self):
@@ -105,6 +108,9 @@ class Node2D_2(Node):
     do_climb: bool = False
 
     is_a_molecule = False
+    
+    _cached_energy: float | None = None
+    _cached_gradient: np.array | None = None
 
     @property
     def coords(self):
@@ -238,6 +244,9 @@ class Node2D_ITM(Node):
     do_climb: bool = False
 
     is_a_molecule = False
+    
+    _cached_energy: float | None = None
+    _cached_gradient: np.array | None = None
 
     @property
     def coords(self):
@@ -318,6 +327,9 @@ class Node2D_LEPS(Node):
     do_climb: bool = False
 
     is_a_molecule = False
+    
+    _cached_energy: float | None = None
+    _cached_gradient: np.array | None = None
 
     @property
     def coords(self):
@@ -576,6 +588,9 @@ class Node2D_Flower(Node):
     do_climb: bool = False
 
     is_a_molecule = False
+    
+    _cached_energy: float | None = None
+    _cached_gradient: np.array | None = None
 
     @property
     def coords(self):
