@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from functools import cached_property
 from neb_dynamics.NEB import NEB
 from pathlib import Path
 import numpy as np
@@ -32,7 +33,7 @@ class TreeNode:
 
     @property
     def depth_first_ordered_nodes(self) -> list:
-        if self.is_leaf:
+        if self.is_leaf and len(self.children) == 0:
             return [self]
         else:
             nodes = [self]
@@ -156,15 +157,18 @@ class TreeNode:
             return TreeNode(data=node, children=[])
 
 
-    @property
+    # @property
+    @cached_property
     def is_leaf(self):
-        return len(self.children) == 0
+        # return len(self.children) == 0
+        # TODO: fix file labelling bug
+        return self.data.chain_trajectory[-1].is_elem_step()[0]
 
     def get_optimization_history(self, node=None):
         if node:
             opt_history = [node.data]
             for child in node.children:
-                if child.is_leaf:
+                if child.is_leaf and len(child.children) == 0:
                     opt_history.extend([child.data])
                 else:
                     child_opt_history = self.get_optimization_history(child)
@@ -178,7 +182,7 @@ class TreeNode:
         leaves = self.ordered_leaves
         chains = []
         for leaf in leaves:
-            c = leaf.data.optimized
+            c = leaf.data.chain_trajectory[-1]
             chains.append(c)
         out = Chain.from_list_of_chains(chains, parameters=chains[0].parameters)
         return out
