@@ -12,7 +12,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Node import Node
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.Inputs import ChainInputs
-from neb_dynamics.helper_functions import RMSD, get_mass, _get_ind_minima, _get_ind_maxima
+from neb_dynamics.helper_functions import RMSD, get_mass, _get_ind_minima, _get_ind_maxima, linear_distance, qRMSD_distance, pairwise
 
 
 from xtb.interface import Calculator
@@ -30,7 +30,14 @@ class Chain:
     
     def __post_init__(self):
         if not hasattr(self.parameters, "velocity"):
+            self._zero_velocity()
+            
+            
+    def _zero_velocity(self):
+        if self[0].is_a_molecule:
             self.parameters.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords), 3))
+        else:
+            self.parameters.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords)))
 
     @property
     def n_atoms(self):
@@ -119,21 +126,32 @@ class Chain:
         mass_weighed_coords = coords  * weights.reshape(-1,1)
         return mass_weighed_coords
 
+
     @property
-    def integrated_path_length(self):
+    def _path_len_coords(self):
         if self.nodes[0].is_a_molecule:
             coords = self._get_mass_weighed_coords()
         else:
             coords = self.coordinates
-        cum_sums = [0]
+        return coords
+    
+    def _path_len_dist_func(self, coords1, coords2):
+        if self.nodes[0].is_a_molecule:
+            return qRMSD_distance(coords1, coords2)
+        else:
+            return linear_distance(coords1, coords2)
 
+    @property
+    def integrated_path_length(self):
+        coords = self._path_len_coords
+        cum_sums = [0]
         int_path_len = [0]
         for i, frame_coords in enumerate(coords):
             if i == len(coords) - 1:
                 continue
             next_frame = coords[i + 1]
-            dist_vec = next_frame - frame_coords
-            cum_sums.append(cum_sums[-1] + np.linalg.norm(dist_vec))
+            distance = self._path_len_dist_func(frame_coords, next_frame)
+            cum_sums.append(cum_sums[-1] + distance)
 
         cum_sums = np.array(cum_sums)
         int_path_len = cum_sums / cum_sums[-1]
@@ -222,6 +240,10 @@ class Chain:
     @cached_property
     def energies(self) -> np.array:
         return np.array([node.energy for node in self.nodes])
+    
+    @property
+    def energies_kcalmol(self) -> np.array:
+        return (self.energies - self.energies[0])*627.5
 
     def neighs_grad_func(self, prev_node: Node, current_node: Node, next_node: Node):
 
@@ -295,7 +317,15 @@ class Chain:
         
         
         # return np.abs(np.max([np.amax(grad) for grad in grad_perps]))
-        return np.max([np.amax(grad) for grad in self.gradients])
+        return np.max([np.amax(np.abs(grad)) for grad in self.gradients])
+    
+    def get_maximum_gperp(self):
+        gperp, gspring = n_refine.chain_trajectory[-1].pe_grads_spring_forces_nudged()
+        max_gperps = []
+        for gp, node in zip(gperp, n_refine.chain_trajectory[-1]):
+            if not node.converged:
+                max_gperps.append(np.amax(np.abs(gp)))
+        return np.max(max_gperps)
     
     def get_maximum_rms_grad(self):
         return np.max([np.sqrt(np.mean(np.square(grad.flatten())) / len(grad.flatten())) for grad in self.gradients])
@@ -349,6 +379,12 @@ class Chain:
             grads[:, 0, :] = 0  # this atom cannot move
             grads[:, 1, :2] = 0  # this atom can only move in a line
             grads[:, 2, :1] = 0  # this atom can only move in a plane
+
+
+        # zero all nodes that have converged 
+        for (i, grad), node in zip(enumerate(grads), self.nodes):
+            if node.converged:
+                grads[i] = grad*0
 
         return grads
 
@@ -461,6 +497,9 @@ class Chain:
         conditions = {}
         is_concave = self._chain_is_concave()
         conditions['concavity'] = is_concave
+        if not is_concave:
+            return False, "minima"
+        
         
         r,p = self._approx_irc()
         minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[len(chain)-1])
@@ -472,7 +511,20 @@ class Chain:
 
     def _chain_is_concave(self):
         ind_minima = _get_ind_minima(self)
-        return len(ind_minima) == 0
+        minima_present =  len(ind_minima) != 0
+        if minima_present:
+            minimas_is_r_or_p = []
+            for i in ind_minima:
+                opt =  self[i].do_geometry_optimization()
+                minimas_is_r_or_p.append(
+                    opt.is_identical(self[0]) or opt.is_identical(self[-1]) 
+                    )
+            
+            print(f"\n{minimas_is_r_or_p=}\n")
+            return all(minimas_is_r_or_p)
+            
+        else:
+            return True
 
     def _approx_irc(self, index=None):
         chain = self.copy()

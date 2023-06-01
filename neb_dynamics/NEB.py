@@ -121,9 +121,14 @@ class NEB:
                     return
                 
             new_chain = self.update_chain(chain=chain_previous)
+            n_nodes_frozen = 0
+            for node in new_chain:
+                if node.converged:
+                    n_nodes_frozen+=1
+                    
             if self.parameters.v:
                 print(
-                    f"step {nsteps} // max |gradient| {max_grad_val}// rms grad {max_rms_grad_val} // |velocity| {np.linalg.norm(new_chain.parameters.velocity)}{' '*20}", end="\r"
+                    f"step {nsteps} // max |gradient| {max_grad_val} // rms grad {max_rms_grad_val} // |velocity| {np.linalg.norm(new_chain.parameters.velocity)} // nodes_frozen {n_nodes_frozen}{' '*20}", end="\r"
                 )
             sys.stdout.flush()
 
@@ -151,27 +156,41 @@ class NEB:
     def get_chain_velocity(self, chain: Chain) -> np.array:
         prev_velocity = chain.parameters.velocity
 
-        step = ALS.ArmijoLineSearch(
-                chain=chain,
-                t=chain.parameters.step_size,
-                alpha=0.01,
-                beta=0.5,
-                grad=chain.gradients,
-        )
+        # step = ALS.ArmijoLineSearch(
+        #         chain=chain,
+        #         t=chain.parameters.step_size,
+        #         alpha=0.01,
+        #         beta=0.5,
+        #         grad=chain.gradients,
+        # )
         
-        # step = chain.parameters.step_size
-        new_force = -(chain.gradients) * step        
-        directions = np.dot(prev_velocity.flatten(),new_force.flatten())
+        step = chain.parameters.step_size
+        # new_force = -(chain.gradients) * step        
+        # directions = np.dot(prev_velocity.flatten(),new_force.flatten())
         
-        if directions < 0:
-            total_force = new_force
-            new_vel = np.zeros_like(chain.gradients)
-        else:
+        # if directions < 0:
+        #     total_force = new_force
+        #     new_vel = np.zeros_like(chain.gradients)
+        # else:
             
-            new_velocity = directions*new_force # keep the velocity component in direcition of force
-            total_force = new_velocity + new_force
-            new_vel = total_force
-            # print(f"\n\n keeping part of velocity! {np.linalg.norm(new_vel)}\n\n")
+        #     new_velocity = directions*new_force # keep the velocity component in direcition of force
+        #     total_force = new_velocity + new_force
+        #     new_vel = total_force
+        #     # print(f"\n\n keeping part of velocity! {np.linalg.norm(new_vel)}\n\n")
+        
+        prev_velocity = chain.parameters.velocity
+        step = chain.parameters.step_size
+
+        new_force = -(chain.gradients) * step        
+        new_vels_proj = []
+        for vel_i, f_i in zip(prev_velocity, new_force):
+            proj = np.dot(vel_i.flatten(), f_i.flatten())
+            new_vels_proj.append(proj*f_i)
+            
+        new_vels_proj = np.array(new_vels_proj)
+        new_vel = new_vels_proj  + new_force
+        total_force = new_force + new_vel
+        
         return new_vel, total_force
 
     def update_chain(self, chain: Chain) -> Chain:
@@ -219,7 +238,7 @@ class NEB:
         max_grad_components = []
         gradients = chain.gradients
         for grad in gradients:
-            max_grad = np.amax(grad)
+            max_grad = np.amax(np.abs(grad))
             max_grad_components.append(max_grad)
             bools.append(max_grad < self.parameters.grad_thre)
         # bools = [True] # start node
@@ -246,7 +265,7 @@ class NEB:
             rms_grad_converged = rms_gradient <= self.parameters.rms_grad_thre
             bools.append(rms_grad_converged)
 
-        return np.where(bools), max(rms_grads)
+        return np.where(bools), rms_grads
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         """

@@ -105,8 +105,6 @@ class TreeNode:
             free_inds.pop(0)
             
             if node.is_leaf:
-                
-
                 return matrix_copy
             else:
                 for i, child in enumerate(node.children,start=1):

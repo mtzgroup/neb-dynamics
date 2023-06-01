@@ -44,6 +44,8 @@ class ChainInputs:
     do_local_xtb: bool = True
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
+    friction_optimal_gi: bool = False
+    
 
 
 @dataclass

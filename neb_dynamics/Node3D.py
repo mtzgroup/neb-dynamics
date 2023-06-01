@@ -18,7 +18,7 @@ from neb_dynamics.helper_functions import RMSD
 import multiprocessing as mp
 from pathlib import Path
 
-RMSD_CUTOFF = 0.1
+RMSD_CUTOFF = 0.5
 KCAL_MOL_CUTOFF = 0.1
 
 @dataclass
@@ -60,6 +60,30 @@ class Node3D(Node):
     def do_geometry_optimization(self) -> Node3D:
         td_opt = self.tdstructure.xtb_geom_optimization()
         return Node3D(tdstructure=td_opt)
+        # max_steps=8000
+        # ss=.05
+        # tol=0.0001
+        # nsteps = 0
+        # traj = []
+        
+        # node = self.copy()
+        # while nsteps < max_steps:
+        #     traj.append(node)
+        #     grad = node.tdstructure.gradient_xtb()
+        #     if np.linalg.norm(grad) / len(grad) < tol:
+        #         break
+        #     new_coords = node.coords - ss*grad
+        #     node = node.update_coords(new_coords)
+        #     # print(f"|grad|={np.linalg.norm(grad)}",end='\r')
+        #     nsteps+=1
+
+        # if np.linalg.norm(grad) / len(grad) < tol:
+        #     print(f"\nConverged in {nsteps} steps!\n")
+        # else:
+        #     print(f"\nDid not converge in {nsteps} steps. grad={np.linalg.norm(grad) / len(grad)}\n")
+
+        # return node
+        
     
     def _is_connectivity_identical(self, other) -> bool:
         connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
@@ -88,7 +112,7 @@ class Node3D(Node):
             
             if rmsd_identical and not energies_identical:
                 conformer_identical = False
-            # print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
+            print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
             # aligned_self.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_self.xyz"))
             # other.tdstructure.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_other.xyz"))
             return conformer_identical

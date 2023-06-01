@@ -104,7 +104,8 @@ create_msmep_from_geodesic.py -f ./initial_guess.xyz  -c 0 -s 1 &> out.txt
 
         shutil.copy(self.input_file, out_path / "input.in")
         shutil.copy(guess_path, out_path / "initial_guess.xyz")
-        shutil.copy(self.comparisons_dir / "submit_template.sh", out_path / "submit.sh")
+        # shutil.copy(self.comparisons_dir / "submit_template.sh", out_path / "submit.sh")
+        shutil.copy(self.comparisons_dir / "submit_template_cpu.sh", out_path / "submit.sh")
 
         self.edit_submit_file(out_path)
 
