@@ -48,6 +48,9 @@ def _get_ind_maxima(chain):
     return ind_maxima
 
 
+def qRMSD_distance(structure, reference):
+    return RMSD(structure, reference)[0]
+
 def RMSD(structure, reference):
     c1 = np.array(structure)
     c2 = np.array(reference)
@@ -122,3 +125,32 @@ def RMSD(structure, reference):
     g_rmsd = (c1 - np.matmul(c2, rot)) / (N * rmsd)  # gradient of the rmsd
 
     return rmsd, g_rmsd
+
+def linear_distance(coords1, coords2):
+    return np.linalg.norm(coords2 - coords1)
+
+def create_friction_optimal_gi(traj, gi_inputs):
+    frics = [0.0001, 0.001, 0.01, 0.1, 1]
+    all_gis = [
+        traj.run_geodesic(
+        nimages=gi_inputs.nimages,
+        friction=fric,
+        nudge=gi_inputs.nudge,
+        **gi_inputs.extra_kwds,
+    ) for fric in frics
+    ]
+    eAs = []
+    for gi in all_gis:
+        try:
+            eAs.append(max(gi.energies_xtb()) )
+        except:
+            eAs.append(10000000)
+    ind_best = np.argmin(eAs)
+    gi = all_gis[ind_best]
+    return gi
+
+def mass_weight_coords(labels, coords):
+   weights = np.array([np.sqrt(get_mass(s)) for s in labels])
+   weights = weights / sum(weights)
+   coords = coords * weights.reshape(-1,1)
+   return coords
