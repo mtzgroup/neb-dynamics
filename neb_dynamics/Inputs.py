@@ -40,6 +40,7 @@ class ChainInputs:
     k: float = 0.1
     delta_k: float = 0.0
     step_size: float = 1.0
+    min_step_size: float = 0.33
     node_class: Node = Node3D
     do_local_xtb: bool = True
     do_parallel: bool = True

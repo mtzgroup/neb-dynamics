@@ -1,4 +1,3 @@
-#!/home/jdep/.conda/envs/rp/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
 from retropaths.abinitio.trajectory import Trajectory
@@ -6,7 +5,6 @@ from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
-
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.Node3D_gfn1xtb import Node3D_gfn1xtb
@@ -15,6 +13,7 @@ from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 import numpy as np
+
 
 def read_single_arguments():
     """
@@ -124,10 +123,6 @@ def main():
         
         if clean_msmep:
             clean_msmep.to_trajectory().write_trajectory(data_dir/f"{fp.stem}_msmep_clean.xyz")
-        
-    
-        
-	    
 
 if __name__ == "__main__":
     main()

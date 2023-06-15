@@ -15,13 +15,16 @@ from neb_dynamics.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 
 from neb_dynamics.TreeNode import TreeNode
+
 from itertools import product
 import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
-import os
-del os.environ['OE_LICENSE']
+# import os
+# del os.environ['OE_LICENSE']
 # -
+
+from neb_dynamics.Janitor import Janitor
 
 from neb_dynamics.MSMEP import MSMEP
 from IPython.core.display import HTML
@@ -191,7 +194,7 @@ def plot_neb2d(neb,linestyle='--',marker='o',ax=None,**kwds):
 # # 2D potentials
 
 # +
-ind = 0
+ind = 1
 
 the_noise = [-1,1]
 
@@ -260,11 +263,14 @@ cni_ref = ChainInputs(
     node_class=node_to_use,
     delta_k=0,
     step_size=ss,
+    # step_size=.01,
     do_parallel=False,
     use_geodesic_interpolation=False,
+    min_step_size=.001
 )
 gii = GIInputs(nimages=nimages)
-nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=0, node_freezing=False)
+nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=0, node_freezing=False, 
+               vv_force_thre=0)
 chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
 # -
 
@@ -297,9 +303,6 @@ plt.yticks(fontsize=fs)
 ax.set_ylabel("Distance between chains",fontsize=fs)
 ax2.set_ylabel("Maximum gradient component absolute value",fontsize=fs)
 f.legend(fontsize=fs, loc='upper left')
-# -
-
-obj.plot_opt_history(do_3d=True)
 
 # +
 nimages_long = len(out_chain)
@@ -316,9 +319,10 @@ cni_ref2 = ChainInputs(
     step_size=1,
     do_parallel=False,
     use_geodesic_interpolation=False,
+    min_step_size=0.0001
 )
-chain_ref_long = Chain.from_list_of_coords(list_of_coords=coords_long, parameters=cni_ref)
-# chain_ref_long = Chain.from_list_of_coords(list_of_coords=coords_long, parameters=cni_ref2)
+# chain_ref_long = Chain.from_list_of_coords(list_of_coords=coords_long, parameters=cni_ref)
+chain_ref_long = Chain.from_list_of_coords(list_of_coords=coords_long, parameters=cni_ref2)
 
 n_ref_long = NEB(initial_chain=chain_ref_long,parameters=nbi)
 n_ref_long.optimize_chain()
@@ -343,17 +347,19 @@ f, ax = plt.subplots(figsize=(1.3 * fig, fig),ncols=1)
 # x = np.linspace(start=min_val, stop=max_val, num=1000)
 # y = x.reshape(-1, 1)
 
-# cs = ax[0].contourf(x, x, h_ref, cmap="Greys",alpha=.8)
-cs = ax.contourf(x, x, h_ref,alpha=1)
+cs = ax.contourf(x, x, h_ref, cmap="Greys",alpha=.9)
+# cs = ax.contourf(x, x, h_ref,alpha=1)
 _ = f.colorbar(cs)
 
-# plot_chain(n_ref.initial_chain, c='orange',label='initial guess')
-# plot_chain(n_ref.chain_trajectory[-1], c='skyblue',linestyle='-',label=f'neb({nimages} nodes)')
-# plot_chain(out_chain, c='red',marker='o',linestyle='-',label='as-neb')
-# plot_chain(n_ref_long.chain_trajectory[-1], c='silver',linestyle='-',label=f'neb({nimages_long} nodes)')
+plot_chain(n_ref.initial_chain, c='orange',label='initial guess')
+plot_chain(n_ref.chain_trajectory[-1], c='skyblue',linestyle='-',label=f'NEB({nimages} nodes)')
+plot_chain(n_ref_long.chain_trajectory[-1], c='gold',linestyle='-',label=f'NEB({nimages_long} nodes)', marker='*', ms=12)
+plot_chain(out_chain, c='red',marker='o',linestyle='-',label='AS-NEB')
+
 plt.legend(fontsize=fs)
 plt.yticks(fontsize=fs)
 plt.xticks(fontsize=fs)
+plt.savefig(f"/home/jdep/T3D_data/msmep_draft/figures/results_2D_potential_ind{ind}.svg")
 plt.show()
 
 # +
@@ -390,18 +396,20 @@ f,ax = plt.subplots(figsize=(1.16*fig,fig))
 # plt.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
 #        height=[n_steps_msmep, n_steps_orig_neb, n_steps_long_neb])
 
-bars = ax.bar(x=["AS-NEB",f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)'],
-       height=[n_grad_msmep, n_grad_orig_neb, n_grad_long_neb])
+bars = ax.bar(x=[f'NEB({nimages} nodes)',f'NEB({nimages_long} nodes)',"AS-NEB",],
+       height=[n_grad_orig_neb, n_grad_long_neb, n_grad_msmep])
 
 ax.bar_label(bars,fontsize=fs)
 
 
 plt.yticks(fontsize=fs)
 # plt.ylabel("Number of optimization steps",fontsize=fs)
-plt.text(.03,.95, f"% improvement: {round((1 - n_grad_msmep / n_grad_long_neb)* 100, 3)}",transform=ax.transAxes,fontsize=fs,
+plt.text(.63,.95, f"{round((n_grad_long_neb / n_grad_msmep), 2)}x improvement",transform=ax.transAxes,fontsize=fs,
         bbox={'visible':True,'fill':False})
 plt.ylabel("Number of gradient calls",fontsize=fs)
+
 plt.xticks(fontsize=fs)
+plt.savefig(f"/home/jdep/T3D_data/msmep_draft/figures/results_2D_potential_ind{ind}_barplot.svg")
 plt.show()
 # -
 
@@ -409,9 +417,9 @@ plt.show()
 
 # +
 # nimgs =  [5, 7, 10, 15, 30]
-# nimgs =  [7, 8, 9, 10, 15]
+nimgs =  [7, 8, 9, 10, 15]
 # nimgs =  [8, 9, 10, 15]
-nimgs = [9]
+# nimgs = [9]
 
 
 outputs = []
@@ -421,7 +429,7 @@ for nimg in nimgs:
     if do_noise:
         coords[1:-1] += the_noise # i.e. good initial guess
     gii = GIInputs(nimages=nimg)
-    nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, stopping_threshold=0, node_freezing=False)
+    nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, node_freezing=False)
     chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
 
     n_ref = NEB(initial_chain=chain_ref,parameters=nbi )
@@ -461,11 +469,11 @@ colors = ['skyblue','orange','red','lime', 'sandybrown']
 
 start_ind = 0
 cut=5
-# plot_chain(outputs[0].initial_chain,label=f'initial guess',linestyle='--',color='white',marker='',ax=ax[0])
-# for i, (neb_obj, nimg) in enumerate(zip(outputs[start_ind:cut], nimgs[start_ind:cut])):
+plot_chain(outputs[0].initial_chain,label=f'initial guess',linestyle='--',color='white',marker='',ax=ax[0])
+for i, (neb_obj, nimg) in enumerate(zip(outputs[start_ind:cut], nimgs[start_ind:cut])):
 # for i, (neb_obj, nimg) in enumerate(zip(outputs, nimgs)):
-# plot_chain(neb_obj.optimized,label=f'neb ({nimg} images)',linestyle='-',c=colors[i],marker='o',ax=ax[0])
-# ax[1].plot(neb_obj.optimized.integrated_path_length, neb_obj.optimized.energies, 'o-',label=f'neb ({nimg} images)')
+    plot_chain(neb_obj.optimized,label=f'neb ({nimg} images)',linestyle='-',c=colors[i],marker='o',ax=ax[0])
+    ax[1].plot(neb_obj.optimized.integrated_path_length, neb_obj.optimized.energies, 'o-',label=f'neb ({nimg} images)')
 
 
 chains = [n_ref.initial_chain,
@@ -479,11 +487,11 @@ labels = ['initial chain',
                            
                           ]
 
-cutoff = 4
+cutoff = 0
 
-for i, (neb_obj, label) in enumerate(zip(chains[:cutoff],labels[:cutoff])):
-    plot_chain(neb_obj,label=label,linestyle='-',c=colors[i],marker='o',ax=ax[0])
-    ax[1].plot(neb_obj.integrated_path_length, neb_obj.energies, 'o-',label=label,c=colors[i])
+# for i, (neb_obj, label) in enumerate(zip(chains[:cutoff],labels[:cutoff])):
+#     plot_chain(neb_obj,label=label,linestyle='-',c=colors[i],marker='o',ax=ax[0])
+#     ax[1].plot(neb_obj.integrated_path_length, neb_obj.energies, 'o-',label=label,c=colors[i])
 
 ax[0].legend(fontsize=fs)
 ax[1].legend(fontsize=fs)
@@ -508,7 +516,7 @@ plt.show()
 
 # +
 
-nopt_steps = [len(neb_obj.chain_trajectory) for i, (neb_obj, nimg) in enumerate(zip(outputs, nimgs))]
+nopt_steps = [(len(neb_obj.chain_trajectory)-1)*nimg for i, (neb_obj, nimg) in enumerate(zip(outputs, nimgs))]
 # -
 
 fig = 8
@@ -517,7 +525,7 @@ max_val = 5.3
 fs = 18
 f, ax = plt.subplots(figsize=(1.3 * fig, fig),ncols=1)
 plt.plot(nimgs[start_ind:], nopt_steps[start_ind:],'o-')
-plt.ylabel("N optimization steps",fontsize=fs)
+plt.ylabel("N gradient calls",fontsize=fs)
 plt.xlabel("N nodes",fontsize=fs)
 plt.yticks(fontsize=fs)
 plt.xticks(fontsize=fs)
@@ -525,77 +533,85 @@ plt.show()
 
 # # Visualize Wittig
 
-asneb2 = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_msmep/"))
+# asneb2 = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/looser_geom/initial_guess_msmep/"))
+# asneb2 = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_tight_endpoints_msmep/"))
+asneb2 = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/fixed_result_looser_k"))
 
 asneb2.output_chain.plot_chain()
 
-clean2 = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_msmep_clean.xyz"),ChainInputs())
-
-clean2.plot_chain()
-
 # neb_short = NEB.read_from_disk(Path("./neb_short"))
-neb_short = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/nebd/Wittig/orca_gfn2_comp/initial_guess_failed.xyz"),
-                               history_folder=Path("/home/jdep/T3D_data/msmep_draft/comparisons/nebd/Wittig/orca_gfn2_comp/initial_guess_failed_history/"))
+# neb_short = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/nebd/Wittig/initial_guess_tight_endpoints"))
+neb_short = asneb2.data
 
 neb_short.plot_opt_history(do_3d=True)
 
-# +
-# neb_short.write_to_disk(Path("./neb_short"), write_history=True)
-# -
-
 # neb_long = NEB.read_from_disk(Path("./neb_long_45nodes"))
-neb_long = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/nebd/Wittig/initial_guess_long_neb.xyz"))
+neb_long = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/initial_guess_long_aligned_neb.xyz"))
 
-# +
-# neb_long.write_to_disk(Path("./neb_long_45nodes"), write_history=True)
-# -
+neb_long.plot_opt_history(do_3d=True)
+
+# clean_chain = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_tight_endpoints_msmep_clean.xyz/"), ChainInputs())
+clean_chain = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/fixed_result_clean.xyz"), ChainInputs())
 
 # asneb_history = TreeNode.read_from_disk(Path("./wittig_early_stop/"))
-asneb_history = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/initial_guess_msmep/"))
 # asneb_history = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/initial_guess_msmep/"))
-
-asneb_history.output_chain.plot_chain()
+# asneb_history = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_tight_endpoints_msmep/"))
+asneb_history = asneb2
 
 # +
 # asneb_history.write_to_disk(Path("./wittig_early_stop/"))
+
+# +
+# cleanups = NEB.read_from_disk(Path("./cleanup_neb"))
+cleanup_neb0 = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_tight_endpoints_cleanups/cleanup_neb_0"))
+cleanup_neb1 = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_tight_endpoints_cleanups/cleanup_neb_1"))
+
+cleanup_nebs = [cleanup_neb0, cleanup_neb1]
 # -
 
-cleanups = NEB.read_from_disk(Path("./cleanup_neb"))
-
-# +
-# cleanups.write_to_disk(Path("./cleanup_neb"))
-
-# +
-cni = ChainInputs(k=0.01, node_class=Node3D)
-
+cni = ChainInputs(k=0.1,delta_k=0.00, node_class=Node3D, step_size=1,friction_optimal_gi=True)
 nbi = NEBInputs(tol=0.01, # tol means nothing in this case
-                grad_thre=0.001,
-                rms_grad_thre=0.0005,
-                en_thre=0.001,
-                v=True, 
-                max_steps=2000)
-m = MSMEP(nbi,cni,GIInputs())
-# -
+        grad_thre=0.001,
+        rms_grad_thre=0.0005,
+        en_thre=0.001,
+        v=True, 
+        max_steps=4000,
+        early_stop_chain_rms_thre=0.00,
+        early_stop_force_thre=0.00, 
+        early_stop_still_steps_thre=1111100,
+        node_freezing=False,
 
-clean_chain = m._merge_cleanups_and_leaves([cleanups], asneb_history)
-# clean_chain = m.create_clean_msmep(asneb_history,out_path=Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/initial_guess_cleanups/"))
 
-# clean_chain.write_to_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/initial_guess_msmep_clean_v2.xyz"))
-clean_chain= Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/initial_guess_msmep_clean_v2.xyz"),cni)
-# clean_chain= Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_msmep_clean.xyz"),cni)
-# clean_chain_raw = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/initial_guess_msmep_clean_v2.xyz"),ChainInputs())
+
+        vv_force_thre=0.0)
 
 # +
-# clean_chain_raw = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/initial_guess_msmep_clean.xyz"),ChainInputs())
+m = MSMEP(nbi, cni, GIInputs())
+
+j = Janitor(history_object=asneb2,out_path=Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_tight_endpoints_cleanups"),
+           msmep_object=m)
+
+clean_chain = j._merge_cleanups_and_leaves(cleanup_nebs)
 # -
 
 all_grads = [node._cached_gradient for node in neb_short.chain_trajectory[-2].nodes]
 
 # +
 RMS_CUT = 0.002
-GRAD_CUT = 0.015
+GRAD_CUT = 0.01
 
 max_grads = np.array([np.amax(chain.gradients) for chain in neb_short.chain_trajectory])
+# -
+
+c = clean_chain
+s = 5
+fs = 18
+f,ax = plt.subplots(figsize=(2.168*s, s))
+plt.plot(c.integrated_path_length, (c.energies-c.energies[0])*627.5,'o-')
+plt.ylabel("Energy (kcal/mols)",fontsize=fs)
+plt.xlabel("Normalized Path Length",fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
 
 # +
 chain_rms = np.array(neb_short._calculate_chain_distances())
@@ -612,16 +628,14 @@ plt.axvline(stop_by_rms,c='orange',label=f"rms < {RMS_CUT}")
 plt.axvline(stop_by_grad,c='blue', label=f"max|F| < {GRAD_CUT}")
 plt.legend()
 
-neb_short.plot_opt_history(do_3d=True)
-
 # +
-fig = 8
+fig = 5
 min_val = -5.3
 max_val = 5.3
 fs = 18
-plt.figure(figsize=(1.62*fig,fig))
+plt.figure(figsize=(2.62*fig,fig))
 
-plt.plot(neb_long.optimized.integrated_path_length, (neb_long.optimized.energies-clean_chain.energies[0])*627.5,'o-',label="NEB (45 nodes)")
+plt.plot(neb_long.optimized.integrated_path_length, (neb_long.optimized.energies-clean_chain.energies[0])*627.5,'o-',label=f"NEB ({len(neb_long.optimized)} nodes)")
 plt.plot(neb_short.optimized.integrated_path_length, (neb_short.optimized.energies-clean_chain.energies[0])*627.5,'o-',label="NEB (15 nodes)")
 plt.plot(clean_chain.integrated_path_length, (clean_chain.energies-clean_chain.energies[0])*627.5,'o-',label="AS-NEB")
 
@@ -630,7 +644,34 @@ plt.ylabel("Energy (kcal/mol)",fontsize=fs)
 plt.legend(fontsize=fs)
 plt.xticks(fontsize=fs)
 plt.xlabel("Normalized path length",fontsize=fs)
-# plt.savefig("/home/jdep/T3D_data/msmep_draft/wittig_comparison_paths.svg")
+plt.savefig("/home/jdep/T3D_data/msmep_draft/wittig_comparison_paths_v2.svg")
+plt.show()
+
+# +
+n_steps_msmep = sum([len(obj.chain_trajectory) -1 for obj in asneb_history.get_optimization_history()])
+n_steps_long_neb = len(neb_long.chain_trajectory) -1 
+
+n_grad_msmep = n_steps_msmep*(15-2)
+n_grad_long_neb = n_steps_long_neb*(60-2)
+
+# +
+fig = 7
+min_val = -5.3
+max_val = 5.3
+fs = 18
+f,ax = plt.subplots(figsize=(1*fig,fig))
+
+bars = ax.bar(x=["AS-NEB",f'NEB({len(neb_long.optimized)} nodes)'],
+       height=[n_grad_msmep, n_grad_long_neb])
+
+ax.bar_label(bars,fontsize=fs)
+
+
+plt.yticks(fontsize=fs)
+plt.text(.03,.95, f"{round(n_grad_long_neb / n_grad_msmep, 2 )}x improvement",transform=ax.transAxes,fontsize=fs,
+        bbox={'visible':True,'fill':False})
+plt.ylabel("Number of gradient calls",fontsize=fs)
+plt.xticks(fontsize=fs)
 plt.show()
 
 # +
@@ -676,7 +717,30 @@ plt.show()
 
 out_short_dlf = Chain.from_xyz(Path('/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/orca_scr_gfn2/orca_input_gi_MEP_trj.xyz'), ChainInputs())
 
+traj = out_short_dlf.to_trajectory()
+
+td = traj[0]
+
+from openbabel.pybel import Molecule
+
+pb = Molecule(td.molecule_obmol)
+
+pb.conformers
+
 out_long_dlf = Chain.from_xyz(Path('/home/jdep/T3D_data/msmep_draft/comparisons/dlfind/Wittig/orca_scr_gfn2_long/orca_input_gi_MEP_trj.xyz'), ChainInputs())
+
+out_long_dlf.plot_chain()
+
+minimized_sp2_1 = out_long_dlf[32].do_geometry_optimization()
+minimized_sp2_2 = out_long_dlf[34].do_geometry_optimization()
+
+int_1 = out_long_dlf[29].do_geometry_optimization()
+
+minimized_sp2_1.tdstructure
+
+int_1.tdstructure
+
+int_1.is_identical(minimized_sp2_1)
 
 # +
 fig = 8
@@ -804,5 +868,17 @@ chain = Chain.from_traj(tr,parameters=ChainInputs(node_class=Node3D_TC_Local))
 n = NEB(initial_chain=chain,parameters=NEBInputs(v=True))
 
 n.optimize_chain()
+
+# # Make Cross MSMEPS
+
+hist = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess_tight_endpoints_msmep/"))
+
+hist.data
+
+inp = hist.data.initial_chain
+
+out_leaves = hist.ordered_leaves
+
+inp_start, inp_end = inp[0], inp[-1]
 
 

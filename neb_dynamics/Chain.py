@@ -320,9 +320,9 @@ class Chain:
         return np.max([np.amax(np.abs(grad)) for grad in self.gradients])
     
     def get_maximum_gperp(self):
-        gperp, gspring = n_refine.chain_trajectory[-1].pe_grads_spring_forces_nudged()
+        gperp, gspring = self.pe_grads_spring_forces_nudged()
         max_gperps = []
-        for gp, node in zip(gperp, n_refine.chain_trajectory[-1]):
+        for gp, node in zip(gperp, self):
             if not node.converged:
                 max_gperps.append(np.amax(np.abs(gp)))
         return np.max(max_gperps)
@@ -502,7 +502,14 @@ class Chain:
         
         
         r,p = self._approx_irc()
-        minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[len(chain)-1])
+        
+        cases = [
+            r.is_identical(chain[0]) and p.is_identical(chain[-1]), # best case
+            r.is_identical(chain[0]) and p.is_identical(chain[0]), # both collapsed to reactants
+            r.is_identical(chain[-1]) and p.is_identical(chain[-1]) # both collapsed to products
+        ]
+        
+        minimizing_gives_endpoints = any(cases) 
         conditions['irc'] = minimizing_gives_endpoints
 
         split_method = self._select_split_method(conditions)

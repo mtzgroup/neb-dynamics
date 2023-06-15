@@ -64,34 +64,20 @@ def read_single_arguments():
 
 
 def main():
-    # import os
-    # del os.environ['OE_LICENSE']
+
     args = read_single_arguments()
 
     fp = Path(args.f)
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
     tol = 0.001
-    # cni = ChainInputs(k=0.01,delta_k=0.00, node_class=Node3D, step_size=1,friction_optimal_gi=True)
-    cni = ChainInputs(k=0.1,delta_k=0.09, node_class=Node3D,step_size=3,  min_step_size=0.33, friction_optimal_gi=True)
-    #method = 'gfn2xtb'
-    #basis = 'gfn2xtb'
-    #for td in traj:
-    #    td.tc_model_method = method
-    #    td.tc_model_basis = basis
+    cni = ChainInputs(k=0.1,delta_k=0.09, node_class=Node3D_TC_Local,step_size=3,  min_step_size=0.33, friction_optimal_gi=True)
+    method = 'b3lyp'
+    basis = '6-31gs'
+    for td in traj:
+       td.tc_model_method = method
+       td.tc_model_basis = basis
 
-    # nbi = NEBInputs(tol=tol, v=True, max_steps=2000,early_stop_chain_rms_thre=0.002,
-    #                 early_stop_force_thre=0.005, early_stop_still_steps_thre=200, vv_force_thre=0.00)
-    # nbi = NEBInputs(tol=tol, # tol means nothing in this case
-    #                 grad_thre=0.001*BOHR_TO_ANGSTROMS,
-    #                 rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
-    #                 en_thre=0.001*BOHR_TO_ANGSTROMS,
-    #                 v=True, 
-    #                 max_steps=2000,
-    #                 # early_stop_chain_rms_thre=0.0014,
-    #                 # early_stop_force_thre=0.003, 
-    #                 # early_stop_still_steps_thre=200,
-    #                 node_freezing=False,
     nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS,
                 rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
                 en_thre=0.0001*BOHR_TO_ANGSTROMS,
@@ -103,6 +89,8 @@ def main():
                 early_stop_still_steps_thre=500,
                 vv_force_thre=0.0,
                 node_freezing=False)
+    
+    
     chain = Chain.from_traj(traj=traj, parameters=cni)
     m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15,extra_kwds={"sweep":False}))
     history, out_chain = m.find_mep_multistep(chain)

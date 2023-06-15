@@ -19,11 +19,17 @@ from retropaths.molecules.elements import ElementData
 from retropaths.abinitio.tdstructure import TDStructure
 import warnings
 warnings.filterwarnings('ignore')
-HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
-# -
 
-import os
-del os.environ['OE_LICENSE']
+from rdkit import RDLogger
+RDLogger.DisableLog('rdApp.*')
+
+
+HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+
+# +
+# import os
+# del os.environ['OE_LICENSE']
+# -
 
 # # Could  I have split based on initial guess? 
 #
@@ -32,7 +38,7 @@ del os.environ['OE_LICENSE']
 reactions = hf.pload("../../retropaths/data/reactions.p")
 
 
-directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons")
+directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/")
 
 ca = CompetitorAnalyzer(comparisons_dir=directory,method='dlfind')
 
@@ -77,6 +83,10 @@ elem_rns=['Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Eliminati
 
 multi_step_rns=['Semmler-Wolff-Reaction', 'Ramberg-Backlund-Reaction-Bromine', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Fries-Rearrangement-para', 'Ramberg-Backlund-Reaction-Iodine', 'Paal-Knorr-Furan-Synthesis', 'Oxindole-Synthesis-X-Chlorine', 'Ramberg-Backlund-Reaction-Chlorine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Bamford-Stevens-Reaction', 'Ramberg-Backlund-Reaction-Fluorine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Buchner-Ring-Expansion-N', 'Knorr-Quinoline-Synthesis', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis']
 
+# +
+# rns[90:]
+# -
+
 failed=['Nazarov-Cyclization']
 
 comparisons_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons/")
@@ -90,8 +100,14 @@ ca = CompetitorAnalyzer(comparisons_dir,'asneb')
 def plot_rxn(name):
     s = 5
     fs = 18
-    data_dir = ca.out_folder / name / 'initial_guess_msmep.xyz'
-    c = Chain.from_xyz(data_dir, ChainInputs())
+    clean_fp = ca.out_folder / name / 'initial_guess_msmep_clean.xyz'
+    # clean_fp = ca.out_folder / name / 'production_results' / 'initial_guess_msmep_clean.xyz'
+    if clean_fp.exists():
+        data_dir = clean_fp
+    else:
+        data_dir = ca.out_folder / name / 'initial_guess_msmep.xyz'
+        # data_dir = ca.out_folder / name / 'production_results' / 'initial_guess_msmep.xyz'
+    c = Chain.from_xyz(data_dir, ChainInputs(k=0))
     f, ax = plt.subplots(figsize=(1.618*s, s))
     
     plt.plot(c.integrated_path_length, (c.energies-c.energies[0])*627.5,'o-')
@@ -99,16 +115,56 @@ def plot_rxn(name):
     plt.ylabel("Energy (kcal/mol)",fontsize=fs)
     plt.xlabel("Normalized path length",fontsize=fs)
     plt.xticks(fontsize=fs)
+    # plt.text(.02, .9, f"grad_max: {round(c.get_maximum_grad_magnitude(),5)}", transform=ax.transAxes, fontsize=fs)
     plt.title(name, fontsize=fs)
     plt.show()
+    return data_dir, c
 
 
-plot_rxn('Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile')
+reactions["Robinson-Gabriel-Synthesis
+
+# reaction_name = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
+reaction_name = 'Robinson-Gabriel-Synthesis'
+dd, c = plot_rxn(reaction_name)
+
+# +
+s=5
+fs=18
+f, ax = plt.subplots(figsize=(2.16*s, s))
+
+ms = 7
+lw = 2
+hexvals=[
+    '#ff1b1b',
+'#dd0090',
+'#5855c3']
+
+out = c
+out_pathlen = out.integrated_path_length
+plt.plot(out.integrated_path_length, (out.energies-out.energies[0])*627.5-0,'o-', label="AS-NEB"
+        ,markersize=ms,linewidth=lw, color='green')
+
+
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.ylabel("Energy (kcal/mol)",fontsize=fs)
+plt.xlabel("Normalized path length",fontsize=fs)
+
+# plt.legend(fontsize=fs)
+
+
+plt.savefig(f"/home/jdep/T3D_data/msmep_draft/figures/{reaction_name}_energy_paths.svg")
+
+
+plt.show()
+# -
+
+c.to_trajectory().draw();
 
 actual_failed = []
 actual_elem_step = []
 actual_multi_step = []
-for rn in rns[10:20]:
+for rn in rns:
     try:
         data_dir = ca.out_folder / rn / 'initial_guess_msmep.xyz'
         c = Chain.from_xyz(data_dir, ChainInputs())
@@ -124,6 +180,8 @@ for rn in rns[10:20]:
 
 set_elem_rns = set(elem_rns) - set(actual_failed)
 set_multi_rns = set(multi_step_rns) - set(actual_failed)
+
+actual_multi_step
 
 overlap_elem_steps = set(actual_elem_step).intersection(set_elem_rns)
 

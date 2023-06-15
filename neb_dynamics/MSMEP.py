@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from pathlib import Path
+
 import numpy as np
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
@@ -175,6 +177,9 @@ class MSMEP:
         return chains
 
     def _do_maxima_based_split(self, chain: Chain):
+        
+        
+        
         ind_maxima = _get_ind_maxima(chain)
         r, p = chain._approx_irc(index=ind_maxima)
         chains_list = []
@@ -196,6 +201,7 @@ class MSMEP:
         chain_frag3 = chain.copy()
         chain_frag3.nodes = nodes3
         chains_list.append(chain_frag3)
+        
         
         return chains_list
 

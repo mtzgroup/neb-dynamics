@@ -19,6 +19,8 @@ from kneed import KneeLocator
 import matplotlib.pyplot as plt
 
 
+VELOCITY_SCALING = .3
+
 @dataclass
 class NoneConvergedException(Exception):
     trajectory: list[Chain]
@@ -110,6 +112,7 @@ class NEB:
     def optimize_chain(self):
         nsteps = 1
         chain_previous = self.initial_chain.copy()
+        chain_previous._zero_velocity()
         self.chain_trajectory.append(chain_previous)
 
         while nsteps < self.parameters.max_steps + 1:
@@ -154,17 +157,20 @@ class NEB:
             )
 
     def get_chain_velocity(self, chain: Chain) -> np.array:
-        prev_velocity = chain.parameters.velocity
-
-        # step = ALS.ArmijoLineSearch(
-        #         chain=chain,
-        #         t=chain.parameters.step_size,
-        #         alpha=0.01,
-        #         beta=0.5,
-        #         grad=chain.gradients,
-        # )
         
-        step = chain.parameters.step_size
+        prev_velocity = chain.parameters.velocity
+        
+        
+        beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/10)
+        step = ALS.ArmijoLineSearch(
+                chain=chain,
+                t=chain.parameters.step_size,
+                alpha=0.01,
+                beta=beta,
+                grad=chain.gradients,
+        )
+        
+        # step = chain.parameters.step_size
         # new_force = -(chain.gradients) * step        
         # directions = np.dot(prev_velocity.flatten(),new_force.flatten())
         
@@ -178,18 +184,25 @@ class NEB:
         #     new_vel = total_force
         #     # print(f"\n\n keeping part of velocity! {np.linalg.norm(new_vel)}\n\n")
         
-        prev_velocity = chain.parameters.velocity
-        step = chain.parameters.step_size
+        # prev_velocity = chain.parameters.velocity
+        # step = chain.parameters.step_size / 100
 
         new_force = -(chain.gradients) * step        
         new_vels_proj = []
         for vel_i, f_i in zip(prev_velocity, new_force):
-            proj = np.dot(vel_i.flatten(), f_i.flatten())
-            new_vels_proj.append(proj*f_i)
+            proj = np.dot(vel_i.flatten(), f_i.flatten()) / np.dot(f_i.flatten(), f_i.flatten())
+            if proj > 0:
+                vel_proj_flat = proj*f_i.flatten()
+                vel_proj = vel_proj_flat.reshape(f_i.shape)
+                new_vels_proj.append(vel_proj)
+            else:
+                new_vels_proj.append(0*f_i)
             
-        new_vels_proj = np.array(new_vels_proj)
-        new_vel = new_vels_proj  + new_force
-        total_force = new_force + new_vel
+        new_vels_proj = np.array(new_vels_proj) + new_force
+        # new_vel = new_vels_proj  + new_force
+        # total_force = new_force + new_vel
+        new_vel = new_vels_proj
+        total_force = new_vel #+ new_force
         
         return new_vel, total_force
 
@@ -203,11 +216,12 @@ class NEB:
             chain.parameters.velocity = new_vel
 
         else:
+            beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/10)
             disp = ALS.ArmijoLineSearch(
                 chain=chain,
                 t=chain.parameters.step_size,
                 alpha=0.01,
-                beta=0.5,
+                beta=beta,
                 grad=chain.gradients,
             )
             new_chain_coordinates = chain.coordinates - chain.gradients * disp

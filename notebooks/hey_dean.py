@@ -1,3 +1,74 @@
+# # MEP Nitrophenyk
+
+from retropaths.abinitio.tdstructure import TDStructure
+from retropaths.abinitio.trajectory import Trajectory
+import matplotlib.pyplot as plt
+from neb_dynamics.NEB import NEB
+from neb_dynamics.Chain import Chain
+from neb_dynamics.Inputs import NEBInputs, ChainInputs
+import warnings
+warnings.filterwarnings('ignore')
+
+start = TDStructure.from_xyz("./dean_nitrophenyl/start.xyz")
+end = TDStructure.from_xyz("./dean_nitrophenyl/end.xyz")
+
+start_opt = start.xtb_geom_optimization()
+# gi = Trajectory([end, start]).run_geodesic(nimages=15)
+gi = Trajectory([end, start_opt]).run_geodesic(nimages=15)
+
+plt.plot(gi.energies_xtb(), 'o-')
+
+# +
+initial_guess = Chain.from_traj(gi, parameters=ChainInputs(k=0.0001))
+
+n = NEB(initial_guess, parameters=NEBInputs(grad_thre=0.001, rms_grad_thre=0.0005,en_thre=0.0005, v=True))
+# -
+
+n.optimized.to_trajectory().write_trajectory("./dean_nitrophenyl/neb_opt.xyz")
+
+n.plot_opt_history(do_3d=False)
+
+n.chain_trajectory[-1].plot_chain()
+
+n.optimized.plot_chain()
+
+n.optimized.to_trajectory()
+
+# +
+# start.tc_model_basis = "6-31gs"
+# start.tc_model_method = "wpbe"
+# start.tc_kwds = {
+#     "rc_w":0.3,
+#     "precision": "mixed",
+#     "hhtda":"yes",
+#     "hhtdasinglets":4,
+#     "cistarget":1,
+#     "charge":-2,
+#     "spinmult":1,
+#     "cisguessvecs":16,
+#     "cisnumstates":4,
+#     'cistarget':1,
+#     "cismaxiter":1000
+# }
+
+# +
+# def gradient_tc_x(self):
+#     atomic_input = self._prepare_input(method="grad")
+#     future_result = self.tc_client.compute(
+#         atomic_input, engine="terachem_fe", queue=None
+#     )
+#     result = future_result.get()
+#     return result
+
+# +
+# r = gradient_tc_x(start)
+
+# +
+# print(r.error.error_message)
+# -
+
+# # PRFO Shit
+
 # +
 from neb_dynamics.TS_PRFO import TS_PRFO
 from neb_dynamics.Node2d import Node2D

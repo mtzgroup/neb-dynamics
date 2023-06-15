@@ -8,6 +8,7 @@ from neb_dynamics.NEB import NEB
 from neb_dynamics.Node2d import Node2D_Flower
 
 
+from retropaths.reactions.changes import Changes3D, Changes3DList, ChargeChanges
 
 import retropaths.helper_functions as hf
 from retropaths.abinitio.trajectory import Trajectory
@@ -46,80 +47,130 @@ from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
 from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 
 from retropaths.reactions.template import ReactionTemplate
 from retropaths.reactions.conditions import Conditions
 from retropaths.reactions.rules import Rules
-import os
-del os.environ['OE_LICENSE']
+# import os
+# del os.environ['OE_LICENSE']
 
 import networkx as nx
 
 reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+
+# +
+# #!/usr/bin/env python
+# Basic energy calculation
+import sys
+
+from qcelemental.models import AtomicInput, Molecule
+
+from tcpb import TCProtobufClient as TCPBClient
+
+if len(sys.argv) != 3:
+    print("Usage: {} host port".format(sys.argv[0]))
+    exit(1)
+
+
+# Water system
+atoms = ["O", "H", "H"]
+geom = [0.0, 0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.5]  # in bohr
+
+molecule = Molecule(symbols=atoms, geometry=geom)
+atomic_input = AtomicInput(
+    molecule=molecule,
+    model={
+        "method": "b3lyp",
+        "basis": "6-31g",
+    },
+    driver="energy",
+    protocols={"wavefunction": "all"},
+)
+
+
+import io
+
+
+text_trap = io.StringIO()
+sys.stdout = text_trap
+
+with TCPBClient(host='127.0.0.1', port=8888) as client:
+    result = client.compute(atomic_input)
+
+sys.stdout = sys.__stdout__
+
+
+print(result)
+print(result.return_result)
+
 # -
 
 # # play
 
-orig_chain = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/orca_gfn2_comp/tighter_conv/initial_guess.xyz"))
-new_chain = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/initial_guess.xyz"))
-
 # +
+from contextlib import contextmanager,redirect_stderr,redirect_stdout
+from os import devnull
 
-plt.plot(orig_chain.energies_xtb(),'o-',label='orig_chain')
-plt.plot(new_chain.energies_xtb(),'o-',label='new_chain')
-plt.legend()
-plt.show()
+@contextmanager
+def suppress_stdout_stderr():
+    """A context manager that redirects stdout and stderr to devnull"""
+    with open(devnull, 'w') as fnull:
+        with redirect_stderr(fnull) as err, redirect_stdout(fnull) as out:
+            yield (err, out)
+
+# Example usage
+import sys
+
+def rogue_function():
+    print('spam to stdout')
+    print('important warning', file=sys.stderr)
+    1 + 'a'
+    return 42
+
+with suppress_stdout_stderr():
+    rogue_function()
 # -
 
-start, end = orig_chain[0], orig_chain[-1]
-
-start_opt = start.xtb_geom_optimization()
-end_opt = end.xtb_geom_optimization()
-
-frics = [0.0001, 0.001, 0.01, 0.1,1]
-gis = []
-
-for fric in frics:
-    tr = Trajectory([start_opt, end_opt]).run_geodesic(nimages=15,friction=fric,sweep=False)
-    gis.append(tr)
-# tr = Trajectory([start_opt, end_opt]).run_geodesic(nimages=15)
 
 
-gi_opt = orig_chain.get_conv_gi(orig_chain)
+orig = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/initial_guess.xyz"))
+
+start = orig[0]
+end = orig[-1]
 
 # +
-for f,gi in zip(frics,gis):
-    plt.plot(gi.energies_xtb(),label=f'gi_fric{f}')
+method = 'b3lyp'
+basis = '6-31gs'
+kwds = {'restricted': False}
 
 
-plt.plot(orig_chain.energies_xtb(),'o-',label='orig')
-plt.plot(gi_opt[0].energies_xtb(),'o-',label='gi_opt')
-plt.legend()
-plt.show()
+start.tc_model_basis = basis
+start.tc_model_method = method
+start.tc_kwds = kwds
 
-# +
-cni = ChainInputs(k=0.01, delta_k=0.009, node_class=Node3D)
-nbi = NEBInputs(tol=0.01, # tol means nothing in this case
-                grad_thre=0.001,
-                rms_grad_thre=0.0005,
-                en_thre=0.001,
-                v=True, 
-                max_steps=2000,
-                early_stop_chain_rms_thre=0.002,
-                early_stop_force_thre=0.01
-               )
-init = Chain.from_traj(tr, cni)
-
-
-m = MSMEP(nbi,cni,GIInputs(nimages=5))
-
-
+end.update_tc_parameters(start)
 # -
 
-h, out = m.find_mep_multistep(init)
+inp = start._prepare_input("grad")
 
-out.plot_chain()
+with TCPBClient(host='127.0.0.1', port=8888) as client:
+    result = client.compute(inp)
+
+result.return_result
+
+start_opt = start.tc_local_geom_optimization()
+
+start_opt.to_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig_DFT/start.xyz")
+
+end_opt = end.tc_local_geom_optimization()
+
+end_opt.to_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig_DFT/end.xyz")
+
+gi = Trajectory([start_opt, end_opt]).run_geodesic(nimages=15)
+
+gi.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig_DFT/initial_guess.xyz")
 
 # # Wittig
 
@@ -573,292 +624,3 @@ m  = MSMEP(neb_inputs=nbi, root_early_stopping=True, chain_inputs=cni, gi_inputs
 out_chain.plot_chain()
 
 cleanup_neb = m.cleanup_nebs(start_chain,history)
-
-# # Knoevenangel Condensation
-
-# +
-m = MSMEP(v=True,tol=0.01)
-# root, target = m.create_endpoints_from_rxn_name("Knoevenangel-Condensation", reactions)
-root = TDStructure.from_rxn_name("Knoevenangel-Condensation",reactions)
-c3d_list = root.get_changes_in_3d(reactions["Knoevenangel-Condensation"])
-
-target = root.copy()
-target.apply_changed3d_list(c3d_list)
-target.mm_optimization("gaff")
-target.mm_optimization("uff")
-target.mm_optimization("mmff94")
-# -
-
-root = TDStructure.from_rxn_name("Knoevenangel-Condensation",reactions)
-root.mm_optimization("gaff",steps=40000)
-# root.mm_optimization("uff")
-# root.mm_optimization("mmff94")
-
-root
-
-# %%time
-n_obj, out_chain = m.find_mep_multistep(Chain(nodes=[Node3D(root), Node3D(target)],k=0.1), do_alignment=True)
-
-# # Blum-Ittah Aziridine
-
-cni = ChainInputs(node_class=Node3D)
-nbi = NEBInputs(v=True)
-
-[r for r in reactions]
-
-m = MSMEP(chain_inputs=cni, neb_inputs=nbi)
-root, target = m.create_endpoints_from_rxn_name("", reactions)
-
-# # Diels Alder
-
-cni = ChainInputs(node_class=Node3D_TC)
-nbi = NEBInputs(v=True)
-
-m = MSMEP(chain_inputs=cni, neb_inputs=nbi)
-root, target = m.create_endpoints_from_rxn_name("Diels-Alder-4+2", reactions)
-
-# %%time
-n_obj, out_chain = m.find_mep_multistep(Chain(nodes=[Node3D_TC(root), Node3D_TC(target)],k=0.1), do_alignment=True)
-
-# +
-# out_chain.plot_chain() # tol was probably too high
-# -
-
-out_chain.to_trajectory()
-
-t = Trajectory([n.tdstructure for n in out_chain.nodes])
-
-t.draw()
-
-t.write_trajectory("../example_cases/diels_alder/msmep_tol001.xyz")
-
-# # Beckmann Rearrangement
-
-# +
-nbi = NEBInputs(v=True, stopping_threshold=10, tol=0.01)
-
-m  = MSMEP(neb_inputs=nbi, recycle_chain=True, root_early_stopping=True, split_method='minima')
-rn = "Beckmann-Rearrangement"
-root2, target2 = m.create_endpoints_from_rxn_name(rn, reactions)
-# -
-
-# %%time
-cni = ChainInputs()
-input_chain = Chain(nodes=[Node3D(root2),Node3D(target2)],parameters=cni)
-history, out_chain2 = m.find_mep_multistep(input_chain)
-
-sum([len(obj.chain_trajectory) for obj in history.get_optimization_history()])
-
-tr_long = Trajectory([out_chain2[0].tdstructure, out_chain2[-1].tdstructure]).run_geodesic(nimages=len(out_chain2), sweep=False)
-start_chain_long = Chain.from_traj(tr_long,parameters=cni)
-
-nbi = NEBInputs(v=True, stopping_threshold=0, tol=0.01)
-neb_long = NEB(initial_chain=start_chain_long,parameters=nbi)
-
-neb_long.optimize_chain()
-
-len(out_chain2)
-
-neb_long.optimized.plot_chain()
-
-out_chain2.plot_chain()
-
-t = Trajectory([n.tdstructure for n in out_chain2.nodes])
-
-t.draw()
-
-# +
-# %%time
-nbi_loose = NEBInputs(v=True, stopping_threshold=5, tol=0.01)
-
-m2  = MSMEP(neb_inputs=nbi_loose, recycle_chain=True, root_early_stopping=False, split_method='maxima')
-cni = ChainInputs()
-input_chain = Chain(nodes=[Node3D(root2),Node3D(target2)],parameters=cni)
-
-history_loose, out_chain_loose = m2.find_mep_multistep(input_chain)
-# -
-
-out_chain_loose.plot_chain()
-
-out_chain_loose.to_trajectory().draw();
-
-nbi = NEBInputs(v=True, stopping_threshold=10, tol=0.01)
-
-
-
-# # Alkene-Addition-Acidification-with-Rearrangement-Iodine
-
-m = MSMEP(max_steps=2000,v=True,tol=0.01, nudge=0)
-rn = "Alkene-Addition-Acidification-with-Rearrangement-Iodine"
-root3, target3 = m.create_endpoints_from_rxn_name(rn, reactions)
-
-# %%time
-n_obj3, out_chain3 = m.find_mep_multistep((root3, target3), do_alignment=True)
-
-# # Bamberger-Rearrangement
-
-m = MSMEP(max_steps=2000,v=True,tol=0.01, nudge=0, k=0.01)
-rn = "Bamberger-Rearrangement"
-root4, target4 = m.create_endpoints_from_rxn_name(rn, reactions)
-
-# %%time
-n_obj4, out_chain4 = m.find_mep_multistep((root4, target4), do_alignment=True)
-
-# # Ugi
-
-nbi = NEBInputs(v=True, tol=0.005,max_steps=2000)
-gii = GIInputs(friction=.01, extra_kwds={'sweep':False})
-
-root = TDStructure.from_rxn_name("Ugi-Reaction",reactions)
-root.gum_mm_optimization()
-
-root
-
-# +
-# c3d_list = root.get_changes_in_3d(reactions["Ugi-Reaction"])
-
-root = root.pseudoalign(c3d_list)
-root.gum_mm_optimization()
-# -
-
-root
-
-target = root.copy()
-target.apply_changed3d_list(c3d_list)
-target.gum_mm_optimization()
-
-root_opt  = root.xtb_geom_optimization()
-target_opt = target.xtb_geom_optimization()
-
-root_opt
-
-reference_ugi = Trajectory.from_xyz("/home/jdep/neb_dynamics/example_cases/ugi/msmep_tol0.01_max_2000.xyz")
-
-root_opt = reference_ugi[0]
-target_opt = reference_ugi[-1]
-
-gi = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=1,sweep=False)
-
-gi_01 = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=.1,sweep=False)
-gi_001 = Trajectory([root_opt,target_opt]).run_geodesic(nimages=15,friction=.01,sweep=False)
-
-import matplotlib.pyplot as plt
-
-plt.plot(gi.energies_xtb(), 'o-',label='friction=1')
-plt.plot(gi_01.energies_xtb(), 'o-',label='friction=0.1')
-plt.plot(gi_001.energies_xtb(), 'o-',label='friction=0.01')
-plt.legend()
-
-cni = ChainInputs(k=0.1,step_size=1)
-nbi = NEBInputs(v=True, tol=0.005,max_steps=2000,stopping_threshold=5)
-m = MSMEP(neb_inputs=nbi, recycle_chain=True, gi_inputs=gii,split_method='maxima', root_early_stopping=True)
-chain = Chain.from_traj(gi_001,cni)
-
-history, out_chain = m.find_mep_multistep(chain)
-
-history.data.optimized.plot_chain()
-
-out_chain.plot_chain()
-
-out_chain.to_trajectory().write_trajectory("maybe.xyz")
-
-# !pwd
-
-from neb_dynamics.helper_functions import _get_ind_maxima
-
-_get_ind_maxima(history.data.optimized)
-
-r1,p1 = m._approx_irc(history.data.optimized)
-
-history.data.optimized.plot_chain()
-
-# !pwd
-
-out_chain.plot_chain()
-
-out_chain.to_trajectory().write_trajectory(("/home/jdep/T3D_data/msmep_draft/ugi_tree_canonical/out_chain.xyz"))
-
-ht.write_to_disk(Path("/home/jdep/T3D_data/msmep_draft/ugi_tree_canonical"))
-
-# # Claisen-Rearrangement
-
-# t = Trajectory.from_xyz("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement-cNEB_v3/traj_0-0_0_cneb.xyz")
-t = Trajectory.from_xyz("/home/jdep/T3D_data/msmep_draft/claisen-0-0_with_conf_rearr.xyz")
-
-cni = ChainInputs(node_class=Node3D)
-nbi = NEBInputs(v=True)
-gi = Trajectory([start, p.xtb_geom_optimization()]).run_geodesic(nimages=30)
-c = Chain.from_traj(gi,cni)
-n = NEB(c,nbi)
-
-n.optimize_chain()
-
-n.optimized.plot_chain()
-
-start = t[0]
-p = t[15]
-pprime = t[-1]
-
-start.tc_model_basis = "gfn2xtb"
-start.tc_model_method = 'gfn2xtb'
-
-p.tc_model_basis = "gfn2xtb"
-p.tc_model_method = 'gfn2xtb'
-
-p_opt = p.tc_geom_optimization()
-
-pprime.tc_model_basis = "gfn2xtb"
-pprime.tc_model_method = 'gfn2xtb'
-
-# start_opt = start.tc_geom_optimization()
-start_opt = start.xtb_geom_optimization()
-
-# pprime_opt = pprime.tc_geom_optimization()
-pprime_opt = pprime.xtb_geom_optimization()
-
-# start,end = t[0],t[-1]
-cni = ChainInputs(node_class=Node3D_TC)
-nbi = NEBInputs(v=True)
-
-# +
-
-m = MSMEP(neb_inputs=nbi,recycle_chain=False)
-# -
-
-# %%time
-c = Chain([Node3D(start),Node3D(end)],parameters=cni)
-n_obj4, out_chain4 = m.find_mep_multistep(c, do_alignment=False)
-
-from neb_dynamics.NEB import NEB
-
-start_to_p = Trajectory([start_opt, p_opt]).run_geodesic(nimages=15)
-start_to_p_chain = Chain.from_traj(start_to_p, parameters=cni)
-neb = NEB(initial_chain=start_to_p_chain,parameters=nbi)
-neb.optimize_chain()
-
-neb.optimized.plot_chain()
-
-p_to_pprime = Trajectory([p_opt, pprime_opt]).run_geodesic(nimages=15)
-p_to_pprime_chain = Chain.from_traj(p_to_pprime, parameters=cni)
-neb2 = NEB(initial_chain=p_to_pprime_chain,parameters=nbi)
-neb2.optimize_chain()
-
-foo = Trajectory.from_list_of_trajs([neb.optimized.to_trajectory(), neb2.optimized.to_trajectory()])
-
-import matplotlib.pyplot as plt
-
-cni = ChainInputs(node_class=Node3D)
-foo_c = Chain.from_traj(foo, parameters=cni) 
-
-s = 8
-fs = 18
-f, ax = plt.subplots(figsize=(1.8*s, s))
-plt.plot(foo_c.integrated_path_length, (foo_c.energies-foo_c.energies[0])*627.5,'o-')
-plt.yticks(fontsize=fs)
-plt.xticks(fontsize=fs)
-plt.ylabel("Energy (kcal/mol)",fontsize=fs)
-plt.xlabel("Integrated path length",fontsize=fs)
-plt.show()
-
-""
-

@@ -19,6 +19,7 @@ import multiprocessing as mp
 from pathlib import Path
 
 RMSD_CUTOFF = 0.5
+# RMSD_CUTOFF = 10.0
 KCAL_MOL_CUTOFF = 0.1
 
 @dataclass
@@ -117,6 +118,9 @@ class Node3D(Node):
             # other.tdstructure.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_other.xyz"))
             return conformer_identical
         else:
+            # print("\n\nwas not same connectivity. writing to tmp0 and tmp1\n\n")
+            # self.tdstructure.to_xyz("/tmp/tmp0.xyz")
+            # other.tdstructure.to_xyz("/tmp/tmp1.xyz")
             return False
 
     def is_identical(self, other) -> bool:

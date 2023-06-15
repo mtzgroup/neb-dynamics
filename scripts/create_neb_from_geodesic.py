@@ -50,8 +50,8 @@ def read_single_arguments():
 
 
 def main():
-    import os
-    del os.environ['OE_LICENSE']
+    #import os
+    #del os.environ['OE_LICENSE']
     args = read_single_arguments()
 
     fp = Path(args.f)
@@ -59,7 +59,7 @@ def main():
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
 
-    tol = 0.01
+    tol = 0.001
     # cni = ChainInputs(k=0.01, node_class=Node3D_TC)
     # method = 'gfn2xtb'
     # basis = 'gfn2xtb'
@@ -67,14 +67,31 @@ def main():
     #     td.tc_model_method = method
     #     td.tc_model_basis = basis
 
-    cni = ChainInputs(k=0.01, node_class=Node3D)
+    # cni = ChainInputs(k=0.01,delta_k=0.00, node_class=Node3D, step_size=1,friction_optimal_gi=True)
+    cni = ChainInputs(k=0.1,delta_k=0.09, node_class=Node3D, step_size=3, min_step_size=0.33, friction_optimal_gi=True)
 
     nbi = NEBInputs(tol=tol, # tol means nothing in this case
                     grad_thre=0.001*BOHR_TO_ANGSTROMS,
                     rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
                     en_thre=0.001*BOHR_TO_ANGSTROMS,
                     v=True, 
-                    max_steps=10000)
+                    max_steps=4000,
+                    vv_force_thre=0.0)
+    # nbi = NEBInputs(tol=tol, # tol means nothing in this case
+    #                 grad_thre=0.001,
+    #                 rms_grad_thre=0.0005,
+    #                 en_thre=0.001,
+    #                 v=True, 
+    #                 max_steps=10000,
+    #                 early_stop_chain_rms_thre=0.0,
+    #                 early_stop_force_thre=0.0, 
+    #                 early_stop_still_steps_thre=100000000,
+    #                 node_freezing=False,
+                    
+                    
+                    
+    #                 vv_force_thre=0.01)
+    
     chain = Chain.from_traj(traj=traj, parameters=cni)
     n = NEB(initial_chain=chain, parameters=nbi)
     try: 

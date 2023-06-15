@@ -12,7 +12,7 @@ from pathlib import Path
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
-RMSD_CUTOFF = 0.1
+RMSD_CUTOFF = 0.5
 KCAL_MOL_CUTOFF = 0.1
 
 

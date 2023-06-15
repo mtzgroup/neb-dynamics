@@ -22,8 +22,9 @@ from neb_dynamics.MSMEP import MSMEP
 from rdkit import RDLogger
 RDLogger.DisableLog('rdApp.*')
 
-import os
-del os.environ['OE_LICENSE']
+# +
+# import os
+# del os.environ['OE_LICENSE']
 
 # +
 # REFERENCE=None
@@ -144,7 +145,7 @@ class Node3D_MTD(Node):
 
     def do_geometry_optimization(self) -> Node3D_MTD:
         
-        max_steps=1000
+        max_steps=2500
         ss=1
         tol=0.001
         nsteps = 0
@@ -391,8 +392,8 @@ class Node3D_MTD(Node):
             en_delta = np.abs((self.energy - other.energy)*627.5)
             
             
-            rmsd_identical = dist < RMSD_CUTOFF
-            energies_identical = en_delta < KCAL_MOL_CUTOFF
+            rmsd_identical = dist < self.RMSD_CUTOFF
+            energies_identical = en_delta < self.KCAL_MOL_CUTOFF
             if rmsd_identical and energies_identical:
                 conformer_identical = True
             
@@ -773,7 +774,7 @@ def geom_opt_mtd(node, max_steps=1000, ss=1, tol=0.001):
 
 import retropaths.helper_functions  as hf
 reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
-m = MSMEP(neb_inputs=NEBInputs(v=True),chain_inputs=ChainInputs(), gi_inputs=GIInputs())
+m = MSMEP(neb_inputs=NEBInputs(v=True),chain_inputs=ChainInputs(step_size=3, delta_k=0.09), gi_inputs=GIInputs())
 
 # rxn = "Diels-Alder-4+2"
 rxn = "Claisen-Rearrangement"
@@ -781,16 +782,15 @@ start, end = m.create_endpoints_from_rxn_name(rxn,reactions)
 start = start.xtb_geom_optimization()
 end = end.xtb_geom_optimization()
 
-start
-
-n_orig = NEB.read_from_disk(Path("../example_cases/alex_chang/attempt0/neb_original"))
-# nbi = NEBInputs(tol=.005,v=True, vv_force_thre=0, climb=True)
-# cni_orig = ChainInputs(k=0.01, step_size=1, node_class=Node3D,do_parallel=True)
-# chain_orig = Chain.from_traj(gi,parameters=cni_orig)
+# n_orig = NEB.read_from_disk(Path("../example_cases/alex_chang/attempt0/neb_original"))
+gi = Trajectory([start, end]).run_geodesic(nimages=15)
+nbi = NEBInputs(tol=0.001,v=True, vv_force_thre=0, climb=False, early_stop_force_thre=0.01, early_stop_chain_rms_thre=0.002)
+cni_orig = ChainInputs(k=0.1, delta_k=0.09, step_size=3, node_class=Node3D,do_parallel=True)
+chain_orig = Chain.from_traj(gi,parameters=cni_orig)
 # n_orig = NEB(initial_chain=chain_orig,parameters=nbi)
 # n_orig.optimize_chain()
 
-gi = Trajectory([start, end]).run_geodesic(nimages=15)
+h, out = m.find_mep_multistep(chain_orig)
 
 
 def prepare_biased_neb(chain_inputs, 
@@ -834,47 +834,57 @@ def prepare_clean_neb(chain_inputs,
     n = NEB(initial_chain=guess_chain,parameters=nbi)
     return n
 
+
+n_orig = h.ordered_leaves[0].data
+
 # +
-# nc = Node3D_MTD
-# cni = ChainInputs(k=0.0, step_size=2, node_class=nc,do_para 0.1
-# cni.mtd_alpha = 5
-# llel=True)
-# cni.mtd_strength =
-# rfs = [
-#         n_orig.optimized.coordinates[1:-1]
-#       ]
+nc = Node3D_MTD
+cni.mtd_strength = .005
+cni.mtd_alpha = 5
+rfs = [
+        n_orig.optimized.coordinates[1:-1]
+      ]
+
+cni = ChainInputs(k=0.1, delta_k=0.09, step_size=3, node_class=Node3D,do_parallel=True)
+cni.mtd_strength = .005
+cni.mtd_alpha = 5
+guess_to_use = n_orig.initial_chain.nodes
+guess_chain = Chain(nodes=[nc(node.tdstructure, 
+                                  reference_trajs=rfs,
+                                     strength=cni.mtd_strength,
+                                     alpha=cni.mtd_alpha) 
+                            for node in guess_to_use],parameters=cni)
 
 
-# guess_to_use = n_orig.initial_chain.nodes
-# guess_chain = Chain(nodes=[nc(node.tdstructure, 
-#                                   reference_trajs=rfs,
-#                                      strength=cni.mtd_strength,
-#                                      alpha=cni.mtd_alpha) 
-#                             for node in guess_to_use],parameters=cni)
-
-
-# n = NEB(initial_chain=guess_chain,parameters=nbi)
+n = NEB(initial_chain=guess_chain,parameters=nbi)
 cv = [n_orig.optimized.coordinates[1:-1]]
-cni = ChainInputs(k=0.00,step_size=2,node_class=Node3D_MTD)
-cni.mtd_strength = .01
+cni = ChainInputs(k=0.00,step_size=3,node_class=Node3D_MTD)
+cni.mtd_strength = .005
 cni.mtd_alpha = 5
 cv = [n_orig.optimized.coordinates[1:-1]]
-nbi = NEBInputs(v=1, vv_force_thre=0, tol=0.1, max_steps=1000, early_stop_force_thre=0.03,early_stop_chain_rms_thre=0.002,early_stop_still_steps_thre=200)
+nbi = NEBInputs(v=1, vv_force_thre=0, tol=0.001, max_steps=500)
 # -
 
 m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs())
 
-neb = NEB(initial_chain=guess_chain, parameters=nbi)
+r = guess_chain[0].do_geometry_optimization()
+
+p = guess_chain[-1].do_geometry_optimization()
+
+mtd_guess_gi = Trajectory([r.tdstructure, p.tdstructure]).run_geodesic(nimages=15)
+
+mtd_guess = Chain(nodes=[nc(td, reference_trajs=rfs,
+                                     strength=cni.mtd_strength,
+                                     alpha=cni.mtd_alpha) 
+                            for td in mtd_guess_gi],parameters=cni)
+
+neb = NEB(initial_chain=mtd_guess, parameters=nbi)
 
 neb.optimize_chain()
 
-r, p = neb.optimized._approx_irc()
+neb.optimized.plot_chain()
 
-r.tdstructure
-
-guess_chain[-1].tdstructure
-
-p.tdstructure
+neb.optimized.to_trajectory()
 
 # +
 # rfs = [
