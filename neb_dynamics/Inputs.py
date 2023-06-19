@@ -46,6 +46,7 @@ class ChainInputs:
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
     friction_optimal_gi: bool = False
+    als_max_steps: int = 10
     
 
 

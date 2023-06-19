@@ -159,15 +159,16 @@ class NEB:
     def get_chain_velocity(self, chain: Chain) -> np.array:
         
         prev_velocity = chain.parameters.velocity
+        als_max_steps = chain.parameters.als_max_steps
         
-        
-        beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/10)
+        beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
         step = ALS.ArmijoLineSearch(
                 chain=chain,
                 t=chain.parameters.step_size,
                 alpha=0.01,
                 beta=beta,
                 grad=chain.gradients,
+                max_steps=als_max_steps
         )
         
         # step = chain.parameters.step_size
@@ -216,13 +217,16 @@ class NEB:
             chain.parameters.velocity = new_vel
 
         else:
-            beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/10)
+            als_max_steps = chain.parameters.als_max_steps
+            beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
+            
             disp = ALS.ArmijoLineSearch(
                 chain=chain,
                 t=chain.parameters.step_size,
                 alpha=0.01,
                 beta=beta,
                 grad=chain.gradients,
+                max_steps=als_max_steps
             )
             new_chain_coordinates = chain.coordinates - chain.gradients * disp
 

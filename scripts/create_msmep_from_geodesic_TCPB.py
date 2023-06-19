@@ -61,50 +61,24 @@ def read_single_arguments():
         
     )
     
-    parser.add_argument(
-        '-nc',
-        '--node_class',
-        dest='nc',
-        type=str,
-        default="node3d",
-        help='what node type to use. options are: node3d, node3d_tc, node3d_tc_local, node3d_tcpb'
-        
-    )
-    
     return parser.parse_args()
 
 
 def main():
-    # import os
-    # del os.environ['OE_LICENSE']
+
     args = read_single_arguments()
-    
-    nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
-    nc = nodes[args.nc]
 
     fp = Path(args.f)
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
     tol = 0.001
-    # cni = ChainInputs(k=0.01,delta_k=0.00, node_class=Node3D, step_size=1,friction_optimal_gi=True)
-    if args.nc != "node3d":
-        method = 'b3lyp' 
-        basis = '3-21gs'
-        kwds = {'restricted': False}
-        for td in traj:
-            td.tc_model_method = method
-            td.tc_model_basis = basis
-            td.tc_kwds = kwds
-            
-    if args.nc == 'node3d_tcpb':
-        do_parallel=False
-    else:
-        do_parallel=True
+    cni = ChainInputs(k=0.1,delta_k=0.09, node_class=Node3D_TC_Local,step_size=3,  min_step_size=0.33, friction_optimal_gi=True)
+    method = 'b3lyp'
+    basis = '6-31gs'
+    for td in traj:
+       td.tc_model_method = method
+       td.tc_model_basis = basis
 
-    
-    
-    cni = ChainInputs(k=0.1,delta_k=0.09, node_class=nc,step_size=3,  min_step_size=0.33, friction_optimal_gi=True, do_parallel=do_parallel,
-                      als_max_steps=3)
     nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS,
                 rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
                 en_thre=0.0001*BOHR_TO_ANGSTROMS,
@@ -116,6 +90,8 @@ def main():
                 early_stop_still_steps_thre=500,
                 vv_force_thre=0.0,
                 node_freezing=False)
+    
+    
     chain = Chain.from_traj(traj=traj, parameters=cni)
     m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15,extra_kwds={"sweep":False}))
     history, out_chain = m.find_mep_multistep(chain)

@@ -19,8 +19,7 @@ def _attempt_step(chain: Chain, t):
     en_struct_prime = new_chain.get_maximum_grad_magnitude()
     return en_struct_prime, t
 
-def ArmijoLineSearch(chain: Chain, t, alpha, beta,grad):
-    max_steps = 10
+def ArmijoLineSearch(chain: Chain, t, alpha, beta, grad, max_steps):
     count = 0
     # en_struct = np.linalg.norm(grad)
     en_struct = chain.get_maximum_grad_magnitude()

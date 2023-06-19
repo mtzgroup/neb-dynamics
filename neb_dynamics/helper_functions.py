@@ -17,6 +17,7 @@ from IPython.core.display import HTML
 from scipy.signal import argrelextrema
 from retropaths.molecules.elements import ElementData
 
+
 warnings.filterwarnings('ignore')
 
 def pairwise(iterable):
@@ -154,3 +155,7 @@ def mass_weight_coords(labels, coords):
    weights = weights / sum(weights)
    coords = coords * weights.reshape(-1,1)
    return coords
+
+
+
+

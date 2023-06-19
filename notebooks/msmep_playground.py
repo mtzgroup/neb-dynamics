@@ -45,6 +45,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
@@ -59,81 +60,9 @@ import networkx as nx
 
 reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
-
-# +
-# #!/usr/bin/env python
-# Basic energy calculation
-import sys
-
-from qcelemental.models import AtomicInput, Molecule
-
-from tcpb import TCProtobufClient as TCPBClient
-
-if len(sys.argv) != 3:
-    print("Usage: {} host port".format(sys.argv[0]))
-    exit(1)
-
-
-# Water system
-atoms = ["O", "H", "H"]
-geom = [0.0, 0.0, 0.0, 0.0, 1.5, 0.0, 0.0, 0.0, 1.5]  # in bohr
-
-molecule = Molecule(symbols=atoms, geometry=geom)
-atomic_input = AtomicInput(
-    molecule=molecule,
-    model={
-        "method": "b3lyp",
-        "basis": "6-31g",
-    },
-    driver="energy",
-    protocols={"wavefunction": "all"},
-)
-
-
-import io
-
-
-text_trap = io.StringIO()
-sys.stdout = text_trap
-
-with TCPBClient(host='127.0.0.1', port=8888) as client:
-    result = client.compute(atomic_input)
-
-sys.stdout = sys.__stdout__
-
-
-print(result)
-print(result.return_result)
-
 # -
 
 # # play
-
-# +
-from contextlib import contextmanager,redirect_stderr,redirect_stdout
-from os import devnull
-
-@contextmanager
-def suppress_stdout_stderr():
-    """A context manager that redirects stdout and stderr to devnull"""
-    with open(devnull, 'w') as fnull:
-        with redirect_stderr(fnull) as err, redirect_stdout(fnull) as out:
-            yield (err, out)
-
-# Example usage
-import sys
-
-def rogue_function():
-    print('spam to stdout')
-    print('important warning', file=sys.stderr)
-    1 + 'a'
-    return 42
-
-with suppress_stdout_stderr():
-    rogue_function()
-# -
-
-
 
 orig = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/initial_guess.xyz"))
 
@@ -142,7 +71,7 @@ end = orig[-1]
 
 # +
 method = 'b3lyp'
-basis = '6-31gs'
+basis = '3-21gs'
 kwds = {'restricted': False}
 
 
@@ -153,24 +82,18 @@ start.tc_kwds = kwds
 end.update_tc_parameters(start)
 # -
 
-inp = start._prepare_input("grad")
+start.energy_tc_tcpb()
 
-with TCPBClient(host='127.0.0.1', port=8888) as client:
-    result = client.compute(inp)
+cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D_TC_TCPB, 
+                  do_parallel=False, als_max_steps=3)
+chain = Chain.from_traj(orig, parameters=cni)
 
-result.return_result
+nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS, 
+                rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
+                v=True)
+n = NEB(initial_chain=chain, parameters=nbi)
 
-start_opt = start.tc_local_geom_optimization()
-
-start_opt.to_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig_DFT/start.xyz")
-
-end_opt = end.tc_local_geom_optimization()
-
-end_opt.to_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig_DFT/end.xyz")
-
-gi = Trajectory([start_opt, end_opt]).run_geodesic(nimages=15)
-
-gi.write_trajectory("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig_DFT/initial_guess.xyz")
+n.optimize_chain()
 
 # # Wittig
 
