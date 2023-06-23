@@ -554,7 +554,7 @@ class NEB:
             plt.show()
 
 
-    def read_from_disk(fp: Path, history_folder: Path = None):
+    def read_from_disk(fp: Path, history_folder: Path = None, chain_parameters=ChainInputs(), neb_parameters=NEBInputs()):
         if history_folder is None:
             history_folder = fp.parent / (str(fp.stem) + "_history")
 
@@ -564,14 +564,14 @@ class NEB:
             history_files = list(history_folder.glob("*.xyz"))
             history = [
                 Chain.from_xyz(
-                    history_folder / f"traj_{i}.xyz", parameters=ChainInputs()
+                    history_folder / f"traj_{i}.xyz", parameters=chain_parameters
                 )
                 for i, _ in enumerate(history_files)
             ]
 
         n = NEB(
             initial_chain=history[0],
-            parameters=NEBInputs(),
+            parameters=neb_parameters,
             optimized=history[-1],
             chain_trajectory=history,
         )

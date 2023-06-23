@@ -114,13 +114,8 @@ class Node3D(Node):
             if rmsd_identical and not energies_identical:
                 conformer_identical = False
             print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
-            # aligned_self.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_self.xyz"))
-            # other.tdstructure.to_xyz(Path(f"/tmp/{round(dist,3)}_{round(en_delta, 3)}_other.xyz"))
             return conformer_identical
         else:
-            # print("\n\nwas not same connectivity. writing to tmp0 and tmp1\n\n")
-            # self.tdstructure.to_xyz("/tmp/tmp0.xyz")
-            # other.tdstructure.to_xyz("/tmp/tmp1.xyz")
             return False
 
     def is_identical(self, other) -> bool:

@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import networkx as nx
 from neb_dynamics.Chain import Chain
+from neb_dynamics.Inputs import ChainInputs, NEBInputs
 
 @dataclass
 class TreeNode:
@@ -124,12 +125,12 @@ class TreeNode:
         return mat
 
     @classmethod
-    def read_from_disk(cls, folder_name):
+    def read_from_disk(cls, folder_name, neb_parameters=NEBInputs(), chain_parameters=ChainInputs()):
         adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
 
         nodes = list(folder_name.glob("node*.xyz"))
         n_nodes = len(nodes)
-        neb_nodes = [NEB.read_from_disk(nodes[i]) for i in range(n_nodes)]
+        neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters) for i in range(n_nodes)]
         root = TreeNode._get_node_helper(
             ind_parent=0, matrix=adj_mat, list_of_nodes=neb_nodes
         )

@@ -90,7 +90,8 @@ def main():
     if args.nc != "node3d":
         method = 'b3lyp' 
         basis = '3-21gs'
-        kwds = {'restricted': False}
+        # kwds = {'restricted': False}
+        kwds = {'restricted': False, 'pcm':'cosmo','epsilon':80}
         for td in traj:
             td.tc_model_method = method
             td.tc_model_basis = basis

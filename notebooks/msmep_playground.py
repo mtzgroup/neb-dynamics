@@ -45,6 +45,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
 from neb_dynamics.TreeNode import TreeNode
@@ -63,6 +64,18 @@ HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
 # # play
+
+h_dft = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/initial_guess_msmep/"), 
+                                chain_parameters=ChainInputs(node_class=Node3D_TC))
+
+h_dft.output_chain.plot_chain()
+
+c_dft = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/initial_guess_msmep.xyz"), parameters=ChainInputs())
+c_xtb = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/initial_guess_msmep.xyz"), parameters=ChainInputs())
+
+plt.plot(c_dft.integrated_path_length, (c_dft.energies-c_dft.energies[0])*627.5, 'o-',label="b3lyp/3-21gs")
+plt.plot(c_xtb.integrated_path_length, (c_xtb.energies-c_xtb.energies[0])*627.5, 'o-',label="GFN2XTB")
+plt.legend()
 
 orig = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/initial_guess.xyz"))
 

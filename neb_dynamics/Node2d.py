@@ -144,7 +144,9 @@ class Node2D_2(Node):
     def is_identical(self, other: Node):
         other_opt = other.do_geometry_optimization()
         self_opt = self.do_geometry_optimization()
-        return all(other_opt == self_opt)
+        dist = np.linalg.norm(other_opt.coords - self_opt.coords)
+        return abs(dist) < .1
+
 
     @staticmethod
     def grad_func(node):
@@ -684,3 +686,81 @@ class Node2D_Flower(Node):
         pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
         return pe_grad_nudged
+    
+    
+
+
+@dataclass
+class Node2D_Zero(Node):
+    pair_of_coordinates: np.array
+    converged: bool = False
+    do_climb: bool = False
+
+    is_a_molecule = False
+    
+    _cached_energy: float | None = None
+    _cached_gradient: np.array | None = None
+
+    @property
+    def coords(self):
+        return self.pair_of_coordinates
+
+    @staticmethod
+    def en_func(node: Node2D_Zero):
+        return 0
+
+    @staticmethod
+    def en_func_arr(xy_vals):
+        return 0
+
+    def do_geometry_optimization(self) -> Node:
+        return self.pair_of_coordinates
+
+    def is_identical(self, other: Node):
+        other_opt = other.do_geometry_optimization()
+        self_opt = self.do_geometry_optimization()
+        dist = np.linalg.norm(other_opt.coords - self_opt.coords)
+        return abs(dist) < .1
+
+
+    @staticmethod
+    def grad_func(node: Node2D_Zero):
+        return node.coords*0
+
+    @property
+    def energy(self) -> float:
+        return self.en_func(self)
+
+    @property
+    def gradient(self) -> np.array:
+        return self.grad_func(self)
+
+    @property
+    def hessian(self) -> np.array:
+        return self.hess_func(self)
+
+    @staticmethod
+    def dot_function(self, other: Node2D_Zero) -> float:
+        return np.dot(self, other)
+
+    def copy(self):
+        return Node2D_Zero(
+            pair_of_coordinates=self.pair_of_coordinates,
+            converged=self.converged,
+            do_climb=self.do_climb,
+        )
+
+    def update_coords(self, coords: np.array):
+        new_node = self.copy()
+        new_node.pair_of_coordinates = coords
+        return new_node
+
+    def get_nudged_pe_grad(self, unit_tangent, gradient):
+        """
+        Returns the component of the gradient that acts perpendicular to the path tangent
+        """
+        pe_grad = gradient
+        pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
+        pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+        return pe_grad_nudged
+

@@ -138,7 +138,8 @@ class Node3D_TC(Node):
         return energy_gradient_tuples
     
     def do_geometry_optimization(self) -> Node3D_TC:
-        td_opt = self.tdstructure.tc_geom_optimization()
+        td_opt_xtb = self.tdstructure.xtb_geom_optimization()
+        td_opt = td_opt_xtb.tc_geom_optimization()
         return Node3D_TC(tdstructure=td_opt)
     
     def _is_connectivity_identical(self, other) -> bool:
@@ -148,20 +149,30 @@ class Node3D_TC(Node):
         return connectivity_identical
     
     def _is_conformer_identical(self, other) -> bool:
-        aligned_self = self.tdstructure.align_to_td(other.tdstructure)
-        rmsd_identical = RMSD(aligned_self.coords, other.tdstructure.coords)[0] < RMSD_CUTOFF
-        energies_identical = np.abs((self.energy - other.energy)*627.5) < KCAL_MOL_CUTOFF
-        if rmsd_identical and energies_identical:
-            conformer_identical = True
-        
-        if not rmsd_identical and energies_identical:
-            # going to assume this is a permutation issue. To address later
-            conformer_identical = True
-        
-        if not rmsd_identical and not energies_identical:
-            conformer_identical = False
-
-        return conformer_identical
+        if self._is_connectivity_identical(other):
+            aligned_self = self.tdstructure.align_to_td(other.tdstructure)
+            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            en_delta = np.abs((self.energy - other.energy)*627.5)
+            
+            
+            rmsd_identical = dist < RMSD_CUTOFF
+            energies_identical = en_delta < KCAL_MOL_CUTOFF
+            if rmsd_identical and energies_identical:
+                conformer_identical = True
+            
+            if not rmsd_identical and energies_identical:
+                # going to assume this is a rotation issue. Need To address.
+                conformer_identical = False
+            
+            if not rmsd_identical and not energies_identical:
+                conformer_identical = False
+            
+            if rmsd_identical and not energies_identical:
+                conformer_identical = False
+            print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
+            return conformer_identical
+        else:
+            return False
 
     def is_identical(self, other) -> bool:
 

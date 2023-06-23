@@ -33,7 +33,7 @@ def ArmijoLineSearch(chain: Chain, t, alpha, beta, grad, max_steps):
             en_struct_prime, t = _attempt_step(chain=chain, t=t)
             condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
         except:
-            t *= .01
+            t *= beta
             count += 1
     sys.stdout.flush()
     return t
