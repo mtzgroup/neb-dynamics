@@ -156,6 +156,13 @@ def mass_weight_coords(labels, coords):
    coords = coords * weights.reshape(-1,1)
    return coords
 
-
+def get_nudged_pe_grad(unit_tangent, gradient):
+    """
+    Returns the component of the gradient that acts perpendicular to the path tangent
+    """
+    pe_grad = gradient
+    pe_grad_nudged_const = np.dot(pe_grad.flatten(), unit_tangent.flatten())
+    pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+    return pe_grad_nudged
 
 

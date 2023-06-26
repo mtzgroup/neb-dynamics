@@ -1,28 +1,28 @@
 import multiprocessing as mp
 from dataclasses import dataclass
+from typing import List
 
 import numpy as np
-
-from neb_dynamics.Chain import Chain
 
 AVAIL_DIST_FUNC_NAMES = ['per_node', 'simp_frechet']
 
 @dataclass
 class ChainBiaser:
-    reference_chain: Chain
+    reference_chains: list # list of Chain objects
     
     amplitude: float = 1.0
     sigma: float = 1.0
     
-    distance_func: str = "per_node"
+    distance_func: str = "simp_frechet"
     
     def node_wise_distance(self, chain):
         
         ### this one only works if the number of nodes is identical
         if self.distance_func == 'per_node':
             tot_dist = 0
-            for n1, n2 in zip(chain.coordinates[1:-1], self.reference_chain.coordinates[1:-1]):
-                tot_dist += np.linalg.norm(abs(n1 - n2))
+            for reference_chain in self.reference_chains:
+                for n1, n2 in zip(chain.coordinates[1:-1], reference_chain.coordinates[1:-1]):
+                    tot_dist += np.linalg.norm(abs(n1 - n2))
             
         
         
@@ -38,10 +38,11 @@ class ChainBiaser:
         return tot_dist / len(chain)
     
     def _simp_frechet_helper(self, coords):
-        ref_coords = self.reference_chain.coordinates[1:-1]
         node_distances = []
-        for ref_coord in ref_coords:
-            node_distances.append(np.linalg.norm(coords - ref_coord))
+        for reference_chain in self.reference_chains:
+            ref_coords = reference_chain.coordinates[1:-1]
+            for ref_coord in ref_coords:
+                node_distances.append(np.linalg.norm(coords - ref_coord))
         return min(node_distances)
     
     def path_bias(self, distance):

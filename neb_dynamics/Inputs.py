@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from neb_dynamics.Node import Node
 from neb_dynamics.Node3D import Node3D
+from neb_dynamics.ChainBiaser import ChainBiaser
 
 
 @dataclass
@@ -47,6 +48,13 @@ class ChainInputs:
     use_geodesic_interpolation: bool = True
     friction_optimal_gi: bool = False
     als_max_steps: int = 10
+    do_chain_biasing: bool = False
+    cb: ChainBiaser = None
+    
+    def __post_init__(self):
+        if self.do_chain_biasing and self.cb is None:
+            raise ValueError("No chain biaser was inputted. Fix this or set 'do_chain_biasing' to False.")
+    
     
 
 

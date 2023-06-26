@@ -12,7 +12,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Node import Node
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.Inputs import ChainInputs
-from neb_dynamics.helper_functions import RMSD, get_mass, _get_ind_minima, _get_ind_maxima, linear_distance, qRMSD_distance, pairwise
+from neb_dynamics.helper_functions import RMSD, get_mass, _get_ind_minima, _get_ind_maxima, linear_distance, qRMSD_distance, pairwise, get_nudged_pe_grad
 
 
 from xtb.interface import Calculator
@@ -369,6 +369,17 @@ class Chain:
         grads = (
             pe_grads_nudged - spring_forces_nudged
         )  # + self.parameters.k * anti_kinking_grads
+
+        # add chain bias if relevant
+        if self.parameters.do_chain_biasing:
+            tans = self.unit_tangents
+            
+            # cb = ChainBiaser(reference_chain=n_ref.optimized, amplitude=self.parameters.amp, sigma=self.parameters.sig, distance_func=self.parameters.distance_func)
+            bias_grads = self.parameters.cb.grad_chain_bias(self)
+            proj_grads = np.array([get_nudged_pe_grad(tan, grad) for tan,grad in zip(tans, bias_grads)])
+            
+                
+            grads += proj_grads
 
         zero = np.zeros_like(grads[0])
         grads = np.insert(grads, 0, zero, axis=0)
