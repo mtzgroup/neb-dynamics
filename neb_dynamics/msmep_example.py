@@ -2,30 +2,28 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS
-
-from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
-from neb_dynamics.Node2d import Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, Node2D_Flower
-from neb_dynamics.Node import AlessioError
-from neb_dynamics.TS_PRFO import TS_PRFO
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.potential_functions import (
-    sorry_func_0,
-    sorry_func_1,
-    sorry_func_2,
-    sorry_func_3,
-    flower_func
-)
-from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
-
+from neb_dynamics.NEB import NEB, NoneConvergedException
+from neb_dynamics.Node import AlessioError
+from neb_dynamics.Node2d import (Node2D, Node2D_2, Node2D_Flower, Node2D_ITM,
+                                 Node2D_LEPS)
+from neb_dynamics.potential_functions import (flower_func, sorry_func_0,
+                                              sorry_func_1, sorry_func_2,
+                                              sorry_func_3)
+from neb_dynamics.TS_PRFO import TS_PRFO
+from neb_dynamics.ChainBiaser import ChainBiaser
 
 np.random.seed(0)
 sfs = [sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3, flower_func]
-index = 4
+index = 1
 nodes = [Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, Node2D_Flower ]
 min_sizes = [-4, -2, -2, 0.5, -5.2]
 max_sizes = [4, 2, 2, 4, 5.2]
+
+s = 7
 
 presets = {
     "pot_func": sfs[index],
@@ -50,11 +48,11 @@ def animate_func(neb_obj: NEB):
 
     f, ax = plt.subplots(figsize=(1.618 * figsize, figsize))
 
-    # min_val = -s
-    # max_val = s
+    min_val = -s
+    max_val = s
 
-    min_val = presets["min_size"]
-    max_val = presets["max_size"]
+    # min_val = presets["min_size"]
+    # max_val = presets["max_size"]
 
     x = np.linspace(start=min_val, stop=max_val, num=1000)
     y = x.reshape(-1, 1)
@@ -185,7 +183,7 @@ def plot_2D(neb_obj: NEB):
 
 
 def main():
-    nimages = 10
+    nimages = 15
 
     ### node 2d
     # end_point = (3.00002182, 1.99995542)
@@ -193,9 +191,9 @@ def main():
     # start_point = (-3.77928812, -3.28320392)
 
     ### node 2d - 2
-    # start_point = (-1, 1)
+    start_point = (-1, 1)
     # end_point = (1, 1)
-    # end_point = (1, -1)
+    end_point = (1, -1)
     # end_point = (1.01, -1.01)
 
     # ## node 2d - ITM
@@ -209,13 +207,13 @@ def main():
     # end_point = [4, 0.74200311]
     
     ### node 2d - flower
-    start_point = [-2.59807434, -1.499999  ]
+    # start_point = [-2.59807434, -1.499999  ]
     # end_point = [5, .000001]
-    end_point = [2.5980755 , 1.49999912]
+    # end_point = [2.5980755 , 1.49999912]
     
     
     coords = np.linspace(start_point, end_point, nimages)
-    coords[1:-1] += np.random.normal(scale=.2, size=coords[1:-1].shape)
+    # coords[1:-1] += np.random.normal(scale=.2, size=coords[1:-1].shape)
     # coords[1:-1] -= np.random.normal(scale=.15)
     # coords[5]+= np.array([0,.2])
     
@@ -232,41 +230,59 @@ def main():
     
     
     
-    
-    ks = .01
+    tol = 0.1
+    ks = 5
     cni = ChainInputs(
         k=ks,
         node_class=presets["node"],
         delta_k=0,
-        step_size=.5,
+        step_size=.1,
         do_parallel=False,
         use_geodesic_interpolation=False,
+        min_step_size=0.001,
     )
     gii = GIInputs(nimages=nimages)
-    nbi = NEBInputs(tol=.1, v=1, max_steps=1000, climb=False)
+    nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=True, early_stop_chain_rms_thre=0.0002, early_stop_force_thre=1, node_freezing=False, early_stop_still_steps_thre=100)
     chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
-    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
+    m = MSMEP(neb_inputs=nbi_msmep, chain_inputs=cni, gi_inputs=gii)
     h_root_node, out_chain = m.find_mep_multistep(input_chain=chain)
+
+
+    # biased stuff
+    #### asneb
+    gii = GIInputs(nimages=nimages)
+    nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=True, early_stop_chain_rms_thre=0.0002, early_stop_force_thre=1, node_freezing=False, early_stop_still_steps_thre=100)
+
+    amp=50
+    sig=1
+    distance_func='simp_frechet'
+
+    bias_chains = [out_chain]
+    cb = ChainBiaser(reference_chains=bias_chains, amplitude=amp, sigma=sig, distance_func=distance_func)
+    cni = ChainInputs(step_size=.1,min_step_size=0.001, node_class=presets["node"], k=1, delta_k=0, do_parallel=False, 
+                 do_chain_biasing=True, cb=cb, use_geodesic_interpolation=False)
+    cni.do_chain_biasing = True
+    cni.cb = cb 
+
+    init_chain = Chain(chain.nodes, parameters=cni)
+
+    for i, node in enumerate(init_chain):
+        init_chain.nodes[i] = presets["node"](pair_of_coordinates=node.coords)
+        
+
+
+    m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni, gi_inputs=gii)
+    history, out_chain = m.find_mep_multistep(init_chain)
+
+
+
     # out_chain.plot_chain()
     h_root_node.draw()
     # plot_func(h[0])
     [animate_func(obj) for obj in h_root_node.get_optimization_history()]
+    [animate_func(obj) for obj in history.get_optimization_history()]
     f = plot_ethan(out_chain)
     plt.show()
-    
-    
-    # frankenstein = h[0]
-    # frankenstein.chain_trajectory.extend(h[1][0].chain_trajectory)
-    # frankenstein.chain_trajectory.extend(h[2][0].chain_trajectory)
-    # frankenstein.chain_trajectory.append(out_chain)
-    # animate_func(frankenstein)
-    # # out_chain.plot_chain()
-    # print(f'{coords=}')
-    # print(f'{h[0].optimized.coordinates=}')
-    # print(f'{h[1][0].optimized.coordinates=}')
-    # print(f'{h[2][0].optimized.coordinates=}')
-    # print(f"{out_chain.coordinates=}")
-    # plot_func(frankenstein)
     
 
 if __name__ == "__main__":
