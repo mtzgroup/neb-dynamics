@@ -50,7 +50,7 @@ class MSMEP:
 
         return root_opt, target_opt
 
-    def find_mep_multistep(self, input_chain):
+    def find_mep_multistep(self, input_chain, tree_node_index=0):
         
         if input_chain[0].is_a_molecule:
             if input_chain[0]._is_connectivity_identical(input_chain[-1]):
@@ -62,7 +62,7 @@ class MSMEP:
                 return None, None
         
         root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
-        history = TreeNode(data=root_neb_obj, children=[])
+        history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
         
         elem_step, split_method = chain.is_elem_step()
         
@@ -74,10 +74,11 @@ class MSMEP:
             print(f"Splitting chains based on: {split_method}")
             elem_steps = []
 
-            for i, chain_frag in enumerate(sequence_of_chains):
-                print(f"On chain {i+1} of {len(sequence_of_chains)}...")
+            for i, chain_frag in enumerate(sequence_of_chains, start=1):
+                print(f"On chain {i} of {len(sequence_of_chains)}...")
 
-                out_history, chain = self.find_mep_multistep(chain_frag)
+                new_tree_node_index = tree_node_index + i
+                out_history, chain = self.find_mep_multistep(chain_frag, tree_node_index=new_tree_node_index)
                 if chain:
                     elem_steps.append(chain)
                     history.children.append(out_history)

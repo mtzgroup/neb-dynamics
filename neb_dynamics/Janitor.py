@@ -111,7 +111,7 @@ class Janitor:
     
     
     def _merge_cleanups_and_leaves(self, list_of_cleanup_nebs):
-        list_of_cleanup_nodes = [TreeNode(data=neb_i, children=[]) for neb_i in list_of_cleanup_nebs]
+        list_of_cleanup_nodes = [TreeNode(data=neb_i, children=[], index=99) for neb_i in list_of_cleanup_nebs]
         orig_leaves = self.history_object.ordered_leaves
         print('before:',len(orig_leaves))
         new_leaves = self.merge_by_indices(

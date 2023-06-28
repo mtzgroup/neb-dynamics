@@ -11,6 +11,7 @@ from neb_dynamics.Inputs import ChainInputs, NEBInputs
 class TreeNode:
     data: NEB
     children: list
+    index: int
 
     @classmethod
     def from_node_list(cls, recursive_list):
@@ -27,6 +28,13 @@ class TreeNode:
             children = [cls.from_node_list(recursive_list=l) for l in fixed_list[1:]]
 
             return cls(data=fixed_list[0], children=children)
+    @property 
+    def max_index(self):
+        max_found = 0
+        for node in self.depth_first_ordered_nodes:
+            if node.index > max_found:
+                max_found = node.index
+        return max_found
 
     @property
     def n_children(self):
@@ -100,68 +108,71 @@ class TreeNode:
 
 
 
-    def _update_adj_matrix(self, ind, matrix, node, free_inds):
+    def _update_adj_matrix(self, matrix, node):
             matrix_copy = matrix.copy()
-            node.index = free_inds[0]
-            free_inds.pop(0)
-            
+            matrix_copy[node.index, node.index] = 1
             if node.is_leaf:
                 return matrix_copy
             else:
-                for i, child in enumerate(node.children,start=1):
-                    child_ind = free_inds[0]
-                    matrix_copy[ind, child_ind] = 1
-                    matrix_copy = self._update_adj_matrix(ind=ind+i, matrix=matrix_copy, node=child, free_inds=free_inds)
+                for child in node.children:
+                    matrix_copy[node.index, child.index] = 1
+                    matrix_copy = self._update_adj_matrix(matrix=matrix_copy, node=child)
 
             return matrix_copy
         
     @property
     def adj_matrix(self):
-        mat = np.identity(self.total_nodes)
-        free_inds = list(range(self.total_nodes))
-
-        mat = self._update_adj_matrix(ind=0, matrix=mat, node=self, free_inds=free_inds)
+        # mat = np.zeros((self.total_nodes, self.total_nodes))
+        mat = np.zeros((self.max_index+1, self.max_index+1))
+        mat = self._update_adj_matrix(matrix=mat, node=self)
         
         return mat
 
     @classmethod
     def read_from_disk(cls, folder_name, neb_parameters=NEBInputs(), chain_parameters=ChainInputs()):
         adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
-
+        
         nodes = list(folder_name.glob("node*.xyz"))
-        n_nodes = len(nodes)
-        neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters) for i in range(n_nodes)]
-        root = TreeNode._get_node_helper(
-            ind_parent=0, matrix=adj_mat, list_of_nodes=neb_nodes
+        true_node_indices = [int(p.stem.split("_")[1]) for p in nodes]
+        node_list_indices = list(range(len(true_node_indices)))
+        
+        translator = {}
+        for true_ind, local_ind in zip(true_node_indices, node_list_indices):
+            translator[true_ind] = local_ind
+        
+        
+        neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters) for i in range(len(nodes))]
+        root = cls._get_node_helper(
+            true_node_index=0, matrix=adj_mat, list_of_nodes=neb_nodes, indices_translator=translator
         )
 
         return root
 
 
     @classmethod
-    def _get_node_helper(cls, ind_parent, matrix, list_of_nodes):
-        node = list_of_nodes[ind_parent]
-        row = matrix[ind_parent, ind_parent:]
-        ind_nonzero_nodes = row.nonzero()[0] + ind_parent
+    def _get_node_helper(cls, true_node_index, matrix, list_of_nodes, indices_translator):
+    
+        node = list_of_nodes[indices_translator[true_node_index]]
+        row = matrix[true_node_index, true_node_index:]
+        ind_nonzero_nodes = row.nonzero()[0] + true_node_index
         ind_children = ind_nonzero_nodes[1:]
         if len(ind_children):
             children = [
-                TreeNode._get_node_helper(
-                    ind_parent=j, matrix=matrix, list_of_nodes=list_of_nodes
+                cls._get_node_helper(
+                    true_node_index=true_child_index, matrix=matrix, list_of_nodes=list_of_nodes, indices_translator=indices_translator
                 )
-                for j in ind_children
+                for true_child_index in ind_children
             ]
-            return TreeNode(data=node, children=children)
+            return cls(data=node, children=children, index=true_node_index)
         else:
-            return TreeNode(data=node, children=[])
-
-
+            return cls(data=node, children=[], index=true_node_index)
+    
     # @property
     @cached_property
     def is_leaf(self):
-        # return len(self.children) == 0
-        # TODO: fix file labelling bug
-        return self.data.chain_trajectory[-1].is_elem_step()[0]
+        return len(self.children) == 0
+        # # TODO: fix file labelling bug
+        # return self.data.chain_trajectory[-1].is_elem_step()[0]
 
     def get_optimization_history(self, node=None):
         if node:

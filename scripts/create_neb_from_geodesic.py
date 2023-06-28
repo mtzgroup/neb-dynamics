@@ -5,6 +5,8 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.Node3D import Node3D
+from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
@@ -46,8 +48,17 @@ def read_single_arguments():
 
     )
     
+    parser.add_argument(
+        '-nc',
+        '--node_class',
+        dest='nc',
+        type=str,
+        default="node3d",
+        help='what node type to use. options are: node3d, node3d_tc, node3d_tc_local, node3d_tcpb'
+        
+    )
+    
     return parser.parse_args()
-
 
 def main():
     #import os

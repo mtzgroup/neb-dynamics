@@ -85,7 +85,8 @@ def main():
     fp = Path(args.f)
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
-    tol = 0.001
+    # tol = 0.001
+    tol = 0.01
     # cni = ChainInputs(k=0.01,delta_k=0.00, node_class=Node3D, step_size=1,friction_optimal_gi=True)
     if args.nc != "node3d":
         method = 'b3lyp' 
@@ -117,6 +118,17 @@ def main():
                 early_stop_still_steps_thre=500,
                 vv_force_thre=0.0,
                 node_freezing=False)
+    # nbi = NEBInputs(tol=tol,
+    #             v=1, 
+    #             max_steps=2000,
+    #             early_stop_chain_rms_thre=0.002, 
+    #             early_stop_force_thre=0.03, 
+            
+    #             early_stop_still_steps_thre=500,
+    #             vv_force_thre=0.0,
+    #             node_freezing=False)
+    
+    
     chain = Chain.from_traj(traj=traj, parameters=cni)
     m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15,extra_kwds={"sweep":False}))
     history, out_chain = m.find_mep_multistep(chain)

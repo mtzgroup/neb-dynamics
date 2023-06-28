@@ -1,81 +1,144 @@
 # +
-from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.Node3D import Node3D
-from neb_dynamics.Node3D_TC import Node3D_TC
-from neb_dynamics.Chain import Chain
-from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
-from neb_dynamics.NEB import NEB
-from neb_dynamics.Node2d import Node2D_Flower
-
-
-from retropaths.reactions.changes import Changes3D, Changes3DList, ChargeChanges
-
-import retropaths.helper_functions as hf
-from retropaths.abinitio.trajectory import Trajectory
-from retropaths.abinitio.tdstructure import TDStructure
-from retropaths.molecules.molecule import Molecule
-
-from IPython.core.display import HTML
-
-import matplotlib.pyplot as plt
-from retropaths.reactions.changes import Changes3DList, Changes3D
-from retropaths.reactions.template import ReactionTemplate
-from retropaths.reactions.conditions import Conditions
-from retropaths.reactions.rules import Rules
-from pathlib import Path
-
-from retropaths.reactions.template_utilities import (
-    give_me_molecule_with_random_replacement_from_rules,
-)
-
-
-from dataclasses import dataclass 
-import numpy as np
-from neb_dynamics.msmep_example import plot_2D, plot_func, plot_ethan, animate_func
-import matplotlib.pyplot as plt
-
-import warnings
-warnings.filterwarnings('ignore')
-from retropaths.molecules.molecule import Molecule
-from retropaths.reactions.changes import Changes3DList, Changes3D
-from retropaths.abinitio.tdstructure import TDStructure
-from retropaths.abinitio.trajectory import Trajectory
-
-
-from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.Chain import Chain
-from neb_dynamics.Node3D import Node3D
-from neb_dynamics.Node3D_TC import Node3D_TC
-from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
-from neb_dynamics.Inputs import NEBInputs, ChainInputs
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
+from neb_dynamics.Inputs import ChainInputs
+from neb_dynamics.Node3D_TC import Node3D_TC
+from neb_dynamics.Node3D import Node3D
+from neb_dynamics.NEB import NEB
+from neb_dynamics.Inputs import NEBInputs
 
-from retropaths.reactions.template import ReactionTemplate
-from retropaths.reactions.conditions import Conditions
-from retropaths.reactions.rules import Rules
-# import os
-# del os.environ['OE_LICENSE']
-
-import networkx as nx
-
-reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
-HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+from pathlib import Path
+import numpy as np
 # -
 
 # # play
 
-h_dft = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/initial_guess_msmep/"), 
-                                chain_parameters=ChainInputs(node_class=Node3D_TC))
+# directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/initial_guess_msmep/")
+# directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/old_useless_results/orca_gfn2_comp/initial_guess_msmep/")
+# directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/old_useless_results/debugging/initial_guess_msmep")
+directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/production_results/initial_guess_msmep/")
+
+# +
+# def _get_node_helper(true_node_index, matrix, list_of_nodes, indices_translator):
+    
+#     node = list_of_nodes[indices_translator[true_node_index]]
+#     row = matrix[true_node_index, true_node_index:]
+#     ind_nonzero_nodes = row.nonzero()[0] + true_node_index
+#     ind_children = ind_nonzero_nodes[1:]
+#     if len(ind_children):
+#         children = [
+#             _get_node_helper(
+#                 true_node_index=true_child_index, matrix=matrix, list_of_nodes=list_of_nodes, indices_translator=indices_translator
+#             )
+#             for true_child_index in ind_children
+#         ]
+#         return TreeNode(data=node, children=children, index=true_node_index)
+#     else:
+#         return TreeNode(data=node, children=[], index=true_node_index)
+    
+    
+# def read_from_disk(cls, folder_name, neb_parameters=NEBInputs(), chain_parameters=ChainInputs()):
+#     adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
+    
+#     nodes = list(folder_name.glob("node*.xyz"))
+#     true_node_indices = [int(p.stem.split("_")[1]) for p in nodes]
+#     node_list_indices = list(range(len(true_node_indices)))
+    
+#     translator = {}
+#     for true_ind, local_ind in zip(true_node_indices, node_list_indices):
+#         translator[true_ind] = local_ind
+    
+    
+    
+#     print(f'{numbers=}')
+#     print(f'{translator=}')
+#     neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters) for i in range(len(nodes))]
+#     root = _get_node_helper(
+#         true_node_index=0, matrix=adj_mat, list_of_nodes=neb_nodes, indices_translator=translator
+#     )
+
+#     return root
+
+    
+# def read_from_disk(cls, folder_name, neb_parameters=NEBInputs(), chain_parameters=ChainInputs()):
+#     adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
+    
+#     nodes = list(folder_name.glob("node*.xyz"))
+#     true_node_indices = [int(p.stem.split("_")[1]) for p in nodes]
+#     node_list_indices = list(range(len(true_node_indices)))
+    
+#     translator = {}
+#     for true_ind, local_ind in zip(true_node_indices, node_list_indices):
+#         translator[true_ind] = local_ind
+    
+    
+    
+#     print(f'{numbers=}')
+#     print(f'{translator=}')
+#     neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters) for i in range(len(nodes))]
+#     root = _get_node_helper(
+#         true_node_index=0, matrix=adj_mat, list_of_nodes=neb_nodes, indices_translator=translator
+#     )
+
+#     return root
+
+
+
+
+# -
+
+h = TreeNode.read_from_disk(directory)
+
+h.output_chain.plot_chain()
+
+h_dft = TreeNode.read_from_disk(directory, chain_parameters=ChainInputs(node_class=Node3D))
 
 h_dft.output_chain.plot_chain()
 
-c_dft = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/initial_guess_msmep.xyz"), parameters=ChainInputs())
+h_dft.adj_matrix
+
+import numpy as np
+
+
+def _update_adj_matrix(matrix, node):
+    matrix_copy = matrix.copy()
+    print(node.index)
+    matrix_copy[node.index, node.index] = 1
+    if node.is_leaf:
+        return matrix_copy
+    else:
+        for child in node.children:
+            matrix_copy[node.index, child.index] = 1
+            matrix_copy = _update_adj_matrix(matrix=matrix_copy, node=child)
+
+    return matrix_copy
+
+
+mat = np.zeros((h_dft.total_nodes, h_dft.total_nodes))
+mat = _update_adj_matrix(matrix=mat, node=h_dft)
+
+for n in h_dft.depth_first_ordered_nodes:
+    print(n.index)
+
+mat
+
+h_dft.adj_matrix
+
+huh = c_dft[0].tdstructure
+
+huh2 = TDStructure.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig_DFT/start.xyz")
+
+tr = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig_DFT/initial_guess.xyz"))
+
+tr_ref = h_dft.data.initial_chain.to_trajectory()
+
+c_dft = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/b3lyp_321gs/initial_guess_msmep.xyz"), parameters=ChainInputs())
 c_xtb = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/initial_guess_msmep.xyz"), parameters=ChainInputs())
 
 plt.plot(c_dft.integrated_path_length, (c_dft.energies-c_dft.energies[0])*627.5, 'o-',label="b3lyp/3-21gs")
 plt.plot(c_xtb.integrated_path_length, (c_xtb.energies-c_xtb.energies[0])*627.5, 'o-',label="GFN2XTB")
 plt.legend()
+
+c_dft.to_trajectory().draw()
 
 orig = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/initial_guess.xyz"))
 
