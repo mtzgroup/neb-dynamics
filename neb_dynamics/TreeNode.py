@@ -12,22 +12,9 @@ class TreeNode:
     data: NEB
     children: list
     index: int
+    
+    _force_tree_recalc: bool = False
 
-    @classmethod
-    def from_node_list(cls, recursive_list):
-        fixed_list = [val for val in recursive_list if val is not None]
-        if len(fixed_list) == 1:
-            if isinstance(fixed_list[0], NEB):
-                return cls(data=fixed_list[0], children=[])
-            elif isinstance(fixed_list[0], list):
-                list_of_nodes = [
-                    cls.from_node_list(recursive_list=l) for l in fixed_list[0]
-                ]
-                return cls(data=list_of_nodes[0], children=list_of_nodes[1:])
-        else:
-            children = [cls.from_node_list(recursive_list=l) for l in fixed_list[1:]]
-
-            return cls(data=fixed_list[0], children=children)
     @property 
     def max_index(self):
         max_found = 0
@@ -170,9 +157,11 @@ class TreeNode:
     # @property
     @cached_property
     def is_leaf(self):
-        return len(self.children) == 0
-        # # TODO: fix file labelling bug
-        # return self.data.chain_trajectory[-1].is_elem_step()[0]
+        if self._force_tree_recalc: # this should never be used but alas
+            return self.data.chain_trajectory[-1].is_elem_step()[0]
+        else:
+            return len(self.children) == 0
+        
 
     def get_optimization_history(self, node=None):
         if node:
