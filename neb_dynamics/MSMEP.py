@@ -55,11 +55,11 @@ class MSMEP:
         if input_chain[0].is_a_molecule:
             if input_chain[0]._is_connectivity_identical(input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
-                return None, None
+                return TreeNode(data=None,children=[],index=tree_node_index), None
         else:
             if input_chain[0].is_identical(input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
-                return None, None
+                return TreeNode(data=None,children=[],index=tree_node_index), None
         
         root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
         history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
@@ -73,16 +73,17 @@ class MSMEP:
             sequence_of_chains = self.make_sequence_of_chains(chain,split_method)
             print(f"Splitting chains based on: {split_method}")
             elem_steps = []
-
+            new_tree_node_index = tree_node_index + 1
             for i, chain_frag in enumerate(sequence_of_chains, start=1):
                 print(f"On chain {i} of {len(sequence_of_chains)}...")
-
-                new_tree_node_index = tree_node_index + i
                 out_history, chain = self.find_mep_multistep(chain_frag, tree_node_index=new_tree_node_index)
-                if chain:
-                    elem_steps.append(chain)
-                    history.children.append(out_history)
-
+                
+                # add the outputs
+                elem_steps.append(chain)
+                history.children.append(out_history)
+                
+                # increment the node indices
+                new_tree_node_index = out_history.max_index+1
             stitched_elem_steps = self.stitch_elem_steps(elem_steps)
             return history, stitched_elem_steps
 
