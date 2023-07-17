@@ -49,7 +49,7 @@ class Chain:
         chain = cls.from_traj(traj, parameters=parameters)
         energies_fp = fp.parent / Path(str(fp.stem)+".energies")
         grad_path = fp.parent / Path(str(fp.stem)+".gradients")
-        grad_shape_path = fp.parent / "grad_shapes.txt"\
+        grad_shape_path = fp.parent / "grad_shapes.txt"
         
         if energies_fp.exists() and grad_path.exists() and grad_shape_path.exists():
             energies = np.loadtxt(energies_fp)
@@ -281,27 +281,29 @@ class Chain:
                 f"current_node.do_climb is not a boolean: {current_node.do_climb=}"
             )
 
-        return pe_grads_nudged, spring_forces_nudged  # , anti_kinking_grads
+        return pe_grads_nudged, spring_forces_nudged 
 
     def pe_grads_spring_forces_nudged(self):
         pe_grads_nudged = []
         spring_forces_nudged = []
-        # anti_kinking_grads = []
+        
         for prev_node, current_node, next_node in self.iter_triplets():
             pe_grad_nudged, spring_force_nudged = self.neighs_grad_func(
                 prev_node=prev_node,
                 current_node=current_node,
                 next_node=next_node,
             )
-
-            # anti_kinking_grads.append(anti_kinking_grad)
-            if not current_node.converged:
+            if self.parameters.node_freezing:
+                if not current_node.converged:
+                    pe_grads_nudged.append(pe_grad_nudged)
+                    spring_forces_nudged.append(spring_force_nudged)
+                else:
+                    zero = np.zeros_like(pe_grad_nudged)
+                    pe_grads_nudged.append(zero)
+                    spring_forces_nudged.append(zero)
+            else:
                 pe_grads_nudged.append(pe_grad_nudged)
                 spring_forces_nudged.append(spring_force_nudged)
-            else:
-                zero = np.zeros_like(pe_grad_nudged)
-                pe_grads_nudged.append(zero)
-                spring_forces_nudged.append(zero)
 
         pe_grads_nudged = np.array(pe_grads_nudged)
         spring_forces_nudged = np.array(spring_forces_nudged)
@@ -347,7 +349,8 @@ class Chain:
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
 
-    @cached_property
+    # @cached_property
+    @property
     def gradients(self) -> np.array:
         
         all_grads = [node._cached_gradient for node in self.nodes]
@@ -378,7 +381,6 @@ class Chain:
             bias_grads = self.parameters.cb.grad_chain_bias(self)
             proj_grads = np.array([get_nudged_pe_grad(tan, grad) for tan,grad in zip(tans, bias_grads)])
             
-                
             grads += proj_grads
 
         zero = np.zeros_like(grads[0])
@@ -577,7 +579,8 @@ class Chain:
         grad_shape_path = fp.parent / "grad_shapes.txt"
         
         np.savetxt(ene_path, self.energies)
-        np.savetxt(grad_path, self.gradients.flatten())
+        # np.savetxt(grad_path, self.gradients.flatten())
+        np.savetxt(grad_path, np.array([node.gradient for node in self.nodes]).flatten())
         np.savetxt(grad_shape_path, self.gradients.shape)
         
     def write_to_disk(self, fp: Path):

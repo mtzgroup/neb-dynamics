@@ -81,11 +81,11 @@ class TreeNode:
         
         for node in self.depth_first_ordered_nodes:
             i = node.index
-            node.data.write_to_disk(
-                fp=folder_name / f"node_{i}.xyz", write_history=True
-            )
+            if node.data:
+                node.data.write_to_disk(
+                    fp=folder_name / f"node_{i}.xyz", write_history=True
+                )
 
-        
 
 
     def draw(self):
@@ -97,7 +97,8 @@ class TreeNode:
 
     def _update_adj_matrix(self, matrix, node):
             matrix_copy = matrix.copy()
-            matrix_copy[node.index, node.index] = 1
+            if node.data:
+                matrix_copy[node.index, node.index] = 1
             if node.is_leaf:
                 return matrix_copy
             else:
@@ -148,7 +149,7 @@ class TreeNode:
                 cls._get_node_helper(
                     true_node_index=true_child_index, matrix=matrix, list_of_nodes=list_of_nodes, indices_translator=indices_translator
                 )
-                for true_child_index in ind_children
+                for true_child_index in ind_children if matrix[true_child_index].nonzero()[0].any() # i.e. if it was not a 'None' Node
             ]
             return cls(data=node, children=children, index=true_node_index)
         else:
@@ -176,12 +177,17 @@ class TreeNode:
         else:
             return self.get_optimization_history(node=self)
     
+    def get_adj_mat_leaves_indices(self):
+        matrix = self.adj_matrix
+        inds = []
+        for i, row in enumerate(matrix):
+            if len(row.nonzero()[0]) == 1:
+                inds.append(i)
+        return inds
+    
     @property
     def output_chain(self):
-        leaves = self.ordered_leaves
-        chains = []
-        for leaf in leaves:
-            c = leaf.data.chain_trajectory[-1]
-            chains.append(c)
+        inds = self.get_adj_mat_leaves_indices()
+        unsorted_chains = [node.data.chain_trajectory[-1] for node in self.depth_first_ordered_nodes if node.index in inds]
         out = Chain.from_list_of_chains(chains, parameters=chains[0].parameters)
         return out

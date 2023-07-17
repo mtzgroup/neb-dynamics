@@ -17,8 +17,6 @@ class NEBInputs:
     early_stop_chain_rms_thre: float = 0.0
     early_stop_corr_thre: float = 10.
     early_stop_still_steps_thre: int = 20
-    
-    node_freezing: bool = False
 
     vv_force_thre: float = 0.0
     v: bool = False
@@ -47,9 +45,11 @@ class ChainInputs:
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
     friction_optimal_gi: bool = False
-    als_max_steps: int = 10
+    als_max_steps: int = 3
     do_chain_biasing: bool = False
     cb: ChainBiaser = None
+    
+    node_freezing: bool = False
     
     def __post_init__(self):
         if self.do_chain_biasing and self.cb is None:

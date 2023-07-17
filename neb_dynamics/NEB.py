@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import shutil
+
+
+
+
 import sys
 from dataclasses import dataclass, field
 
@@ -49,15 +54,18 @@ class NEB:
             node.converged = False
 
     def set_climbing_nodes(self, chain: Chain):
+        
         # reset node convergence
         self._reset_node_convergence(chain=chain)
+        
+        if self.parameters.climb:
+            inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
+            
+            if self.parameters.v > 1:
+                print(f"----->Setting {len(inds_maxima)} nodes to climb")
 
-        inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
-        if self.parameters.v > 1:
-            print(f"----->Setting {len(inds_maxima)} nodes to climb")
-
-        for ind in inds_maxima:
-            chain[ind].do_climb = True
+            for ind in inds_maxima:
+                chain[ind].do_climb = True
 
 
     def _check_early_stop(self, chain: Chain):
@@ -311,7 +319,7 @@ class NEB:
             ]
         if self.parameters.v > 1:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
-        if self.parameters.node_freezing:
+        if chain_new.parameters.node_freezing:
             self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
         return len(converged_nodes_indices) == len(chain_new)
 
@@ -411,6 +419,10 @@ class NEB:
 
         if write_history:
             out_folder = fp.resolve().parent / (fp.stem + "_history")
+
+            if out_folder.exists():
+                shutil.rmtree(out_folder)
+                
             if not out_folder.exists():
                 out_folder.mkdir()
 
