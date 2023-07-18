@@ -50,9 +50,25 @@ m = MSMEP(nbi,cni,gii)
 
 start, end = m.create_endpoints_from_rxn_name('Claisen-Rearrangement',reactions_object=reactions)
 
-gi = Trajectory([start, end]).run_geodesic(nimages=10)
+start.tc_model_method = 'wb97xd3'
+start.tc_model_basis = 'def2-svp'
+start_node = Node3D_TC(start)
+
+start.energy_tc()
+
+start2 = start.copy()
+start2.tc_model_method = 'b3lyp'
+start2.tc_model_basis = 'sto-3g'
+
+start2.energy_tc()
+
+# +
+# gi = Trajectory([start, end]).run_geodesic(nimages=10)
+# -
 
 chain = Chain.from_traj(gi,parameters=cni)
+
+
 
 h, out = m.find_mep_multistep(chain)
 

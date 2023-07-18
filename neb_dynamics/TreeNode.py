@@ -188,6 +188,6 @@ class TreeNode:
     @property
     def output_chain(self):
         inds = self.get_adj_mat_leaves_indices()
-        unsorted_chains = [node.data.chain_trajectory[-1] for node in self.depth_first_ordered_nodes if node.index in inds]
+        chains = [node.data.chain_trajectory[-1] for node in self.depth_first_ordered_nodes if node.index in inds]
         out = Chain.from_list_of_chains(chains, parameters=chains[0].parameters)
         return out

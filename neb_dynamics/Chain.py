@@ -253,6 +253,15 @@ class Chain:
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
         pe_grad = current_node.gradient
+        
+        # remove rotations and translations
+        if pe_grad.shape[1] >= 3:  # if we have at least 3 atoms
+            pe_grad[0, :] = 0  # this atom cannot move
+            pe_grad[1, :2] = 0  # this atom can only move in a line
+            pe_grad[2, :1] = 0  # this atom can only move in a plane
+        
+        
+        
 
         if not current_node.do_climb:
             pe_grads_nudged = current_node.get_nudged_pe_grad(
@@ -310,21 +319,12 @@ class Chain:
         return pe_grads_nudged, spring_forces_nudged
 
     def get_maximum_grad_magnitude(self):
-        # gradients = gradients = np.array([node.gradient for node in self.nodes[1:-1]])
-        # tans = self.unit_tangents
-        # grad_perps = []
-        # for grad, tan in zip(gradients,tans):
-        #     grad_perp = grad.flatten() - np.dot(grad.flatten(), tan.flatten())*tan.flatten()
-        #     grad_perps.append(grad_perp)
-        
-        
-        # return np.abs(np.max([np.amax(grad) for grad in grad_perps]))
         return np.max([np.amax(np.abs(grad)) for grad in self.gradients])
     
     def get_maximum_gperp(self):
         gperp, gspring = self.pe_grads_spring_forces_nudged()
         max_gperps = []
-        for gp, node in zip(gperp, self):
+        for gp, node in zip(gperp, self):            
             if not node.converged:
                 max_gperps.append(np.amax(np.abs(gp)))
         return np.max(max_gperps)
@@ -387,11 +387,11 @@ class Chain:
         grads = np.insert(grads, 0, zero, axis=0)
         grads = np.insert(grads, len(grads), zero, axis=0)
 
-        # remove rotations and translations
-        if grads.shape[1] >= 3:  # if we have at least 3 atoms
-            grads[:, 0, :] = 0  # this atom cannot move
-            grads[:, 1, :2] = 0  # this atom can only move in a line
-            grads[:, 2, :1] = 0  # this atom can only move in a plane
+        # # remove rotations and translations
+        # if grads.shape[1] >= 3:  # if we have at least 3 atoms
+        #     grads[:, 0, :] = 0  # this atom cannot move
+        #     grads[:, 1, :2] = 0  # this atom can only move in a line
+        #     grads[:, 2, :1] = 0  # this atom can only move in a plane
 
 
         # zero all nodes that have converged 

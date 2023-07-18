@@ -1,21 +1,281 @@
-# +
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.Inputs import ChainInputs
+from neb_dynamics.Inputs import ChainInputs, GIInputs
 from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.NEB import NEB
+from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import NEBInputs
-
+from retropaths.abinitio.trajectory import Trajectory
+from neb_dynamics.MSMEP import MSMEP
 from pathlib import Path
 import numpy as np
+
+adj_mat = np.loadtxt("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/adj_matrix.txt")
+
+bool(adj_mat[7].nonzero()[0].any())
+
+
+# +
+# adj_mat[7] = np.zeros(11)
+# adj_mat[9] = np.zeros(11)
+
+# +
+# np.savetxt("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/adj_matrix.txt",adj_mat)
+
+# +
+def read_from_disk(cls, folder_name, neb_parameters=NEBInputs(), chain_parameters=ChainInputs()):
+    adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
+
+    nodes = list(folder_name.glob("node*.xyz"))
+    print(nodes)
+    true_node_indices = [int(p.stem.split("_")[1]) for p in nodes]
+    node_list_indices = list(range(len(true_node_indices)))
+
+    translator = {}
+    for true_ind, local_ind in zip(true_node_indices, node_list_indices):
+        translator[true_ind] = local_ind
+
+    neb_nodes = [NEB.read_from_disk(fp, chain_parameters=chain_parameters, neb_parameters=neb_parameters) for fp in nodes]
+    # root = _get_node_helper(
+    #     true_node_index=0, matrix=adj_mat, list_of_nodes=neb_nodes, indices_translator=translator
+    # )
+
+    # return root
+    return neb_nodes
+
+
+
+
+def _get_node_helper(true_node_index, matrix, list_of_nodes, indices_translator):
+
+    node = list_of_nodes[indices_translator[true_node_index]]
+    print(" "*true_node_index, "**",indices_translator[true_node_index])
+    row = matrix[true_node_index]
+    print(" "*true_node_index, row)
+    ind_nonzero_nodes = row.nonzero()[0] 
+    print(" "*true_node_index, ind_nonzero_nodes)
+    ind_children = ind_nonzero_nodes[1:]
+    print(" "*true_node_index, ind_children)
+    if len(ind_children):
+        children = [
+            _get_node_helper(
+                true_node_index=true_child_index, matrix=matrix, list_of_nodes=list_of_nodes, indices_translator=indices_translator
+            )
+            for true_child_index in ind_children if matrix[true_child_index].nonzero()[0].any() # i.e. if it was not a 'None' Node
+        ]
+        return TreeNode(data=node, children=children, index=true_node_index)
+    else:
+        return TreeNode(data=node, children=[], index=true_node_index)
+
+
 # -
+
+neb_nodes = read_from_disk(TreeNode,Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/") )
+
+# +
+folder_name = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/")
+adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
+nodes = list(folder_name.glob("node*.xyz"))
+true_node_indices = [int(p.stem.split("_")[1]) for p in nodes]
+node_list_indices = list(range(len(true_node_indices)))
+
+translator = {}
+for true_ind, local_ind in zip(true_node_indices, node_list_indices):
+    translator[true_ind] = local_ind
+# -
+
+inds = root.get_adj_mat_leaves_indices()
+
+unsorted_chains = [node.data.chain_trajectory[-1] for node in root.depth_first_ordered_nodes if node.index in inds]
+
+adj_mat
+
+n = NEB.read_from_disk(nodes[2])
+
+c = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/node_2.xyz"), ChainInputs())
+
+c.to_trajectory()
+
+n.optimized.to_trajectory()
+
+neb_nodes[2].optimized.to_trajectory()
+
+root.adj_matrix
+
+root.children[0].children[0].data.optimized.to_trajectory()
+
+root.adj_matrix
+
+out = Chain.from_list_of_chains(chains, parameters=chains[0].parameters)
+
+root.adj_matrix
+
+root = _get_node_helper(
+        true_node_index=0, matrix=adj_mat, list_of_nodes=neb_nodes, indices_translator=translator
+    )
+
+hmm = read_from_disk(TreeNode,Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/") )
+
+h = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/"))
+
+inds = h.get_adj_mat_leaves_indices()
+unsorted_nodes = [node for node in h.depth_first_ordered_nodes if node.index in inds]
+
+unsorted_nodes[0].data.optimized.to_trajectory()
+
+
+
+for node in unsorted_nodes:
+    print(node.index)
+
+sorted_nodes = []
+for node in unsorted_nodes:
+    if len(sorted_nodes) == 0:
+        sorted_nodes.append(node)
+    else:
+        for i, existing_node in enumerate(sorted_nodes):
+            if node.index < existing_node.index: 
+                sorted_nodes.insert(i, node)
+                break
+            
+            elif i == len(sorted_nodes)-1:
+                sorted_nodes.append(node)
+
+
+
+
+h.adj_matrix
+
+
+
+h.get_adj_mat_leaves_indices()
+
+h.output_chain.to_trajectory()
+
+c_out = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep.xyz"), ChainInputs())
+
+c_out.plot_chain()
+
+
+def leaf_indices(matrix):
+    inds = []
+    for i, row in enumerate(matrix):
+        if len(row.nonzero()[0]) == 1:
+            inds.append(i)
+    return inds
+
+
+chains = [Chain.from_xyz(Path(f"/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/node_{i}.xyz"), ChainInputs()) for i in leaf_indices(adj_mat)]
+
+c = Chain.from_list_of_chains(chains, ChainInputs())
+
+c.to_trajectory()
+
+leaf_indices(adj_mat)
+
+np.where(a.nonz)
+
+c = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep/node_2.xyz"), ChainInputs())
+
+c.plot_chain()
+
+adj_mat
+
+h.adj_matrix
+
+h.output_chain.to_trajectory()
+
+h.output_chain.plot_chain()
+
+c = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Semmler-Wolff-Reaction/initial_guess_msmep.xyz"),ChainInputs())
+
+h.output_chain.to_trajectory()
+
+h.adj_matrix
+
+import retropaths.helper_functions as hf
+
+
+
+reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
+
+m = MSMEP(NEBInputs(), ChainInputs(), GIInputs())
+r, p = m.create_endpoints_from_rxn_name("Bamberger-Rearrangement", reactions)
+
+r
+
+p
+
+tr = Trajectory([r, p]).run_geodesic(nimages=15)
+
+tr.draw();
 
 # # play
 
 # directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/initial_guess_msmep/")
 # directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/old_useless_results/orca_gfn2_comp/initial_guess_msmep/")
 # directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/old_useless_results/debugging/initial_guess_msmep")
-directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/production_results/initial_guess_msmep/")
+directory0 = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig/production_results/initial_guess_msmep/")
+directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/wb97xd3_def2svp/initial_guess_msmep/")
+directory2 = Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/b3lyp_321gs/initial_guess_msmep/")
+
+h0 = TreeNode.read_from_disk(directory0)
+
+h = TreeNode.read_from_disk(directory)
+
+h2 = TreeNode.read_from_disk(directory2)
+
+start, end = h.data.initial_chain[0].tdstructure, h.data.initial_chain[-1].tdstructure
+
+for td in [start, end]:
+    td.tc_model_basis = 'def2-svp'
+    td.tc_model_method = 'wb97xd3'
+
+start_opt = start.tc_geom_optimization()
+
+start_opt
+
+start
+
+end_opt = end.tc_geom_optimization()
+
+gi = Trajectory([start_opt, end_opt]).run_geodesic(nimages=30)
+
+gi.write_trajectory(Path("/home/jdep/T3D_data/msmep_draft/comparisons/nebd/Wittig_DFT/initial_guess_long.xyz"))
+
+plt.plot(h0.output_chain.integrated_path_length, h0.output_chain.energies-h0.output_chain.energies[0], 'o-',label='gfn2xtb')
+plt.plot(h.output_chain.integrated_path_length, h.output_chain.energies-h.output_chain.energies[0], 'o-',label='wb97xd3_def2svp')
+plt.plot(h2.output_chain.integrated_path_length, h2.output_chain.energies-h2.output_chain.energies[0], 'o-',label='b3lyp_321gs')
+plt.legend()
+
+h2.output_chain.plot_chain()
+
+h.output_chain.plot_chain()
+
+t = Trajectory.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/wb97xd3_def2svp/initial_guess_msmep_clean.xyz"))
+
+for td in t:
+    td.tc_model_basis = 'def2-svp'
+    td.tc_model_method = 'wb97xd3'
+
+import matplotlib.pyplot as plt
+
+t.draw()
+
+ens_tc = t.energies_tc()
+
+c = Chain.from_traj(t, parameters=ChainInputs(k=0,node_class=Node3D_TC))
+
+c.plot_chain()
+
+plt.plot(ens_tc,'o-')
+
+# +
+
+c = Chain.from_xyz(Path("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Wittig_DFT/wb97xd3_def2svp/initial_guess_msmep_clean.xyz"), parameters=ChainInputs(k=0))
+# -
+
+c.plot_chain()
 
 # +
 # def _get_node_helper(true_node_index, matrix, list_of_nodes, indices_translator):

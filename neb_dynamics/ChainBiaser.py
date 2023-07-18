@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import List
 
 import numpy as np
+from neb_dynamics.helper_functions import RMSD
 
 AVAIL_DIST_FUNC_NAMES = ['per_node', 'simp_frechet']
 
@@ -22,16 +23,16 @@ class ChainBiaser:
             tot_dist = 0
             for reference_chain in self.reference_chains:
                 for n1, n2 in zip(chain.coordinates[1:-1], reference_chain.coordinates[1:-1]):
-                    tot_dist += np.linalg.norm(abs(n1 - n2))
+                    if chain[0].is_a_molecule:
+                        tot_dist += RMSD(n1, n2)[0]
+                    else:
+                        tot_dist += np.linalg.norm(abs(n1 - n2))
             
         
         
         #### this one is a simplified frechet
         elif self.distance_func == 'simp_frechet':
-            tot_dist = sum([self._simp_frechet_helper(coords) for coords in chain.coordinates[1:-1]])
-            
-                
-                
+            tot_dist = sum([self._simp_frechet_helper(coords) for coords in chain.coordinates[1:-1]]) 
         else:
             raise ValueError(f"Invalid distance func name: {self.distance_func}. Available are: {AVAIL_DIST_FUNC_NAMES}")
             
@@ -42,7 +43,13 @@ class ChainBiaser:
         for reference_chain in self.reference_chains:
             ref_coords = reference_chain.coordinates[1:-1]
             for ref_coord in ref_coords:
-                node_distances.append(np.linalg.norm(coords - ref_coord))
+                if len(ref_coord.shape) == 1: # 2d potentials, just an xy coordinate
+                    dist = np.linalg.norm(coords - ref_coord)
+                else:
+                    dist = RMSD(coords, ref_coord)[0]
+                
+                
+                node_distances.append(dist)
         return min(node_distances)
     
     def path_bias(self, distance):
@@ -53,29 +60,37 @@ class ChainBiaser:
         return self.path_bias(dist_to_chain)
     
     def grad_node_bias(self, chain, node, ind_node, dr=.1):
-        if node.is_a_molecule:
-            raise NotImplementedError
-        
         grads = []
-        directions = ['x','y']
-        for i, _ in enumerate(directions):
         
-            disp_vector = np.zeros(len(directions))
-            disp_vector[i] += dr
+        if node.is_a_molecule:
+            directions = ['x','y','z']
+            n_atoms = len(node.coords)
+            shape = n_atoms, len(directions)
+        else:
+            directions = ['x','y']
+            n_atoms = 1
+            shape = 2
         
-            node_disp_direction = node.update_coords(node.coords+disp_vector)
-            fake_chain = chain.copy()
-            fake_chain.nodes[ind_node] = node_disp_direction 
+        for i in range(n_atoms):
+            for j, _ in enumerate(directions):
+                disp_vector = np.zeros(len(directions)*n_atoms)
+                disp_vector[i+j] += dr
+            
+                displaced_coord_flat = node.coords.flatten()+disp_vector
+                displaced_coord = displaced_coord_flat.reshape(n_atoms, len(directions))
+                node_disp_direction = node.update_coords(displaced_coord)
+                fake_chain = chain.copy()
+                fake_chain.nodes[ind_node] = node_disp_direction 
 
-            grad_direction = self.chain_bias(fake_chain) - self.chain_bias(chain)
-            grads.append(grad_direction)
-        grad_node = np.array(grads) / dr
-
+                grad_direction = self.chain_bias(fake_chain) - self.chain_bias(chain)
+                grads.append(grad_direction)
+                
+        grad_node = np.array(grads).reshape(shape) / dr
         return grad_node
     
     def grad_chain_bias(self, chain):
         all_grads = []
-        for ind_node, node in enumerate(chain):
+        for ind_node, node in enumerate(chain[1:-1], start=1):
             grad_node = self.grad_node_bias(chain=chain, node=node, ind_node=ind_node)
             all_grads.append(grad_node)
         return np.array(all_grads)

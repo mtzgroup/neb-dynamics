@@ -126,6 +126,13 @@ create_msmep_from_geodesic.py -f ./initial_guess.xyz  -c 0 -s 1 &> out.txt
             yield
         finally:
             os.chdir(prev_cwd)
+            
+    def submit_a_job_by_name(self, name):
+        fp = self.out_folder / name
+        submit_file = fp / "submit.sh"
+        with self.working_directory(fp):
+            subprocess.Popen(["sbatch", "submit.sh"])
+            time.sleep(0.1)
 
     def submit_all_jobs(self):
         for fp in self.out_folder.iterdir():

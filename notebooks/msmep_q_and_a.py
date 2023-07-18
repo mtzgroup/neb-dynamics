@@ -12,11 +12,13 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
 from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB
+from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.helper_functions import RMSD
 from kneed import KneeLocator
 from neb_dynamics.TreeNode import TreeNode
 from retropaths.molecules.elements import ElementData
 from retropaths.abinitio.tdstructure import TDStructure
+
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -31,6 +33,75 @@ HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # del os.environ['OE_LICENSE']
 # -
 
+# # Can I seed ab initio runs with XTB?
+
+reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
+
+rxn = reactions['Ugi-Reaction']
+
+nbi = NEBInputs(v=True, grad_thre=0.001,rms_grad_thre=0.001,max_steps=2000, early_stop_force_thre=0.003,early_stop_still_steps_thre=500)
+cni = ChainInputs(k=0.1, delta_k=0.09,step_size=3)
+gii = GIInputs(nimages=10)
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
+
+# +
+# r,p = m.create_endpoints_from_rxn_name('Claisen-Rearrangement',reactions)
+
+# +
+# tr = Trajectory([r, p])
+# chain = Chain.from_traj(tr,parameters=cni)
+
+# +
+# h, out = m.find_mep_multistep(chain)
+# -
+
+h = TreeNode.read_from_disk(Path("./claisen"),nbi, cni)
+
+out = h.output_chain
+
+out.get_maximum_gperp()
+
+out_leaf = [l for l in h.ordered_leaves if l.data]
+    
+
+xtb_chain = out_leaf[0].data.optimized
+init_chain = out_leaf[0].data.initial_chain
+
+# +
+method = 'wb97xd3'
+basis = 'def2-svp'
+
+xtb_tr = xtb_chain.to_trajectory()
+for td in xtb_tr:
+    td.tc_model_basis = basis
+    td.tc_model_method = method
+# -
+
+dft_start = xtb_tr[0].tc_geom_optimization()
+
+dft_end = xtb_tr[-1].tc_geom_optimization()
+
+dft_tr = Trajectory([dft_start]+xtb_tr.traj[1:-1]+[dft_end]) # same as the other chain but without the endpoints
+dft_tr2= Trajectory([dft_start, dft_end]).run_geodesic(nimages=10)
+
+nbi_dft = NEBInputs(v=True, grad_thre=0.001,rms_grad_thre=0.001,max_steps=2000, early_stop_force_thre=0.003,early_stop_still_steps_thre=500)
+cni_dft = ChainInputs(k=0.1, delta_k=0.09,step_size=3, node_class=Node3D_TC)
+gii_dft = GIInputs(nimages=10)
+
+dft_chain = Chain.from_traj(dft_tr, parameters=cni_dft)
+
+m_dft = MSMEP(neb_inputs=nbi_dft, chain_inputs=cni_dft, gi_inputs=gii_dft)
+
+dft_chain.energies
+
+h_dft, out_dft = m_dft.find_mep_multistep(dft_chain)
+
+# ** XTB seems to have biased the path to some channel that is far away from the DFT endpoints
+
+dft_chain2 = Chain.from_traj(dft_tr2, parameters=cni_dft)
+
+h_dft2, out_dft2 = m_dft.find_mep_multistep(dft_chain2)
+
 # # Could  I have split based on initial guess? 
 #
 # **preliminary answer**: maybe
@@ -44,50 +115,50 @@ ca = CompetitorAnalyzer(comparisons_dir=directory,method='dlfind')
 
 rns = ca.available_reaction_names
 
-# +
-# elem_rns = []
-# multi_step_rns = []
-# failed = []
+elem_rns = []
+multi_step_rns = []
+failed = []
+
+for ind in range(len(rns)):
+
+
+    rn = rns[ind]
+    print(f"Doing: {rn}")
+    reaction_structs = ca.structures_dir / rn
+
+    guess_path = reaction_structs / 'initial_guess.xyz'
+
+    tr = Trajectory.from_xyz(guess_path)
+
+    nbi = NEBInputs()
+    cni = ChainInputs()
+    gii = GIInputs()
+    m = MSMEP(neb_inputs=nbi, gi_inputs=gii, chain_inputs=cni)
+
+    chain = Chain.from_traj(tr,parameters=cni)
+    try:
+        is_elem_step_bool, method = chain.is_elem_step()
+
+
+        if is_elem_step_bool:
+            elem_rns.append(rn)
+        else:
+            multi_step_rns.append(rn)
+    except:
+        failed.append(rn)
 
 # +
-# for ind in range(len(rns)):
+# elem_rns=['Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Fries-Rearrangement-ortho', 'Elimination-Alkene-Lg-Iodine', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Oxindole-Synthesis-X-Iodine', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Baker-Venkataraman-Rearrangement', 'Oxazole-Synthesis', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Buchner-Ring-Expansion-O', 'Meyer-Schuster-Rearrangement', 'Chan-Rearrangement', 'Irreversable-Azo-Cope-Rearrangement', 'Claisen-Rearrangement', 'Aza-Grob-Fragmentation-X-Iodine', 'Chapman-Rearrangement', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Elimination-Amine-Imine', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Oxindole-Synthesis-X-Fluorine', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Aza-Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Indole-Synthesis-Hemetsberger-Knittel', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Bradsher-Cyclization-2', 'Claisen-Rearrangement-Aromatic', 'Elimination-To-Form-Cyclopropanone-Bromine', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Bradsher-Cyclization-1', 'Azaindole-Synthesis', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Decarboxylation-CG-Carboxyl', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Benzimidazolone-Synthesis-1-X-Iodine', '1-2-Amide-Phthalamide-Synthesis', 'Elimination-Acyl-Bromine', 'Elimination-Lg-Sulfonate', 'Decarboxylation-Carbamic-Acid', 'Oxa-Vinylcyclopropane-Rearrangement', 'Grob-Fragmentation-X-Iodine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Enolate-Claisen-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Buchner-Ring-Expansion-C', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Robinson-Gabriel-Synthesis', 'Newman-Kwart-Rearrangement', 'Azo-Vinylcyclopropane-Rearrangement', 'Elimination-Lg-Bromine', 'Bamberger-Rearrangement', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Ester-Pyrolysis', 'Lossen-Rearrangement', 'Pinacol-Rearrangement']
 
-
-#     rn = rns[ind]
-#     reaction_structs = ca.structures_dir / rn
-
-#     guess_path = reaction_structs / 'initial_guess.xyz'
-
-#     tr = Trajectory.from_xyz(guess_path)
-
-#     nbi = NEBInputs()
-#     cni = ChainInputs()
-#     gii = GIInputs()
-#     m = MSMEP(neb_inputs=nbi, gi_inputs=gii, chain_inputs=cni)
-
-#     chain = Chain.from_traj(tr,parameters=cni)
-#     try:
-#         r,p = m._approx_irc(chain)
-#         minimizing_gives_endpoints = r.is_identical(chain[0]) and p.is_identical(chain[-1])
-
-
-#         if minimizing_gives_endpoints:
-#             elem_rns.append(rn)
-#         else:
-#             multi_step_rns.append(rn)
-#     except:
-#         failed.append(rn)
-# -
-
-elem_rns=['Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Fries-Rearrangement-ortho', 'Elimination-Alkene-Lg-Iodine', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Oxindole-Synthesis-X-Iodine', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Baker-Venkataraman-Rearrangement', 'Oxazole-Synthesis', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Buchner-Ring-Expansion-O', 'Meyer-Schuster-Rearrangement', 'Chan-Rearrangement', 'Irreversable-Azo-Cope-Rearrangement', 'Claisen-Rearrangement', 'Aza-Grob-Fragmentation-X-Iodine', 'Chapman-Rearrangement', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Elimination-Amine-Imine', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Oxindole-Synthesis-X-Fluorine', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Aza-Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Indole-Synthesis-Hemetsberger-Knittel', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Bradsher-Cyclization-2', 'Claisen-Rearrangement-Aromatic', 'Elimination-To-Form-Cyclopropanone-Bromine', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Bradsher-Cyclization-1', 'Azaindole-Synthesis', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Decarboxylation-CG-Carboxyl', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Benzimidazolone-Synthesis-1-X-Iodine', '1-2-Amide-Phthalamide-Synthesis', 'Elimination-Acyl-Bromine', 'Elimination-Lg-Sulfonate', 'Decarboxylation-Carbamic-Acid', 'Oxa-Vinylcyclopropane-Rearrangement', 'Grob-Fragmentation-X-Iodine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Enolate-Claisen-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Buchner-Ring-Expansion-C', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Robinson-Gabriel-Synthesis', 'Newman-Kwart-Rearrangement', 'Azo-Vinylcyclopropane-Rearrangement', 'Elimination-Lg-Bromine', 'Bamberger-Rearrangement', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Ester-Pyrolysis', 'Lossen-Rearrangement', 'Pinacol-Rearrangement']
-
-multi_step_rns=['Semmler-Wolff-Reaction', 'Ramberg-Backlund-Reaction-Bromine', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Fries-Rearrangement-para', 'Ramberg-Backlund-Reaction-Iodine', 'Paal-Knorr-Furan-Synthesis', 'Oxindole-Synthesis-X-Chlorine', 'Ramberg-Backlund-Reaction-Chlorine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Bamford-Stevens-Reaction', 'Ramberg-Backlund-Reaction-Fluorine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Buchner-Ring-Expansion-N', 'Knorr-Quinoline-Synthesis', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis']
+# +
+# multi_step_rns=['Semmler-Wolff-Reaction', 'Ramberg-Backlund-Reaction-Bromine', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Fries-Rearrangement-para', 'Ramberg-Backlund-Reaction-Iodine', 'Paal-Knorr-Furan-Synthesis', 'Oxindole-Synthesis-X-Chlorine', 'Ramberg-Backlund-Reaction-Chlorine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Bamford-Stevens-Reaction', 'Ramberg-Backlund-Reaction-Fluorine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Buchner-Ring-Expansion-N', 'Knorr-Quinoline-Synthesis', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis']
 
 # +
 # rns[90:]
-# -
 
-failed=['Nazarov-Cyclization']
+# +
+# failed=['Nazarov-Cyclization']
+# -
 
 comparisons_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons/")
 ca = CompetitorAnalyzer(comparisons_dir,'asneb')
@@ -123,8 +194,11 @@ def plot_rxn(name):
 
 reactions["Robinson-Gabriel-Synthesis
 
+h = TreeNode.read_from_disk(ca.out_folder / 'Skraup-Quinoline-Synthesis' / 'initial_guess_msmep')
+
 # reaction_name = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
-reaction_name = 'Robinson-Gabriel-Synthesis'
+# reaction_name = 'Robinson-Gabriel-Synthesis'
+reaction_name = 'Semmler-Wolff-Reaction'
 dd, c = plot_rxn(reaction_name)
 
 # +

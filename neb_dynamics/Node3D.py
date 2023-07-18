@@ -135,8 +135,9 @@ class Node3D(Node):
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
-        # return np.sum(first * second, axis=1).reshape(-1, 1)
-        return np.tensordot(first, second)
+        # # return np.sum(first * second, axis=1).reshape(-1, 1)
+        # return np.tensordot(first, second)
+        return np.dot(first.flatten(), second.flatten())
 
     # i want to cache the result of this but idk how caching works
     def run_xtb_calc(tdstruct: TDStructure):
