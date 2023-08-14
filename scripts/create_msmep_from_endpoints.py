@@ -2,6 +2,9 @@
 from pathlib import Path
 from argparse import ArgumentParser
 from retropaths.abinitio.trajectory import Trajectory
+from retropaths.abinitio.tdstructure import TDStructure
+
+
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D_TC import Node3D_TC
@@ -23,14 +26,7 @@ def read_single_arguments():
     """
     description_string = "will take path to an xyz file of geodesic trajectory and relax it using XTB neb"
     parser = ArgumentParser(description=description_string)
-    parser.add_argument(
-        "-f",
-        "--fp",
-        dest="f",
-        type=str,
-        required=True,
-        help="file path",
-    )
+ 
 
     parser.add_argument(
         "-c",
@@ -39,6 +35,15 @@ def read_single_arguments():
         type=int,
         default=0,
         help='total charge of system'
+    )
+    
+    parser.add_argument(
+        "-nimg",
+        "--nimages",
+        dest="nimg",
+        type=int,
+        default=5,
+        help='number of images in the chain'
     )
 
     parser.add_argument(
@@ -71,6 +76,26 @@ def read_single_arguments():
         
     )
     
+    parser.add_argument(
+        '-st',
+        '--start',
+        dest='st',
+        required=True,
+        type=str,
+        help='path to the first xyz structure'
+        
+    )
+    
+    parser.add_argument(
+        '-en',
+        '--end',
+        dest='en',
+        required=True,
+        type=str,
+        help='path to the final xyz structure'
+        
+    )
+    
     return parser.parse_args()
 
 
@@ -79,10 +104,11 @@ def main():
     
     nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
     nc = nodes[args.nc]
+    
+    start = TDStructure.from_xyz(args.st)
+    end = TDStructure.from_xyz(args.en)
 
-    fp = Path(args.f)
-
-    traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
+    traj = Trajectory([start,end], charge=args.c, spinmult=args.s).run_geodesic(nimages=args.nimg)
     
     if args.nc != "node3d":
         method = 'wb97xd3'
@@ -115,7 +141,7 @@ def main():
                 vv_force_thre=0.0)
 
     chain = Chain.from_traj(traj=traj, parameters=cni)
-    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15,extra_kwds={"sweep":False}))
+    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=args.nimg,extra_kwds={"sweep":False}))
     history, out_chain = m.find_mep_multistep(chain)
     data_dir = fp.parent
     
