@@ -19,6 +19,9 @@ class MSMEP:
     neb_inputs: NEBInputs
     chain_inputs: ChainInputs 
     gi_inputs: GIInputs 
+    
+    # other parameters
+    skip_identical_graphs: bool = True
 
     # electronic structure params
     charge: int = 0
@@ -53,7 +56,7 @@ class MSMEP:
     def find_mep_multistep(self, input_chain, tree_node_index=0):
         
         if input_chain[0].is_a_molecule:
-            if input_chain[0]._is_connectivity_identical(input_chain[-1]):
+            if input_chain[0]._is_connectivity_identical(input_chain[-1]) and self.skip_identical_graphs:
                 print("Endpoints are identical. Returning nothing")
                 return TreeNode(data=None,children=[],index=tree_node_index), None
         else:

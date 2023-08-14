@@ -18,7 +18,6 @@ from kneed import KneeLocator
 from neb_dynamics.TreeNode import TreeNode
 from retropaths.molecules.elements import ElementData
 from retropaths.abinitio.tdstructure import TDStructure
-
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -29,15 +28,138 @@ RDLogger.DisableLog('rdApp.*')
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
 # +
+from openbabel import pybel
+
+ob_log_handler = pybel.ob.OBMessageHandler()
+pybel.ob.obErrorLog.StopLogging()
+
+# +
 # import os
 # del os.environ['OE_LICENSE']
 # -
 
 # # Can I seed ab initio runs with XTB?
 
-reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
+neb_xtb = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen/node_3.xyz"))
 
-rxn = reactions['Ugi-Reaction']
+neb_dft_opt = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_forcethre_0/node_3_neb.xyz"))
+
+neb_dft_ft_003 = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_forcethre_0,003/seeding_xtb_neb.xyz"))
+
+neb_dft_ft_03 = NEB.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_forcethre_0,03/seeding_xtb_neb.xyz"))
+
+# +
+# neb_dft_ft_03.optimized.is_elem_step()
+# -
+
+neb_xtb.initial_chain[0].is_identical(neb_xtb.optimized[0])
+
+xvals = ['xtb', 'dft - es03', 'dft - es003', 'dft - opt']
+yvals = [len(neb_xtb.chain_trajectory), len(neb_dft_ft_03.chain_trajectory), len(neb_dft_ft_003.chain_trajectory), len(neb_dft_opt.chain_trajectory)]
+
+plt.bar(x=xvals, height=yvals)
+
+
+
+def set_tc_args(traj, method, basis, kwds={'maxiter':10000}):
+    for td in traj:
+        td.tc_model_basis = basis
+        td.tc_model_method = method
+
+
+m = 'wb97xd3'
+b = 'def2-svp'
+
+# +
+xtb_ens = neb_xtb.optimized.to_trajectory().energies_xtb()
+
+
+
+dft_init_tr = neb_dft_opt.initial_chain.to_trajectory()
+set_tc_args(dft_init_tr, m, b)
+dft_init_ens = dft_init_tr.energies_tc()
+# dft_init_ens = [td.energy_tc() for td in dft_init_tr]
+# -
+
+dft_opt_tr = neb_dft_opt.optimized.to_trajectory()
+set_tc_args(dft_opt_tr, 'wb97xd3', 'def2-svp')
+dft_opt_ens = dft_opt_tr.energies_tc()
+# dft_opt_ens = [td.energy_tc() for td in dft_opt_tr]
+
+dft_ft_03_tr = neb_dft_ft_03.optimized.to_trajectory()
+set_tc_args(dft_ft_03_tr, 'wb97xd3', 'def2-svp')
+dft_ft_03_ens = dft_ft_03_tr.energies_tc()
+# dft_ft_03_ens = [td.energy_tc() for td in dft_ft_03_tr]
+
+dft_ft_003_tr = neb_dft_ft_003.optimized.to_trajectory()
+set_tc_args(dft_ft_003_tr, 'wb97xd3', 'def2-svp')
+dft_ft_003_ens = dft_ft_003_tr.energies_tc()
+# dft_ft_003_ens = [td.energy_tc() for td in dft_ft_003_tr]
+
+# +
+
+
+
+plt.plot(neb_xtb.optimized.integrated_path_length, xtb_ens,'o--', label='xtb')
+plt.plot(neb_dft_opt.optimized.integrated_path_length, dft_opt_ens,'-', linewidth=6, label='dft - optseed')
+# plt.plot(neb_dft_opt.initial_chain.integrated_path_length, dft_init_ens,'o-', label='dft - init')
+plt.plot(neb_dft_ft_03.optimized.integrated_path_length, dft_ft_03_ens,'o-', label=' dft - es03 seed')
+plt.plot(neb_dft_ft_003.optimized.integrated_path_length, dft_ft_003_ens,'x-', label=' dft - es003 seed')
+
+plt.legend()
+# -
+
+neb_dft_opt.initial_chain.energies
+
+plt.plot([  0.        ,   1.32675863,   4.50511477,   8.71484519,
+        14.44812173,  23.41113873,  32.27156787,  38.79849834,
+        26.621906  ,   1.91414245, -18.4693448 , -19.7537819 ])
+
+tr.energies_tc()
+
+neb_dft_opt.initial_chain[1].energy
+
+len(neb_dft_ft_003.optimized)
+
+len(neb_dft_ft_003.optimized)
+
+
+
+r_raw.energy_tc() - neb_dft_ft_003.optimized[0].energy
+
+r_raw = neb_dft_ft_003.optimized[1].tdstructure
+p_raw = neb_dft_ft_003.optimized[-2].tdstructure
+
+method = 'wb97xd3'
+basis = 'def2-svp'
+
+r_raw.tc_model_method = method
+r_raw.tc_model_basis = basis
+
+p_raw.tc_model_method = method
+p_raw.tc_model_basis = basis
+
+r_opt = r_raw.tc_geom_optimization()
+
+p_opt = p_raw.tc_geom_optimization()
+
+neb_dft_ft_003_fixed = neb_dft_ft_003.optimized.copy()
+
+neb_dft_ft_003_fixed.nodes[0] = Node3D_TC(r_opt)
+
+neb_dft_ft_003_fixed.nodes[-1] = Node3D_TC(p_opt)
+
+Node3D_TC(r_opt).is_identical(neb_dft_ft_003.optimized[0])
+
+neb_dft_ft_003_fxed.plot_chain()
+
+neb_dft_ft_003_fixed[0]._cached_energy
+
+r_opt.energy_tc()
+
+p_opt.energy_tc()
+
+reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 
 nbi = NEBInputs(v=True, grad_thre=0.001,rms_grad_thre=0.001,max_steps=2000, early_stop_force_thre=0.003,early_stop_still_steps_thre=500)
 cni = ChainInputs(k=0.1, delta_k=0.09,step_size=3)
@@ -57,12 +179,12 @@ m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
 
 h = TreeNode.read_from_disk(Path("./claisen"),nbi, cni)
 
-out = h.output_chain
+out = h.output_chains
 
 out.get_maximum_gperp()
 
 out_leaf = [l for l in h.ordered_leaves if l.data]
-    
+
 
 xtb_chain = out_leaf[0].data.optimized
 init_chain = out_leaf[0].data.initial_chain
@@ -92,8 +214,6 @@ dft_chain = Chain.from_traj(dft_tr, parameters=cni_dft)
 
 m_dft = MSMEP(neb_inputs=nbi_dft, chain_inputs=cni_dft, gi_inputs=gii_dft)
 
-dft_chain.energies
-
 h_dft, out_dft = m_dft.find_mep_multistep(dft_chain)
 
 # ** XTB seems to have biased the path to some channel that is far away from the DFT endpoints
@@ -115,49 +235,101 @@ ca = CompetitorAnalyzer(comparisons_dir=directory,method='dlfind')
 
 rns = ca.available_reaction_names
 
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+
+
+def reaction_converged(fp):
+    c = Chain.from_xyz(fp, ChainInputs(k=0.1, delta_k=0.09))
+    return c.get_maximum_grad_magnitude() <= 0.001*BOHR_TO_ANGSTROMS
+
+
 elem_rns = []
 multi_step_rns = []
 failed = []
 
-for ind in range(len(rns)):
+
+def get_eA_chain(chain):
+    eA = max(chain.energies_kcalmol)
+    return eA
 
 
-    rn = rns[ind]
-    print(f"Doing: {rn}")
-    reaction_structs = ca.structures_dir / rn
+def get_relevant_leaves(rn):
+    data_dir = ca.out_folder / rn
+    fp = data_dir / 'initial_guess_msmep'
+    adj_mat_fp = fp / 'adj_matrix.txt'
+    adj_mat = np.loadtxt(adj_mat_fp)
+    if adj_mat.size == 1:
+        return [Chain.from_xyz(fp / f'node_0.xyz', ChainInputs(k=0.1, delta_k=0.09))]
+    else:
+    
+        a = np.sum(adj_mat,axis=1)
+        inds_leaves = np.where(a == 1)[0] 
+        chains = [Chain.from_xyz(fp / f'node_{ind}.xyz',ChainInputs(k=0.1, delta_k=0.09)) for ind in inds_leaves]
+        return chains
 
-    guess_path = reaction_structs / 'initial_guess.xyz'
 
-    tr = Trajectory.from_xyz(guess_path)
+# +
 
-    nbi = NEBInputs()
-    cni = ChainInputs()
-    gii = GIInputs()
-    m = MSMEP(neb_inputs=nbi, gi_inputs=gii, chain_inputs=cni)
+tol = 0.001*BOHR_TO_ANGSTROMS
 
-    chain = Chain.from_traj(tr,parameters=cni)
+succ = []
+failed = []
+for i, rn in enumerate(rns):
     try:
-        is_elem_step_bool, method = chain.is_elem_step()
+        cs = get_relevant_leaves(rn)
+        if all([x.get_maximum_grad_magnitude() <= tol for x in cs]):
+            eAs = [get_eA_chain(c) for c in cs]
+            maximum_barrier = max(eAs)
+            n_steps = len(eAs)
 
-
-        if is_elem_step_bool:
-            elem_rns.append(rn)
+            succ.append(rn)
         else:
-            multi_step_rns.append(rn)
+            print(f"{rn} has not converged")
+            failed.append(rn)
+
     except:
         failed.append(rn)
 
 # +
-# elem_rns=['Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Fries-Rearrangement-ortho', 'Elimination-Alkene-Lg-Iodine', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Oxindole-Synthesis-X-Iodine', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Baker-Venkataraman-Rearrangement', 'Oxazole-Synthesis', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Buchner-Ring-Expansion-O', 'Meyer-Schuster-Rearrangement', 'Chan-Rearrangement', 'Irreversable-Azo-Cope-Rearrangement', 'Claisen-Rearrangement', 'Aza-Grob-Fragmentation-X-Iodine', 'Chapman-Rearrangement', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Elimination-Amine-Imine', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Oxindole-Synthesis-X-Fluorine', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Aza-Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Indole-Synthesis-Hemetsberger-Knittel', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Bradsher-Cyclization-2', 'Claisen-Rearrangement-Aromatic', 'Elimination-To-Form-Cyclopropanone-Bromine', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Bradsher-Cyclization-1', 'Azaindole-Synthesis', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Decarboxylation-CG-Carboxyl', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Benzimidazolone-Synthesis-1-X-Iodine', '1-2-Amide-Phthalamide-Synthesis', 'Elimination-Acyl-Bromine', 'Elimination-Lg-Sulfonate', 'Decarboxylation-Carbamic-Acid', 'Oxa-Vinylcyclopropane-Rearrangement', 'Grob-Fragmentation-X-Iodine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Enolate-Claisen-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Buchner-Ring-Expansion-C', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Robinson-Gabriel-Synthesis', 'Newman-Kwart-Rearrangement', 'Azo-Vinylcyclopropane-Rearrangement', 'Elimination-Lg-Bromine', 'Bamberger-Rearrangement', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Ester-Pyrolysis', 'Lossen-Rearrangement', 'Pinacol-Rearrangement']
+# for ind in range(len(rns)):
+
+
+#     rn = rns[ind]
+#     print(f"Doing: {rn}")
+#     reaction_structs = ca.structures_dir / rn
+
+#     guess_path = reaction_structs / 'initial_guess.xyz'
+
+#     tr = Trajectory.from_xyz(guess_path)
+
+#     nbi = NEBInputs()
+#     cni = ChainInputs()
+#     gii = GIInputs()
+#     m = MSMEP(neb_inputs=nbi, gi_inputs=gii, chain_inputs=cni)
+
+#     chain = Chain.from_traj(tr,parameters=cni)
+#     try:
+#         is_elem_step_bool, method = chain.is_elem_step()
+
+
+#         if is_elem_step_bool:
+#             elem_rns.append(rn)
+#         else:
+#             multi_step_rns.append(rn)
+#     except:
+#         failed.append(rn)BOHR_TO_ANGSTROMS
+# -
+succ=['Semmler-Wolff-Reaction', 'Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Ramberg-Backlund-Reaction-Bromine', 'Elimination-Alkene-Lg-Iodine', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis', 'Fries-Rearrangement-para', 'Buchner-Ring-Expansion-O', 'Chan-Rearrangement', 'Irreversable-Azo-Cope-Rearrangement', 'Claisen-Rearrangement', 'Paal-Knorr-Furan-Synthesis', 'Chapman-Rearrangement', 'Ramberg-Backlund-Reaction-Chlorine', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Oxindole-Synthesis-X-Fluorine', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Claisen-Rearrangement-Aromatic', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Azaindole-Synthesis', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Decarboxylation-CG-Carboxyl', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Benzimidazolone-Synthesis-1-X-Iodine', 'Ramberg-Backlund-Reaction-Fluorine', 'Elimination-Acyl-Bromine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Decarboxylation-Carbamic-Acid', 'Grob-Fragmentation-X-Iodine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Enolate-Claisen-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Buchner-Ring-Expansion-C', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Robinson-Gabriel-Synthesis', 'Newman-Kwart-Rearrangement', 'Azo-Vinylcyclopropane-Rearrangement', 'Buchner-Ring-Expansion-N', 'Elimination-Lg-Bromine', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Ester-Pyrolysis', 'Knorr-Quinoline-Synthesis', 'Lossen-Rearrangement', 'Pinacol-Rearrangement', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis', 'Wittig']#[]
+failed=['Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Fries-Rearrangement-ortho', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Oxindole-Synthesis-X-Iodine', 'Nazarov-Cyclization', 'Baker-Venkataraman-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Meyer-Schuster-Rearrangement', 'Ramberg-Backlund-Reaction-Iodine', 'Aza-Grob-Fragmentation-X-Iodine', 'Oxindole-Synthesis-X-Chlorine', 'Elimination-Amine-Imine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Fluorine', 'Indole-Synthesis-Hemetsberger-Knittel', 'Bradsher-Cyclization-2', 'Elimination-To-Form-Cyclopropanone-Bromine', 'Bradsher-Cyclization-1', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Bamford-Stevens-Reaction', '1-2-Amide-Phthalamide-Synthesis', 'Elimination-Lg-Sulfonate', 'Oxa-Vinylcyclopropane-Rearrangement', 'Bamberger-Rearrangement', 'Wittig_DFT'] #[]
+
+elem_rns = ['Semmler-Wolff-Reaction', 'Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Fries-Rearrangement-ortho', 'Elimination-Alkene-Lg-Iodine', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Grob-Fragmentation-X-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Buchner-Ring-Expansion-O', 'Meyer-Schuster-Rearrangement', 'Chan-Rearrangement', 'Aza-Grob-Fragmentation-X-Iodine', 'Chapman-Rearrangement', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Aza-Grob-Fragmentation-X-Fluorine', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Claisen-Rearrangement-Aromatic', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Oxy-Cope-Rearrangement', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Enolate-Claisen-Rearrangement', 'Buchner-Ring-Expansion-C', 'Thio-Claisen-Rearrangement', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Newman-Kwart-Rearrangement', 'Elimination-Lg-Bromine', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Lossen-Rearrangement', 'Pinacol-Rearrangement']
+elem_rns = [x for x in elem_rns if x in succ]
+
+multi_step_rns = ['Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Ramberg-Backlund-Reaction-Bromine', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Indole-Synthesis-1', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Oxindole-Synthesis-X-Iodine', 'Nazarov-Cyclization', 'Baker-Venkataraman-Rearrangement', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Fries-Rearrangement-para', 'Irreversable-Azo-Cope-Rearrangement', 'Ramberg-Backlund-Reaction-Iodine', 'Claisen-Rearrangement', 'Paal-Knorr-Furan-Synthesis', 'Oxindole-Synthesis-X-Chlorine', 'Ramberg-Backlund-Reaction-Chlorine', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Elimination-Amine-Imine', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Camps-Quinoline-Synthesis', 'Oxindole-Synthesis-X-Fluorine', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Indole-Synthesis-Hemetsberger-Knittel', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Bradsher-Cyclization-2', 'Elimination-To-Form-Cyclopropanone-Bromine', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Bradsher-Cyclization-1', 'Azaindole-Synthesis', 'Beckmann-Rearrangement', 'Decarboxylation-CG-Carboxyl', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Bamford-Stevens-Reaction', 'Benzimidazolone-Synthesis-1-X-Iodine', '1-2-Amide-Phthalamide-Synthesis', 'Ramberg-Backlund-Reaction-Fluorine', 'Elimination-Acyl-Bromine', 'Elimination-Lg-Sulfonate', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Decarboxylation-Carbamic-Acid', 'Oxa-Vinylcyclopropane-Rearrangement', 'Grob-Fragmentation-X-Iodine', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Madelung-Indole-Synthesis', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Robinson-Gabriel-Synthesis', 'Azo-Vinylcyclopropane-Rearrangement', 'Buchner-Ring-Expansion-N', 'Ester-Pyrolysis', 'Knorr-Quinoline-Synthesis', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis', 'Wittig', 'Wittig_DFT']
+multi_step_rns = [x for x in multi_step_rns if x in succ]
 
 # +
-# multi_step_rns=['Semmler-Wolff-Reaction', 'Ramberg-Backlund-Reaction-Bromine', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Fries-Rearrangement-para', 'Ramberg-Backlund-Reaction-Iodine', 'Paal-Knorr-Furan-Synthesis', 'Oxindole-Synthesis-X-Chlorine', 'Ramberg-Backlund-Reaction-Chlorine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Bamford-Stevens-Reaction', 'Ramberg-Backlund-Reaction-Fluorine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Buchner-Ring-Expansion-N', 'Knorr-Quinoline-Synthesis', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis']
-
-# +
-# rns[90:]
-
-# +
-# failed=['Nazarov-Cyclization']
+# failed=['Bamberger-Rearrangement']
 # -
 
 comparisons_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons/")
@@ -171,14 +343,15 @@ ca = CompetitorAnalyzer(comparisons_dir,'asneb')
 def plot_rxn(name):
     s = 5
     fs = 18
-    clean_fp = ca.out_folder / name / 'initial_guess_msmep_clean.xyz'
-    # clean_fp = ca.out_folder / name / 'production_results' / 'initial_guess_msmep_clean.xyz'
-    if clean_fp.exists():
-        data_dir = clean_fp
-    else:
-        data_dir = ca.out_folder / name / 'initial_guess_msmep.xyz'
-        # data_dir = ca.out_folder / name / 'production_results' / 'initial_guess_msmep.xyz'
-    c = Chain.from_xyz(data_dir, ChainInputs(k=0))
+    # clean_fp = ca.out_folder / name / 'initial_guess_msmep_clean.xyz'
+    # # clean_fp = ca.out_folder / name / 'production_results' / 'initial_guess_msmep_clean.xyz'
+    # if clean_fp.exists():
+    #     data_dir = clean_fp
+    # else:
+    #     data_dir = ca.out_folder / name / 'initial_guess_msmep.xyz'
+    #     # data_dir = ca.out_folder / name / 'production_results' / 'initial_guess_msmep.xyz'
+    cs = get_relevant_leaves(name)
+    c = Chain.from_list_of_chains(cs, ChainInputs())
     f, ax = plt.subplots(figsize=(1.618*s, s))
     
     plt.plot(c.integrated_path_length, (c.energies-c.energies[0])*627.5,'o-')
@@ -192,9 +365,7 @@ def plot_rxn(name):
     return data_dir, c
 
 
-reactions["Robinson-Gabriel-Synthesis
-
-h = TreeNode.read_from_disk(ca.out_folder / 'Skraup-Quinoline-Synthesis' / 'initial_guess_msmep')
+dd, c = plot_rxn(elem_rns[1])
 
 # reaction_name = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
 # reaction_name = 'Robinson-Gabriel-Synthesis'
@@ -233,29 +404,50 @@ plt.savefig(f"/home/jdep/T3D_data/msmep_draft/figures/{reaction_name}_energy_pat
 plt.show()
 # -
 
-c.to_trajectory().draw();
+a = np.loadtxt(dd.parent / 'initial_guess_msmep' / 'adj_matrix.txt')
+
+a
+
+get_n_leaves(a)
+
+
+def get_n_leaves(adj_mat):
+    n_leaves=0
+    for row in adj_mat:
+        if len(row.nonzero()[0]) == 1:
+            n_leaves+=1
+    return n_leaves
+
+
+get_n_leaves(a)
 
 actual_failed = []
 actual_elem_step = []
 actual_multi_step = []
-for rn in rns:
-    try:
-        data_dir = ca.out_folder / rn / 'initial_guess_msmep.xyz'
-        c = Chain.from_xyz(data_dir, ChainInputs())
-        # print(rn)
-        # c.plot_chain()
-        if c._chain_is_concave():
-            actual_elem_step.append(rn)
-        else:
-            actual_multi_step.append(rn)
-    except:
-        actual_failed.append(rn)
+# for rn in rns:
+for rn in succ:
+    # try:
+    data_dir = ca.out_folder / rn / 'initial_guess_msmep' / 'adj_matrix.txt'
+    adj = np.loadtxt(data_dir)
+    if not adj.shape:
+        actual_elem_step.append(rn)
+    else:
+        # if get_n_leaves(adj)==1:
+        #     actual_elem_step.append(rn)
+        # else:
+        actual_multi_step.append(rn)
+    # except:
+    #     actual_failed.append(rn)
 
+
+# +
+# # dd, c = plot_rxn(actual_multi_step[4])
+# for i in range(len(actual_multi_step)):
+#     dd, c = plot_rxn(actual_multi_step[i])
+# -
 
 set_elem_rns = set(elem_rns) - set(actual_failed)
 set_multi_rns = set(multi_step_rns) - set(actual_failed)
-
-actual_multi_step
 
 overlap_elem_steps = set(actual_elem_step).intersection(set_elem_rns)
 
@@ -297,200 +489,12 @@ for elem_rn in actual_elem_step:
     except:
         wtf.append(elem_rn)
 
-len(wtf)
+examples[1]
 
-neb_obj = NEB.read_from_disk(ca.out_folder / 'Chan-Rearrangement' / 'initial_guess_msmep' / 'node_0')
+neb_obj.optimized.is_elem_step()
 
-neb_obj.optimized
+neb_obj = NEB.read_from_disk(ca.out_folder / 'Elimination-with-Hydride-Shift-Lg-Sulfonate' / 'initial_guess_msmep' / 'node_0')
 
 neb_obj.plot_opt_history(do_3d=True)
-
-
-# # Let's get error bars for an optimization
-
-# +
-def get_mass(symbol):
-    ED = ElementData()
-    return ED.from_symbol(symbol).mass_amu
-
-def get_mass_weighed_coords(chain):
-    traj = chain.to_trajectory()
-    coords = traj.coords
-    weights = np.array([np.sqrt(get_mass(s)) for s in traj.symbols])
-    mass_weighed_coords = coords  * weights.reshape(-1,1)
-    return mass_weighed_coords
-
-def integrated_path_length(chain):
-    coords = get_mass_weighed_coords(chain)
-
-    cum_sums = [0]
-
-    int_path_len = [0]
-    for i, frame_coords in enumerate(coords):
-        if i == len(coords) - 1:
-            continue
-        next_frame = coords[i + 1]
-        dist_vec = next_frame - frame_coords
-        cum_sums.append(cum_sums[-1] + np.linalg.norm(dist_vec))
-
-    cum_sums = np.array(cum_sums)
-    int_path_len = cum_sums / cum_sums[-1]
-    return np.array(int_path_len)
-
-
-# -
-
-history = TreeNode.read_from_disk(Path("./wittig_early_stop/"))
-
-neb_short = NEB.read_from_disk(Path("./neb_short"))
-
-neb_short.plot_opt_history(do_3d=True)
-
-neb_short.plot_grad_delta_mag_history()
-
-# +
-chain_traj = neb_short.chain_trajectory
-distances = [None] # None for the first chain
-for i,chain in enumerate(chain_traj):
-    if i == 0 :
-        continue
-    
-    prev_chain = chain_traj[i-1]
-    dist = prev_chain._distance_to_chain(chain)
-    distances.append(dist)
-    
-
-
-fs = 18
-s = 8
-
-
-from kneed import KneeLocator
-kn = KneeLocator(x=list(range(len(distances)))[1:], y=distances[1:], curve='convex', direction='decreasing')
-
-
-f,ax = plt.subplots(figsize=(1.16*s, s))
-
-plt.text(.65,.9, s=f"elbow: {kn.elbow}\nelbow_yval: {round(kn.elbow_y,4)}", transform=ax.transAxes,fontsize=fs)
-
-plt.plot(distances,'o-')
-plt.yticks(fontsize=fs)
-plt.xticks(fontsize=fs)
-plt.ylabel("Distance to previous chain",fontsize=fs)
-plt.xlabel("Chain id",fontsize=fs)
-
-plt.show()
-
-    
-
-neb_short.plot_grad_delta_mag_history()
-# -
-
-neb_short.plot_projector_history()
-
-
-def get_projector(chain1,chain2, var = 'gradients'):
-    if var == 'tangents':
-        chain1_vec = chain1.unit_tangents  
-        chain2_vec = chain2   .unit_tangents
-    
-    elif var == 'gradients':
-    
-        chain1_vec = chain1.gradients 
-        chain2_vec = chain2.gradients 
-        
-    else:
-        raise ValueError(f"Incorrect input method: {var}")
-    
-    # projector = sum([np.dot(t1.flatten(),t2.flatten()) for t1,t2  in zip(chain1_vec, chain2_vec)]) / len(chain1_vec)
-    projector = sum([np.dot(t1.flatten(),t2.flatten()) for t1,t2  in zip(chain1_vec, chain2_vec)]) 
-    return projector
-
-
-var = 'gradients'
-traj = [ ]
-for ind in range(1,296):
-    proj = get_projector(neb_short.chain_trajectory[ind - 1], neb_short.chain_trajectory[ind], var=var) 
-    normalization = get_projector(neb_short.chain_trajectory[ind - 1], neb_short.chain_trajectory[ind - 1], var=var)
-    traj.append(proj / normalization)
-
-list(enumerate(traj))
-
-plt.plot(traj)
-plt.ylim(0,1.1)
-
-# +
-chain1_tangentsst_per_opt_step = []
-# end_cost_per_opt_step = []
-
-# running_knee_dist = []
-
-# running_std_dist = []
-# running_std_ene = []
-
-
-
-# for end_chain in range(1, len(neb_complete.chain_trajectory)):
-#     chain1 = neb_complete.chain_trajectory[end_chain-1]
-#     chain2 = neb_complete.chain_trajectory[end_chain]
-
-#     distances = []
-#     en_diffs = []
-
-#     for node1,node2 in zip(chain1.nodes, chain2.nodes):
-#         dist,_ = RMSD(node1.coords, node2.coords)
-#         distances.append(dist)
-
-#         en_diff = node2.energy - node1.energy
-#         en_diffs.append(abs(en_diff))
-
-#     # print(distances)
-#     # dist_cost_per_opt_step.append(sum(distances)/len(chain1))
-#     dist_cost_per_opt_step.append(chain1._distance_to_chain(chain2))
-#     end_cost_per_opt_step.append(sum(en_diffs)/len(chain1))
-    
-    
-    
-#     running_std_dist.append(np.std(dist_cost_per_opt_step))
-#     running_std_ene.append(np.std(end_cost_per_opt_step))
-
-
-# -
-
-
-def get_elbow(list_of_vals):
-    kn = KneeLocator(list(range(len(list_of_vals))), list_of_vals, curve='convex',direction='decreasing',S=1,online=True)
-    return kn.elbow
-
-
-list_of_vals = dist_cost_per_opt_step
-kn = KneeLocator(list(range(len(list_of_vals))), list_of_vals, curve='convex',direction='decreasing',S=1,online=True)
-kn.elbow_y
-
-# +
-start = 0
-end = -1
-
-
-xvals = list(range(len(dist_cost_per_opt_step[start:end])))
-
-plt.plot(xvals, dist_cost_per_opt_step[start:end],'o-', label='distances change')
-# plt.plot(xvals, end_cost_per_opt_step[start:end],'o-',label='energies change')
-axes = plt.gca()
-
-elbow = get_elbow(dist_cost_per_opt_step)
-# elbow = get_elbow(end_cost_per_opt_step)
-print(elbow)
-miny,maxy = axes.get_ylim()
-# plt.vlines(x=26,ymin=miny,ymax=maxy, linestyle='--',color='gray', label='force thre')
-# plt.vlines(x=33,ymin=miny,ymax=maxy, linestyle='--',color='purple', label='chain rms thre')
-plt.vlines(x=elbow,ymin=miny,ymax=maxy, linestyle='--',color='green', label='elbow energy')
-
-
-
-
-plt.legend()
-plt.show()
-# -
 
 

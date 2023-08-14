@@ -30,6 +30,7 @@ RDLogger.DisableLog('rdApp.*')
 # del os.environ['OE_LICENSE']
 
 from neb_dynamics.Janitor import Janitor
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 from neb_dynamics.MSMEP import MSMEP
 from IPython.core.display import HTML
@@ -350,6 +351,16 @@ def get_relevant_leaves(rn):
 # ChainInputs(k=0.1, delta_k=0.09)
 # -
 
+def plot_hist(data_list, label, **kwargs):
+    fs = 18
+    plt.hist([x[1] for x in data_list], **kwargs)
+    plt.ylabel("Count",fontsize=fs)
+    plt.xlabel(label,fontsize=fs)
+    plt.xticks(fontsize=fs)
+    plt.yticks(fontsize=fs)
+    plt.show()
+
+
 def get_eA_chain(chain):
     eA = max(chain.energies_kcalmol)
     return eA
@@ -361,115 +372,147 @@ def get_eA_leaf(leaf):
     return eA
 
 
-cs = get_relevant_leaves('Semmler-Wolff-Reaction')
-# cs = get_relevant_chain("Semmler-Wolff-Reaction")
+def descending_order(data_list):
+    return sorted(data_list, key=lambda x: x[1], reverse=True)
 
-a, b = cs[0].pe_grads_spring_forces_nudged()
-
-ind = 6
-np.dot(a[ind].flatten(),b[ind].flatten())
-
-
-def get_maximum_gperp(self):
-    gperp, gspring = self.pe_grads_spring_forces_nudged()
-    max_gperps = []
-
-    for gp, node in zip(gperp, self):
-        # remove rotations and translations
-        if gp.shape[1] >= 3:  # if we have at least 3 atoms
-            gp[0, :] = 0  # this atom cannot move
-            gp[1, :2] = 0  # this atom can only move in a line
-            gp[2, :1] = 0  # this atom can only move in a plane
-        print(gp)
-        if not node.converged:
-            max_gperps.append(np.amax(np.abs(gp)))
-            
-    print(max_gperps)
-    return np.max(max_gperps)
-
-
-cs[0].get_maximum_gperp()
 
 # +
-gperp, gspring = cs[0].pe_grads_spring_forces_nudged()
-# gperp[5, 0, :] = 0  # this atom cannot move
-# gperp[5, 1, :2] = 0  # this atom can only move in a line
-# gperp[5, 2, :1] = 0  # this atom can only move in a plane
+from openbabel import pybel
 
-# gspring[5, 0, :] = 0  # this atom cannot move
-# gspring[5, 1, :2] = 0  # this atom can only move in a line
-# gspring[5, 2, :1] = 0  # this atom can only move in a plane
+ob_log_handler = pybel.ob.OBMessageHandler()
+pybel.ob.obErrorLog.StopLogging()
 
 
-# -
-
-ind = 1
-np.dot(gperp[ind].flatten(), gspring[ind].flatten())
-
-np.amax(np.abs(gperp[5]))
-
-cs[0].get_maximum_gperp()
-
-np.amax(a[ind] - b[ind])
-
-cs[0].get_maximum_grad_magnitude()
-
-# rn = rns[10]
+# +
 all_max_barriers = []
 all_n_steps = []
-failed = []
-for i, rn in enumerate(rns):
-    try:
-        cs = get_relevant_leaves(rn)
-        eAs = [get_eA_chain(c) for c in cs]
-        maximum_barrier = max(eAs)
-        n_steps = len(eAs)
+peak_barriers = []
+all_n_atoms = []
 
 
-        all_max_barriers.append((i, maximum_barrier))
-        all_n_steps.append((i, n_steps))
-    except:
-        failed.append(rn)
 
-plt.hist([x[1] for x in all_max_barriers])
+tol = 0.001*BOHR_TO_ANGSTROMS
 
-plt.hist([x[1] for x in all_n_steps])
+succ=['Semmler-Wolff-Reaction', 'Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Ramberg-Backlund-Reaction-Bromine', 'Elimination-Alkene-Lg-Iodine', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis', 'Fries-Rearrangement-para', 'Buchner-Ring-Expansion-O', 'Chan-Rearrangement', 'Irreversable-Azo-Cope-Rearrangement', 'Claisen-Rearrangement', 'Paal-Knorr-Furan-Synthesis', 'Chapman-Rearrangement', 'Ramberg-Backlund-Reaction-Chlorine', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Oxindole-Synthesis-X-Fluorine', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Claisen-Rearrangement-Aromatic', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Azaindole-Synthesis', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Decarboxylation-CG-Carboxyl', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Benzimidazolone-Synthesis-1-X-Iodine', 'Ramberg-Backlund-Reaction-Fluorine', 'Elimination-Acyl-Bromine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Decarboxylation-Carbamic-Acid', 'Grob-Fragmentation-X-Iodine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Enolate-Claisen-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Buchner-Ring-Expansion-C', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Robinson-Gabriel-Synthesis', 'Newman-Kwart-Rearrangement', 'Azo-Vinylcyclopropane-Rearrangement', 'Buchner-Ring-Expansion-N', 'Elimination-Lg-Bromine', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Ester-Pyrolysis', 'Knorr-Quinoline-Synthesis', 'Lossen-Rearrangement', 'Pinacol-Rearrangement', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis', 'Wittig']#[]
+failed=['Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Fries-Rearrangement-ortho', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Oxindole-Synthesis-X-Iodine', 'Nazarov-Cyclization', 'Baker-Venkataraman-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Meyer-Schuster-Rearrangement', 'Ramberg-Backlund-Reaction-Iodine', 'Aza-Grob-Fragmentation-X-Iodine', 'Oxindole-Synthesis-X-Chlorine', 'Elimination-Amine-Imine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Fluorine', 'Indole-Synthesis-Hemetsberger-Knittel', 'Bradsher-Cyclization-2', 'Elimination-To-Form-Cyclopropanone-Bromine', 'Bradsher-Cyclization-1', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Bamford-Stevens-Reaction', '1-2-Amide-Phthalamide-Synthesis', 'Elimination-Lg-Sulfonate', 'Oxa-Vinylcyclopropane-Rearrangement', 'Bamberger-Rearrangement', 'Wittig_DFT'] #[]
+# for i, rn in enumerate(rns):
+for i, rn in enumerate(succ):
+    # try:
+    cs = get_relevant_leaves(rn)
+    # if all([x.get_maximum_grad_magnitude() <= tol for x in cs]):
+    eAs = [get_eA_chain(c) for c in cs]
+    
+    c = Chain.from_list_of_chains(cs, ChainInputs())
+    max_delta_en = (max(c.energies) - c.energies[0])*627.5
+    
+    
+    maximum_barrier = max(eAs)
+    peak_barrier = max_delta_en
+    n_steps = len(eAs)
+    n_atoms = c.n_atoms
 
-look_at_me = rns[118]
+    all_max_barriers.append((i, maximum_barrier))
+    peak_barriers.append((i, peak_barrier))
+    all_n_steps.append((i, n_steps))
+    all_n_atoms.append((i, n_atoms))
+    
+        # succ.append(rn)
+    # else:
+    #     print(f"{rn} has not converged")
+        # failed.append(rn)
+            
+    # except:
+        # failed.append(rn)
+# -
+
+descending_order(all_n_steps)
+
+plot_hist(all_n_atoms, "Number atoms", bins=20)
+
+plot_hist(peak_barriers, "Peak E$_A$")
+
+plot_hist(all_n_steps, "Number steps rxn", bins=30)
+
+descending_order(peak_barriers)
+
+# look_at_me = rns[19]
+look_at_me = succ[19]
 look_at_me
 
-ca.submit_a_job_by_name('Bamberger-Rearrangement')
-
-tr_opt = tr.get_conv_gi(tr)
-
-tr_opt[0]
-
 cs = get_relevant_leaves(look_at_me)
-
-tr = Trajectory.from_xyz(Path('/home/jdep/T3D_data/msmep_draft/comparisons/structures/Bamberger-Rearrangement/gi_fric0.001.xyz'))
-
-ca.submit_a_job_by_name("Bamberger-Rearrangement")
-
-tr.draw()
-
-tr.gradient_xtb()
-
-[x.get_maximum_grad_magnitude() for x in cs]
 
 c = Chain.from_list_of_chains(cs,ChainInputs())
 
 c.plot_chain()
 
-sorted(all_n_steps, key=lambda x: x[1], reverse=True)
+cs[ind].plot_chain()
+
+ind = 2
+print(get_eA_chain(cs[ind]))
+cs[ind].to_trajectory()
+
+# # Stats
 
 # +
-# c = get_relevant_chain(rn)
+# N.B.: The -1 comes from the fact that Wittig_DFT is still included in the dataset for whatever reason. It should not be. 
+
+
+print(f"Tot N reactions: {len(rns)-1}")
+print(f"\tTot N converged: {len(succ)}")
+print(f"\tTot N unconverged: {len(failed)-1}")
+print(f"Convergence percentage: {round(len(succ) / (len(rns)-1), 3)*100}%")
+
+
 # -
 
-rn
+def get_error_message(rn):
+    data_dir = ca.out_folder / rn
+    out_fp = data_dir / 'out.txt'
+    datum = open(out_fp).read().splitlines()
+    return datum
 
-c.plot_chain()
 
-argrelmin(c.energies)[0]
+# +
+reasons = []
+wtfs = []
+
+for f in failed[:-1]: # ignoring 'Wittig_DFT'
+    datum = get_error_message(f)
+    # print(datum[-1])
+    if 'AttributeError' in datum[-1] or "TypeError: 'NoneType'" in datum[-1]:
+        reasons.append("Insufficient\nOptimization Steps")
+    elif 'step' in datum[-1]:
+        reasons.append("Insufficient\nTime")
+    elif 'scf' in datum[-1]:
+        reasons.append("Electronic\nStructure Error")
+    else:
+        reasons.append("Small bug\nto be fixed\nasap")
+        wtfs.append(f)
+# -
+
+f, ax = plt.subplots()
+plt.hist(reasons)
+
+# # Repro NEB-TS
+
+ind = 101
+r = TDStructure.from_xyz(f"/home/jdep/T3D_data/nebts_repro/configurations/system{ind}-react.xyz")
+p = TDStructure.from_xyz(f"/home/jdep/T3D_data/nebts_repro/configurations/system{ind}-prod.xyz")
+sp = TDStructure.from_xyz(f"/home/jdep/T3D_data/nebts_repro/configurations/system{ind}-sp.xyz")
+
+tr = Trajectory([r,p]).run_geodesic(nimages=10)
+
+# +
+tolerance = 0.01
+
+
+cni = ChainInputs(k=0.1, delta_k=0.09,step_size=3, min_step_size=0.33)
+nbi = NEBInputs(v=True, grad_thre=tolerance*BOHR_TO_ANGSTROMS, rms_grad_thre=1, en_thre=1)
+c = Chain.from_traj(tr, parameters=cni)
+# -
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=10), skip_identical_graphs=False)
+
+h, out = m.find_mep_multistep(c)
 
 

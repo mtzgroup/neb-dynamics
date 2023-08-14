@@ -12,8 +12,14 @@ from retropaths.abinitio.trajectory import Trajectory
 import numpy as np
 
 from chemcloud import CCClient
-# import os
-# del os.environ['OE_LICENSE']
+import os
+del os.environ['OE_LICENSE']
+
+# +
+from openbabel import pybel
+
+ob_log_handler = pybel.ob.OBMessageHandler()
+pybel.ob.obErrorLog.StopLogging()
 # -
 
 from rdkit import RDLogger
@@ -55,7 +61,7 @@ frics = [0.001, 0.01, 0.1, 1]
 # +
 all_structures = []
 for rn in rns:
-    print(rn)
+    # print(rn)
 
     rn_dir = ca.structures_dir / rn
     rn_dir.mkdir(exist_ok=True)
@@ -89,8 +95,9 @@ for rn in rns:
 
 
 basis = 'def2-svp'
-method = 'wb97xd3'
-kwds = {'maxit':500}
+# method = 'wb97xd3'
+method = 'wb97x-d3'
+kwds = {'maxiter':500}
 
 client = CCClient()
 
@@ -110,18 +117,31 @@ failed_inds = []
 for i, result in enumerate(batch1_results):
     if not result.success:
         failed_inds.append(i)    
-    
 
-batch1_results[6].error.extras
 
-batch1_results[failed_inds[0]].error.extras
+failed_inds
 
 len(failed_inds)
 
-r = client.compute_procedure(batch1_inputs[6], procedure='geometric', program='terachem_pbs')
+print(batch1_results[failed_inds[0]].error.error_message)
+
+r = client.compute_procedure(batch1_inputs[failed_inds[0]], procedure='geometric')
 r_out = r.get()
 
 print(r_out.error.error_message) 
+
+from neb_dynamics.constants import ANGSTROM_TO_BOHR
+
+coords = r_out.final_molecule.geometry
+symbols = r_out.final_molecule.symbols
+td_opt_tc = TDStructure.from_coords_symbols(
+    coords=coords * (1 / ANGSTROM_TO_BOHR),
+    symbols=symbols,
+    tot_charge=int(result.final_molecule.molecular_charge),
+    tot_spinmult=result.final_molecule.molecular_multiplicity,
+)
+
+td_opt_tc
 
 print(r_out.error.extras)
 

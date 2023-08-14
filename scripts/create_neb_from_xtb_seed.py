@@ -6,6 +6,8 @@ from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.NEB import NEB, NoneConvergedException
+
 from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
 
 from neb_dynamics.Node3D import Node3D
@@ -15,6 +17,7 @@ from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+from neb_dynamics.helper_functions import get_seeding_chain
 import numpy as np
 
 def read_single_arguments():
@@ -66,8 +69,18 @@ def read_single_arguments():
         '--node_class',
         dest='nc',
         type=str,
-        default="node3d",
-        help='what node type to use. options are: node3d, node3d_tc, node3d_tc_local, node3d_tcpb'
+        default="node3d_tc",
+        help='what node type to use. options are: node3d_tc, node3d_tc_local, node3d_tcpb'
+        
+    )
+    
+    parser.add_argument(
+        '-ft',
+        '--force_thre',
+        dest='ft',
+        type=float,
+        default=0.003,
+        help='force threshold of the seeding chain'
         
     )
     
@@ -84,16 +97,10 @@ def main():
 
     fp = Path(args.f)
     
-    if args.nc != "node3d":
-        method = 'wb97xd3'
-        basis = 'def2-svp'
-        kwds = {'restricted': False}
-        # kwds = {'restricted': False, 'pcm':'cosmo','epsilon':80}
-        for td in traj:
-            td.tc_model_method = method
-            td.tc_model_basis = basis
-            td.tc_kwds = kwds
-            
+    method = 'wb97xd3'
+    basis = 'def2-svp'
+    kwds = {}
+        
     if args.nc == 'node3d_tcpb':
         do_parallel=False
     else:
@@ -101,7 +108,7 @@ def main():
 
     
     
-    cni = ChainInputs(k=0.1,delta_k=0.09, node_class=nc,step_size=3,  min_step_size=0.33, friction_optimal_gi=True, do_parallel=do_parallel,
+    cni = ChainInputs(k=0.1,delta_k=0.0, node_class=nc,step_size=3,  min_step_size=0.33, friction_optimal_gi=True, do_parallel=do_parallel,
                       als_max_steps=3, node_freezing=False)
     nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS,
                 rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
@@ -114,22 +121,44 @@ def main():
                 early_stop_still_steps_thre=500,
                 vv_force_thre=0.0)
     
-    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15,extra_kwds={"sweep":False}))
-    history = TreeNode.read_from_disk(fp, neb_parameters=nbi, chain_parameters=cni)
-    data_dir = fp.parent
-    if args.dc:
-        op = data_dir/f"{fp.stem}_cleanups"
-        j = Janitor(
-            history_object=history,
-            out_path=op,
-            msmep_object=m
-        )
+    neb_xtb = NEB.read_from_disk(fp)
+    
+    
+    start = neb_xtb.initial_chain[0].tdstructure
+    start.tc_model_method = method
+    start.tc_model_basis = basis
+    start.tc_kwds = kwds
+            
+    start_opt = start.tc_geom_optimization()
+    
+    end = neb_xtb.initial_chain[-1].tdstructure
+    end.tc_model_method = method
+    end.tc_model_basis = basis
+    end.tc_kwds = kwds
+            
+    end_opt = end.tc_geom_optimization()
+    
+    
+    seeding_chain = get_seeding_chain(neb_xtb, args.ft)
+    
+    xtb_traj = seeding_chain.to_trajectory()
+    for td in xtb_traj:
+        td.tc_model_basis = basis
+        td.tc_model_method = method
         
-        clean_msmep = j.create_clean_msmep()
-        
-        if clean_msmep:
-            clean_msmep.to_trajectory().write_trajectory(data_dir/f"{fp.stem}_msmep_clean.xyz")
-        
+    
+    tr = Trajectory([start_opt]+xtb_traj.traj+[end_opt])
+    chain = Chain.from_traj(tr, parameters=cni)
+    
+    n = NEB(initial_chain=chain, parameters=nbi)
+    try: 
+        n.optimize_chain()
+        data_dir = fp.parent
+        n.write_to_disk(data_dir/f"{fp.stem}_neb.xyz",write_history=True)
+    except NoneConvergedException as e:
+        data_dir = fp.parent
+        e.obj.write_to_disk(data_dir/f"{fp.stem}_failed.xyz",write_history=True)
+    
     
         
 	    

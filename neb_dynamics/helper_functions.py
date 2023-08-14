@@ -166,3 +166,9 @@ def get_nudged_pe_grad(unit_tangent, gradient):
     return pe_grad_nudged
 
 
+def get_seeding_chain(neb_obj, force_thre):
+    for c in neb_obj.chain_trajectory:
+        if c.get_maximum_grad_magnitude() <= force_thre:
+            return c
+    return neb_obj.chain_trajectory[-1]
+    

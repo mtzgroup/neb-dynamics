@@ -27,15 +27,16 @@ class Janitor:
         leaves = self.history_object.ordered_leaves
         insertion_indices = []
         for i, leaf in enumerate(leaves):
-            if i == 0:
-                prev_end = original_start
-            else:
-                prev_end = leaves[i-1].data.optimized[-1]
-            
-            leaf_chain = leaf.data.optimized
-            curr_start = leaf_chain[0]
-            if not prev_end._is_conformer_identical(curr_start):
-                insertion_indices.append(i)
+            if leaf.data:
+                if i == 0:
+                    prev_end = original_start
+                else:
+                    prev_end = leaves[i-1].data.optimized[-1]
+                
+                leaf_chain = leaf.data.optimized
+                curr_start = leaf_chain[0]
+                if not prev_end._is_conformer_identical(curr_start):
+                    insertion_indices.append(i)
         
         # check if the final added structure         
         last_end = leaves[-1].data.optimized[-1]

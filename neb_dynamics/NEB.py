@@ -267,17 +267,6 @@ class NEB:
             max_grad = np.amax(np.abs(grad))
             max_grad_components.append(max_grad)
             bools.append(max_grad < self.parameters.grad_thre)
-        # bools = [True] # start node
-        # max_grad_components = []
-        # gradients = np.array([node.gradient for node in chain.nodes[1:-1]])
-        # tans = chain.unit_tangents
-        # for grad, tan in zip(gradients,tans):
-        #     grad_perp = grad.flatten() - np.dot(grad.flatten(), tan.flatten())*tan.flatten()
-        #     max_grad = np.amax(grad_perp)
-        #     max_grad_components.append(max_grad)
-        #     bools.append(max_grad <= self.parameters.grad_thre)
-        
-        # bools.append(True) # end node
 
         return np.where(bools), max_grad_components
 
