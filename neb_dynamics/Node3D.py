@@ -185,6 +185,7 @@ class Node3D(Node):
         )
 
         atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1)
+        # atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1, solvent='h2o')
         if not v:
             opt = LBFGS(atoms, logfile=None)
         else:
@@ -251,7 +252,7 @@ class Node3D(Node):
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
         atomic_numbers, coords_bohr, charge, spinmult = tuple
-
+        
         calc = Calculator(
             get_method("GFN2-xTB"),
             numbers=np.array(atomic_numbers),

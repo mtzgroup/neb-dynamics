@@ -94,9 +94,7 @@ class MSMEP:
 
         if chain.parameters.use_geodesic_interpolation:
             traj = Trajectory(
-                [node.tdstructure for node in chain],
-                charge=self.charge,
-                spinmult=self.spinmult,
+                [node.tdstructure for node in chain]
             )
             if chain.parameters.friction_optimal_gi:
                 gi = create_friction_optimal_gi(traj, self.gi_inputs)

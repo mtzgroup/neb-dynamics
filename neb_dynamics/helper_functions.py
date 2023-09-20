@@ -45,7 +45,11 @@ def _get_ind_minima(chain):
 
 
 def _get_ind_maxima(chain):
-    ind_maxima = int(argrelextrema(chain.energies, np.greater, order=1)[0])
+    maxima_indices = argrelextrema(chain.energies, np.greater, order=1)[0]
+    if len(maxima_indices) > 1:
+        ind_maxima = maxima_indices[0]
+    else:
+        ind_maxima = int(maxima_indices)
     return ind_maxima
 
 

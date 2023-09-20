@@ -71,6 +71,16 @@ def read_single_arguments():
         
     )
     
+    
+    parser.add_argument(
+        "-nimg",
+        "--nimages",
+        dest="nimg",
+        type=int,
+        default=8,
+        help='number of images in the chain'
+    )
+    
     return parser.parse_args()
 
 
@@ -103,9 +113,11 @@ def main():
     
     cni = ChainInputs(k=0.1,delta_k=0.09, node_class=nc,step_size=3,  min_step_size=0.33, friction_optimal_gi=True, do_parallel=do_parallel,
                       als_max_steps=3, node_freezing=False)
-    nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS,
-                rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
-                en_thre=0.0001*BOHR_TO_ANGSTROMS,
+    
+    
+    nbi = NEBInputs(grad_thre=0.005*BOHR_TO_ANGSTROMS,
+                rms_grad_thre=0.005*BOHR_TO_ANGSTROMS,
+                en_thre=0.001*BOHR_TO_ANGSTROMS,
                 v=1, 
                 max_steps=2000,
                 early_stop_chain_rms_thre=0.002, 
@@ -113,9 +125,21 @@ def main():
             
                 early_stop_still_steps_thre=500,
                 vv_force_thre=0.0)
+    
+    
+    # nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS,
+    #             rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
+    #             en_thre=0.0001*BOHR_TO_ANGSTROMS,
+    #             v=1, 
+    #             max_steps=2000,
+    #             early_stop_chain_rms_thre=0.002, 
+    #             early_stop_force_thre=0.01, 
+            
+    #             early_stop_still_steps_thre=500,
+    #             vv_force_thre=0.0)
 
     chain = Chain.from_traj(traj=traj, parameters=cni)
-    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15,extra_kwds={"sweep":False}))
+    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=args.nimg,extra_kwds={"sweep":False}))
     history, out_chain = m.find_mep_multistep(chain)
     data_dir = fp.parent
     

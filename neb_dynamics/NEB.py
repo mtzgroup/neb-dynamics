@@ -556,6 +556,9 @@ class NEB:
 
 
     def read_from_disk(fp: Path, history_folder: Path = None, chain_parameters=ChainInputs(), neb_parameters=NEBInputs()):
+        if isinstance(fp, str):
+            fp = Path(fp)
+        
         if history_folder is None:
             history_folder = fp.parent / (str(fp.stem) + "_history")
 

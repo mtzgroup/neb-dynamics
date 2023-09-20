@@ -118,6 +118,8 @@ class TreeNode:
 
     @classmethod
     def read_from_disk(cls, folder_name, neb_parameters=NEBInputs(), chain_parameters=ChainInputs()):
+        if isinstance(folder_name, str):
+            folder_name = Path(folder_name)
         adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
         
         nodes = list(folder_name.glob("node*.xyz"))

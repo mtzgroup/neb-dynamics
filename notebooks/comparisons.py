@@ -14,6 +14,7 @@ from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 
+
 from neb_dynamics.TreeNode import TreeNode
 
 from itertools import product
@@ -31,6 +32,8 @@ RDLogger.DisableLog('rdApp.*')
 
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+
+from chemcloud import CCClient
 
 from neb_dynamics.MSMEP import MSMEP
 from IPython.core.display import HTML
@@ -300,13 +303,105 @@ plt.show()
 
 # # Visualize Big data
 
-ca = CompetitorAnalyzer(comparisons_dir=Path("/home/jdep/T3D_data/msmep_draft/comparisons/"),method='asneb')
+# +
+# ca = CompetitorAnalyzer(comparisons_dir=Path("/home/jdep/T3D_data/msmep_draft/comparisons/"),method='asneb')
 
 # +
 # ca.submit_all_jobs()
 # -
 
 rns = ca.available_reaction_names
+
+from dataclasses import dataclass
+
+from neb_dynamics.helper_functions import RMSD, qRMSD_distance
+
+
+@dataclass
+class MSMEPAnalyzer:
+    parent_dir: Path
+    msmep_root_name: str
+    
+
+    def get_relevant_chain(self, folder_name):
+        data_dir = self.parent_dir / folder_name
+        clean_chain = data_dir / f'{self.msmep_root_name}_msmep_clean.xyz'
+        msmep_chain = data_dir / f'{self.msmep_root_name}_msmep.xyz'
+        
+        if clean_chain.exists():
+            chain_to_use = Chain.from_xyz(clean_chain, ChainInputs())
+        elif not clean_chain.exists() and msmep_chain.exists():
+            chain_to_use = Chain.from_xyz(msmep_chain,ChainInputs())
+        else: # somehow the thing failed
+            print(f"{folder_name} unavailable.")
+            chain_to_use = None
+
+        return chain_to_use
+    
+    def get_relevant_saddle_point(self, folder_name):
+        data_dir = self.parent_dir / folder_name
+        sp_fp = data_dir / 'sp.xyz'
+        sp = TDStructure.from_xyz(str(sp_fp))
+        return sp
+    
+    def _distance_to_sp(self, chain: Chain, sp):
+        ts_guess = chain.get_ts_guess()
+        return qRMSD_distance(ts_guess.coords, sp.coords)
+    
+    def get_relevant_leaves(self, folder_name):
+        data_dir = self.parent_dir / folder_name
+        fp = data_dir / f'{self.msmep_root_name}_msmep'
+        adj_mat_fp = fp / 'adj_matrix.txt'
+        adj_mat = np.loadtxt(adj_mat_fp)
+        if adj_mat.size == 1:
+            return [Chain.from_xyz(fp / f'node_0.xyz', ChainInputs(k=0.1, delta_k=0.09))]
+        else:
+
+            a = np.sum(adj_mat,axis=1)
+            inds_leaves = np.where(a == 1)[0] 
+            chains = [Chain.from_xyz(fp / f'node_{ind}.xyz',ChainInputs(k=0.1, delta_k=0.09)) for ind in inds_leaves]
+            return chains
+
+
+p = Path('/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/')
+msma = MSMEPAnalyzer(parent_dir=p, msmep_root_name='react')
+
+name = 'system17'
+out = msma.get_relevant_chain(name)
+sp = msma.get_relevant_saddle_point(name)
+
+sp.tc_freq_calculation()
+
+all_sys = list(p.glob("system*"))
+
+from scipy.signal import argrelextrema
+
+# +
+dists = []
+n_multi = 0
+n_single = 0
+multis = []
+
+for sys_fp in all_sys:
+    name = sys_fp.stem
+    try:
+        out = msma.get_relevant_chain(name)
+        sp = msma.get_relevant_saddle_point(name)
+        dists.append(msma._distance_to_sp(out, sp))
+        
+        if len(argrelextrema(out.energies, np.greater)[0])==1:
+            n_single+=1
+        else:
+            n_multi+=1
+            multis.append([out, name])
+        
+    except:
+        continue
+# -
+
+msma._distance_to_sp(multis[0][0], msma.get_relevant_saddle_point('system17'))
+
+msma._distance_to_sp(out, sp)
 
 # +
 rn = rns[0]
@@ -381,7 +476,11 @@ from openbabel import pybel
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 pybel.ob.obErrorLog.StopLogging()
+# -
 
+
+succ=['Semmler-Wolff-Reaction', 'Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Ramberg-Backlund-Reaction-Bromine', 'Elimination-Alkene-Lg-Iodine', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis', 'Fries-Rearrangement-para', 'Buchner-Ring-Expansion-O', 'Chan-Rearrangement', 'Irreversable-Azo-Cope-Rearrangement', 'Claisen-Rearrangement', 'Paal-Knorr-Furan-Synthesis', 'Chapman-Rearrangement', 'Ramberg-Backlund-Reaction-Chlorine', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Oxindole-Synthesis-X-Fluorine', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Claisen-Rearrangement-Aromatic', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Azaindole-Synthesis', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Decarboxylation-CG-Carboxyl', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Benzimidazolone-Synthesis-1-X-Iodine', 'Ramberg-Backlund-Reaction-Fluorine', 'Elimination-Acyl-Bromine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Decarboxylation-Carbamic-Acid', 'Grob-Fragmentation-X-Iodine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Enolate-Claisen-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Buchner-Ring-Expansion-C', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Robinson-Gabriel-Synthesis', 'Newman-Kwart-Rearrangement', 'Azo-Vinylcyclopropane-Rearrangement', 'Buchner-Ring-Expansion-N', 'Elimination-Lg-Bromine', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Ester-Pyrolysis', 'Knorr-Quinoline-Synthesis', 'Lossen-Rearrangement', 'Pinacol-Rearrangement', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis', 'Wittig']#[]
+failed=['Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Fries-Rearrangement-ortho', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Oxindole-Synthesis-X-Iodine', 'Nazarov-Cyclization', 'Baker-Venkataraman-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Meyer-Schuster-Rearrangement', 'Ramberg-Backlund-Reaction-Iodine', 'Aza-Grob-Fragmentation-X-Iodine', 'Oxindole-Synthesis-X-Chlorine', 'Elimination-Amine-Imine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Fluorine', 'Indole-Synthesis-Hemetsberger-Knittel', 'Bradsher-Cyclization-2', 'Elimination-To-Form-Cyclopropanone-Bromine', 'Bradsher-Cyclization-1', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Bamford-Stevens-Reaction', '1-2-Amide-Phthalamide-Synthesis', 'Elimination-Lg-Sulfonate', 'Oxa-Vinylcyclopropane-Rearrangement', 'Bamberger-Rearrangement', 'Wittig_DFT'] #[]
 
 # +
 all_max_barriers = []
@@ -393,14 +492,24 @@ all_n_atoms = []
 
 tol = 0.001*BOHR_TO_ANGSTROMS
 
-succ=['Semmler-Wolff-Reaction', 'Grob-Fragmentation-X-Fluorine', 'Elimination-Lg-Alkoxide', 'Elimination-Alkene-Lg-Bromine', 'Elimination-with-Alkyl-Shift-Lg-Chlorine', 'Aza-Grob-Fragmentation-X-Bromine', 'Ramberg-Backlund-Reaction-Bromine', 'Elimination-Alkene-Lg-Iodine', 'Aza-Grob-Fragmentation-X-Chlorine', 'Decarboxylation-CG-Nitrite', 'Amadori-Rearrangement', 'Rupe-Rearrangement', 'Grob-Fragmentation-X-Chlorine', 'Elimination-Alkene-Lg-Sulfonate', 'Elimination-with-Alkyl-Shift-Lg-Hydroxyl', 'Semi-Pinacol-Rearrangement-Nu-Iodine', 'Grob-Fragmentation-X-Sulfonate', 'Oxazole-Synthesis-EWG-Carbonyl-EWG3-Nitrile', 'Oxazole-Synthesis', 'Fries-Rearrangement-para', 'Buchner-Ring-Expansion-O', 'Chan-Rearrangement', 'Irreversable-Azo-Cope-Rearrangement', 'Claisen-Rearrangement', 'Paal-Knorr-Furan-Synthesis', 'Chapman-Rearrangement', 'Ramberg-Backlund-Reaction-Chlorine', 'Overman-Rearrangement-Pt2', 'Hemi-Acetal-Degradation', 'Vinylcyclopropane-Rearrangement', 'Sulfanyl-anol-Degradation', 'Cyclopropanation-Part-2', 'Oxindole-Synthesis-X-Fluorine', 'Curtius-Rearrangement', 'Oxazole-Synthesis-EWG-Nitrite-EWG3-Nitrile', 'Elimination-Lg-Iodine', 'Aza-Vinylcyclopropane-Rearrangement', 'Elimination-Acyl-Chlorine', 'Imine-Tautomerization-EWG-Phosphonate-EWG3-Nitrile', 'Elimination-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Chlorine', 'Elimination-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Sulfonate', 'Elimination-Acyl-Iodine', 'Imine-Tautomerization-EWG-Nitrite-EWG3-Nitrile', 'Imine-Tautomerization-EWG-Carbonyl-EWG3-Nitrile', 'Elimination-Acyl-Sulfonate', 'Elimination-with-Hydride-Shift-Lg-Iodine', 'Elimination-Alkene-Lg-Chlorine', 'Semi-Pinacol-Rearrangement-Nu-Sulfonate', 'Thiocarbamate-Resonance', 'Elimination-with-Hydride-Shift-Lg-Chlorine', 'Meisenheimer-Rearrangement', 'Imine-Tautomerization-EWG-Carboxyl-EWG3-Nitrile', 'Mumm-Rearrangement', 'Claisen-Rearrangement-Aromatic', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Cl', '2-Sulfanyl-anol-Degradation', 'Meisenheimer-Rearrangement-Conjugated', 'Elimination-with-Hydride-Shift-Lg-Bromine', 'Azaindole-Synthesis', 'Oxy-Cope-Rearrangement', 'Beckmann-Rearrangement', 'Fritsch-Buttenberg-Wiechell-Rearrangement-Br', 'Decarboxylation-CG-Carboxyl', 'Benzimidazolone-Synthesis-1-X-Bromine', 'Benzimidazolone-Synthesis-1-X-Iodine', 'Ramberg-Backlund-Reaction-Fluorine', 'Elimination-Acyl-Bromine', 'Oxazole-Synthesis-EWG-Phosphonate-EWG3-Nitrile', 'Decarboxylation-Carbamic-Acid', 'Grob-Fragmentation-X-Iodine', 'Imine-Tautomerization-EWG-Nitrile-EWG3-Nitrile', 'Grob-Fragmentation-X-Bromine', 'Elimination-To-Form-Cyclopropanone-Chlorine', 'Enolate-Claisen-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Sulfonate', 'Petasis-Ferrier-Rearrangement', 'Buchner-Ring-Expansion-C', 'Madelung-Indole-Synthesis', 'Thio-Claisen-Rearrangement', 'Semi-Pinacol-Rearrangement-Alkene', 'Decarboxylation-CG-Carbonyl', 'Semi-Pinacol-Rearrangement-Nu-Bromine', 'Robinson-Gabriel-Synthesis', 'Newman-Kwart-Rearrangement', 'Azo-Vinylcyclopropane-Rearrangement', 'Buchner-Ring-Expansion-N', 'Elimination-Lg-Bromine', 'Lobry-de-Bruyn-Van-Ekenstein-Transformation', 'Oxindole-Synthesis-X-Bromine', 'Electrocyclic-Ring-Opening', 'Ester-Pyrolysis', 'Knorr-Quinoline-Synthesis', 'Lossen-Rearrangement', 'Pinacol-Rearrangement', 'Piancatelli-Rearrangement', 'Elimination-Water-Imine', 'Skraup-Quinoline-Synthesis', 'Wittig']#[]
-failed=['Elimination-with-Hydride-Shift-Lg-Sulfonate', 'Fries-Rearrangement-ortho', 'Oxazole-Synthesis-EWG-Nitrile-EWG3-Nitrile', 'Indole-Synthesis-1', 'Elimination-To-Form-Cyclopropanone-Sulfonate', 'Oxindole-Synthesis-X-Iodine', 'Nazarov-Cyclization', 'Baker-Venkataraman-Rearrangement', 'Elimination-with-Alkyl-Shift-Lg-Iodine', 'Elimination-with-Alkyl-Shift-Lg-Bromine', 'Oxazole-Synthesis-EWG-Alkane-EWG3-Nitrile', 'Meyer-Schuster-Rearrangement', 'Ramberg-Backlund-Reaction-Iodine', 'Aza-Grob-Fragmentation-X-Iodine', 'Oxindole-Synthesis-X-Chlorine', 'Elimination-Amine-Imine', 'Camps-Quinoline-Synthesis', 'Oxazole-Synthesis-EWG-Carboxyl-EWG3-Nitrile', 'Elimination-with-Hydride-Shift-Lg-Hydroxyl', 'Aza-Grob-Fragmentation-X-Fluorine', 'Indole-Synthesis-Hemetsberger-Knittel', 'Bradsher-Cyclization-2', 'Elimination-To-Form-Cyclopropanone-Bromine', 'Bradsher-Cyclization-1', 'Elimination-To-Form-Cyclopropanone-Iodine', 'Bamford-Stevens-Reaction', '1-2-Amide-Phthalamide-Synthesis', 'Elimination-Lg-Sulfonate', 'Oxa-Vinylcyclopropane-Rearrangement', 'Bamberger-Rearrangement', 'Wittig_DFT'] #[]
+all_ts_guesses = []
+
 # for i, rn in enumerate(rns):
 for i, rn in enumerate(succ):
     # try:
     cs = get_relevant_leaves(rn)
     # if all([x.get_maximum_grad_magnitude() <= tol for x in cs]):
     eAs = [get_eA_chain(c) for c in cs]
+    ts_guesses = [c.get_ts_guess() for c in cs]
+    for tsg in ts_guesses:
+        tsg.tc_model_method='wb97xd3'
+        tsg.tc_model_basis='def2-svp'
+        # tsg.tc_model_method='gfn2xtb'
+        # tsg.tc_model_basis='gfn2xtb'
+        
+        
+    all_ts_guesses.extend(ts_guesses)
+    
     
     c = Chain.from_list_of_chains(cs, ChainInputs())
     max_delta_en = (max(c.energies) - c.energies[0])*627.5
@@ -425,31 +534,204 @@ for i, rn in enumerate(succ):
         # failed.append(rn)
 # -
 
-descending_order(all_n_steps)
+import pandas as pd
 
-plot_hist(all_n_atoms, "Number atoms", bins=20)
 
-plot_hist(peak_barriers, "Peak E$_A$")
 
-plot_hist(all_n_steps, "Number steps rxn", bins=30)
 
-descending_order(peak_barriers)
+
+df = pd.DataFrame()
+df['name'] = succ
+df['max_barrier'] = [x[1] for x in all_max_barriers]
+df['peak_barrier'] = [x[1] for x in peak_barriers]
+df['n_atoms'] = [x[1] for x in all_n_atoms]
+df['n_steps'] = [x[1] for x in all_n_steps]
+
+all_ts_guesses_inputs = [td._prepare_input('freq') for td in all_ts_guesses]
+
+# all_ts_guesses_results = [ client.compute(inp, engine='bigchem') for inp in all_ts_guesses_inputs]
+all_ts_guesses_results = [ ]
+ts_guesses_that_failed = []
+for td in all_ts_guesses:
+    try:
+        all_ts_guesses_results.append(td.tc_freq_calculation() )
+    except:
+        ts_guesses_that_failed.append(td)
+        continue
+
+dist_vals = [(i, sum(np.array(val) < 0)) for (i, val) in enumerate(all_ts_guesses_results)]
+
+delta_vals = [(i, np.abs(np.abs(val[0]) - np.abs(val[1]))) for (i, val) in enumerate(all_ts_guesses_results)]
+
+# +
+fs = 18
+plt.ylabel("Frequency",fontsize=fs)
+plt.xlabel("N negative frequencies\nat XTB level",fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+xs, heights = np.unique([x[1] for x in dist_vals], return_counts=True)
+plt.bar(xs, heights)
+plt.savefig("/home/jdep/T3D_data/msmep_draft/figures/ts_guess_freq_dist_dft.svg")
+# plt.savefig("/home/jdep/T3D_data/msmep_draft/figures/ts_guess_freq_dist_xtb.svg")
+
+plt.show()
+
+# +
+plt.ylabel("Frequency",fontsize=fs)
+plt.xlabel("abs(∆) between most negative and\n secondmost negative freq",fontsize=fs)
+plt.hist([x[1] for x in delta_vals])
+plt.xticks(fontsize=fs-5)
+plt.yticks(fontsize=fs)
+# xs, heights = np.unique([x[1] for x in delta_vals], return_counts=True)
+# plt.bar(xs, heights)
+# plt.plot(xs, heights, 'o')
+plt.savefig("/home/jdep/T3D_data/msmep_draft/figures/ts_guess_freq_deltas_dft.svg")
+# plt.savefig("/home/jdep/T3D_data/msmep_draft/figures/ts_guess_freq_deltas_xtb.svg")
+
+plt.show()
+# -
+
+client = CCClient()
+
+all_ts_guesses_opts_batch1 = client.compute(all_ts_guesses_inputs[:100], engine='bigchem')
+
+all_ts_guesses_opts_batch1_results = all_ts_guesses_opts_batch1.get()
+
+# +
+# all_ts_guesses_opts_batch2 = client.compute(all_ts_guesses_inputs[100:], engine='bigchem')
+# -
 
 # look_at_me = rns[19]
-look_at_me = succ[19]
+look_at_me = succ[1]
 look_at_me
 
-cs = get_relevant_leaves(look_at_me)
+# cs = get_relevant_leaves(look_at_me)
+cs = get_relevant_leaves('Claisen-Rearrangement')
 
 c = Chain.from_list_of_chains(cs,ChainInputs())
 
 c.plot_chain()
 
-cs[ind].plot_chain()
 
-ind = 2
-print(get_eA_chain(cs[ind]))
-cs[ind].to_trajectory()
+def do_pseudo_irc(ts_structure: TDStructure):
+    
+    freqs = ts_structure.tc_freq_calculation()
+    nma = ts_structure.tc_nma_calculation()
+    assert sum(np.array(freqs) < 0) == 1, "Not a first order saddle point."
+    
+    direction = np.array(nma[0]).reshape(ts_structure.coords.shape)
+    dr = .1
+    
+    td_disp_plus = ts_structure.update_coords(ts_structure.coords + dr*direction)
+    td_disp_minus = ts_structure.update_coords(ts_structure.coords - dr*direction)
+    
+    inps = [td_disp_plus._prepare_input("opt"), td_disp_minus._prepare_input("opt")]
+    out = ts_structure.tc_client.compute_procedure(inps, 'geometric')
+    results = out.get()
+    td_plus = TDStructure.from_cc_result(results[0])
+    td_minus = TDStructure.from_cc_result(results[1])
+    
+    return Trajectory([td_minus, ts_structure, td_plus])
+
+
+# +
+def create_dft_rxn_profile_inputs(chain):
+    client = CCClient()
+    method = 'wb97xd3'
+    basis = 'def2-svp'
+    
+    r = chain[0].tdstructure
+    ts_guess = get_ts_guess(chain)
+    p = chain[-1].tdstructure
+    
+    for td in [r, ts_guess, p]:
+        td.tc_model_basis = basis
+        td.tc_model_method = method
+    
+    inp_objs = [r._prepare_input(method='opt'), ts_guess._prepare_input(method='ts'), p._prepare_input(method='opt')]
+    inp_opts = client.compute_procedure(inp_objs, procedure='geometric')
+    return inp_objs
+#     inp_results = inp_opts.get()
+    
+#     if all([r.success for r in inp_results]):
+#         return Trajectory([td_from_cc_result(r) for r in inp_results])
+#     else:
+#         print("Opt failed... returning objects")
+#         return inp_results
+
+
+# -
+
+client = CCClient()
+
+all_failures = []
+for rn in succ:
+    cs = get_relevant_leaves(rn)
+    data_dir = ca.out_folder / rn
+    
+    if len(list(data_dir.glob("dft_*"))) == 0:
+    
+        print(f"Doing {rn}")
+        inps = []
+        for x in cs:
+            inps.extend(create_dft_rxn_profile_inputs(x))
+
+
+        client = CCClient()
+        inp_opts = client.compute_procedure(inps, procedure='geometric')
+
+        results = inp_opts.get()
+
+        start_ind = 0
+        if len(results) > 3:
+            for end in range(3, len(results), 3):
+                try:
+                    t = Trajectory([TDStructure.from_cc_result(r) for r in results[start_ind:end]])
+                    t.write_trajectory(ca.out_folder / rn / f'dft_chain_{int((start_ind / 3))}.xyz')
+                    start_ind+=3
+                except:
+                    print(f"---{rn} had a failure")
+                    all_failures.append(rn)
+        else:
+            try:
+                t = Trajectory([TDStructure.from_cc_result(r) for r in results])
+                t.write_trajectory(ca.out_folder / rn / f'dft_chain_0.xyz')
+            except:
+                print(f"---{rn} had a failure")
+                all_failures.append(rn)
+                
+                
+    elif len(list(data_dir.glob("dft_*"))) < len(cs):
+        print(f"Completing {rn}")
+        inps = []
+        
+        inps.extend(create_dft_rxn_profile_inputs(cs[-1]))
+
+
+        client = CCClient()
+        inp_opts = client.compute_procedure(inps, procedure='geometric')
+
+        results = inp_opts.get()
+    
+        start_ind = 0
+        if len(results) > 3:
+            for end in range(3, len(results), 3):
+                try:
+                    t = Trajectory([TDStructure.from_cc_result(r) for r in results[start_ind:end]])
+                    t.write_trajectory(ca.out_folder / rn / f'dft_chain_{int((start_ind / 3))}.xyz')
+                    start_ind+=3
+                except:
+                    print(f"---{rn} had a failure")
+                    all_failures.append(rn)
+        else:
+            try:
+                t = Trajectory([TDStructure.from_cc_result(r) for r in results])
+                t.write_trajectory(ca.out_folder / rn / f'dft_chain_{len(cs)-1}.xyz')
+            except:
+                print(f"---{rn} had a failure")
+                all_failures.append(rn)
+
+all_failures
 
 # # Stats
 

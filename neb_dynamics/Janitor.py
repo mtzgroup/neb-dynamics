@@ -24,7 +24,7 @@ class Janitor:
         """
         original_start = self.starting_chain[0]
         original_end = self.starting_chain[-1]
-        leaves = self.history_object.ordered_leaves
+        leaves = [l for l in self.history_object.ordered_leaves if l.data]
         insertion_indices = []
         for i, leaf in enumerate(leaves):
             if leaf.data:
@@ -72,7 +72,7 @@ class Janitor:
                     
                 neb_obj.write_to_disk(fp, write_history=True)
             
-            cleanup_results.append(neb_obj)
+            cleanup_results.append(neb_obj) 
 
         return cleanup_results
     

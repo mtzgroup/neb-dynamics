@@ -8,8 +8,8 @@ from retropaths.abinitio.tdstructure import TDStructure
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D_TC import Node3D_TC
-from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
-from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
+#from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
+#from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
 
 from neb_dynamics.Node3D import Node3D
 from neb_dynamics.Janitor import Janitor
@@ -42,7 +42,7 @@ def read_single_arguments():
         "--nimages",
         dest="nimg",
         type=int,
-        default=5,
+        default=8,
         help='number of images in the chain'
     )
 
@@ -95,6 +95,16 @@ def read_single_arguments():
         help='path to the final xyz structure'
         
     )
+
+    parser.add_argument(
+        '-tol',
+        '--tolerance',
+        dest='tol',
+        required=True,
+        type=float,
+        help='convergence threshold in H/Bohr^2',
+        default=0.001
+    )
     
     return parser.parse_args()
 
@@ -102,47 +112,65 @@ def read_single_arguments():
 def main():
     args = read_single_arguments()
     
-    nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
+    #nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
+    nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC}
     nc = nodes[args.nc]
     
-    start = TDStructure.from_xyz(args.st)
-    end = TDStructure.from_xyz(args.en)
-
-    traj = Trajectory([start,end], charge=args.c, spinmult=args.s).run_geodesic(nimages=args.nimg)
-    
+    start = TDStructure.from_xyz(args.st, tot_charge=args.c, tot_spinmult=args.s)
+    end = TDStructure.from_xyz(args.en, tot_charge=args.c, tot_spinmult=args.s)
+    traj = Trajectory([start,end]).run_geodesic(nimages=args.nimg)
     if args.nc != "node3d":
-        method = 'wb97xd3'
+        #method = 'wb97xd3'
+        method = 'ub3lyp'
         basis = 'def2-svp'
-        kwds = {'restricted': False}
+        kwds = {}
+        # kwds = {'reference':'uks'}
+        # kwds = {'restricted': False}
         # kwds = {'restricted': False, 'pcm':'cosmo','epsilon':80}
         for td in traj:
             td.tc_model_method = method
             td.tc_model_basis = basis
             td.tc_kwds = kwds
             
-    if args.nc == 'node3d_tcpb':
+    if args.nc == 'node3d_tcpb' or args.nc == 'node3d_tc_local':
         do_parallel=False
     else:
         do_parallel=True
 
-    
+
+    tol = args.tol
     
     cni = ChainInputs(k=0.1,delta_k=0.09, node_class=nc,step_size=3,  min_step_size=0.33, friction_optimal_gi=True, do_parallel=do_parallel,
                       als_max_steps=3, node_freezing=False)
-    nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS,
-                rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
-                en_thre=0.0001*BOHR_TO_ANGSTROMS,
-                v=1, 
-                max_steps=2000,
-                early_stop_chain_rms_thre=0.002, 
-                early_stop_force_thre=0.01, 
-            
-                early_stop_still_steps_thre=500,
-                vv_force_thre=0.0)
+    nbi = NEBInputs(grad_thre=tol*BOHR_TO_ANGSTROMS,
+               rms_grad_thre=(tol/2)*BOHR_TO_ANGSTROMS,
+               en_thre=(tol/10)*BOHR_TO_ANGSTROMS,
+               v=1, 
+               max_steps=2000,
+               early_stop_chain_rms_thre=0.002, 
+               early_stop_force_thre=0.003, 
+           
+               early_stop_still_steps_thre=500,
+               vv_force_thre=0.0)
+    
+    # nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS,
+    #              rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
+    #              en_thre=0.0001*BOHR_TO_ANGSTROMS,
+    #              v=1, 
+    #              max_steps=2000,
+    #              early_stop_chain_rms_thre=0.002, 
+    #              early_stop_force_thre=0.01, 
+           
+    #              early_stop_still_steps_thre=500,
+    #              vv_force_thre=0.0)
 
     chain = Chain.from_traj(traj=traj, parameters=cni)
     m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=args.nimg,extra_kwds={"sweep":False}))
     history, out_chain = m.find_mep_multistep(chain)
+
+    fp = Path(args.st)
+
+
     data_dir = fp.parent
     
     out_chain.to_trajectory().write_trajectory(data_dir/f"{fp.stem}_msmep.xyz")

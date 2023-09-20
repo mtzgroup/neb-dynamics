@@ -36,7 +36,7 @@ class Node3D_TC_TCPB(Node):
         return self.tdstructure.coords * ANGSTROM_TO_BOHR
 
     @staticmethod
-    def en_func(node: NoNode3D_TC_TCPBde3D_TC_Local):
+    def en_func(node: Node3D_TC_TCPB):
         return node.tdstructure.energy_tc_tcpb()
         
 

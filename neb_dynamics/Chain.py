@@ -45,6 +45,7 @@ class Chain:
 
     @classmethod
     def from_xyz(cls, fp: Path, parameters: ChainInputs):
+        if isinstance(fp, str): fp = Path(fp)
         traj = Trajectory.from_xyz(fp)
         chain = cls.from_traj(traj, parameters=parameters)
         energies_fp = fp.parent / Path(str(fp.stem)+".energies")
@@ -240,6 +241,7 @@ class Chain:
     @cached_property
     def energies(self) -> np.array:
         return np.array([node.energy for node in self.nodes])
+    
     
     @property
     def energies_kcalmol(self) -> np.array:
@@ -584,6 +586,9 @@ class Chain:
         np.savetxt(grad_shape_path, self.gradients.shape)
         
     def write_to_disk(self, fp: Path):
+        if isinstance(fp, str):
+            fp = Path(fp)
+        
         if self.nodes[0].is_a_molecule:
             traj = self.to_trajectory()
             traj.write_trajectory(fp)
@@ -593,3 +598,10 @@ class Chain:
         else:
             raise NotImplementedError("Cannot write 2D chains yet.")
 
+    def get_ts_guess(self):
+        ind_ts_guess = self.energies.argmax()
+        return self[ind_ts_guess].tdstructure
+    
+    def get_eA_chain(self):
+        eA = max(self.energies_kcalmol)
+        return eA
