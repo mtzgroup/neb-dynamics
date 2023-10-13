@@ -402,7 +402,7 @@ class NEB:
 
                 return new_node
 
-    def write_to_disk(self, fp: Path, write_history=False):
+    def write_to_disk(self, fp: Path, write_history=True):
         out_traj = self.chain_trajectory[-1].to_trajectory()
         out_traj.write_trajectory(fp)
 
