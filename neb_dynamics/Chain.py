@@ -305,6 +305,8 @@ class Chain:
                 current_node=current_node,
                 next_node=next_node,
             )
+            
+
             if self.parameters.node_freezing:
                 if not current_node.converged:
                     pe_grads_nudged.append(pe_grad_nudged)

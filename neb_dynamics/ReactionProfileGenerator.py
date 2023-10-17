@@ -5,6 +5,7 @@ from chemcloud.client import CCClient
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs
+from neb_dynamics.Node import Node
 from neb_dynamics.Node3D_TC import Node3D_TC
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
@@ -12,7 +13,7 @@ from retropaths.abinitio.trajectory import Trajectory
 
 @dataclass
 class ReactionProfileGenerator:
-    input_chain: Chain
+    input_obj: Chain or Node
     method: str
     basis: str
     kwds: dict = field(default_factory=dict)
@@ -29,16 +30,24 @@ class ReactionProfileGenerator:
         if self._cached_ts: 
             return self._cached_ts
         else:
-            ts_guess = self.input_chain.get_ts_guess()
-            ts_guess.tc_model_method = self.method
-            ts_guess.tc_model_basis = self.basis
-            ts_guess.tc_geom_opt_kwds = self.geom_opt_kwds
+            if isinstance(self.input_obj, Chain):
+                ts_guess = self.input_obj.get_ts_guess()
+                ts_guess.tc_model_method = self.method
+                ts_guess.tc_model_basis = self.basis
+                ts_guess.tc_geom_opt_kwds = self.geom_opt_kwds
+            elif isinstance(self.input_obj, Node):
+                ts_guess = self.input_obj.tdstructure
+                ts_guess.tc_model_method = self.method
+                ts_guess.tc_model_basis = self.basis
+                ts_guess.tc_geom_opt_kwds = self.geom_opt_kwds
+            else:
+                raise ValueError(f'Invalid input object: {type(self.input_obj)}. Must be Chain or Node')
             
             
-            inp = ts_guess._prepare_input(method='ts')
-            result = self.compute_and_return_results(inp)
-            if result.success:
-                ts = TDStructure.from_cc_result(result)
+            inp = ts_guess._prepare_input(method='transition_state')
+            output = self.compute_and_return_results(inp)
+            if output.success:
+                ts = TDStructure.from_cc_result(output.results)
                 ts.update_tc_parameters(ts_guess) # TODO: fix this so that the params come from cc result
                 
                 freqs = ts.tc_freq_calculation()
@@ -50,7 +59,7 @@ class ReactionProfileGenerator:
                 self._cached_nma = nma
                 return ts
             else:
-                print(result.error.error_message)
+                output.ptraceback
                 return None
     
     @property
@@ -69,7 +78,7 @@ class ReactionProfileGenerator:
         td_disp_minus = ts_structure.update_coords(ts_structure.coords - dr*direction)
         td_disp_minus.update_tc_parameters(ts_structure)
 
-        inps = [td_disp_plus._prepare_input("opt"), td_disp_minus._prepare_input("opt")]
+        inps = [td_disp_plus._prepare_input("optimization"), td_disp_minus._prepare_input("optimization")]
         return inps
     
     def create_alleged_profile_inputs(self):
@@ -80,18 +89,18 @@ class ReactionProfileGenerator:
             td.tc_model_basis = self.basis
             td.tc_model_method = self.method
 
-        inp_objs = [r._prepare_input(method='opt'), p._prepare_input(method='opt')]
-        inp_opts = self.client.compute_procedure(inp_objs, procedure='geometric')
+        inp_objs = [r._prepare_input(method='optimization'), p._prepare_input(method='optimization')]
+        # inp_opts = self.client.compute('geometric', inp_objs)
         return inp_objs
 
     def compute_and_return_results(self, inps):
-        opts = self.client.compute_procedure(inps, procedure='geometric')
+        opts = self.client.compute('geometric',inps)
         results = opts.get()
         return results
         
     def create_profile(self, results_obj):
-        r = TDStructure.from_cc_result(results_obj[0])
-        p = TDStructure.from_cc_result(results_obj[1])
+        r = TDStructure.from_cc_result(results_obj[0].results)
+        p = TDStructure.from_cc_result(results_obj[1].results)
         t = Trajectory([r, self.transition_state, p])
         t.update_tc_parameters(self.transition_state)
         chain = Chain.from_traj(t, ChainInputs(node_class=Node3D_TC))

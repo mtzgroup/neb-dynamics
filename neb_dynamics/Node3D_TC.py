@@ -138,8 +138,9 @@ class Node3D_TC(Node):
         return energy_gradient_tuples
     
     def do_geometry_optimization(self) -> Node3D_TC:
-        td_opt_xtb = self.tdstructure.xtb_geom_optimization()
-        td_opt = td_opt_xtb.tc_geom_optimization()
+        # td_opt_xtb = self.tdstructure.xtb_geom_optimization()
+        # td_opt = td_opt_xtb.tc_geom_optimization()
+        td_opt = self.tdstructure.tc_geom_optimization()
         return Node3D_TC(tdstructure=td_opt)
     
     def _is_connectivity_identical(self, other) -> bool:
