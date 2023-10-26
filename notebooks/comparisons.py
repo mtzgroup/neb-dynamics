@@ -7,11 +7,11 @@ from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
-from neb_dynamics.Node2d import Node2D_Flower, Node2D
-from neb_dynamics.Node3D_TC import Node3D_TC
-from neb_dynamics.Node3D import Node3D
+from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D import Node3D
 
-from neb_dynamics.Node3D_gfn1xtb import Node3D_gfn1xtb
+from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 
 
@@ -132,6 +132,11 @@ tol = tols[ind]
 ss = step_sizes[ind]
 ks = k_values[ind]
 do_noise = noises_bool[ind]
+# -
+
+from neb_dynamics.optimizers.Linesearch import Linesearch
+
+
 
 # +
 nimages = NIMAGES
@@ -148,22 +153,24 @@ cni_ref = ChainInputs(
     k=ks,
     node_class=node_to_use,
     delta_k=0,
-    step_size=ss,
+    # step_size=ss,
     # step_size=.01,
     do_parallel=False,
     use_geodesic_interpolation=False,
-    min_step_size=.001,
-    als_max_steps=3
+    # min_step_size=.001,
+    # als_max_steps=3
 )
 gii = GIInputs(nimages=nimages)
 nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=0,
                vv_force_thre=0,
-               bfgs_flush_steps=20, bfgs_flush_thre=0.90, do_bfgs=True)
+               bfgs_flush_steps=20, bfgs_flush_thre=0.90, do_bfgs=False)
 chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
 chain_ref.parameters.hess_prev = np.eye(chain_ref.gradients.flatten().shape[0])
 # -
 
-n_ref = NEB(initial_chain=chain_ref,parameters=nbi)
+optimizer = Linesearch(step_size=ss, min_step_size=.001, als_max_steps=3)
+
+n_ref = NEB(initial_chain=chain_ref,parameters=nbi, optimizer=optimizer)
 n_ref.optimize_chain()
 
 gii = GIInputs(nimages=nimages)
@@ -172,7 +179,7 @@ nbi_msmep.early_stop_chain_rms_thre=10
 nbi_msmep.early_stop_force_thre=1
 #NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_chain_rms_thre=10, early_stop_force_thre=1)
 # nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=3, node_freezing=False)
-m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni_ref, gi_inputs=gii)
+m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni_ref, gi_inputs=gii, optimizer=optimizer)
 history, out_chain = m.find_mep_multistep(chain_ref)
 
 obj = n_ref
@@ -203,7 +210,7 @@ coords_long = np.linspace(start_point, end_point, nimages_long)
 if do_noise:
     coords_long[1:-1] += the_noise # i.e. good initial guess
 gii = GIInputs(nimages=nimages_long)
-nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=0, bfgs_flush_steps=20, bfgs_flush_thre=.90)
+nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=0, bfgs_flush_steps=20, bfgs_flush_thre=.90, do_bfgs=False)
 # cni_ref2 = ChainInputs(
 #     k=30,
 #     node_class=node_to_use,
@@ -216,7 +223,7 @@ nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre
 chain_ref_long = Chain.from_list_of_coords(list_of_coords=coords_long, parameters=cni_ref)
 # chain_ref_long = Chain.from_list_of_coords(list_of_coords=coords_long, parameters=cni_ref2)
 
-n_ref_long = NEB(initial_chain=chain_ref_long,parameters=nbi)
+n_ref_long = NEB(initial_chain=chain_ref_long,parameters=nbi, optimizer=optimizer)
 n_ref_long.optimize_chain()
 
 # +

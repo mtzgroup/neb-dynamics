@@ -6,10 +6,10 @@ from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
-from neb_dynamics.Node2d import Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, Node2D_Flower
+from neb_dynamics.nodes.Node2d import Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, Node2D_Flower
 from neb_dynamics.Node import AlessioError
 from itertools import product
-from neb_dynamics.TS_PRFO import TS_PRFO
+from TS.TS_PRFO import TS_PRFO
 from neb_dynamics.potential_functions import (
     sorry_func_0,
     sorry_func_1,

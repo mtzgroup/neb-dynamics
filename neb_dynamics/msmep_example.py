@@ -8,12 +8,12 @@ from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Node import AlessioError
-from neb_dynamics.Node2d import (Node2D, Node2D_2, Node2D_Flower, Node2D_ITM,
+from neb_dynamics.nodes.Node2d import (Node2D, Node2D_2, Node2D_Flower, Node2D_ITM,
                                  Node2D_LEPS)
 from neb_dynamics.potential_functions import (flower_func, sorry_func_0,
                                               sorry_func_1, sorry_func_2,
                                               sorry_func_3)
-from neb_dynamics.TS_PRFO import TS_PRFO
+from TS.TS_PRFO import TS_PRFO
 from neb_dynamics.ChainBiaser import ChainBiaser
 
 np.random.seed(0)

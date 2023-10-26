@@ -1006,7 +1006,7 @@ m_2[1].to_trajectory()
 
 # # TS search
 
-from neb_dynamics.TS_PRFO import TS_PRFO
+from TS.TS_PRFO import TS_PRFO
 
 # ts = TS_PRFO(initial_node=n_final.optimized[10],max_step_size=1, max_nsteps=2000, grad_thre=1e-4)
 ts = TS_PRFO(initial_node=n_orig.optimized[7],max_step_size=1, max_nsteps=2000, grad_thre=1e-4)

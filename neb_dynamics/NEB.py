@@ -17,7 +17,8 @@ from scipy.signal import argrelextrema
 from neb_dynamics.Chain import Chain
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Node import Node
-from neb_dynamics import ALS
+from neb_dynamics.optimizers import ALS
+from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
 from kneed import KneeLocator
 
@@ -38,6 +39,7 @@ class NoneConvergedException(Exception):
 class NEB:
     initial_chain: Chain
     parameters: NEBInputs
+    optimizer: Optimizer
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
@@ -233,14 +235,8 @@ class NEB:
 
 
     def update_chain(self, chain: Chain) -> Chain:
-
-        als_max_steps = chain.parameters.als_max_steps
-        beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
         
-        
-        hess_prev = chain.bfgs_hess
-        # hess_memory = chain.parameters.hess_memory
-        
+        hess_prev = chain.bfgs_hess        
         orig_shape = chain.gradients.shape
         
         grad_step_flat = chain.gradients.flatten()
@@ -248,34 +244,7 @@ class NEB:
             grad_step_flat = np.linalg.inv(hess_prev)@grad_step_flat
         
         grad_step = grad_step_flat.reshape(orig_shape)
-
-        disp = ALS.ArmijoLineSearch(
-            chain=chain,
-            t=chain.parameters.step_size,
-            alpha=0.01,
-            beta=beta,
-            grad=grad_step,
-            max_steps=als_max_steps
-        )
-        
-        # disp = chain.parameters.min_step_size
-        # disp = 0.001
-        scaling = 1
-        if np.linalg.norm(grad_step * disp) > chain.parameters.step_size*len(chain): # if step size is too large
-            scaling = (1/(np.linalg.norm(grad_step * disp)))*chain.parameters.step_size*len(chain)
-            
-        
-        if np.amax(chain.gradients) < ACTIVATION_TOL:
-            new_chain_coordinates = chain.coordinates - grad_step * disp*scaling
-        else:
-            new_chain_coordinates = chain.coordinates - chain.gradients * disp*scaling
-
-        new_nodes = []
-        for node, new_coords in zip(chain.nodes, new_chain_coordinates):
-
-            new_nodes.append(node.update_coords(new_coords))
-
-        new_chain = Chain(new_nodes, parameters=chain.parameters)
+        new_chain = self.optimizer.optimize_step(chain=chain, chain_gradients=grad_step)
         
         
         if self.parameters.do_bfgs:
