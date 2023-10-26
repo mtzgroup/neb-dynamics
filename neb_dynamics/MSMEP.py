@@ -12,6 +12,7 @@ from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
 from neb_dynamics.helper_functions import _get_ind_minima, _get_ind_maxima, create_friction_optimal_gi
 from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.Optimizer import Optimizer
 
 @dataclass
 class MSMEP:
@@ -19,6 +20,8 @@ class MSMEP:
     neb_inputs: NEBInputs
     chain_inputs: ChainInputs 
     gi_inputs: GIInputs 
+    
+    optimizer: Optimizer
     
     # other parameters
     skip_identical_graphs: bool = True
@@ -128,7 +131,7 @@ class MSMEP:
         else:
             interpolation = input_chain
 
-        n = NEB(initial_chain=interpolation, parameters=self.neb_inputs)
+        n = NEB(initial_chain=interpolation, parameters=self.neb_inputs, optimizer=self.optimizer)
         try:
             print("Running NEB calculation...")
             n.optimize_chain()
