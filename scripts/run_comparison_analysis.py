@@ -12,8 +12,8 @@ from retropaths.abinitio.trajectory import Trajectory
 import numpy as np
 
 from chemcloud import CCClient
-import os
-del os.environ['OE_LICENSE']
+# import os
+# del os.environ['OE_LICENSE']
 
 # +
 from openbabel import pybel
@@ -51,8 +51,8 @@ uni_molecular_rns = [r for r in all_rns if n_fragments(reactions[r]) == 1]
 directory = Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/")
 ca = CompetitorAnalyzer(comparisons_dir=directory,method='dlfind')
 
-# rns = ca.available_reaction_names
-rns = uni_molecular_rns
+rns = ca.available_reaction_names
+# rns = uni_molecular_rns
 
 m = MSMEP(neb_inputs=NEBInputs(), gi_inputs=GIInputs(), chain_inputs=ChainInputs())
 
@@ -66,8 +66,10 @@ for rn in rns:
     rn_dir = ca.structures_dir / rn
     rn_dir.mkdir(exist_ok=True)
     
-    start_fp = rn_dir  / "start.xyz"
-    end_fp = rn_dir / "end.xyz"
+    # start_fp = rn_dir  / "start.xyz"
+    # end_fp = rn_dir / "end.xyz"
+    start_fp = rn_dir  / "start_opt.xyz"
+    end_fp = rn_dir / "end_opt.xyz"
     
     
 #     rxn = reactions[rn]
@@ -86,17 +88,15 @@ for rn in rns:
     try:
         r = TDStructure.from_xyz(str(start_fp.resolve()))
         p = TDStructure.from_xyz(str(end_fp.resolve()))
-        if len(r.coords) > 0 and len(p.coords) > 0:
-            all_structures.append(r)
-            all_structures.append(p)
+        all_structures.append([r, p])
     except:
         print(f"\tRedo: {rn}")
 # -
 
 
 basis = 'def2-svp'
-# method = 'wb97xd3'
-method = 'wb97x-d3'
+method = 'wb97xd3'
+# method = 'wb97x-d3'
 kwds = {'maxiter':500}
 
 client = CCClient()

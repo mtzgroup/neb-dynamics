@@ -8,6 +8,8 @@ from retropaths.abinitio.tdstructure import TDStructure
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Node3D_TC import Node3D_TC
+from neb_dynamics.NEB import NEB, NoneConvergedException
+
 #from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
 #from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
 
@@ -109,33 +111,13 @@ def read_single_arguments():
     )
     
     parser.add_argument(
-        '-sig',
-        '--skip_identical_graphs',
-        dest='sig',
-        required=True,
-        type=int,
-        help='whether to skip optimizations for identical graph endpoints',
-        default=1
-    )
-    
-    parser.add_argument(
         '-min_ends',
         '--minimize_endpoints',
         dest='min_ends',
         required=True,
-        type=int,
+        type=bool,
         help='whether to minimize the endpoints before starting',
         default=False
-    )
-
-    parser.add_argument(
-        '-name',
-        '--file_name',
-        dest='name',
-        required=False,
-        type=str,
-        help='name of folder to output to || defaults to react_msmep',
-        default=None
     )
     
     return parser.parse_args()
@@ -152,22 +134,21 @@ def main():
     end = TDStructure.from_xyz(args.en, tot_charge=args.c, tot_spinmult=args.s)
     
     if args.nc != "node3d":
-        # method = 'b3lyp'
-        method = 'wb97xd3'
-        basis = 'def2-svp'
-        # method = 'gfn2xtb'
-        # basis = 'gfn2xtb'
-        # kwds = {'reference':'uks'}
-        if int(args.min_ends):
+        # method = 'ub3lyp'
+        # basis = 'def2-svp'
+        method = 'gfn2xtb'
+        basis = 'gfn2xtb'
+        kwds = {}
+        if args.min_ends:
             start = start.tc_geom_optimization()
             end = end.tc_geom_optimization()
         
         # kwds = {'reference':'uks'}
-        kwds = {'restricted': False}
+        # kwds = {'restricted': False}
         # kwds = {'restricted': False, 'pcm':'cosmo','epsilon':80}
         
     else:
-        if int(args.min_ends):
+        if args.min_ends:
             start = start.xtb_geom_optimization()
             end = end.xtb_geom_optimization()
     
@@ -189,48 +170,23 @@ def main():
                en_thre=(tol/10)*BOHR_TO_ANGSTROMS,
                v=1, 
                max_steps=2000,
-               early_stop_chain_rms_thre=0.002, 
-               early_stop_force_thre=0.003, 
-           
-               early_stop_still_steps_thre=500,
                vv_force_thre=0.0)
     
     gii = GIInputs(nimages=args.nimg,extra_kwds={"sweep":False})
     traj = create_friction_optimal_gi(traj, gii)
     chain = Chain.from_traj(traj=traj, parameters=cni)
-    m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii,
-              skip_identical_graphs=bool(args.sig))
-    history, out_chain = m.find_mep_multistep(chain)
-
-    fp = Path(args.st)
-    data_dir = fp.parent
-
-    if args.name:
-        foldername = data_dir / args.name
-        filename = data_dir / (args.name+'.xyz')
-
-    else:
-        foldername = data_dir/f"{fp.stem}_msmep"
-        filename = data_dir/f"{fp.stem}_msmep.xyz"
-
-
-    
-    out_chain.to_trajectory().write_trajectory(filename)
-    history.write_to_disk(foldername)
-    
-    
-    if args.dc:
-        op = data_dir/f"{filename.stem}_cleanups"
-        j = Janitor(
-            history_object=history,
-            out_path=op,
-            msmep_object=m
-        )
+    n = NEB(initial_chain=chain, parameters=nbi)
+    try:
+        n.optimize_chain()
         
-        clean_msmep = j.create_clean_msmep()
         
-        if clean_msmep:
-            clean_msmep.to_trajectory().write_trajectory(data_dir/f"{fp.stem}_msmep_clean.xyz")
+        
+        fp = Path(args.st)
+        data_dir = fp.parent
+        n.write_to_disk(data_dir/f"{fp.stem}_neb.xyz")
+    except NoneConvergedException as e:
+        data_dir = fp.parent
+        e.obj.write_to_disk(data_dir/f"{fp.stem}_failed.xyz",write_history=True)
         
     
         

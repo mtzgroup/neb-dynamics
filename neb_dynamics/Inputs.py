@@ -17,9 +17,13 @@ class NEBInputs:
     early_stop_chain_rms_thre: float = 0.0
     early_stop_corr_thre: float = 10.
     early_stop_still_steps_thre: int = 20
+    do_bfgs: bool = True
 
     vv_force_thre: float = 0.0
     v: bool = False
+    
+    bfgs_flush_steps: int = None
+    bfgs_flush_thre: float = 0.98
 
     def __post_init__(self):
         if self.en_thre is None:
@@ -30,6 +34,9 @@ class NEBInputs:
 
         if self.grad_thre is None:
             self.grad_thre = self.tol
+            
+        if self.bfgs_flush_steps is None:
+            self.bfgs_flush_steps = self.max_steps
             
             
 

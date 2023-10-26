@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 
 
 VELOCITY_SCALING = .3
+ACTIVATION_TOL = 100
 
 @dataclass
 class NoneConvergedException(Exception):
@@ -122,24 +123,38 @@ class NEB:
         chain_previous = self.initial_chain.copy()
         chain_previous._zero_velocity()
         self.chain_trajectory.append(chain_previous)
-
+        
+        steps_since_last_flush = 1
+        
         while nsteps < self.parameters.max_steps + 1:
-            max_grad_val = chain_previous.get_maximum_grad_magnitude()
-            max_rms_grad_val = chain_previous.get_maximum_rms_grad()
             if nsteps > 1:    
                 stop_early = self._check_early_stop(chain_previous)
                 if stop_early: 
                     return
-                
+            
+            # flush hessian if called for
+            if np.mod(steps_since_last_flush, self.parameters.bfgs_flush_steps)==0:
+                chain_previous.bfgs_hess = np.eye(chain_previous.gradients.flatten().shape[0])
+                steps_since_last_flush = 0
+            
             new_chain = self.update_chain(chain=chain_previous)
+            
+            # if new_chain._gperp_correlation(chain_previous) < self.parameters.bfgs_flush_thre:
+            if new_chain._gradient_correlation(chain_previous) < self.parameters.bfgs_flush_thre:
+                # print("\n\nI! FLUSHED\n\n")
+                new_chain.bfgs_hess = np.eye(chain_previous.gradients.flatten().shape[0])
+                steps_since_last_flush = 0
+            
             n_nodes_frozen = 0
             for node in new_chain:
                 if node.converged:
                     n_nodes_frozen+=1
                     
+            max_grad_val = new_chain.get_maximum_grad_magnitude()
+            max_rms_grad_val = new_chain.get_maximum_rms_grad()
             if self.parameters.v:
                 print(
-                    f"step {nsteps} // max |gradient| {max_grad_val} // rms grad {max_rms_grad_val} // |velocity| {np.linalg.norm(new_chain.parameters.velocity)} // nodes_frozen {n_nodes_frozen}{' '*20}", end="\r"
+                    f"step {nsteps} // max |gradient| {max_grad_val} // rms grad {max_rms_grad_val} // |velocity| {np.linalg.norm(new_chain.velocity)} // nodes_frozen {n_nodes_frozen} // {new_chain._gradient_correlation(chain_previous)}{' '*20}", end="\r"
                 )
             sys.stdout.flush()
 
@@ -155,6 +170,7 @@ class NEB:
             chain_previous = new_chain.copy()
 
             nsteps += 1
+            steps_since_last_flush += 1
 
         new_chain = self.update_chain(chain=chain_previous)
         if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
@@ -166,7 +182,7 @@ class NEB:
 
     def get_chain_velocity(self, chain: Chain) -> np.array:
         
-        prev_velocity = chain.parameters.velocity
+        prev_velocity = chain.velocity
         als_max_steps = chain.parameters.als_max_steps
         
         beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
@@ -193,7 +209,7 @@ class NEB:
         #     new_vel = total_force
         #     # print(f"\n\n keeping part of velocity! {np.linalg.norm(new_vel)}\n\n")
         
-        # prev_velocity = chain.parameters.velocity
+        # prev_velocity = chain.velocity
         # step = chain.parameters.step_size / 100
 
         new_force = -(chain.gradients) * step        
@@ -215,28 +231,44 @@ class NEB:
         
         return new_vel, total_force
 
+
     def update_chain(self, chain: Chain) -> Chain:
 
-        do_vv = self.do_velvel(chain=chain)
+        als_max_steps = chain.parameters.als_max_steps
+        beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
+        
+        
+        hess_prev = chain.bfgs_hess
+        # hess_memory = chain.parameters.hess_memory
+        
+        orig_shape = chain.gradients.shape
+        
+        grad_step_flat = chain.gradients.flatten()
+        if self.parameters.do_bfgs:
+            grad_step_flat = np.linalg.inv(hess_prev)@grad_step_flat
+        
+        grad_step = grad_step_flat.reshape(orig_shape)
 
-        if do_vv:
-            new_vel, force = self.get_chain_velocity(chain=chain)
-            new_chain_coordinates = chain.coordinates + force
-            chain.parameters.velocity = new_vel
-
-        else:
-            als_max_steps = chain.parameters.als_max_steps
-            beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
+        disp = ALS.ArmijoLineSearch(
+            chain=chain,
+            t=chain.parameters.step_size,
+            alpha=0.01,
+            beta=beta,
+            grad=grad_step,
+            max_steps=als_max_steps
+        )
+        
+        # disp = chain.parameters.min_step_size
+        # disp = 0.001
+        scaling = 1
+        if np.linalg.norm(grad_step * disp) > chain.parameters.step_size*len(chain): # if step size is too large
+            scaling = (1/(np.linalg.norm(grad_step * disp)))*chain.parameters.step_size*len(chain)
             
-            disp = ALS.ArmijoLineSearch(
-                chain=chain,
-                t=chain.parameters.step_size,
-                alpha=0.01,
-                beta=beta,
-                grad=chain.gradients,
-                max_steps=als_max_steps
-            )
-            new_chain_coordinates = chain.coordinates - chain.gradients * disp
+        
+        if np.amax(chain.gradients) < ACTIVATION_TOL:
+            new_chain_coordinates = chain.coordinates - grad_step * disp*scaling
+        else:
+            new_chain_coordinates = chain.coordinates - chain.gradients * disp*scaling
 
         new_nodes = []
         for node, new_coords in zip(chain.nodes, new_chain_coordinates):
@@ -244,7 +276,66 @@ class NEB:
             new_nodes.append(node.update_coords(new_coords))
 
         new_chain = Chain(new_nodes, parameters=chain.parameters)
+        
+        
+        if self.parameters.do_bfgs:
+            # hessian update from wikipedia
+            sk = (- grad_step * disp).flatten().reshape(-1,1)
+            yk = (new_chain.gradients - chain.gradients).flatten().reshape(-1,1)
+            
+            # print(f"yk={yk.shape}\nsk={sk.shape}")
+            
+            ## this updates the hessian that would have to be inverted
+            A = ((yk@yk.T) / (yk.T@sk))
+            B = (hess_prev@sk@sk.T@(hess_prev.T)) / (sk.T@hess_prev@sk)
+            
+            ## this updates an approximate inverted hessian
+            # A = ((sk.T*yk + yk.T*hess_prev*yk)*(sk*sk.T)) / ((sk.T*yk)**2)
+            
+            # B = (hess_prev*yk*sk.T + sk*yk.T*hess_prev) / (sk.T*yk)
+            new_hess = hess_prev + A - B
+        
+        
+            # hess_upt = A - B
+        
+            if np.amax(chain.gradients) < ACTIVATION_TOL:
+                new_chain.bfgs_hess = new_hess
+            else:
+                new_chain.bfgs_hess = hess_prev
+        
         return new_chain
+
+
+    # def update_chain(self, chain: Chain) -> Chain:
+
+    #     do_vv = self.do_velvel(chain=chain)
+
+    #     if do_vv:
+    #         new_vel, force = self.get_chain_velocity(chain=chain)
+    #         new_chain_coordinates = chain.coordinates + force
+    #         chain.velocity = new_vel
+
+    #     else:
+    #         als_max_steps = chain.parameters.als_max_steps
+    #         beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
+            
+    #         disp = ALS.ArmijoLineSearch(
+    #             chain=chain,
+    #             t=chain.parameters.step_size,
+    #             alpha=0.01,
+    #             beta=beta,
+    #             grad=chain.gradients,
+    #             max_steps=als_max_steps
+    #         )
+    #         new_chain_coordinates = chain.coordinates - chain.gradients * disp
+
+    #     new_nodes = []
+    #     for node, new_coords in zip(chain.nodes, new_chain_coordinates):
+
+    #         new_nodes.append(node.update_coords(new_coords))
+
+    #     new_chain = Chain(new_nodes, parameters=chain.parameters)
+    #     return new_chain
 
     def _update_node_convergence(self, chain: Chain, indices: np.array) -> None:
         for i, node in enumerate(chain):
@@ -312,33 +403,6 @@ class NEB:
             self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
         return len(converged_nodes_indices) == len(chain_new)
 
-    def remove_chain_folding(self, chain: Chain) -> Chain:
-        not_converged = True
-        count = 0
-        points_removed = []
-        while not_converged:
-            if self.parameters.v > 1:
-                print(f"anti-folding: on count {count}...")
-            new_chain = []
-            new_chain.append(chain[0])
-
-            for prev_node, current_node, next_node in chain.iter_triplets():
-                vec1 = current_node.coords - prev_node.coords
-                vec2 = next_node.coords - current_node.coords
-
-                if np.all(current_node.dot_function(vec1, vec2)) > 0:
-                    new_chain.append(current_node)
-                else:
-                    points_removed.append(current_node)
-
-            new_chain.append(chain[-1])
-            new_chain = Chain(nodes=new_chain, parameters=chain.parameters)
-            if self._check_dot_product_converged(new_chain):
-                not_converged = False
-            chain = new_chain.copy()
-            count += 1
-
-        return chain
 
     def _check_dot_product_converged(self, chain: Chain) -> bool:
         dps = []

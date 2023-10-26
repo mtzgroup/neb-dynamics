@@ -67,14 +67,14 @@ def main():
     ref_td = chain_list[0][0].tdstructure
     method = args.m
     basis = args.b
-    kwds = {}
+    kwds = {'reference':'uks'}
     # kwds = {'restricted': False}
     # kwds = {'restricted': False, 'pcm':'cosmo','epsilon':80}  
     
     all_inps = []
     all_rpg = []
     for chain in chain_list:
-        rpg = ReactionProfileGenerator(input_chain=chain, method=method, basis=basis)
+        rpg = ReactionProfileGenerator(input_obj=chain, method=method, basis=basis, kwds=kwds)
         inps = rpg.create_pseudo_irc_inputs()
         all_inps.extend(inps)
         all_rpg.append(rpg)

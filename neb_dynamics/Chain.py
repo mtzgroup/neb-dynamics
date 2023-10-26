@@ -29,15 +29,19 @@ class Chain:
     parameters: ChainInputs
     
     def __post_init__(self):
-        if not hasattr(self.parameters, "velocity"):
+        if not hasattr(self, "velocity"):
             self._zero_velocity()
+            
+        if not hasattr(self, "bfgs_hess"):
+            bfgs_hess = np.eye(self.coordinates.flatten().shape[0])
+            self.bfgs_hess = bfgs_hess
             
             
     def _zero_velocity(self):
         if self[0].is_a_molecule:
-            self.parameters.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords), 3))
+            self.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords), 3))
         else:
-            self.parameters.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords)))
+            self.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords)))
 
     @property
     def n_atoms(self):
@@ -95,6 +99,13 @@ class Chain:
         normalization = np.dot(chain1_vec, chain1_vec)
         
         return projector / normalization
+    
+    
+    def _gperp_correlation(self, other_chain: Chain):
+        dp = np.dot(self.get_g_perps().flatten(), other_chain.get_g_perps().flatten()) 
+        normalization = (np.linalg.norm(self.get_g_perps())*np.linalg.norm(other_chain.get_g_perps().flatten()))
+        
+        return dp / normalization
     
     def _gradient_correlation(self, other_chain: Chain):
         
@@ -198,6 +209,7 @@ class Chain:
     def copy(self):
         list_of_nodes = [node.copy() for node in self.nodes]
         chain_copy = Chain(nodes=list_of_nodes, parameters=self.parameters)
+        chain_copy.bfgs_hess = self.bfgs_hess
         return chain_copy
 
     def iter_triplets(self) -> list[list[Node]]:
@@ -306,7 +318,6 @@ class Chain:
                 next_node=next_node,
             )
             
-
             if self.parameters.node_freezing:
                 if not current_node.converged:
                     pe_grads_nudged.append(pe_grad_nudged)
@@ -352,6 +363,11 @@ class Chain:
         res = calc.singlepoint()
 
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
+
+    def get_g_perps(self):
+        pe_grads_nudged, _ = self.pe_grads_spring_forces_nudged()
+        return pe_grads_nudged
+        
 
 
     # @cached_property

@@ -18,6 +18,8 @@ from kneed import KneeLocator
 from neb_dynamics.TreeNode import TreeNode
 from retropaths.molecules.elements import ElementData
 from retropaths.abinitio.tdstructure import TDStructure
+from retropaths.molecules.molecule import Molecule
+from neb_dynamics.Node3D import Node3D
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -26,6 +28,11 @@ RDLogger.DisableLog('rdApp.*')
 
 
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+# -
+
+huh = Path("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen/node_3.xyz")
+
+huh.parent / (huh.stem+"_opt.xyz")
 
 # +
 from openbabel import pybel
@@ -37,6 +44,82 @@ pybel.ob.obErrorLog.StopLogging()
 # import os
 # del os.environ['OE_LICENSE']
 # -
+
+# # Can I create correct ab initio profiles using XTB seeds
+
+basis = 'def2-svp'
+method = 'wb97xd3'
+# rn = 'Semmler-Wolff-Reaction'
+rn = 'Thiocarbamate-Resonance'
+data_dir = Path(f"/home/jdep/T3D_data/msmep_draft/comparisons/asneb/{rn}")
+
+
+def get_relevant_leaves(rn):
+    fp = data_dir / 'initial_guess_msmep'
+    adj_mat_fp = fp / 'adj_matrix.txt'
+    adj_mat = np.loadtxt(adj_mat_fp)
+    if adj_mat.size == 1:
+        return [Chain.from_xyz(fp / f'node_0.xyz', ChainInputs(k=0.1, delta_k=0.09))]
+    else:
+    
+        a = np.sum(adj_mat,axis=1)
+        inds_leaves = np.where(a == 1)[0] 
+        chains = [Chain.from_xyz(fp / f'node_{ind}.xyz',ChainInputs(k=0.1, delta_k=0.09)) for ind in inds_leaves]
+        return chains
+
+
+out_chains = get_relevant_leaves(rn)
+
+dft_chains = [Chain.from_xyz(data_dir / f'dft_chain_{i}.xyz', ChainInputs()) for i in range(len(list(data_dir.glob('dft*'))))]
+assert len(dft_chains) > 0, "No dft chains exist"
+
+# +
+ens = []
+ens_dft = []
+c_xtb_nodes = []
+
+for c in out_chains:
+    xtb_nodes = [c[0], Node3D(c.get_ts_guess()), c[-1]]
+    en = [c[0].energy, c.get_ts_guess().energy_xtb(), c[-1].energy]
+    c_xtb_nodes.extend(xtb_nodes)
+    
+    ens.extend(en)
+
+    
+
+for c_dft in dft_chains:
+    dft_traj = c_dft.to_trajectory()
+    for td in dft_traj:
+        td.tc_model_method = method
+        td.tc_model_basis = basis
+    
+    en_dft, _ = dft_traj.energies_and_gradients_tc()
+    ens_dft.extend(en_dft)
+    
+    
+ens = np.array(ens)
+ens_dft = np.array(ens_dft)
+# -
+
+c_dft = Chain.from_list_of_chains(dft_chains, ChainInputs())
+
+c_xtb = Chain(nodes=c_xtb_nodes, parameters=ChainInputs())
+
+
+def draw_molecule_profile(chain):
+    mol_list = [td.molecule_rp for td in chain.to_trajectory()]
+    mol_list_sub = [val for i, val in enumerate(mol_list) if np.mod(i, 3) or i==0]
+    return Molecule.draw_list(mol_list_sub, mode='rdkit')
+
+
+draw_molecule_profile(c_xtb)
+
+draw_molecule_profile(c_dft)
+
+plt.plot((ens-ens[0])*627.5, 'o-', label='xtb')
+plt.plot((ens_dft-ens_dft[0])*627.5, 'o-', label='dft')
+plt.title(f"{rn}")
+plt.legend()
 
 # # Can I seed ab initio runs with XTB?
 
