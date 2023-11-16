@@ -19,6 +19,7 @@ from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Node import Node
 from neb_dynamics.optimizers import ALS
 from neb_dynamics.Optimizer import Optimizer
+from neb_dynamics.optimizers.Linesearch import Linesearch
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
 from kneed import KneeLocator
 
@@ -39,7 +40,7 @@ class NoneConvergedException(Exception):
 class NEB:
     initial_chain: Chain
     parameters: NEBInputs
-    optimizer: Optimizer
+    optimizer: Optimizer = Linesearch
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
@@ -48,7 +49,7 @@ class NEB:
     def __post_init__(self):
         self.n_steps_still_chain = 0
         
-    def do_velvel(self, chain: Chain):
+    def do_velvel(self, chain: Chain): 
         max_grad_val = chain.get_maximum_grad_magnitude()
         return max_grad_val < self.parameters.vv_force_thre
 
@@ -126,26 +127,13 @@ class NEB:
         chain_previous._zero_velocity()
         self.chain_trajectory.append(chain_previous)
         
-        steps_since_last_flush = 1
-        
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:    
                 stop_early = self._check_early_stop(chain_previous)
                 if stop_early: 
                     return
             
-            # flush hessian if called for
-            if np.mod(steps_since_last_flush, self.parameters.bfgs_flush_steps)==0:
-                chain_previous.bfgs_hess = np.eye(chain_previous.gradients.flatten().shape[0])
-                steps_since_last_flush = 0
-            
             new_chain = self.update_chain(chain=chain_previous)
-            
-            # if new_chain._gperp_correlation(chain_previous) < self.parameters.bfgs_flush_thre:
-            if new_chain._gradient_correlation(chain_previous) < self.parameters.bfgs_flush_thre:
-                # print("\n\nI! FLUSHED\n\n")
-                new_chain.bfgs_hess = np.eye(chain_previous.gradients.flatten().shape[0])
-                steps_since_last_flush = 0
             
             n_nodes_frozen = 0
             for node in new_chain:
@@ -158,7 +146,6 @@ class NEB:
                 print(
                     f"step {nsteps} // max |gradient| {max_grad_val} // rms grad {max_rms_grad_val} // |velocity| {np.linalg.norm(new_chain.velocity)} // nodes_frozen {n_nodes_frozen} // {new_chain._gradient_correlation(chain_previous)}{' '*20}", end="\r"
                 )
-            sys.stdout.flush()
 
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)
@@ -172,7 +159,6 @@ class NEB:
             chain_previous = new_chain.copy()
 
             nsteps += 1
-            steps_since_last_flush += 1
 
         new_chain = self.update_chain(chain=chain_previous)
         if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
@@ -235,42 +221,25 @@ class NEB:
 
 
     def update_chain(self, chain: Chain) -> Chain:
-        
-        hess_prev = chain.bfgs_hess        
-        orig_shape = chain.gradients.shape
-        
-        grad_step_flat = chain.gradients.flatten()
-        if self.parameters.do_bfgs:
-            grad_step_flat = np.linalg.inv(hess_prev)@grad_step_flat
-        
-        grad_step = grad_step_flat.reshape(orig_shape)
-        new_chain = self.optimizer.optimize_step(chain=chain, chain_gradients=grad_step)
-        
-        
-        if self.parameters.do_bfgs:
-            # hessian update from wikipedia
-            sk = (- grad_step * disp).flatten().reshape(-1,1)
-            yk = (new_chain.gradients - chain.gradients).flatten().reshape(-1,1)
+        grad_step = chain.gradients
+        do_vv = self.do_velvel(chain=chain)
+        if do_vv:
+            new_vel, force = self.get_chain_velocity(chain=chain)
+            new_chain_coordinates = chain.coordinates + force
+            chain.velocity = new_vel
             
-            # print(f"yk={yk.shape}\nsk={sk.shape}")
+            new_nodes = []
+            for node, new_coords in zip(chain.nodes, new_chain_coordinates):
+
+                new_nodes.append(node.update_coords(new_coords))
+
+            new_chain = Chain(new_nodes, parameters=chain.parameters)
             
-            ## this updates the hessian that would have to be inverted
-            A = ((yk@yk.T) / (yk.T@sk))
-            B = (hess_prev@sk@sk.T@(hess_prev.T)) / (sk.T@hess_prev@sk)
             
-            ## this updates an approximate inverted hessian
-            # A = ((sk.T*yk + yk.T*hess_prev*yk)*(sk*sk.T)) / ((sk.T*yk)**2)
             
-            # B = (hess_prev*yk*sk.T + sk*yk.T*hess_prev) / (sk.T*yk)
-            new_hess = hess_prev + A - B
+        else:
+            new_chain = self.optimizer.optimize_step(chain=chain, chain_gradients=grad_step)        
         
-        
-            # hess_upt = A - B
-        
-            if np.amax(chain.gradients) < ACTIVATION_TOL:
-                new_chain.bfgs_hess = new_hess
-            else:
-                new_chain.bfgs_hess = hess_prev
         
         return new_chain
 
@@ -321,32 +290,55 @@ class NEB:
 
     def _check_grad_converged(self, chain: Chain) -> bool:
         bools = []
-        max_grad_components = []
-        gradients = chain.gradients
-        for grad in gradients:
-            max_grad = np.amax(np.abs(grad))
-            max_grad_components.append(max_grad)
-            bools.append(max_grad < self.parameters.grad_thre)
+        if not self.parameters._use_dlf_conv:
+            max_grad_components = []
+            gradients = chain.gradients
+            for grad in gradients:
+                max_grad = np.amax(np.abs(grad))
+                max_grad_components.append(max_grad)
+                bools.append(max_grad < self.parameters.grad_thre)
 
-        return np.where(bools), max_grad_components
+            return np.where(bools), max_grad_components
+        else:
+            gperp, gparr = chain.pe_grads_spring_forces_nudged()
+            natom, ndim = gperp[0].shape
+            
+            n_free_vars_per_image = (natom-3)*ndim + 3 # this is because 6 atoms are frozen to remove trans and rot
+            gps = np.array([np.linalg.norm(gp) / np.sqrt(n_free_vars_per_image) for gp in gperp])
+            gps = np.insert(gps, 0, np.zeros_like(gps[0]))
+            gps = np.append(gps, np.zeros_like(gps[0]))
+            gps_conv = gps <= self.parameters.tol 
+            
+            return np.where(gps_conv), gps
 
     def _check_rms_grad_converged(self, chain: Chain):
+        
         bools = []
         rms_grads = []
-        grads = chain.gradients
-        for grad in grads:
-            rms_gradient = np.sqrt(np.mean(np.square(grad.flatten())) / len(grad))
-            rms_grads.append(rms_gradient)
-            rms_grad_converged = rms_gradient <= self.parameters.rms_grad_thre
-            bools.append(rms_grad_converged)
+        if not self.parameters._use_dlf_conv:
+            grads = chain.gradients
+            for grad in grads:
+                rms_gradient = np.sqrt(np.mean(np.square(grad.flatten())) / len(grad))
+                rms_grads.append(rms_gradient)
+                rms_grad_converged = rms_gradient <= self.parameters.rms_grad_thre
+                bools.append(rms_grad_converged)
 
-        return np.where(bools), rms_grads
-
+            return np.where(bools), rms_grads
+        else:
+            gperp, gparr = chain.pe_grads_spring_forces_nudged()
+            natom, ndim = gperp[0].shape
+            # n_free_vars_per_image = (natom-3)*ndim + 3 # this is because 6 atoms are frozen to remove trans and rot
+            rms_gps = np.array([np.sqrt(sum(np.square(gp.flatten())) / len(gp.flatten()))  for gp in gperp])
+            rms_gps = np.insert(rms_gps, 0, np.zeros_like(rms_gps[0]))
+            rms_gps = np.append(rms_gps, np.zeros_like(rms_gps[0]))
+            
+            rms_gps_conv = rms_gps <= (self.parameters.tol / (1.5))
+            return np.where(rms_gps_conv), rms_gps
+        
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         """
         https://chemshell.org/static_files/py-chemshell/manual/build/html/opt.html?highlight=nudged
         """
-
         rms_grad_conv_ind, max_rms_grads = self._check_rms_grad_converged(chain_new)
         en_converged_indices, en_deltas = self._check_en_converged(
             chain_prev=chain_prev, chain_new=chain_new
@@ -359,6 +351,9 @@ class NEB:
         )
         converged_nodes_indices = np.intersect1d(converged_nodes_indices, grad_conv_ind)
 
+        if chain_new.parameters.node_freezing:
+            self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
+            
         if self.parameters.v > 1:
             [
                 print(
@@ -368,9 +363,9 @@ class NEB:
             ]
         if self.parameters.v > 1:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
-        if chain_new.parameters.node_freezing:
-            self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
         return len(converged_nodes_indices) == len(chain_new)
+    
+       
 
 
     def _check_dot_product_converged(self, chain: Chain) -> bool:
@@ -611,5 +606,6 @@ class NEB:
             parameters=neb_parameters,
             optimized=history[-1],
             chain_trajectory=history,
+            optimizer=Linesearch()
         )
         return n

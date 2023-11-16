@@ -5,6 +5,8 @@ from functools import cached_property
 
 import numpy as np
 from retropaths.abinitio.tdstructure import TDStructure
+from retropaths.abinitio.trajectory import Trajectory
+
 
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
@@ -43,19 +45,27 @@ class Node3D_TC(Node):
         res = Node3D_TC.run_tc_calc(node.tdstructure)
         return res.get_gradient() * BOHR_TO_ANGSTROMS
 
-    @cached_property
+    @property
     def energy(self):
         if self._cached_energy is not None:
             return self._cached_energy
         else:
-            return self.tdstructure.energy_tc()
+            ene =  self.tdstructure.energy_tc()
+            self._cached_energy = ene
+            return ene
 
-    @cached_property
+    @property
     def gradient(self):
-        if self._cached_gradient is not None:
-            return self._cached_gradient
+        if self.converged:
+            return np.zeros_like(self.coords)
+        
         else:
-            return self.tdstructure.gradient_tc()
+            if self._cached_gradient is not None:
+                return self._cached_gradient
+            else:
+                grad =  self.tdstructure.gradient_tc()
+                self._cached_gradient = grad
+                return grad
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
@@ -131,11 +141,21 @@ class Node3D_TC(Node):
     
     @staticmethod
     def calculate_energy_and_gradients_parallel(chain):
-        ens_grads_lists = chain.to_trajectory().energies_and_gradients_tc()
-        energy_gradient_tuples = list(
-            zip(ens_grads_lists[0], ens_grads_lists[1])
-        )
-        return energy_gradient_tuples
+        ens_grads_lists = [None]*len(chain)
+        traj = chain.to_trajectory()
+        inds_converged = [i for i, node in enumerate(chain) if node.converged]
+        inds_not_converged = [i for i, node in enumerate(chain) if not node.converged]
+        for ind in inds_converged:
+            ref_node = chain[ind]
+            ens_grads_lists[ind] = (ref_node._cached_energy, np.zeros_like(ref_node.coords))
+        
+        new_traj = Trajectory([td for (i, td) in enumerate(traj) if i in inds_not_converged])
+        new_traj_ene_grads = new_traj.energies_and_gradients_tc()
+        for (ene, grad, ind) in zip(new_traj_ene_grads[0], new_traj_ene_grads[1], inds_not_converged):
+            ens_grads_lists[ind] = (ene, grad)
+        
+        
+        return ens_grads_lists
     
     def do_geometry_optimization(self) -> Node3D_TC:
         # td_opt_xtb = self.tdstructure.xtb_geom_optimization()

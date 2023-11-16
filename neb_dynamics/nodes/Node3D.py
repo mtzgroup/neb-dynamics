@@ -124,14 +124,18 @@ class Node3D(Node):
         return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
         
 
-    @cached_property
+    @property
     def gradient(self):
-        if self._cached_gradient is not None:
-            return self._cached_gradient
+        if self.converged:
+            return np.zeros_like(self.coords)
+        
         else:
-            return (
-                Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
-            )
+            if self._cached_gradient is not None:
+                return self._cached_gradient
+            else:
+                return (
+                    Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
+                )
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
@@ -163,11 +167,16 @@ class Node3D(Node):
         return pe_grad_nudged
 
     def copy(self):
-        return Node3D(
+        copy_node = Node3D(
             tdstructure=self.tdstructure.copy(),
             converged=self.converged,
             do_climb=self.do_climb,
         )
+        
+        copy_node._cached_energy = self._cached_energy
+        copy_node._cached_gradient = self._cached_gradient
+        return copy_node
+
 
     def update_coords(self, coords: np.array) -> None:
 
@@ -251,8 +260,9 @@ class Node3D(Node):
 
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
-        atomic_numbers, coords_bohr, charge, spinmult = tuple
-        
+        atomic_numbers, coords_bohr, charge, spinmult, converged, prev_en = tuple
+        if converged:
+            return prev_en, np.zeros_like(coords_bohr)
         calc = Calculator(
             get_method("GFN2-xTB"),
             numbers=np.array(atomic_numbers),
@@ -275,9 +285,16 @@ class Node3D(Node):
                 n.tdstructure.coords_bohr,
                 n.tdstructure.charge,
                 n.tdstructure.spinmult,
+                n.converged,
+                n._cached_energy
             )
             for n in chain.nodes
         )
+        
+        
+        
+        
+        
         with mp.Pool() as p:
             ene_gradients = p.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator)
         return ene_gradients

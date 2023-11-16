@@ -24,10 +24,17 @@ class NEBInputs:
     
     bfgs_flush_steps: int = None
     bfgs_flush_thre: float = 0.98
+    
+    # im sorry god
+    _use_dlf_conv: bool = False
 
     def __post_init__(self):
         if self.en_thre is None:
-            self.en_thre = self.tol / 450
+            if self._use_dlf_conv:
+                self.en_thre = self.tol
+            else:
+                self.en_thre = self.tol / 450
+                
 
         if self.rms_grad_thre is None:
             self.rms_grad_thre = self.tol * (2 / 3)

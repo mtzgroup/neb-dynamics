@@ -210,6 +210,8 @@ class Chain:
         list_of_nodes = [node.copy() for node in self.nodes]
         chain_copy = Chain(nodes=list_of_nodes, parameters=self.parameters)
         chain_copy.bfgs_hess = self.bfgs_hess
+        chain_copy.velocity = self.velocity
+        
         return chain_copy
 
     def iter_triplets(self) -> list[list[Node]]:
@@ -318,17 +320,17 @@ class Chain:
                 next_node=next_node,
             )
             
-            if self.parameters.node_freezing:
-                if not current_node.converged:
-                    pe_grads_nudged.append(pe_grad_nudged)
-                    spring_forces_nudged.append(spring_force_nudged)
-                else:
-                    zero = np.zeros_like(pe_grad_nudged)
-                    pe_grads_nudged.append(zero)
-                    spring_forces_nudged.append(zero)
-            else:
-                pe_grads_nudged.append(pe_grad_nudged)
-                spring_forces_nudged.append(spring_force_nudged)
+            # if self.parameters.node_freezing:
+                # if not current_node.converged:
+                    # pe_grads_nudged.append(pe_grad_nudged)
+                    # spring_forces_nudged.append(spring_force_nudged)
+                # else:
+                    # zero = np.zeros_like(pe_grad_nudged)
+                    # pe_grads_nudged.append(zero)
+                    # spring_forces_nudged.append(zero)
+            # else:
+            pe_grads_nudged.append(pe_grad_nudged)
+            spring_forces_nudged.append(spring_force_nudged)
 
         pe_grads_nudged = np.array(pe_grads_nudged)
         spring_forces_nudged = np.array(spring_forces_nudged)
@@ -341,8 +343,8 @@ class Chain:
         gperp, gspring = self.pe_grads_spring_forces_nudged()
         max_gperps = []
         for gp, node in zip(gperp, self):            
-            if not node.converged:
-                max_gperps.append(np.amax(np.abs(gp)))
+            # if not node.converged:
+            max_gperps.append(np.amax(np.abs(gp)))
         return np.max(max_gperps)
     
     def get_maximum_rms_grad(self):
@@ -366,7 +368,11 @@ class Chain:
 
     def get_g_perps(self):
         pe_grads_nudged, _ = self.pe_grads_spring_forces_nudged()
-        return pe_grads_nudged
+        zero = np.zeros_like(pe_grads_nudged[0])
+        grads = np.insert(pe_grads_nudged, 0, zero, axis=0)
+        grads = np.insert(grads, len(grads), zero, axis=0)
+        
+        return grads
         
 
 
@@ -415,10 +421,10 @@ class Chain:
         #     grads[:, 2, :1] = 0  # this atom can only move in a plane
 
 
-        # zero all nodes that have converged 
-        for (i, grad), node in zip(enumerate(grads), self.nodes):
-            if node.converged:
-                grads[i] = grad*0
+        # # zero all nodes that have converged 
+        # for (i, grad), node in zip(enumerate(grads), self.nodes):
+        #     if node.converged:
+        #         grads[i] = grad*0
 
         return grads
 

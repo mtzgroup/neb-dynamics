@@ -7,17 +7,19 @@ from retropaths.abinitio.tdstructure import TDStructure
 
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
-from neb_dynamics.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 #from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
 #from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
+from neb_dynamics.optimizers.BFGS import BFGS
 
-from neb_dynamics.Node3D import Node3D
+from neb_dynamics.nodes.Node3D import Node3D
 from neb_dynamics.Janitor import Janitor
-from neb_dynamics.Node3D_gfn1xtb import Node3D_gfn1xtb
+from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.helper_functions import create_friction_optimal_gi
+from neb_dynamics.optimizers.BFGS import BFGS
 
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 import numpy as np
@@ -158,6 +160,12 @@ def main():
         # method = 'gfn2xtb'
         # basis = 'gfn2xtb'
         # kwds = {'reference':'uks'}
+        start.tc_model_method = method
+        end.tc_model_method = method
+        
+        start.tc_model_basis = basis
+        end.tc_model_basis = basis
+        
         if int(args.min_ends):
             start = start.tc_geom_optimization()
             end = end.tc_geom_optimization()
@@ -182,13 +190,15 @@ def main():
 
     tol = args.tol
     
-    cni = ChainInputs(k=0.1,delta_k=0.09, node_class=nc,step_size=3,  min_step_size=0.33, friction_optimal_gi=True, do_parallel=do_parallel,
-                      als_max_steps=3, node_freezing=False)
+    # cni = ChainInputs(k=0.1,delta_k=0.09, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=False)
+    # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=False)
+    cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
+    optimizer = BFGS(bfgs_flush_steps=100, bfgs_flush_thre=0.99, step_size=0.10*traj[0].atomn, min_step_size=0.005*traj[0].atomn)
     nbi = NEBInputs(grad_thre=tol*BOHR_TO_ANGSTROMS,
                rms_grad_thre=(tol/2)*BOHR_TO_ANGSTROMS,
                en_thre=(tol/10)*BOHR_TO_ANGSTROMS,
                v=1, 
-               max_steps=2000,
+               max_steps=500,
                early_stop_chain_rms_thre=0.002, 
                early_stop_force_thre=0.003, 
            
@@ -199,7 +209,7 @@ def main():
     traj = create_friction_optimal_gi(traj, gii)
     chain = Chain.from_traj(traj=traj, parameters=cni)
     m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii,
-              skip_identical_graphs=bool(args.sig))
+              skip_identical_graphs=bool(args.sig), optimizer=optimizer)
     history, out_chain = m.find_mep_multistep(chain)
 
     fp = Path(args.st)

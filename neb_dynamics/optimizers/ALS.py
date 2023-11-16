@@ -23,7 +23,7 @@ def ArmijoLineSearch(chain: Chain, t, alpha, beta, grad, max_steps):
     count = 0
     # en_struct = np.linalg.norm(grad)
     en_struct = chain.get_maximum_grad_magnitude()
-    t*= 1+beta
+    t *= (1/beta)
     condition = True
     while condition and count < max_steps:
         try :
