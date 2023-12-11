@@ -7,13 +7,13 @@ from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
-from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D
+from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D, Node2D_LEPS
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D import Node3D
 
 from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-
+from neb_dynamics.potential_functions import sorry_func_0, sorry_func_1, sorry_func_2,sorry_func_3, flower_func
 
 from neb_dynamics.TreeNode import TreeNode
 
@@ -40,10 +40,95 @@ from IPython.core.display import HTML
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
+
+
+n_jan = NEB.read_from_disk("/home/jdep/T3D_data/dlfind_vs_jan/jan_bfgs_dlf_conv")
+
+len(n_jan.chain_trajectory)
+
+# +
+
 NIMAGES = 15
 
 
+# -
+
 # # Helper Functions
+
+def animate_this_mf(neb_obj, potential_func,
+                   saveasgif=False, fn='anim.gif'):
+    # %matplotlib notebook
+    import matplotlib.pyplot as plt
+    import matplotlib.animation
+    import numpy as np
+
+
+    n_nodes = len(neb_obj.initial_chain.nodes)
+    en_func = neb_obj.initial_chain[0].en_func
+    chain_traj = neb_obj.chain_trajectory
+    # plt.style.use("seaborn-pastel")
+
+    figsize = 5
+    s=4
+
+    fig, ax = plt.subplots(figsize=(1.618 * figsize, figsize))
+
+    min_val = -s
+    max_val = s
+
+    x = np.linspace(start=min_val, stop=max_val, num=1000)
+    y = x.reshape(-1, 1)
+
+
+
+    h = potential_func([x, y])
+    cs = plt.contourf(x, x, h)
+    _ = fig.colorbar(cs, ax=ax)
+
+    (line,) = ax.plot([], [], "o--", lw=3)
+
+    arrows = [
+            ax.arrow(0, 0, 0, 0, head_width=0.05, facecolor="black") for _ in range(n_nodes)
+        ]
+
+    def animate(chain):
+
+            x = chain.coordinates[:, 0]
+            y = chain.coordinates[:, 1]
+            
+            
+            
+            color = 'lightblue'
+
+            for arrow, (x_i, y_i), (dx_i, dy_i) in zip(
+                arrows, chain.coordinates, chain.gradients
+            ):
+                arrow.set_data(x=x_i, y=y_i, dx=-1 * dx_i, dy=-1 * dy_i)
+
+            hess = chain.bfgs_hess
+            if np.all(hess == np.eye(hess.shape[0])):
+                # line.set_color='red'
+                
+                line.set_data(x, y)
+                line.set_color("red")
+            else:
+                line.set_data(x, y)
+                line.set_color("skyblue")
+            
+            
+            
+                
+            return (x for x in arrows)
+
+    ani = matplotlib.animation.FuncAnimation(fig, animate, frames=chain_traj)
+
+    if saveasgif:
+        ani.save(fn)
+    
+    
+    from IPython.display import HTML
+    return HTML(ani.to_jshtml())
+
 
 def get_eA(chain_energies):
     return max(chain_energies) - chain_energies[0]
@@ -86,6 +171,7 @@ the_noise = [-1,1]
 
 noises_bool = [
     True,
+    False,
     False
 
 ]
@@ -95,35 +181,41 @@ noises_bool = [
 
 start_points = [
      [-2.59807434, -1.499999  ],
-    [-3.77931026, -3.283186  ]
+    [-3.77931026, -3.283186  ],
+    [0.74200203, 4]
 ]
+
 
 end_points = [
     [2.5980755 , 1.49999912],
-    [2.99999996, 1.99999999]
+    [2.99999996, 1.99999999],
+    [4, 0.74200311]
 
 ]
 tols = [
     0.1,
     0.05,
+    0.01, 
 
 ]
 
 step_sizes = [
     1,
+    .1,
     .1
 ]
 
 
 k_values = [
     1,#.05,
-    50
+    50,
+    .1
 
 ]
 
 
 
-nodes = [Node2D_Flower, Node2D]
+nodes = [Node2D_Flower, Node2D, Node2D_LEPS]
 node_to_use = nodes[ind]
 start_point = start_points[ind]
 end_point = end_points[ind]
@@ -135,56 +227,109 @@ do_noise = noises_bool[ind]
 # -
 
 from neb_dynamics.optimizers.Linesearch import Linesearch
-
-
+from neb_dynamics.optimizers.BFGS import BFGS
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 # +
 nimages = NIMAGES
+# NIMAGES=30
 np.random.seed(0)
 
 
 
-coords = np.linspace(start_point, end_point, nimages)
+coords = np.linspace(start_point, end_point, NIMAGES)
 if do_noise:
     coords[1:-1] += the_noise # i.e. good initial guess
 
     
+# cni_ref = ChainInputs(
+#     k=ks,
+#     node_class=node_to_use,
+#     delta_k=0,
+#     # step_size=ss,
+#     # step_size=.01,
+#     do_parallel=False,
+#     use_geodesic_interpolation=False,
+#     # min_step_size=.001,
+#     # als_max_steps=3
+# )
+
 cni_ref = ChainInputs(
     k=ks,
     node_class=node_to_use,
-    delta_k=0,
+    delta_k=0.0,
     # step_size=ss,
     # step_size=.01,
     do_parallel=False,
     use_geodesic_interpolation=False,
+    node_freezing=False
     # min_step_size=.001,
     # als_max_steps=3
 )
+
 gii = GIInputs(nimages=nimages)
-nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=0,
-               vv_force_thre=0,
-               bfgs_flush_steps=20, bfgs_flush_thre=0.90, do_bfgs=False)
+nbi = NEBInputs(tol=tol, v=1, max_steps=1000, climb=False, early_stop_force_thre=0,
+               vv_force_thre=0)
 chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
 chain_ref.parameters.hess_prev = np.eye(chain_ref.gradients.flatten().shape[0])
 # -
 
 optimizer = Linesearch(step_size=ss, min_step_size=.001, als_max_steps=3)
 
+optimizer2 = BFGS(step_size=ss, min_step_size=.001, als_max_steps=3, 
+                  bfgs_flush_steps=20, bfgs_flush_thre=0.90, update_using_gperp=False)
+
+optimizer_BFGS = BFGS(step_size=ss, min_step_size=.01, als_max_steps=3, 
+                  bfgs_flush_steps=1000, bfgs_flush_thre=-2, update_using_gperp=False)
+
+# +
+# optimizer3 = VelocityProjectedOptimizer(step_size=ss, min_step_size=.001, als_max_steps=3)
+# -
+
 n_ref = NEB(initial_chain=chain_ref,parameters=nbi, optimizer=optimizer)
 n_ref.optimize_chain()
+
+n_ref2 = NEB(initial_chain=chain_ref,parameters=nbi, optimizer=optimizer2)
+n_ref2.optimize_chain()
+
+n_ref_BFGS = NEB(initial_chain=chain_ref,parameters=nbi, optimizer=optimizer_BFGS)
+n_ref_BFGS.optimize_chain()
+
+# +
+# n_ref3 = NEB(initial_chain=chain_ref, parameters=nbi, optimizer=optimizer3)
+# n_ref3.optimize_chain()
+# -
+
+animate_this_mf(n_ref2, sorry_func_0, saveasgif=False, fn='/home/jdep/T3D_data/bfgs_results/reference.gif')
 
 gii = GIInputs(nimages=nimages)
 nbi_msmep = nbi
 nbi_msmep.early_stop_chain_rms_thre=10
 nbi_msmep.early_stop_force_thre=1
 #NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_chain_rms_thre=10, early_stop_force_thre=1)
-# nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=3, node_freezing=False)
-m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni_ref, gi_inputs=gii, optimizer=optimizer)
+# nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, ear|ly_stop_force_thre=3, node_freezing=False)
+m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni_ref, gi_inputs=gii, optimizer=optimizer2)
 history, out_chain = m.find_mep_multistep(chain_ref)
 
-obj = n_ref
+obj = n_ref2
 distances = obj._calculate_chain_distances()
 forces = [c.get_maximum_grad_magnitude() for c in obj.chain_trajectory]
+
+n_ref2.chain_trajectory[0].bfgs_hess.shape
+
+n_ref2.chain_trajectory[0].bfgs_hess.shape
+
+np.eye(60)
+
+did_flush = [np.all(n_ref2.chain_trajectory[i].bfgs_hess == np.eye(60)) for i in range(len(n_ref2.chain_trajectory))]
+
+len(n_ref.chain_trajectory)
+
+len(n_ref2.chain_trajectory)
+
+plt.plot(did_flush)
+
+n_ref2.plot_projector_history()
 
 # +
 fig = 8
@@ -225,6 +370,9 @@ chain_ref_long = Chain.from_list_of_coords(list_of_coords=coords_long, parameter
 
 n_ref_long = NEB(initial_chain=chain_ref_long,parameters=nbi, optimizer=optimizer)
 n_ref_long.optimize_chain()
+# -
+
+
 
 # +
 #### get energies for countourplot
@@ -241,8 +389,16 @@ y = x.reshape(-1, 1)
 h_flat_ref = np.array([node_to_use.en_func_arr(pair) for pair in product(x,x)])
 h_ref = h_flat_ref.reshape(gridsize,gridsize).T
 
+from neb_dynamics.TreeNode import TreeNode
+
+wtf = NEB.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Wittig/wb97xd3-def2svp_msmep/node_0.xyz")
+
+wtf.optimized.to_trajectory()[2]
+
+wtf.optimized.to_trajectory()
+
 # +
-fig = 8
+# fig = 8
 fs = 18
 f, ax = plt.subplots(figsize=(1.3 * fig, fig),ncols=1)
 # x = np.linspace(start=min_val, stop=max_val, num=1000)
@@ -252,10 +408,12 @@ cs = ax.contourf(x, x, h_ref, cmap="Greys",alpha=.9)
 # cs = ax.contourf(x, x, h_ref,alpha=1)
 _ = f.colorbar(cs)
 
-plot_chain(n_ref.initial_chain, c='orange',label='initial guess')
+# plot_chain(n_ref.initial_chain, c='orange',label='initial guess')
+
+plot_chain(n_ref2.chain_trajectory[-1], c='blue',linestyle='-',marker='*',label=f'NEB({nimages} nodes)', ms=20)
 plot_chain(n_ref.chain_trajectory[-1], c='green',linestyle='-',label=f'NEB({nimages} nodes)')
-plot_chain(n_ref_long.chain_trajectory[-1], c='gold',linestyle='-',label=f'NEB({nimages_long} nodes)', marker='*', ms=12)
-plot_chain(out_chain, c='red',marker='o',linestyle='-',label='AS-NEB')
+# plot_chain(n_ref_long.chain_trajectory[-1], c='gold',linestyle='-',label=f'NEB({nimages_long} nodes)', marker='*', ms=12)
+# plot_chain(out_chain, c='red',marker='o',linestyle='-',label='AS-NEB')
 
 plt.legend(fontsize=fs)
 plt.yticks(fontsize=fs)
@@ -320,63 +478,207 @@ from itertools import product
 
 # +
 flush_steps = [1, 10, 20, 50, 100]
-flush_thre = [0, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99]
+flush_thre = [0, 0.1, 0.2, 0.3, 0.4, 0.50, 0.6, 0.7, 0.8, 0.9, 0.99]
+
+# nimgs = [5, 10, 15, 20, 50]
+nimgs = [50]
 
 
 conditions = list(product(flush_steps, flush_thre))
+# conditions = conditions[6:] # only keep one control group conditions
+conditions = conditions[10:] # only keep one control group conditions
 # -
 
 from neb_dynamics.NEB import NoneConvergedException
 
-cni
+# +
+ALL_RESULTS = []
 
-cni_ref
+for nimg in nimgs:
+    results_nebs = []
+
+    coords = np.linspace(start_point, end_point, nimg)
+    for  (f_steps, f_thre) in conditions:
+        print(f"{nimg=} {f_steps=} {f_thre=}\n")
+        cni = ChainInputs(
+            k=ks,
+            node_class=node_to_use,
+            delta_k=0,
+            do_parallel=False,
+            use_geodesic_interpolation=False,
+            )
+        gii = GIInputs(nimages=nimg)
+
+        nbi = NEBInputs(tol=tol, v=1, max_steps=1000, climb=False, early_stop_force_thre=0,
+                       vv_force_thre=0, rms_grad_thre=tol)
+
+        chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
+        optimizer = BFGS(step_size=ss, min_step_size=.001, als_max_steps=3, bfgs_flush_steps=f_steps, bfgs_flush_thre=f_thre,
+                        update_using_gperp=False)
+        # print(f'\t{sum(chain.bfgs_hess.diagonal())}')
+
+        n = NEB(initial_chain=chain,parameters=nbi, optimizer=optimizer)
+        try:
+            n.optimize_chain()
+            results_nebs.append(n)
+        except NoneConvergedException as e:
+            results_nebs.append(e.obj)
+    
+    ALL_RESULTS.append(results_nebs)
 
 # +
-results_nebs = []
+all_dfs = []
+
+for results_nebs, nimg  in zip(ALL_RESULTS, nimgs):
+    # results_nebs = ALL_RESULTS[0]
+
+    results = [] # f_steps, f_thre, n_steps
+    for (f_steps, f_thre), n_result in zip(conditions, results_nebs):
+        results.append([f_steps, f_thre, len(n_result.chain_trajectory)])
+
+    import pandas as pd
+
+    df = pd.DataFrame(results, columns=['f_steps','f_thre','n_steps'])
+
+    df = df.sort_values(by='n_steps')
+    df["nimg"] = [nimg]*len(results_nebs)
+    all_dfs.append(df)
 
 
+# +
+# end_point2 = -2.80511811,  3.1313125
 
-for  (f_steps, f_thre) in conditions:
-    print(f"{f_steps=} {f_thre=}")
-    cni = ChainInputs(
-        k=ks,
-        node_class=node_to_use,
-        delta_k=0,
-        step_size=ss,
-        # step_size=.01,
-        do_parallel=False,
-        use_geodesic_interpolation=False,
-        min_step_size=.001,
-        als_max_steps=3
-        )
-    gii = GIInputs(nimages=nimages)
-    
-    nbi = NEBInputs(tol=tol, v=1, max_steps=1000, climb=False, early_stop_force_thre=0,
-                   vv_force_thre=0, rms_grad_thre=tol,
-                   bfgs_flush_steps=f_steps,
-                   bfgs_flush_thre=f_thre)
-    
-    chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
-    print(f'\t{sum(chain.bfgs_hess.diagonal())}')
-    
-    n = NEB(initial_chain=chain,parameters=nbi)
-    try:
-        n.optimize_chain()
-        results_nebs.append(n)
-    except NoneConvergedException as e:
-        results_nebs.append(e.obj)
+coords = np.linspace(start_point, end_point, 165)
+
+cni = ChainInputs(
+    k=1,
+    node_class=node_to_use,
+    delta_k=0,
+    do_parallel=False,
+    use_geodesic_interpolation=False,
+    )
+gii = GIInputs(nimages=165)
+
+nbi = NEBInputs(tol=tol, v=1, max_steps=1000, climb=False, early_stop_force_thre=0,
+               vv_force_thre=0, rms_grad_thre=tol)
+
+chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
+optimizer = BFGS(step_size=0.001, min_step_size=.0001, als_max_steps=3, bfgs_flush_steps=10000, bfgs_flush_thre=0.40,
+                update_using_gperp=False)
+# print(f'\t{sum(chain.bfgs_hess.diagonal())}')
+
+n_2d = NEB(initial_chain=chain,parameters=nbi, optimizer=optimizer)
+
 # -
 
-results = [] # f_steps, f_thre, n_steps
-for (f_steps, f_thre), n_result in zip(conditions, results_nebs):
-    results.append([f_steps, f_thre, len(n_result.chain_trajectory)])
+n_2d.optimize_chain()
+
+# +
+# animate_this_mf(n_2d, sorry_func_0)
+# -
+
+t = Trajectory.from_xyz('/home/jdep/T3D_data/geometry_spawning/claisen_results/claisen_ts_profile.xyz')
+
+r,p = t[0], t[-1]
+
+gi = Trajectory([r,p]).run_geodesic(nimages=10)
+
+r.tc_model_method = 'wb97xd3'
+r.tc_model_basis = 'def2-svp'
+
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+from neb_dynamics.optimizers.BFGS import BFGS
+
+gi.update_tc_parameters(r)
+
+# +
+print(f"doing xtb")
+cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D, node_freezing=True)
+optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn, 
+                 bfgs_flush_steps=10000, bfgs_flush_thre=0.40)
+
+chain = Chain.from_traj(gi, cni)
+
+nbi = NEBInputs(v=True,tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, climb=False,
+               _use_dlf_conv=True)
+# -
+
+n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+n.optimize_chain()
+
+xtb_seed_tr = n.optimized.to_trajectory()
+
+xtb_seed_tr.update_tc_parameters(r)
+
+# +
+print(f"doing xtb-seed results")
+cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D_TC, node_freezing=True)
+optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn, 
+                 bfgs_flush_steps=10000, bfgs_flush_thre=0.40)
+
+chain = Chain.from_traj(xtb_seed_tr, cni)
+
+nbi = NEBInputs(v=True,tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, climb=False,
+               _use_dlf_conv=True)
+# -
+
+n_dft = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+n_dft.optimize_chain()
+
+n_dft.optimized.plot_chain()
+
+n_dft.optimized.plot_chain()
+
+n_dft.plot_opt_history(do_3d=True)
+
+n.write_to_disk(Path("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_bfgs_xtb"))
+
+n_dft.write_to_disk(Path("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_bfgs_xtb_seed"))
+
+n_dft_cont = NEB(initial_chain=n_dft.chain_trajectory[-1], parameters=nbi, optimizer=optimizer)
+n_dft_cont.optimize_chain()
+
+len(ALL_RESULTS[3][1].chain_trajectory)
+
+animate_this_mf(ALL_RESULTS[3][1], sorry_func_0, saveasgif=False, fn='/home/jdep/T3D_data/flashing_neb.gif')
+
+ALL_DF = pd.concat(all_dfs)
+
+ft = .75
+fs = 100
+sub = ALL_DF[(ALL_DF['f_steps']==fs)&(ALL_DF['f_thre']==ft)]
+ref = ALL_DF[(ALL_DF['f_steps']==1)]
+
+f,ax = plt.subplots()
+sub.plot(x='nimg',y='n_steps',marker='o', ax=ax, label='bfgs w/linesearch')
+ref.plot(x='nimg',y='n_steps',marker='o', ax=ax, label='steep. desc. w/linsearch')
+plt.title(f"Flush_steps={fs} || Flush_grad_threshold={ft}")
+plt.axhline(y=1000, linestyle='--', linewidth=2, label='did not converge', color='gray')
+plt.ylabel("nsteps")
+plt.legend()
 
 import pandas as pd
 
-df = pd.DataFrame(results, columns=['f_steps','f_thre','n_steps'])
+all_df = pd.read_csv("/home/jdep/T3D_data/bfgs_results/ALL_DF.csv")
 
-df.sort_values(by='n_steps')
+
+def get_rows_with_percent_improvement(percent, dataframe):
+    ref = dataframe[dataframe['f_steps']==1]
+    ref_steps = ref['n_steps'].values
+    
+    
+    better_than_ref =  dataframe[((-1*(dataframe['n_steps'] - ref_steps) / ref_steps) >= percent)]
+    print(better_than_ref)
+
+
+# +
+ind = 4
+nimg = all_df['nimg'].unique()[ind]
+
+sub = all_df[all_df['nimg']==nimg]
+
+get_rows_with_percent_improvement(0.25, sub)
+# -
 
 # def scan_along_var(var):
 var = 'f_thre'

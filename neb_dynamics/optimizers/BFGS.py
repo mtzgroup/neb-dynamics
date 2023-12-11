@@ -25,6 +25,7 @@ class BFGS(Optimizer):
     en_func: Callable[[np.array], float] = None
     grad_func: Callable[[np.array], np.array] = None
     x0: np.array = None
+    use_linesearch: bool = True
     
     hess_history: list = field(default_factory=list)
     
@@ -193,19 +194,27 @@ class BFGS(Optimizer):
         
         chain_gradients = grad_step
         
-        disp = ALS.ArmijoLineSearch(
-                chain=chain,
-                t=self.step_size,
-                alpha=self.alpha,
-                beta=self.beta,
-                grad=chain_gradients,
-                max_steps=self.als_max_steps
-        ) 
         
+        if self.use_linesearch:
+        
+            disp = ALS.ArmijoLineSearch(
+                    chain=chain,
+                    t=self.step_size,
+                    alpha=self.alpha,
+                    beta=self.beta,
+                    grad=chain_gradients,
+                    max_steps=self.als_max_steps
+            ) 
+            
+        else:
+            disp = 1.0
+            
+        atomn = chain[0].coords.shape[0]
+        max_disp = self.step_size*atomn*len(chain)
         scaling = 1
-        if np.linalg.norm(chain_gradients * disp) > self.step_size*len(chain): # if step size is too large
-            scaling = (1/(np.linalg.norm(chain_gradients * disp)))*self.step_size*len(chain)
-        
+        if np.linalg.norm(chain_gradients*disp) > max_disp: # if step size is too large
+            scaling = (1/(np.linalg.norm(chain_gradients)))*max_disp
+            
         new_chain_coordinates = chain.coordinates - chain_gradients * disp*scaling
         new_nodes = []
         for node, new_coords in zip(chain.nodes, new_chain_coordinates):

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 
 from pathlib import Path
-
+import sys
 import numpy as np
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
@@ -13,6 +13,7 @@ from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
 from neb_dynamics.helper_functions import _get_ind_minima, _get_ind_maxima, create_friction_optimal_gi
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Optimizer import Optimizer
+from neb_dynamics.NEB_TCDLF import NEB_TCDLF
 
 @dataclass
 class MSMEP:
@@ -25,6 +26,7 @@ class MSMEP:
     
     # other parameters
     skip_identical_graphs: bool = True
+    _use_dlf_as_backend: bool = False
 
     # electronic structure params
     charge: int = 0
@@ -96,9 +98,7 @@ class MSMEP:
     def _create_interpolation(self, chain: Chain):
 
         if chain.parameters.use_geodesic_interpolation:
-            traj = Trajectory(
-                [node.tdstructure for node in chain]
-            )
+            traj = chain.to_trajectory()
             if chain.parameters.friction_optimal_gi:
                 gi = create_friction_optimal_gi(traj, self.gi_inputs)
             else:
@@ -130,19 +130,55 @@ class MSMEP:
             interpolation = self._create_interpolation(input_chain)
         else:
             interpolation = input_chain
+            
+        print("Running NEB calculation...")
+        if not self._use_dlf_as_backend:
+            print("Using in-house NEB optimizer")
+            sys.stdout.flush()
+            
+            n = NEB(initial_chain=interpolation, parameters=self.neb_inputs, optimizer=self.optimizer)
+            try:
+                n.optimize_chain()
+                out_chain = n.optimized
 
-        n = NEB(initial_chain=interpolation, parameters=self.neb_inputs, optimizer=self.optimizer)
-        try:
-            print("Running NEB calculation...")
+            except NoneConvergedException:
+                print(
+                    "\nWarning! A chain did not converge. Returning an unoptimized chain..."
+                )
+                out_chain = n.chain_trajectory[-1]
+
+        else:
+            print("Using DL-Find as NEB optimizer")
+            sys.stdout.flush()
+            dlf_inputs = self.neb_inputs.copy()
+            dlf_inputs.tol = self.neb_inputs.early_stop_force_thre
+            dlf_inputs.en_thre = dlf_inputs.tol
+            dlf_inputs.grad_thre = dlf_inputs.tol
+            dlf_inputs.rms_grad_thre = dlf_inputs.tol * (2/3)
+            
+            # dlf_inputs.max_steps = int(self.neb_inputs.max_steps / 5)
+            
+            total_chain_traj = [interpolation]
+            
+            # do neb until early stop
+            n = NEB_TCDLF(initial_chain=total_chain_traj[-1], parameters=dlf_inputs)
             n.optimize_chain()
-            out_chain = n.optimized
-
-        except NoneConvergedException:
-            print(
-                "\nWarning! A chain did not converge. Returning an unoptimized chain..."
-            )
-            out_chain = n.chain_trajectory[-1]
-
+            total_chain_traj.extend(n.chain_trajectory)
+            
+            if not n.optimized.is_elem_step()[0]:
+                print("Chain is not an elementary step...splitting")
+            else:
+                print("Chain appears to be an elem step, continuing...")
+                n = NEB_TCDLF(initial_chain=total_chain_traj[-1], parameters=self.neb_inputs)
+                n.optimize_chain()
+                total_chain_traj.extend(n.chain_trajectory)
+                print(f"Converged? {n.converged}")
+            
+            n.chain_trajectory = total_chain_traj
+            out_chain = total_chain_traj[-1]
+            
+        
+        
         return n, out_chain
     
 
@@ -183,7 +219,6 @@ class MSMEP:
         return chains
 
     def _do_maxima_based_split(self, chain: Chain):
-        
         
         
         ind_maxima = _get_ind_maxima(chain)

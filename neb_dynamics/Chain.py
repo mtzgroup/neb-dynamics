@@ -15,6 +15,8 @@ from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.helper_functions import RMSD, get_mass, _get_ind_minima, _get_ind_maxima, linear_distance, qRMSD_distance, pairwise, get_nudged_pe_grad
 
 
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
@@ -168,6 +170,22 @@ class Chain:
         cum_sums = np.array(cum_sums)
         int_path_len = cum_sums / cum_sums[-1]
         return np.array(int_path_len)
+    
+    @property
+    def path_length(self):
+        coords = self._path_len_coords
+        cum_sums = [0]
+        int_path_len = [0]
+        for i, frame_coords in enumerate(coords):
+            if i == len(coords) - 1:
+                continue
+            next_frame = coords[i + 1]
+            distance = self._path_len_dist_func(frame_coords, next_frame)
+            cum_sums.append(cum_sums[-1] + distance)
+
+        cum_sums = np.array(cum_sums)
+        path_len = cum_sums 
+        return np.array(path_len)
 
     def _k_between_nodes(
         self, node0: Node, node1: Node, e_ref: float, k_max: float, e_max: float
@@ -179,12 +197,19 @@ class Chain:
             new_k = k_max - self.parameters.delta_k
         return new_k
 
-    def plot_chain(self):
+    def plot_chain(self, norm_path=True):
         s = 8
         fs = 18
         f, ax = plt.subplots(figsize=(1.16 * s, s))
+        
+        if norm_path:
+            path_len = self.integrated_path_length
+        else:
+            path_len = self.path_length
+        
+        
         plt.plot(
-            self.integrated_path_length,
+            path_len,
             (self.energies - self.energies[0]) * 627.5,
             "o--",
             label="neb",
@@ -251,10 +276,32 @@ class Chain:
         works = np.abs(ens[1:] * self.path_distances)
         tot_work = works.sum()
         return tot_work
-
-    @cached_property
+    
+    @property
+    def _energies_already_computed(self):
+        all_ens = [node._cached_energy for node in self.nodes]
+        return all([val is not None for val in all_ens])
+   
+    @property
     def energies(self) -> np.array:
-        return np.array([node.energy for node in self.nodes])
+        
+        if not self._energies_already_computed:
+            if self.parameters.do_parallel:
+                energy_gradient_tuples = self.parameters.node_class.calculate_energy_and_gradients_parallel(chain=self)
+            else:
+                energies = [node.energy for node in self.nodes]
+                gradients = [node.gradient for node in self.nodes]
+                energy_gradient_tuples = list(zip(energies, gradients))
+
+            for (ene, grad), node in zip(energy_gradient_tuples, self.nodes):
+                node._cached_energy = ene
+                node._cached_gradient = grad
+        
+        
+        out_ens = np.array([node._cached_energy for node in self.nodes])
+        
+        assert all([en is not None for en in out_ens]), f"Ens: Chain contains images with energies that did not converge: {out_ens}"
+        return out_ens
     
     
     @property
@@ -373,16 +420,17 @@ class Chain:
         grads = np.insert(grads, len(grads), zero, axis=0)
         
         return grads
-        
-
-
-    # @cached_property
+    
+    
+    @property
+    def _grads_already_computed(self):
+        all_grads = [node._cached_gradient for node in self.nodes]
+        return np.all([g is not None for g in all_grads])
+    
     @property
     def gradients(self) -> np.array:
         
-        all_grads = [node._cached_gradient for node in self.nodes]
-        
-        if not np.all([g is not None for g in all_grads]):
+        if not self._grads_already_computed:
             if self.parameters.do_parallel:
                 energy_gradient_tuples = self.parameters.node_class.calculate_energy_and_gradients_parallel(chain=self)
             else:
@@ -532,7 +580,7 @@ class Chain:
     def is_elem_step(self):
         chain = self.copy()
         if len(self) <= 1:
-            return True
+            return True, None
 
         conditions = {}
         is_concave = self._chain_is_concave()
@@ -585,8 +633,17 @@ class Chain:
 
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
-        r = candidate_r.do_geometry_optimization()
-        p = candidate_p.do_geometry_optimization()
+        
+        if not self.parameters.node_class == Node3D_TC:
+            r = candidate_r.do_geometry_optimization()
+            p = candidate_p.do_geometry_optimization()
+            
+        else: # i am sorry for this
+            traj = Trajectory([candidate_r.tdstructure, candidate_p.tdstructure])
+            traj.update_tc_parameters(candidate_r.tdstructure)
+            out_traj = traj.tc_geom_opt_all_geometries()
+            r, p = self.parameters.node_class(out_traj[0]), self.parameters.node_class(out_traj[1])
+            
         return r, p
 
     def _select_split_method(self, conditions: dict):
@@ -602,13 +659,15 @@ class Chain:
         
     def write_ene_info_to_disk(self, fp):
         ene_path = fp.parent / Path(str(fp.stem)+".energies")
+        np.savetxt(ene_path, self.energies)
+        
+        
+    def write_grad_info_to_disk(self, fp):
         grad_path = fp.parent / Path(str(fp.stem)+".gradients")
         grad_shape_path = fp.parent / "grad_shapes.txt"
-        
-        np.savetxt(ene_path, self.energies)
-        # np.savetxt(grad_path, self.gradients.flatten())
         np.savetxt(grad_path, np.array([node.gradient for node in self.nodes]).flatten())
         np.savetxt(grad_shape_path, self.gradients.shape)
+        
         
     def write_to_disk(self, fp: Path):
         if isinstance(fp, str):
@@ -618,7 +677,10 @@ class Chain:
             traj = self.to_trajectory()
             traj.write_trajectory(fp)
             
-            self.write_ene_info_to_disk(fp)
+            if self._energies_already_computed:
+                self.write_ene_info_to_disk(fp)
+            if self._grads_already_computed:
+                self.write_grad_info_to_disk(fp)
             
         else:
             raise NotImplementedError("Cannot write 2D chains yet.")

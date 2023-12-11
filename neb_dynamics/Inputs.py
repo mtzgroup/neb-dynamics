@@ -16,7 +16,7 @@ class NEBInputs:
     early_stop_force_thre: float = 0.0
     early_stop_chain_rms_thre: float = 0.0
     early_stop_corr_thre: float = 10.
-    early_stop_still_steps_thre: int = 20
+    early_stop_still_steps_thre: int = 100
     do_bfgs: bool = True
 
     vv_force_thre: float = 0.0
@@ -35,7 +35,6 @@ class NEBInputs:
             else:
                 self.en_thre = self.tol / 450
                 
-
         if self.rms_grad_thre is None:
             self.rms_grad_thre = self.tol * (2 / 3)
 
@@ -44,6 +43,10 @@ class NEBInputs:
             
         if self.bfgs_flush_steps is None:
             self.bfgs_flush_steps = self.max_steps
+            
+    
+    def copy(self):
+        return NEBInputs(**self.__dict__)
             
             
 
@@ -68,6 +71,8 @@ class ChainInputs:
         if self.do_chain_biasing and self.cb is None:
             raise ValueError("No chain biaser was inputted. Fix this or set 'do_chain_biasing' to False.")
     
+    def copy(self):
+        return ChainInputs(**self.__dict__)
     
 
 

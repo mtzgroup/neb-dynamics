@@ -7,13 +7,19 @@ import numpy as np
 from retropaths.abinitio.tdstructure import TDStructure
 import multiprocessing as mp
 import shutil
-from tcparse import parse
+from qcparse import parse
 from pathlib import Path
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
+import pytcpb as tc
+import time
+
+
+
 RMSD_CUTOFF = 0.5
-KCAL_MOL_CUTOFF = 0.1
+# KCAL_MOL_CUTOFF = 0.1
+KCAL_MOL_CUTOFF = 0.3
 
 
 @dataclass
@@ -23,9 +29,13 @@ class Node3D_TC_TCPB(Node):
     do_climb: bool = False
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
-
+    
+    
+    _tc_server = False
 
     is_a_molecule = True
+    
+    
 
     @property
     def coords(self):
@@ -37,27 +47,34 @@ class Node3D_TC_TCPB(Node):
 
     @staticmethod
     def en_func(node: Node3D_TC_TCPB):
-        return node.tdstructure.energy_tc_tcpb()
+        return node.tdstructure.energy_tc_local()
         
 
     @staticmethod
     def grad_func(node: Node3D_TC_TCPB):
-        return node.tdstructure.gradient_tc_tcpb()
+        return node.tdstructure.gradient_tc_local()
+    
+    
+    def compute_ene_grad(self):
+        if not self._tc_server:
+            self._connect_to_server()
+        
+        ene, grad = self.compute_tc_tcpb(self)
+        self._cached_gradient = grad
+        self._cached_energy = ene
 
-    @cached_property
+    @property
     def energy(self):
-        if self._cached_energy is not None:
-            return self._cached_energy
-        else:
-            return self.tdstructure.energy_tc_tcpb()
+        if self._cached_energy is  None:
+            self.compute_ene_grad()
+        return self._cached_energy
 
-    @cached_property
+    @property
     def gradient(self):
-        if self._cached_gradient is not None:
-            return self._cached_gradient
-        else:
-            return self.tdstructure.gradient_tc_tcpb()
-
+        if self._cached_gradient is None:
+            self.compute_ene_grad()
+        return self._cached_gradient
+            
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
         return np.tensordot(first, second)
@@ -73,11 +90,13 @@ class Node3D_TC_TCPB(Node):
         return pe_grad_nudged
 
     def copy(self):
-        return Node3D_TC_TCPB(
+        copy_node =  Node3D_TC_TCPB(
             tdstructure=self.tdstructure.copy(),
             converged=self.converged,
             do_climb=self.do_climb,
         )
+        copy_node._tc_server = self._tc_server
+        return copy_node
 
     def update_coords(self, coords: np.array) -> None:
 
@@ -89,11 +108,6 @@ class Node3D_TC_TCPB(Node):
         return Node3D_TC_TCPB(tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb)
 
     def opt_func(self, v=True):
-        
-        #### NOTE: THIS IS NOT DONE WITH TERACHEM SERVER MODE.
-        #### IDK HOW TO GET TC SERVER TO GIVE ME GEOM OPTS.
-        #### THIS OPTIMIZATION IS DONE BY BOOTING UP TERACHEM FROM SCRATCH
-        
         return self.tdstructure.tc_local_geom_optimization()
 
     def check_symmetric(self, a, rtol=1e-05, atol=1e-08):
@@ -133,12 +147,28 @@ class Node3D_TC_TCPB(Node):
         return approx_hess_sym
     
     @classmethod
-    def calc_ene_grad(cls, input_path: str):    
-        raise NotImplementedError
-    
-    @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
-        raise NotImplementedError
+        ref = chain[0]
+        
+        if not ref._tc_server:
+            ref._connect_to_server()
+        
+        
+        ene_gradients = []
+        structures = chain
+        for i, structure in enumerate(structures):
+            # this if statement is so the wavefunc is propagated for the following structures
+            if i==0: 
+                chosen_index=1 
+            else: 
+                chosen_index=0
+                
+                
+            structure._tc_server = ref._tc_server
+            ene_grad = cls.compute_tc_tcpb(structure_node=structure, index=chosen_index)
+            ene_gradients.append(ene_grad)
+
+        return ene_gradients
     
     def do_geometry_optimization(self) -> Node3D_TC_TCPB:
         td_opt = self.tdstructure.tc_local_geom_optimization()
@@ -151,23 +181,119 @@ class Node3D_TC_TCPB(Node):
         return connectivity_identical
     
     def _is_conformer_identical(self, other) -> bool:
-        aligned_self = self.tdstructure.align_to_td(other.tdstructure)
-        rmsd_identical = RMSD(aligned_self.coords, other.tdstructure.coords)[0] < RMSD_CUTOFF
-        energies_identical = np.abs((self.energy - other.energy)*627.5) < KCAL_MOL_CUTOFF
-        if rmsd_identical and energies_identical:
-            conformer_identical = True
-        
-        if not rmsd_identical and energies_identical:
-            # going to assume this is a permutation issue. To address later
-            conformer_identical = True
-        
-        if not rmsd_identical and not energies_identical:
-            conformer_identical = False
-
-        return conformer_identical
+        if self._is_connectivity_identical(other):
+            aligned_self = self.tdstructure.align_to_td(other.tdstructure)
+            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            en_delta = np.abs((self.energy - other.energy)*627.5)
+            
+            
+            rmsd_identical = dist < RMSD_CUTOFF
+            energies_identical = en_delta < KCAL_MOL_CUTOFF
+            if rmsd_identical and energies_identical:
+                conformer_identical = True
+            
+            if not rmsd_identical and energies_identical:
+                # going to assume this is a rotation issue. Need To address.
+                conformer_identical = False
+            
+            if not rmsd_identical and not energies_identical:
+                conformer_identical = False
+            
+            if rmsd_identical and not energies_identical:
+                conformer_identical = False
+            print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
+            return conformer_identical
 
     def is_identical(self, other) -> bool:
 
-        return self._is_connectivity_identical(other)
-        # return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
+        # return self._is_connectivity_identical(other)
+        return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
         
+    
+    def _connect_to_server(self):
+        # Set information about the server
+        td = self.tdstructure
+        host = "localhost"
+
+        # Get Port
+        port = 8888
+
+        str_inp = td._tcpb_input_string()
+
+        fname = '/tmp/inputfile.in'
+        with open(fname,'w') as f:
+            f.write(str_inp)
+            
+        tcfile = fname
+        
+        
+        structures = [self]
+
+        qmattypes = self.tdstructure.symbols
+
+        # Attempts to connect to the TeraChem server
+        status = tc.connect(host, port)
+        if status == 0:
+            # print("Connected to TC server.")
+            pass
+        elif status == 1:
+            raise ValueError("Connection to TC server failed.")
+        elif status == 2:
+            raise ValueError(
+                "Connection to TC server succeeded, but the server is not available."
+            )
+        else:
+            raise ValueError("Status on tc.connect function is not recognized!")
+        
+
+        # Setup TeraChem
+        status = tc.setup(str(tcfile), qmattypes) 
+        if status == 0:
+            # print("TC setup completed with success.")
+            pass
+        elif status == 1:
+            raise ValueError(
+                "No options read from TC input file or mismatch in the input options!"
+            )
+        elif status == 2:
+            raise ValueError("Failed to setup TC.")
+        else:
+            raise ValueError("Status on tc_setup function is not recognized!")
+    
+        self._tc_server = tc
+        
+    @classmethod
+    def compute_tc_tcpb(cls, structure_node: Node3D_TC_TCPB, index=0):
+        structure = structure_node.tdstructure
+        qmcoords = structure.coords.flatten() * ANGSTROM_TO_BOHR
+        qmcoords = qmcoords.tolist()
+        qmattypes = structure.symbols
+        
+        wf_treatments = ['Cont','Cont_Reset','Reinit']
+        wf_treatment_chosen = wf_treatments[index]
+        
+        globaltreatment = {"Cont": 0, "Cont_Reset": 1, "Reinit": 2}
+        
+        
+        # Compute energy and gradient
+        time.sleep(0.020)  # TCPB needs a small delay between calls
+        
+        totenergy, qmgrad, mmgrad, status = structure_node._tc_server.compute_energy_gradient(
+            qmattypes, qmcoords, globaltreatment=globaltreatment[wf_treatment_chosen]
+        )
+            
+
+        # print(f"Status: {status}")
+        if status == 0:
+            # print("Successfully computed energy and gradients")
+            pass
+        elif status == 1:
+            raise ValueError("Mismatch in the variables passed to compute_energy_gradient")
+        elif status == 2:
+            raise ValueError("Error in compute_energy_gradient.")
+        else:
+            raise ValueError(
+                "Status on compute_energy_gradient function is not recognized!"
+            )
+
+        return totenergy, (np.array(qmgrad).reshape(structure.coords.shape))*BOHR_TO_ANGSTROMS

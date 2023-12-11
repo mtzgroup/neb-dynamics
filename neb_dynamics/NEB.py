@@ -156,7 +156,7 @@ class NEB:
 
                 self.optimized = new_chain
                 return
-            chain_previous = new_chain.copy()
+            chain_previous = new_chain # previous
 
             nsteps += 1
 
@@ -222,7 +222,8 @@ class NEB:
 
     def update_chain(self, chain: Chain) -> Chain:
         grad_step = chain.gradients
-        do_vv = self.do_velvel(chain=chain)
+        do_vv = False
+        # do_vv = self.do_velvel(chain=chain)
         if do_vv:
             new_vel, force = self.get_chain_velocity(chain=chain)
             new_chain_coordinates = chain.coordinates + force

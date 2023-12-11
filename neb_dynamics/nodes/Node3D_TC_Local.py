@@ -7,13 +7,15 @@ import numpy as np
 from retropaths.abinitio.tdstructure import TDStructure
 import multiprocessing as mp
 import shutil
-from tcparse import parse
+from qcparse import parse
 from pathlib import Path
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
+import qcop
 RMSD_CUTOFF = 0.5
-KCAL_MOL_CUTOFF = 0.1
+# KCAL_MOL_CUTOFF = 0.1
+KCAL_MOL_CUTOFF = 0.3
 
 
 @dataclass
@@ -42,22 +44,32 @@ class Node3D_TC_Local(Node):
 
     @staticmethod
     def grad_func(node: Node3D_TC_Local):
-        return node.tdstructure.gradient_tc_local()
+        return node.tdstructure.gradient_tc_local()*BOHR_TO_ANGSTROMS
+    
+    
+    def compute_ene_grad(self):
+        
+        prog_input = self.tdstructure._prepare_input(method='gradient')
 
-    @cached_property
+        output = qcop.compute('terachem', prog_input, propagate_wfn=True, collect_files=True)
+        
+        ene = output.results.energy
+        grad = output.results.gradient*BOHR_TO_ANGSTROMS
+        self._cached_gradient = grad
+        self._cached_energy = ene
+
+    @property
     def energy(self):
-        if self._cached_energy is not None:
-            return self._cached_energy
-        else:
-            return self.tdstructure.energy_tc_local()
+        if self._cached_energy is  None:
+            self.compute_ene_grad()
+        return self._cached_energy
 
-    @cached_property
+    @property
     def gradient(self):
-        if self._cached_gradient is not None:
-            return self._cached_gradient
-        else:
-            return self.tdstructure.gradient_tc_local()
-
+        if self._cached_gradient is None:
+            self.compute_ene_grad()
+        return self._cached_gradient
+            
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
         return np.tensordot(first, second)
@@ -183,23 +195,31 @@ class Node3D_TC_Local(Node):
         return connectivity_identical
     
     def _is_conformer_identical(self, other) -> bool:
-        aligned_self = self.tdstructure.align_to_td(other.tdstructure)
-        rmsd_identical = RMSD(aligned_self.coords, other.tdstructure.coords)[0] < RMSD_CUTOFF
-        energies_identical = np.abs((self.energy - other.energy)*627.5) < KCAL_MOL_CUTOFF
-        if rmsd_identical and energies_identical:
-            conformer_identical = True
-        
-        if not rmsd_identical and energies_identical:
-            # going to assume this is a permutation issue. To address later
-            conformer_identical = True
-        
-        if not rmsd_identical and not energies_identical:
-            conformer_identical = False
-
-        return conformer_identical
+        if self._is_connectivity_identical(other):
+            aligned_self = self.tdstructure.align_to_td(other.tdstructure)
+            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            en_delta = np.abs((self.energy - other.energy)*627.5)
+            
+            
+            rmsd_identical = dist < RMSD_CUTOFF
+            energies_identical = en_delta < KCAL_MOL_CUTOFF
+            if rmsd_identical and energies_identical:
+                conformer_identical = True
+            
+            if not rmsd_identical and energies_identical:
+                # going to assume this is a rotation issue. Need To address.
+                conformer_identical = False
+            
+            if not rmsd_identical and not energies_identical:
+                conformer_identical = False
+            
+            if rmsd_identical and not energies_identical:
+                conformer_identical = False
+            print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
+            return conformer_identical
 
     def is_identical(self, other) -> bool:
 
-        return self._is_connectivity_identical(other)
-        # return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
+        # return self._is_connectivity_identical(other)
+        return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
         

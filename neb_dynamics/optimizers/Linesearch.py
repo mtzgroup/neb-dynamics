@@ -32,16 +32,17 @@ class Linesearch(Optimizer):
         )
         
         scaling = 1
-        if np.linalg.norm(chain_gradients * disp) > self.step_size*len(chain): # if step size is too large
-            scaling = (1/(np.linalg.norm(chain_gradients * disp)))*self.step_size*len(chain)
+        # if np.linalg.norm(chain_gradients * disp) > self.step_size*len(chain): # if step size is too large
+        #     scaling = (1/(np.linalg.norm(chain_gradients * disp)))*self.step_size*len(chain)
         
-        new_chain_coordinates = chain.coordinates - chain_gradients * disp*scaling
+        new_chain_coordinates = chain.coordinates - (chain_gradients * disp*scaling)
         new_nodes = []
         for node, new_coords in zip(chain.nodes, new_chain_coordinates):
 
             new_nodes.append(node.update_coords(new_coords))
 
         new_chain = Chain(new_nodes, parameters=chain.parameters)
+        assert all([node.energy is not None for node in new_chain.nodes])
         
         return new_chain
         

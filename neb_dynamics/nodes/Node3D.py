@@ -51,12 +51,14 @@ class Node3D(Node):
         res = Node3D.run_xtb_calc(node.tdstructure)
         return res.get_gradient() * BOHR_TO_ANGSTROMS
 
-    @cached_property
+    @property
     def energy(self):
         if self._cached_energy is not None:
             return self._cached_energy
         else:
-            return Node3D.run_xtb_calc(self.tdstructure).get_energy()
+            ene = Node3D.run_xtb_calc(self.tdstructure).get_energy()
+            self._cached_energy = ene
+            return ene
 
     def do_geometry_optimization(self) -> Node3D:
         td_opt = self.tdstructure.xtb_geom_optimization()
@@ -133,9 +135,9 @@ class Node3D(Node):
             if self._cached_gradient is not None:
                 return self._cached_gradient
             else:
-                return (
-                    Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
-                )
+                grad = Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
+                self._cached_gradient = grad
+                return grad
 
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:

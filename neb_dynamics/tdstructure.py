@@ -54,8 +54,8 @@ bohr_to_angstroms = 1 / angstroms_to_bohr
 # q = 'private'
 q = None
 
-ES_PROGRAM = 'psi4'
-# ES_PROGRAM = 'terachem'
+# ES_PROGRAM = 'psi4'
+ES_PROGRAM = 'terachem'
 
 @dataclass
 class TDStructure:

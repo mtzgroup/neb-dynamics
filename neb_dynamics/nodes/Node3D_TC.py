@@ -12,7 +12,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
-RMSD_CUTOFF = 0.1
+RMSD_CUTOFF = 0.5
 KCAL_MOL_CUTOFF = 0.1
 
 
@@ -149,10 +149,12 @@ class Node3D_TC(Node):
             ref_node = chain[ind]
             ens_grads_lists[ind] = (ref_node._cached_energy, np.zeros_like(ref_node.coords))
         
-        new_traj = Trajectory([td for (i, td) in enumerate(traj) if i in inds_not_converged])
-        new_traj_ene_grads = new_traj.energies_and_gradients_tc()
-        for (ene, grad, ind) in zip(new_traj_ene_grads[0], new_traj_ene_grads[1], inds_not_converged):
-            ens_grads_lists[ind] = (ene, grad)
+        if len(inds_not_converged) >= 1:
+            new_traj = Trajectory([td for (i, td) in enumerate(traj) if i in inds_not_converged])
+            new_traj.update_tc_parameters(traj[0]) # needed so we propagate the setting.... bad.....
+            new_traj_ene_grads = new_traj.energies_and_gradients_tc()
+            for (ene, grad, ind) in zip(new_traj_ene_grads[0], new_traj_ene_grads[1], inds_not_converged):
+                ens_grads_lists[ind] = (ene, grad)
         
         
         return ens_grads_lists
@@ -162,6 +164,7 @@ class Node3D_TC(Node):
         # td_opt = td_opt_xtb.tc_geom_optimization()
         td_opt = self.tdstructure.tc_geom_optimization()
         return Node3D_TC(tdstructure=td_opt)
+    
     
     def _is_connectivity_identical(self, other) -> bool:
         connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
@@ -197,6 +200,6 @@ class Node3D_TC(Node):
 
     def is_identical(self, other) -> bool:
 
-        return self._is_connectivity_identical(other)
-        # return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
+        # return self._is_connectivity_identical(other)
+        return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
         
