@@ -39,12 +39,7 @@ from neb_dynamics.MSMEP import MSMEP
 from IPython.core.display import HTML
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
-
-
-
-n_jan = NEB.read_from_disk("/home/jdep/T3D_data/dlfind_vs_jan/jan_bfgs_dlf_conv")
-
-len(n_jan.chain_trajectory)
+# # Helper Functions
 
 # +
 
@@ -52,8 +47,6 @@ NIMAGES = 15
 
 
 # -
-
-# # Helper Functions
 
 def animate_this_mf(neb_obj, potential_func,
                    saveasgif=False, fn='anim.gif'):
@@ -227,8 +220,11 @@ do_noise = noises_bool[ind]
 # -
 
 from neb_dynamics.optimizers.Linesearch import Linesearch
+from neb_dynamics.optimizers.SD import SteepestDescent
 from neb_dynamics.optimizers.BFGS import BFGS
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+
+NIMAGES=15
 
 # +
 nimages = NIMAGES
@@ -262,13 +258,13 @@ cni_ref = ChainInputs(
     # step_size=.01,
     do_parallel=False,
     use_geodesic_interpolation=False,
-    node_freezing=False
+    node_freezing=True,
     # min_step_size=.001,
     # als_max_steps=3
 )
 
 gii = GIInputs(nimages=nimages)
-nbi = NEBInputs(tol=tol, v=1, max_steps=1000, climb=False, early_stop_force_thre=0,
+nbi = NEBInputs(tol=tol, v=1, max_steps=500, climb=False, early_stop_force_thre=0,
                vv_force_thre=0)
 chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
 chain_ref.parameters.hess_prev = np.eye(chain_ref.gradients.flatten().shape[0])
@@ -276,11 +272,17 @@ chain_ref.parameters.hess_prev = np.eye(chain_ref.gradients.flatten().shape[0])
 
 optimizer = Linesearch(step_size=ss, min_step_size=.001, als_max_steps=3)
 
-optimizer2 = BFGS(step_size=ss, min_step_size=.001, als_max_steps=3, 
-                  bfgs_flush_steps=20, bfgs_flush_thre=0.90, update_using_gperp=False)
+# +
+# optimizer2 = BFGS(step_size=ss, min_step_size=.001, als_max_steps=3, 
+#                   bfgs_flush_steps=20, bfgs_flush_thre=0.90, update_using_gperp=False)
 
-optimizer_BFGS = BFGS(step_size=ss, min_step_size=.01, als_max_steps=3, 
-                  bfgs_flush_steps=1000, bfgs_flush_thre=-2, update_using_gperp=False)
+# +
+# optimizer_BFGS = BFGS(step_size=ss, min_step_size=.01, als_max_steps=3, 
+#                   bfgs_flush_steps=1000, bfgs_flush_thre=-2, update_using_gperp=False)
+# -
+
+optimizer = VelocityProjectedOptimizer(timestep=0.01, activation_tol=.05)
+# optimizer = SteepestDescent(step_size_per_atom=0.001)
 
 # +
 # optimizer3 = VelocityProjectedOptimizer(step_size=ss, min_step_size=.001, als_max_steps=3)
@@ -288,6 +290,10 @@ optimizer_BFGS = BFGS(step_size=ss, min_step_size=.01, als_max_steps=3,
 
 n_ref = NEB(initial_chain=chain_ref,parameters=nbi, optimizer=optimizer)
 n_ref.optimize_chain()
+
+n_ref.grad_calls_made
+
+animate_this_mf(n_ref, potential_func=sorry_func_0)
 
 n_ref2 = NEB(initial_chain=chain_ref,parameters=nbi, optimizer=optimizer2)
 n_ref2.optimize_chain()

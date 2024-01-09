@@ -48,6 +48,7 @@ class NEB:
 
     def __post_init__(self):
         self.n_steps_still_chain = 0
+        self.grad_calls_made = 0
         
     def do_velvel(self, chain: Chain): 
         max_grad_val = chain.get_maximum_grad_magnitude()
@@ -134,14 +135,20 @@ class NEB:
                     return
             
             new_chain = self.update_chain(chain=chain_previous)
+            max_grad_val = new_chain.get_maximum_grad_magnitude()
+            max_rms_grad_val = new_chain.get_maximum_rms_grad()
+            chain_converged = self._chain_converged(chain_prev=chain_previous, chain_new=new_chain)
+            # print([node._cached_energy for node in new_chain])
+            # print([node.converged for node in new_chain])
             
             n_nodes_frozen = 0
             for node in new_chain:
                 if node.converged:
                     n_nodes_frozen+=1
                     
-            max_grad_val = new_chain.get_maximum_grad_magnitude()
-            max_rms_grad_val = new_chain.get_maximum_rms_grad()
+            grad_calls_made = len(new_chain) - n_nodes_frozen
+            self.grad_calls_made += grad_calls_made
+            
             if self.parameters.v:
                 print(
                     f"step {nsteps} // max |gradient| {max_grad_val} // rms grad {max_rms_grad_val} // |velocity| {np.linalg.norm(new_chain.velocity)} // nodes_frozen {n_nodes_frozen} // {new_chain._gradient_correlation(chain_previous)}{' '*20}", end="\r"
@@ -150,12 +157,15 @@ class NEB:
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)
 
-            if self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
+            if chain_converged:
                 if self.parameters.v:
                     print("\nChain converged!")
 
                 self.optimized = new_chain
                 return
+            
+            
+            
             chain_previous = new_chain # previous
 
             nsteps += 1
@@ -222,6 +232,7 @@ class NEB:
 
     def update_chain(self, chain: Chain) -> Chain:
         grad_step = chain.gradients
+        # print('inside update_chain',[node._cached_energy for node in chain])
         do_vv = False
         # do_vv = self.do_velvel(chain=chain)
         if do_vv:
@@ -240,7 +251,11 @@ class NEB:
             
         else:
             new_chain = self.optimizer.optimize_step(chain=chain, chain_gradients=grad_step)        
-        
+            for new_node, old_node in zip(new_chain.nodes, chain.nodes):
+                if old_node.converged:
+                    new_node._cached_energy = old_node._cached_energy
+                    new_node._cached_gradient = old_node._cached_gradient
+
         
         return new_chain
 
@@ -276,10 +291,15 @@ class NEB:
     #     new_chain = Chain(new_nodes, parameters=chain.parameters)
     #     return new_chain
 
-    def _update_node_convergence(self, chain: Chain, indices: np.array) -> None:
-        for i, node in enumerate(chain):
+    def _update_node_convergence(self, chain: Chain, indices: np.array, prev_chain: Chain) -> None:
+        for i, (node, prev_node) in enumerate(zip(chain, prev_chain)):
             if i in indices:
+                # print(f"node_{i} converged.")
                 node.converged = True
+                # print(f"prev_node en:{prev_node._cached_energy}")
+                
+                node._cached_energy = prev_node._cached_energy
+                node._cached_gradient = prev_node._cached_gradient
             else:
                 node.converged = False
 
@@ -305,12 +325,21 @@ class NEB:
             natom, ndim = gperp[0].shape
             
             n_free_vars_per_image = (natom-3)*ndim + 3 # this is because 6 atoms are frozen to remove trans and rot
-            gps = np.array([np.linalg.norm(gp) / np.sqrt(n_free_vars_per_image) for gp in gperp])
-            gps = np.insert(gps, 0, np.zeros_like(gps[0]))
-            gps = np.append(gps, np.zeros_like(gps[0]))
-            gps_conv = gps <= self.parameters.tol 
+            # gps = np.array([np.linalg.norm(gp) / np.sqrt(n_free_vars_per_image) for gp in gperp])
+            # gps = np.insert(gps, 0, np.zeros_like(gps[0]))
+            # gps = np.append(gps, np.zeros_like(gps[0]))
+            # gps_conv = gps <= self.parameters.tol 
+            max_grad_components = []
+            gradients = chain.gradients
+            for grad in gradients:
+                val = np.linalg.norm(grad) / np.sqrt(n_free_vars_per_image)
+                bools.append(val < self.parameters.grad_thre)
+
+            return np.where(bools), max_grad_components
+
+
             
-            return np.where(gps_conv), gps
+            # return np.where(gps_conv), gps
 
     def _check_rms_grad_converged(self, chain: Chain):
         
@@ -353,7 +382,7 @@ class NEB:
         converged_nodes_indices = np.intersect1d(converged_nodes_indices, grad_conv_ind)
 
         if chain_new.parameters.node_freezing:
-            self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices)
+            self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices, prev_chain=chain_prev)
             
         if self.parameters.v > 1:
             [
@@ -364,7 +393,15 @@ class NEB:
             ]
         if self.parameters.v > 1:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
-        return len(converged_nodes_indices) == len(chain_new)
+            
+            
+        criteria_converged = [
+            max(max_rms_grads) <= self.parameters.rms_grad_thre,
+            max(en_deltas) <= self.parameters.en_thre,
+            max(max_grad_components) <=self.parameters.grad_thre]
+        # return len(converged_nodes_indices) == len(chain_new)
+
+        return sum(criteria_converged) >= 2
     
        
 

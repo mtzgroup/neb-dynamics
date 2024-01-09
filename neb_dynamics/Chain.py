@@ -12,7 +12,16 @@ from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Node import Node
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.Inputs import ChainInputs
-from neb_dynamics.helper_functions import RMSD, get_mass, _get_ind_minima, _get_ind_maxima, linear_distance, qRMSD_distance, pairwise, get_nudged_pe_grad
+from neb_dynamics.helper_functions import (
+    RMSD,
+    get_mass,
+    _get_ind_minima,
+    _get_ind_maxima,
+    linear_distance,
+    qRMSD_distance,
+    pairwise,
+    get_nudged_pe_grad,
+)
 
 
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
@@ -29,19 +38,20 @@ import scipy
 class Chain:
     nodes: List[Node]
     parameters: ChainInputs
-    
+
     def __post_init__(self):
         if not hasattr(self, "velocity"):
             self._zero_velocity()
-            
+
         if not hasattr(self, "bfgs_hess"):
             bfgs_hess = np.eye(self.coordinates.flatten().shape[0])
             self.bfgs_hess = bfgs_hess
-            
-            
+
     def _zero_velocity(self):
         if self[0].is_a_molecule:
-            self.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords), 3))
+            self.velocity = np.zeros(
+                shape=(len(self.nodes), len(self.nodes[0].coords), 3)
+            )
         else:
             self.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords)))
 
@@ -51,25 +61,26 @@ class Chain:
 
     @classmethod
     def from_xyz(cls, fp: Path, parameters: ChainInputs):
-        if isinstance(fp, str): fp = Path(fp)
+        if isinstance(fp, str):
+            fp = Path(fp)
         traj = Trajectory.from_xyz(fp)
         chain = cls.from_traj(traj, parameters=parameters)
-        energies_fp = fp.parent / Path(str(fp.stem)+".energies")
-        grad_path = fp.parent / Path(str(fp.stem)+".gradients")
+        energies_fp = fp.parent / Path(str(fp.stem) + ".energies")
+        grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
         grad_shape_path = fp.parent / "grad_shapes.txt"
-        
+
         if energies_fp.exists() and grad_path.exists() and grad_shape_path.exists():
             energies = np.loadtxt(energies_fp)
             gradients_flat = np.loadtxt(grad_path)
-            gradients_shape = np.loadtxt(grad_shape_path,dtype=int)
-            
+            gradients_shape = np.loadtxt(grad_shape_path, dtype=int)
+
             gradients = gradients_flat.reshape(gradients_shape)
-            
-            for node,(ene, grad) in zip(chain.nodes, zip(energies, gradients)):
+
+            for node, (ene, grad) in zip(chain.nodes, zip(energies, gradients)):
                 node._cached_energy = ene
                 node._cached_gradient = grad
         return chain
-    
+
     @classmethod
     def from_list_of_chains(cls, list_of_chains, parameters):
         nodes = []
@@ -77,69 +88,64 @@ class Chain:
             nodes.extend(chain.nodes)
         return cls(nodes=nodes, parameters=parameters)
 
-
     def _distance_to_chain(self, other_chain: Chain):
         chain1 = self
         chain2 = other_chain
 
         distances = []
-        
 
         for node1, node2 in zip(chain1.nodes, chain2.nodes):
             if node1.coords.shape[0] > 2:
-                dist,_ = RMSD(node1.coords, node2.coords)
+                dist, _ = RMSD(node1.coords, node2.coords)
             else:
                 dist = np.linalg.norm(node1.coords - node2.coords)
             distances.append(dist)
 
         return sum(distances) / len(chain1)
-    
+
     def _tangent_correlations(self, other_chain: Chain):
         chain1_vec = np.array(self.unit_tangents).flatten()
         chain2_vec = np.array(other_chain.unit_tangents).flatten()
         projector = np.dot(chain1_vec, chain2_vec)
         normalization = np.dot(chain1_vec, chain1_vec)
-        
+
         return projector / normalization
-    
-    
+
     def _gperp_correlation(self, other_chain: Chain):
-        dp = np.dot(self.get_g_perps().flatten(), other_chain.get_g_perps().flatten()) 
-        normalization = (np.linalg.norm(self.get_g_perps())*np.linalg.norm(other_chain.get_g_perps().flatten()))
-        
+        dp = np.dot(self.get_g_perps().flatten(), other_chain.get_g_perps().flatten())
+        normalization = np.linalg.norm(self.get_g_perps()) * np.linalg.norm(
+            other_chain.get_g_perps().flatten()
+        )
+
         return dp / normalization
-    
+
     def _gradient_correlation(self, other_chain: Chain):
-        
         chain1_vec = np.array(self.gradients).flatten()
         chain1_vec = chain1_vec / np.linalg.norm(chain1_vec)
-        
+
         chain2_vec = np.array(other_chain.gradients).flatten()
         chain2_vec = chain2_vec / np.linalg.norm(chain2_vec)
-        
+
         projector = np.dot(chain1_vec, chain2_vec)
         normalization = np.dot(chain1_vec, chain1_vec)
-        
+
         return projector / normalization
-    
+
     def _gradient_delta_mags(self, other_chain: Chain):
-        
         chain1_vec = np.array(self.gradients).flatten()
-        chain2_vec = np.array(other_chain.gradients ).flatten()
+        chain2_vec = np.array(other_chain.gradients).flatten()
         diff = np.linalg.norm(chain2_vec - chain1_vec)
         normalization = self.n_atoms * len(self.nodes)
-        
-        return diff / normalization
 
+        return diff / normalization
 
     def _get_mass_weighed_coords(self):
         traj = self.to_trajectory()
         coords = traj.coords
-        weights = np.array([np.sqrt(get_mass(s)) for s in traj.symbols]) 
-        weights = weights  / sum(weights)
-        mass_weighed_coords = coords  * weights.reshape(-1,1)
+        weights = np.array([np.sqrt(get_mass(s)) for s in traj.symbols])
+        weights = weights / sum(weights)
+        mass_weighed_coords = coords * weights.reshape(-1, 1)
         return mass_weighed_coords
-
 
     @property
     def _path_len_coords(self):
@@ -148,7 +154,7 @@ class Chain:
         else:
             coords = self.coordinates
         return coords
-    
+
     def _path_len_dist_func(self, coords1, coords2):
         if self.nodes[0].is_a_molecule:
             return qRMSD_distance(coords1, coords2)
@@ -170,7 +176,7 @@ class Chain:
         cum_sums = np.array(cum_sums)
         int_path_len = cum_sums / cum_sums[-1]
         return np.array(int_path_len)
-    
+
     @property
     def path_length(self):
         coords = self._path_len_coords
@@ -184,7 +190,7 @@ class Chain:
             cum_sums.append(cum_sums[-1] + distance)
 
         cum_sums = np.array(cum_sums)
-        path_len = cum_sums 
+        path_len = cum_sums
         return np.array(path_len)
 
     def _k_between_nodes(
@@ -201,13 +207,12 @@ class Chain:
         s = 8
         fs = 18
         f, ax = plt.subplots(figsize=(1.16 * s, s))
-        
+
         if norm_path:
             path_len = self.integrated_path_length
         else:
             path_len = self.path_length
-        
-        
+
         plt.plot(
             path_len,
             (self.energies - self.energies[0]) * 627.5,
@@ -236,7 +241,7 @@ class Chain:
         chain_copy = Chain(nodes=list_of_nodes, parameters=self.parameters)
         chain_copy.bfgs_hess = self.bfgs_hess
         chain_copy.velocity = self.velocity
-        
+
         return chain_copy
 
     def iter_triplets(self) -> list[list[Node]]:
@@ -276,18 +281,21 @@ class Chain:
         works = np.abs(ens[1:] * self.path_distances)
         tot_work = works.sum()
         return tot_work
-    
+
     @property
     def _energies_already_computed(self):
         all_ens = [node._cached_energy for node in self.nodes]
         return all([val is not None for val in all_ens])
-   
+
     @property
     def energies(self) -> np.array:
-        
         if not self._energies_already_computed:
             if self.parameters.do_parallel:
-                energy_gradient_tuples = self.parameters.node_class.calculate_energy_and_gradients_parallel(chain=self)
+                energy_gradient_tuples = (
+                    self.parameters.node_class.calculate_energy_and_gradients_parallel(
+                        chain=self
+                    )
+                )
             else:
                 energies = [node.energy for node in self.nodes]
                 gradients = [node.gradient for node in self.nodes]
@@ -296,36 +304,32 @@ class Chain:
             for (ene, grad), node in zip(energy_gradient_tuples, self.nodes):
                 node._cached_energy = ene
                 node._cached_gradient = grad
-        
-        
+
         out_ens = np.array([node._cached_energy for node in self.nodes])
-        
-        assert all([en is not None for en in out_ens]), f"Ens: Chain contains images with energies that did not converge: {out_ens}"
+
+        assert all(
+            [en is not None for en in out_ens]
+        ), f"Ens: Chain contains images with energies that did not converge: {out_ens}"
         return out_ens
-    
-    
+
     @property
     def energies_kcalmol(self) -> np.array:
-        return (self.energies - self.energies[0])*627.5
+        return (self.energies - self.energies[0]) * 627.5
 
     def neighs_grad_func(self, prev_node: Node, current_node: Node, next_node: Node):
-
         vec_tan_path = self._create_tangent_path(
             prev_node=prev_node, current_node=current_node, next_node=next_node
         )
         unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
         pe_grad = current_node.gradient
-        
+
         # remove rotations and translations
         if prev_node.is_a_molecule:
             if pe_grad.shape[1] >= 3:  # if we have at least 3 atoms
                 pe_grad[0, :] = 0  # this atom cannot move
                 pe_grad[1, :2] = 0  # this atom can only move in a line
                 pe_grad[2, :1] = 0  # this atom can only move in a plane
-        
-        
-        
 
         if not current_node.do_climb:
             pe_grads_nudged = current_node.get_nudged_pe_grad(
@@ -339,7 +343,6 @@ class Chain:
             )
 
         elif current_node.do_climb:
-
             pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
             pe_along_path = pe_along_path_const * unit_tan_path
 
@@ -354,27 +357,27 @@ class Chain:
                 f"current_node.do_climb is not a boolean: {current_node.do_climb=}"
             )
 
-        return pe_grads_nudged, spring_forces_nudged 
+        return pe_grads_nudged, spring_forces_nudged
 
     def pe_grads_spring_forces_nudged(self):
         pe_grads_nudged = []
         spring_forces_nudged = []
-        
+
         for prev_node, current_node, next_node in self.iter_triplets():
             pe_grad_nudged, spring_force_nudged = self.neighs_grad_func(
                 prev_node=prev_node,
                 current_node=current_node,
                 next_node=next_node,
             )
-            
+
             # if self.parameters.node_freezing:
-                # if not current_node.converged:
-                    # pe_grads_nudged.append(pe_grad_nudged)
-                    # spring_forces_nudged.append(spring_force_nudged)
-                # else:
-                    # zero = np.zeros_like(pe_grad_nudged)
-                    # pe_grads_nudged.append(zero)
-                    # spring_forces_nudged.append(zero)
+            # if not current_node.converged:
+            # pe_grads_nudged.append(pe_grad_nudged)
+            # spring_forces_nudged.append(spring_force_nudged)
+            # else:
+            # zero = np.zeros_like(pe_grad_nudged)
+            # pe_grads_nudged.append(zero)
+            # spring_forces_nudged.append(zero)
             # else:
             pe_grads_nudged.append(pe_grad_nudged)
             spring_forces_nudged.append(spring_force_nudged)
@@ -385,17 +388,22 @@ class Chain:
 
     def get_maximum_grad_magnitude(self):
         return np.max([np.amax(np.abs(grad)) for grad in self.gradients])
-    
+
     def get_maximum_gperp(self):
         gperp, gspring = self.pe_grads_spring_forces_nudged()
         max_gperps = []
-        for gp, node in zip(gperp, self):            
+        for gp, node in zip(gperp, self):
             # if not node.converged:
             max_gperps.append(np.amax(np.abs(gp)))
         return np.max(max_gperps)
-    
+
     def get_maximum_rms_grad(self):
-        return np.max([np.sqrt(np.mean(np.square(grad.flatten())) / len(grad.flatten())) for grad in self.gradients])
+        return np.max(
+            [
+                np.sqrt(np.mean(np.square(grad.flatten())) / len(grad.flatten()))
+                for grad in self.gradients
+            ]
+        )
 
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
@@ -418,21 +426,23 @@ class Chain:
         zero = np.zeros_like(pe_grads_nudged[0])
         grads = np.insert(pe_grads_nudged, 0, zero, axis=0)
         grads = np.insert(grads, len(grads), zero, axis=0)
-        
+
         return grads
-    
-    
+
     @property
     def _grads_already_computed(self):
         all_grads = [node._cached_gradient for node in self.nodes]
         return np.all([g is not None for g in all_grads])
-    
+
     @property
     def gradients(self) -> np.array:
-        
         if not self._grads_already_computed:
             if self.parameters.do_parallel:
-                energy_gradient_tuples = self.parameters.node_class.calculate_energy_and_gradients_parallel(chain=self)
+                energy_gradient_tuples = (
+                    self.parameters.node_class.calculate_energy_and_gradients_parallel(
+                        chain=self
+                    )
+                )
             else:
                 energies = [node.energy for node in self.nodes]
                 gradients = [node.gradient for node in self.nodes]
@@ -441,7 +451,7 @@ class Chain:
             for (ene, grad), node in zip(energy_gradient_tuples, self.nodes):
                 node._cached_energy = ene
                 node._cached_gradient = grad
-        
+
         pe_grads_nudged, spring_forces_nudged = self.pe_grads_spring_forces_nudged()
 
         grads = (
@@ -451,11 +461,13 @@ class Chain:
         # add chain bias if relevant
         if self.parameters.do_chain_biasing:
             tans = self.unit_tangents
-            
+
             # cb = ChainBiaser(reference_chain=n_ref.optimized, amplitude=self.parameters.amp, sigma=self.parameters.sig, distance_func=self.parameters.distance_func)
             bias_grads = self.parameters.cb.grad_chain_bias(self)
-            proj_grads = np.array([get_nudged_pe_grad(tan, grad) for tan,grad in zip(tans, bias_grads)])
-            
+            proj_grads = np.array(
+                [get_nudged_pe_grad(tan, grad) for tan, grad in zip(tans, bias_grads)]
+            )
+
             grads += proj_grads
 
         zero = np.zeros_like(grads[0])
@@ -468,8 +480,7 @@ class Chain:
         #     grads[:, 1, :2] = 0  # this atom can only move in a line
         #     grads[:, 2, :1] = 0  # this atom can only move in a plane
 
-
-        # # zero all nodes that have converged 
+        # # zero all nodes that have converged
         # for (i, grad), node in zip(enumerate(grads), self.nodes):
         #     if node.converged:
         #         grads[i] = grad*0
@@ -490,7 +501,6 @@ class Chain:
 
     @property
     def coordinates(self) -> np.array:
-
         return np.array([node.coords for node in self.nodes])
 
     def _create_tangent_path(
@@ -541,13 +551,12 @@ class Chain:
         next_node: Node,
         unit_tan_path: np.array,
     ):
-
         k_max = (
             max(self.parameters.k)
             if hasattr(self.parameters.k, "__iter__")
             else self.parameters.k
         )
-        e_ref = max(self.nodes[0].energy, self.nodes[len(self.nodes)-1].energy)
+        e_ref = max(self.nodes[0].energy, self.nodes[len(self.nodes) - 1].energy)
         e_max = max(self.energies)
 
         k01 = self._k_between_nodes(
@@ -576,7 +585,7 @@ class Chain:
     def to_trajectory(self):
         t = Trajectory([n.tdstructure for n in self.nodes])
         return t
-    
+
     def is_elem_step(self):
         chain = self.copy()
         if len(self) <= 1:
@@ -584,21 +593,22 @@ class Chain:
 
         conditions = {}
         is_concave = self._chain_is_concave()
-        conditions['concavity'] = is_concave
+        conditions["concavity"] = is_concave
         if not is_concave:
             return False, "minima"
-        
-        
-        r,p = self._approx_irc()
-        
+
+        r, p = self._approx_irc()
+
         cases = [
-            r.is_identical(chain[0]) and p.is_identical(chain[-1]), # best case
-            r.is_identical(chain[0]) and p.is_identical(chain[0]), # both collapsed to reactants
-            r.is_identical(chain[-1]) and p.is_identical(chain[-1]) # both collapsed to products
+            r.is_identical(chain[0]) and p.is_identical(chain[-1]),  # best case
+            r.is_identical(chain[0])
+            and p.is_identical(chain[0]),  # both collapsed to reactants
+            r.is_identical(chain[-1])
+            and p.is_identical(chain[-1]),  # both collapsed to products
         ]
-        
-        minimizing_gives_endpoints = any(cases) 
-        conditions['irc'] = minimizing_gives_endpoints
+
+        minimizing_gives_endpoints = any(cases)
+        conditions["irc"] = minimizing_gives_endpoints
 
         split_method = self._select_split_method(conditions)
         elem_step = True if split_method is None else False
@@ -606,18 +616,18 @@ class Chain:
 
     def _chain_is_concave(self):
         ind_minima = _get_ind_minima(self)
-        minima_present =  len(ind_minima) != 0
+        minima_present = len(ind_minima) != 0
         if minima_present:
             minimas_is_r_or_p = []
             for i in ind_minima:
-                opt =  self[i].do_geometry_optimization()
+                opt = self[i].do_geometry_optimization()
                 minimas_is_r_or_p.append(
-                    opt.is_identical(self[0]) or opt.is_identical(self[-1]) 
-                    )
-            
+                    opt.is_identical(self[0]) or opt.is_identical(self[-1])
+                )
+
             print(f"\n{minimas_is_r_or_p=}\n")
             return all(minimas_is_r_or_p)
-            
+
         else:
             return True
 
@@ -627,68 +637,71 @@ class Chain:
             arg_max = np.argmax(chain.energies)
         else:
             arg_max = index
-            
-        if arg_max == len(chain)-1 or arg_max == 0: # monotonically changing function, 
-            return chain[0], chain[len(chain)-1]
+
+        if (
+            arg_max == len(chain) - 1 or arg_max == 0
+        ):  # monotonically changing function,
+            return chain[0], chain[len(chain) - 1]
 
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
-        
+
         if not self.parameters.node_class == Node3D_TC:
             r = candidate_r.do_geometry_optimization()
             p = candidate_p.do_geometry_optimization()
-            
-        else: # i am sorry for this
+
+        else:  # i am sorry for this
             traj = Trajectory([candidate_r.tdstructure, candidate_p.tdstructure])
             traj.update_tc_parameters(candidate_r.tdstructure)
             out_traj = traj.tc_geom_opt_all_geometries()
-            r, p = self.parameters.node_class(out_traj[0]), self.parameters.node_class(out_traj[1])
-            
+            r, p = self.parameters.node_class(out_traj[0]), self.parameters.node_class(
+                out_traj[1]
+            )
+
         return r, p
 
     def _select_split_method(self, conditions: dict):
-        all_conditions_met = all([val for key,val in conditions.items()])
-        if all_conditions_met: 
+        all_conditions_met = all([val for key, val in conditions.items()])
+        if all_conditions_met:
             return None
 
-        if conditions['concavity'] is False: # prioritize the minima condition
-            return 'minima'
-        elif conditions['irc'] is False:
-            return 'maxima'
-        
-        
+        if conditions["concavity"] is False:  # prioritize the minima condition
+            return "minima"
+        elif conditions["irc"] is False:
+            return "maxima"
+
     def write_ene_info_to_disk(self, fp):
-        ene_path = fp.parent / Path(str(fp.stem)+".energies")
+        ene_path = fp.parent / Path(str(fp.stem) + ".energies")
         np.savetxt(ene_path, self.energies)
-        
-        
+
     def write_grad_info_to_disk(self, fp):
-        grad_path = fp.parent / Path(str(fp.stem)+".gradients")
+        grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
         grad_shape_path = fp.parent / "grad_shapes.txt"
-        np.savetxt(grad_path, np.array([node.gradient for node in self.nodes]).flatten())
+        np.savetxt(
+            grad_path, np.array([node.gradient for node in self.nodes]).flatten()
+        )
         np.savetxt(grad_shape_path, self.gradients.shape)
-        
-        
+
     def write_to_disk(self, fp: Path):
         if isinstance(fp, str):
             fp = Path(fp)
-        
+
         if self.nodes[0].is_a_molecule:
             traj = self.to_trajectory()
             traj.write_trajectory(fp)
-            
+
             if self._energies_already_computed:
                 self.write_ene_info_to_disk(fp)
             if self._grads_already_computed:
                 self.write_grad_info_to_disk(fp)
-            
+
         else:
             raise NotImplementedError("Cannot write 2D chains yet.")
 
     def get_ts_guess(self):
         ind_ts_guess = self.energies.argmax()
         return self[ind_ts_guess].tdstructure
-    
+
     def get_eA_chain(self):
         eA = max(self.energies_kcalmol)
         return eA

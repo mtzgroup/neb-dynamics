@@ -22,6 +22,10 @@ RMSD_CUTOFF = 0.5
 KCAL_MOL_CUTOFF = 0.3
 
 
+# Get Port
+# port = 8888
+port = 12121
+
 @dataclass
 class Node3D_TC_TCPB(Node):
     tdstructure: TDStructure
@@ -65,14 +69,22 @@ class Node3D_TC_TCPB(Node):
 
     @property
     def energy(self):
+        if self._cached_energy is not None:
+            return self._cached_energy
         if self._cached_energy is  None:
             self.compute_ene_grad()
         return self._cached_energy
 
     @property
     def gradient(self):
-        if self._cached_gradient is None:
-            self.compute_ene_grad()
+        if self.converged:
+            return np.zeros_like(self.coords)
+        
+        else:
+            if self._cached_gradient is not None:
+                return self._cached_gradient
+            else:
+                self.compute_ene_grad()
         return self._cached_gradient
             
     @staticmethod
@@ -96,6 +108,10 @@ class Node3D_TC_TCPB(Node):
             do_climb=self.do_climb,
         )
         copy_node._tc_server = self._tc_server
+        
+        copy_node._cached_energy = self._cached_energy
+        # copy_node._cached_gradient = self._cached_gradient
+        
         return copy_node
 
     def update_coords(self, coords: np.array) -> None:
@@ -149,25 +165,33 @@ class Node3D_TC_TCPB(Node):
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
         ref = chain[0]
-        
+        # print('input chain:',[node._cached_energy for node in chain])
         if not ref._tc_server:
             ref._connect_to_server()
         
+        ene_gradients = [None]*len(chain)
+        inds_converged = [i for i, node in enumerate(chain) if node.converged]
+        inds_not_converged = [i for i, node in enumerate(chain) if not node.converged]
+        for ind in inds_converged:
+            ref_node = chain[ind]
+            ene_gradients[ind] = (ref_node._cached_energy, np.zeros_like(ref_node.coords))
         
-        ene_gradients = []
-        structures = chain
-        for i, structure in enumerate(structures):
-            # this if statement is so the wavefunc is propagated for the following structures
-            if i==0: 
-                chosen_index=1 
-            else: 
-                chosen_index=0
+        if len(inds_not_converged) >= 1:
+            structures = [node for i, node in enumerate(chain) if i in inds_not_converged]
+            # print(f"\nLen of structs: {len(structures)} \\ {len(inds_not_converged)=}\n")
+            for i, (list_ind, structure) in enumerate(zip(inds_not_converged,structures)):
+                # this if statement is so the wavefunc is propagated for the following structures
+                if i==0: 
+                    chosen_index=1 
+                else: 
+                    chosen_index=0
+                    
+                    
+                structure._tc_server = ref._tc_server
+                ene_grad = cls.compute_tc_tcpb(structure_node=structure, index=chosen_index)
+                ene_gradients[list_ind] = ene_grad
                 
-                
-            structure._tc_server = ref._tc_server
-            ene_grad = cls.compute_tc_tcpb(structure_node=structure, index=chosen_index)
-            ene_gradients.append(ene_grad)
-
+        # print(ene_gradients)
         return ene_gradients
     
     def do_geometry_optimization(self) -> Node3D_TC_TCPB:
@@ -215,8 +239,6 @@ class Node3D_TC_TCPB(Node):
         td = self.tdstructure
         host = "localhost"
 
-        # Get Port
-        port = 8888
 
         str_inp = td._tcpb_input_string()
 
@@ -276,7 +298,7 @@ class Node3D_TC_TCPB(Node):
         
         
         # Compute energy and gradient
-        time.sleep(0.020)  # TCPB needs a small delay between calls
+        time.sleep(0.030)  # TCPB needs a small delay between calls
         
         totenergy, qmgrad, mmgrad, status = structure_node._tc_server.compute_energy_gradient(
             qmattypes, qmcoords, globaltreatment=globaltreatment[wf_treatment_chosen]

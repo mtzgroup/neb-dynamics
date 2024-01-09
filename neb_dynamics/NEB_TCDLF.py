@@ -51,6 +51,7 @@ class NEB_TCDLF:
             maxit {self.scf_maxit}
             scrdir {tmp.name[:-4]}
             min_tolerance {self.parameters.tol}
+            ts_method neb_frozen
             
             max_nebk {self.initial_chain.parameters.k}
             min_nebk {self.initial_chain.parameters.k - self.initial_chain.parameters.delta_k}

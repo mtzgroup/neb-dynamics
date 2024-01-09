@@ -174,9 +174,9 @@ class Node3D(Node):
             converged=self.converged,
             do_climb=self.do_climb,
         )
-        
+        # if copy_node.converged:        
         copy_node._cached_energy = self._cached_energy
-        copy_node._cached_gradient = self._cached_gradient
+            # copy_node._cached_gradient = self._cached_gradient
         return copy_node
 
 

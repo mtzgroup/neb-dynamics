@@ -15,6 +15,8 @@ class Linesearch(Optimizer):
     alpha: float = 0.01
     beta: float = None
     
+    activation_tol: float = 0.1
+    
     def __post_init__(self):
         if self.beta is None:
             beta = (self.min_step_size / self.step_size)**(1/self.als_max_steps)
@@ -22,18 +24,24 @@ class Linesearch(Optimizer):
             
     
     def optimize_step(self, chain, chain_gradients):
-        disp = ALS.ArmijoLineSearch(
-                chain=chain,
-                t=self.step_size,
-                alpha=self.alpha,
-                beta=self.beta,
-                grad=chain_gradients,
-                max_steps=self.als_max_steps
-        )
+        
+        if np.linalg.norm(chain_gradients) < self.activation_tol:
+        
+            disp = ALS.ArmijoLineSearch(
+                    chain=chain,
+                    t=self.step_size,
+                    alpha=self.alpha,
+                    beta=self.beta,
+                    grad=chain_gradients,
+                    max_steps=self.als_max_steps
+            )
+        else:
+            
+            disp = self.min_step_size
         
         scaling = 1
-        # if np.linalg.norm(chain_gradients * disp) > self.step_size*len(chain): # if step size is too large
-        #     scaling = (1/(np.linalg.norm(chain_gradients * disp)))*self.step_size*len(chain)
+        if np.linalg.norm(chain_gradients * disp) > self.step_size*len(chain): # if step size is too large
+            scaling = (1/(np.linalg.norm(chain_gradients * disp)))*self.step_size*len(chain)
         
         new_chain_coordinates = chain.coordinates - (chain_gradients * disp*scaling)
         new_nodes = []

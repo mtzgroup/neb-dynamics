@@ -17,7 +17,7 @@ class BFGS(Optimizer):
     min_step_size: float = 0.33
     alpha: float = 0.01
     beta: float = None
-    ACTIVATION_TOL: float = 100.0
+    activation_tol: float = 100.0
     update_using_gperp: bool = False
     
     steps_since_last_flush: int = 1 
@@ -246,12 +246,11 @@ class BFGS(Optimizer):
     
         # hess_upt = A - B
     
-        # if np.amax(chain.gradients) < self.ACTIVATION_TOL:
-        new_chain.bfgs_hess = new_hess
-        # else:
-        #     new_chain.bfgs_hess = hess_prev
+        if np.amax(np.abs(chain.gradients)) <= self.activation_tol:
+            new_chain.bfgs_hess = new_hess
+        else:
+            new_chain.bfgs_hess = np.eye(chain.gradients.flatten().shape[0])
             
-
         if new_chain._gradient_correlation(chain) < self.bfgs_flush_thre:
             self.flush_chain_hess(new_chain)
             self.steps_since_last_flush = 0

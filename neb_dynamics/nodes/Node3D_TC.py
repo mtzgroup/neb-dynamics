@@ -63,7 +63,7 @@ class Node3D_TC(Node):
             if self._cached_gradient is not None:
                 return self._cached_gradient
             else:
-                grad =  self.tdstructure.gradient_tc()
+                grad =  self.tdstructure.gradient_tc()*BOHR_TO_ANGSTROMS
                 self._cached_gradient = grad
                 return grad
 
@@ -154,7 +154,7 @@ class Node3D_TC(Node):
             new_traj.update_tc_parameters(traj[0]) # needed so we propagate the setting.... bad.....
             new_traj_ene_grads = new_traj.energies_and_gradients_tc()
             for (ene, grad, ind) in zip(new_traj_ene_grads[0], new_traj_ene_grads[1], inds_not_converged):
-                ens_grads_lists[ind] = (ene, grad)
+                ens_grads_lists[ind] = (ene, grad*BOHR_TO_ANGSTROMS)
         
         
         return ens_grads_lists
