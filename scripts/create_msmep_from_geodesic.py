@@ -1,8 +1,8 @@
 #!/home/jdep/.conda/envs/rp/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
-from retropaths.abinitio.trajectory import Trajectory
-from retropaths.abinitio.tdstructure import TDStructure
+from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.tdstructure import TDStructure
 
 
 from neb_dynamics.NEB import NEB

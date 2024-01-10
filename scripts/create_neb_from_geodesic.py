@@ -1,12 +1,12 @@
 #!/home/jdep/.conda/envs/rp/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
-from retropaths.abinitio.trajectory import Trajectory
+from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Node3D_TC import Node3D_TC
-from neb_dynamics.Node3D import Node3D
-from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
-from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D import Node3D
+from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
