@@ -3,9 +3,9 @@ from dataclasses import dataclass
 from pathlib import Path
 import sys
 import numpy as np
-from retropaths.abinitio.tdstructure import TDStructure
-from retropaths.abinitio.trajectory import Trajectory
-from retropaths.helper_functions import pairwise
+from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.helper_functions import pairwise
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException

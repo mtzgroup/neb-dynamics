@@ -8,7 +8,7 @@ from neb_dynamics.helper_functions import qRMSD_distance
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.TreeNode import TreeNode
-from retropaths.abinitio.tdstructure import TDStructure
+from neb_dynamics.tdstructure import TDStructure
 
 
 @dataclass

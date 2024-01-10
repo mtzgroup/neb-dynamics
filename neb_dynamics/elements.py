@@ -4,23 +4,6 @@ This module is part of the Nanoreactor package.
 
 Data are loaded from OpenBabel using the following script:
 
-    import pybel as pb
-    from collections import namedtuple
-
-    Element = namedtuple("Element", ["symbol", "name", "atomic_num", "mass_amu",
-                                     "covalent_radius", "vdw_radius", "bond_radius",
-                                     "electronegativity", "max_bonds"])
-    element_data = []
-    elements = pb.ob.OBElementTable()
-    isotopes = pb.ob.OBIsotopeTable()
-    for i in xrange(elements.GetNumberOfElements()):
-        new_element = Element(elements.GetSymbol(i), elements.GetName(i), i,
-                              isotopes.GetExactMass(i), elements.GetCovalentRad(i),
-                              elements.GetVdwRad(i), elements.CorrectedBondRad(i),
-                              elements.GetElectroNeg(i), elements.GetMaxBonds(i))
-        element_data.append(new_element)
-    print repr(element_data)
-
 """
 from collections import namedtuple
 
@@ -223,3 +206,13 @@ class ElementData(object):
     def get_element_list(cls):
         """Returns the list of symbols of all available elements"""
         return [element.symbol for element in cls.data]
+
+
+def atomic_number_to_symbol(n):
+    ed = ElementData()
+    return ed.from_atomic_number(n).symbol
+
+
+def symbol_to_atomic_number(str):
+    ed = ElementData()
+    return ed.from_symbol(str).atomic_num

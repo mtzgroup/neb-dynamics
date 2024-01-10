@@ -401,7 +401,8 @@ class NEB:
             max(max_grad_components) <=self.parameters.grad_thre]
         # return len(converged_nodes_indices) == len(chain_new)
 
-        return sum(criteria_converged) >= 2
+        # return sum(criteria_converged) >= 2
+        return sum(criteria_converged) >= 3
     
        
 

@@ -7,7 +7,8 @@ from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
-from retropaths.abinitio.trajectory import Trajectory
+# from retropaths.abinitio.trajectory import Trajectory
+from neb_dynamics.trajectory import Trajectory
 
 from neb_dynamics.Node import Node
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS

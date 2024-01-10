@@ -6,7 +6,8 @@ from functools import cached_property
 import numpy as np
 from ase import Atoms
 from ase.optimize import LBFGS
-from retropaths.abinitio.tdstructure import TDStructure
+# from retropaths.abinitio.tdstructure import TDStructure
+from neb_dynamics.tdstructure import TDStructure
 from xtb.ase.calculator import XTB
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED

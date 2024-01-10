@@ -15,8 +15,16 @@ import numpy as np
 import pandas as pd
 from IPython.core.display import HTML
 from scipy.signal import argrelextrema
-from retropaths.molecules.elements import ElementData
+import openbabel
+from pysmiles import write_smiles
+from openeye import oechem
+import os
+from rdkit import Chem
 
+
+
+
+from neb_dynamics.elements import ElementData
 
 warnings.filterwarnings('ignore')
 
@@ -175,4 +183,185 @@ def get_seeding_chain(neb_obj, force_thre):
         if c.get_maximum_grad_magnitude() <= force_thre:
             return c
     return neb_obj.chain_trajectory[-1]
+
+
+def make_copy(obmol):
+    copy_obmol = openbabel.OBMol()
+    for atom in openbabel.OBMolAtomIter(obmol):
+        copy_obmol.AddAtom(atom)
+
+    for bond in openbabel.OBMolBondIter(obmol):
+        copy_obmol.AddBond(bond)
+
+    copy_obmol.SetTotalCharge(obmol.GetTotalCharge())
+    copy_obmol.SetTotalSpinMultiplicity(obmol.GetTotalSpinMultiplicity())
+
+    return copy_obmol
+
+
+def load_obmol_from_fp(fp: Path) -> openbabel.OBMol:
+    """
+    takes in a pathlib file path as input and reads it in as an openbabel molecule
+    """
+    if not isinstance(fp, Path):
+        fp = Path(fp)
+        
+    file_type = fp.suffix[1:]  # get what type of file this is
+
+    obmol = openbabel.OBMol()
+    obconversion = openbabel.OBConversion()
+    obconversion.SetInFormat(file_type)
+
+    obconversion.ReadFile(obmol, str(fp.resolve()))
+
+    return make_copy(obmol)
+
+def write_xyz(atoms, X, name=''):
+    natoms = len(atoms)
+    string = ''
+    string += f'{natoms}\n{name}\n'
+    for i in range(natoms):
+        string += f'{atoms[i]} {X[i,0]} {X[i,1]} {X[i,2]} \n'
+    return(string)
     
+def bond_ord_number_to_string(i):
+    bo2s = {1.0: "single", 1.5: "aromatic", 2.0: "double", 3.0: "triple"}
+    try:
+        st = bo2s[i]
+    except KeyError as e:
+        print(f"Bond order must be in [1, 1.5, 2, 3], received {i}")
+        raise e
+    return st
+
+def from_number_to_element(i):
+    return __ATOM_LIST__[i - 1].capitalize()
+
+def graph_to_smiles(mol):
+
+    if mol.is_empty():
+        smi2 = ""
+    else:
+        for e in mol.edges:
+            s = mol.edges[e]["bond_order"]
+            if s == "single":
+                i = 1
+            elif s == "double":
+                i = 2
+            elif s == "aromatic":
+                i = 1.5
+            elif s == "triple":
+                i = 3
+            mol.edges[e]["order"] = i
+
+        if 'OE_LICENSE' in os.environ:
+            # Keiran oechem (this needs the license)
+            smi = write_smiles(mol)
+            oemol = oechem.OEGraphMol()
+            oechem.OESmilesToMol(oemol, smi)
+            smi2 = oechem.OEMolToSmiles(oemol)
+        else:
+            try:
+                b = write_smiles(mol)
+                smi2 = Chem.CanonSmiles(b)
+            except Exception as e:
+                print('This run is without OECHEM license. A graph has failed to be converted in smiles. Take note of the exception.')
+                raise e
+    return smi2
+
+
+__ATOM_LIST__ = [
+    "h",
+    "he",
+    "li",
+    "be",
+    "b",
+    "c",
+    "n",
+    "o",
+    "f",
+    "ne",
+    "na",
+    "mg",
+    "al",
+    "si",
+    "p",
+    "s",
+    "cl",
+    "ar",
+    "k",
+    "ca",
+    "sc",
+    "ti",
+    "v",
+    "cr",
+    "mn",
+    "fe",
+    "co",
+    "ni",
+    "cu",
+    "zn",
+    "ga",
+    "ge",
+    "as",
+    "se",
+    "br",
+    "kr",
+    "rb",
+    "sr",
+    "y",
+    "zr",
+    "nb",
+    "mo",
+    "tc",
+    "ru",
+    "rh",
+    "pd",
+    "ag",
+    "cd",
+    "in",
+    "sn",
+    "sb",
+    "te",
+    "i",
+    "xe",
+    "cs",
+    "ba",
+    "la",
+    "ce",
+    "pr",
+    "nd",
+    "pm",
+    "sm",
+    "eu",
+    "gd",
+    "tb",
+    "dy",
+    "ho",
+    "er",
+    "tm",
+    "yb",
+    "lu",
+    "hf",
+    "ta",
+    "w",
+    "re",
+    "os",
+    "ir",
+    "pt",
+    "au",
+    "hg",
+    "tl",
+    "pb",
+    "bi",
+    "po",
+    "at",
+    "rn",
+    "fr",
+    "ra",
+    "ac",
+    "th",
+    "pa",
+    "u",
+    "np",
+    "pu",
+]

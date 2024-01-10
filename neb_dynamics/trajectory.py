@@ -11,18 +11,23 @@ from IPython.core.display import HTML
 from ipywidgets import IntSlider, interact
 from openeye import oechem
 
-from retropaths.abinitio import OBH
-
 from neb_dynamics.geodesic_interpolation.fileio import read_xyz
 from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
+
+
+# from retropaths.abinitio.tdstructure import TDStructure
 from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.molecule import Molecule
 from chemcloud import CCClient
 
 # oechem.OEThrow.SetLevel(oechem.OEErrorLevel_Quiet) # oechem VERBOSITY controller
-ES_PROGRAM = 'psi4'
-# ES_PROGRAM = 'terachem'
+# ES_PROGRAM = 'psi4'
+ES_PROGRAM = 'terachem'
 
-HARTREE_TO_KCALM = 627.5
+
+ANGSTROM_TO_BOHR = 1.88973
+BOHR_TO_ANGSTROM = 1/ANGSTROM_TO_BOHR
+HARTREE_TO_KCALM = 627.503
 
 @dataclass
 class Trajectory:
@@ -76,14 +81,12 @@ class Trajectory:
 
     @classmethod
     def from_coords_symbols(cls, coords, symbs, tot_charge=0, tot_spinmult=1):
-        traj = np.array(
-            [
+        traj = [
                 TDStructure.from_coords_symbols(
                     i_coords, symbs, tot_charge=tot_charge, tot_spinmult=tot_spinmult
                 )
                 for i_coords in coords
             ]
-        )
         return cls(traj)
 
     @classmethod
@@ -121,18 +124,6 @@ class Trajectory:
         for frame in array[start_ind:end_ind]:
             self.traj.append(frame)
 
-    def as_xyz(self):
-        """
-        returns the trajectory array as a list of xyz coordinates and
-        a list of symbols for each coord
-        """
-        xyz_arr = []
-        for molecule in self.traj:
-            molecule_coords = OBH.obmol_to_coords(molecule.molecule_obmol)
-            xyz_arr.append(molecule_coords)
-
-        symbols = OBH.obmol_to_symbs(molecule.molecule_obmol)
-        return xyz_arr, symbols
 
     def write_trajectory(self, file_path: Path):
         """
@@ -203,6 +194,13 @@ class Trajectory:
         """
         return {x.molecule_rp.smiles for x in self}
 
+    def draw_smiles(self, width=100, mode="oe", columns=14):
+        return Molecule.draw_list(
+            [Molecule.from_smiles(x) for x in self.smiles],
+            width=width,
+            mode=mode,
+            columns=columns,
+        )
         
         
     def update_tc_parameters(self, reference: TDStructure):
@@ -251,43 +249,57 @@ class Trajectory:
         return (array - array[0]) * HARTREE_TO_KCALM
     
     def energies_tc(self):
-        inputs = [td._prepare_input(method='grad') for td in self]
-        future_result = self.traj[0].tc_client.compute(inputs, engine="terachem_fe")
-        results = future_result.get()
-        for r in results:
-            if not r.success:
-                print(r.error.error_message)
-                return None
-        array = np.array([result.properties.return_energy for result in results])
-        return (array - array[0]) * HARTREE_TO_KCALM
+        ene, grads = self.energies_and_gradients_tc()
+        return ene
     
     
     def tc_geom_opt_all_geometries(self):
-        prog_inp = [td._prepare_input(method='opt') for td in self]
+        prog_inp = [td._prepare_input(method='optimization') for td in self]
         future_results = self.traj[0].tc_client.compute('geometric',prog_inp)
-        outputs = [op.get() for op in future_results]
-        results = [TDStructure.from_cc_result(out) for out in outputs if out.success]
-        return Trajectory(results)
+        outputs = future_results.get()
+        
+        results = [TDStructure.from_cc_result(out.results) for out in outputs if out.success]
+        out_tr =  Trajectory(results)
+        out_tr.update_tc_parameters(self.traj[0])
+        return out_tr
 
     def energies_and_gradients_tc(self):
         client = CCClient()
-        prog_input = [td._prepare_input(method='gradient') for td in self.traj]
+        prog_input = [td._prepare_input(method='gradient') for td in self.traj]            
         
-        future_result = client.compute(
-            ES_PROGRAM, prog_input
-        )
-        output_list = future_result.get()
+        if len(prog_input) > 1:
+            future_result = client.compute(
+                ES_PROGRAM, prog_input
+            )
+            output_list = future_result.get()
+                
+            for res in output_list:
+                if not res.success:
+                    res.ptraceback
+                    print(f"{ES_PROGRAM} failed.")
+                    return None
+                
+                
+            grads = np.array([output.return_result for output in output_list])
+            ens = np.array([output.results.energy for output in output_list])
+            return ens, grads
+        else:
+            future_result = client.compute(
+                ES_PROGRAM, prog_input[0]
+            )
+            output = future_result.get()
+                
             
-        for res in output_list:
-            if not res.success:
-                res.ptraceback
+            if not output.success:
+                output.ptraceback
                 print(f"{ES_PROGRAM} failed.")
                 return None
             
+            grads = np.array([output.return_result])
+            ens = np.array([output.results.energy])
+            return ens, grads
         
-        grads = np.array([output.return_result for output in output_list])
-        ens = np.array([output.results.energy for output in output_list])
-        return ens, grads
+        
     
     
 

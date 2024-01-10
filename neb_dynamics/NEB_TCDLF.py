@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
-from retropaths.abinitio.trajectory import Trajectory
+from neb_dynamics.trajectory import Trajectory
 
 
 @dataclass

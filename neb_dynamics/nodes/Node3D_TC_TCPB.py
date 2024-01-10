@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from functools import cached_property
 import subprocess
 import numpy as np
-from retropaths.abinitio.tdstructure import TDStructure
+# from retropaths.abinitio.tdstructure import TDStructure
+from neb_dynamics.tdstructure import TDStructure
 import multiprocessing as mp
 import shutil
 from qcparse import parse
