@@ -13,6 +13,8 @@ from neb_dynamics.nodes.Node2d import (Node2D, Node2D_2, Node2D_Flower, Node2D_I
 from neb_dynamics.potential_functions import (flower_func, sorry_func_0,
                                               sorry_func_1, sorry_func_2,
                                               sorry_func_3)
+
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from TS.TS_PRFO import TS_PRFO
 from neb_dynamics.ChainBiaser import ChainBiaser
 
@@ -236,15 +238,15 @@ def main():
         k=ks,
         node_class=presets["node"],
         delta_k=0,
-        step_size=.1,
         do_parallel=False,
         use_geodesic_interpolation=False,
-        min_step_size=0.001,
     )
     gii = GIInputs(nimages=nimages)
+    optimizer = VelocityProjectedOptimizer(timestep=0.01, activation_tol=0.1)
+    
     nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=True, early_stop_chain_rms_thre=0.0002, early_stop_force_thre=1, node_freezing=False, early_stop_still_steps_thre=100)
     chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
-    m = MSMEP(neb_inputs=nbi_msmep, chain_inputs=cni, gi_inputs=gii)
+    m = MSMEP(neb_inputs=nbi_msmep, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer)
     h_root_node, out_chain = m.find_mep_multistep(input_chain=chain)
 
 
