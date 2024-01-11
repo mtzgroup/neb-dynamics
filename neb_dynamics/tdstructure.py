@@ -647,6 +647,8 @@ class TDStructure:
     def _tcpb_input_string(self):
         tc_inp_str = f"""method {self.tc_model_method}
         basis {self.tc_model_basis}
+        spinmult {self.spinmult}
+        charge {self.charge}
         """
 
         if bool(self.tc_c0):

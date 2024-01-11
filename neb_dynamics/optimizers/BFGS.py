@@ -194,6 +194,9 @@ class BFGS(Optimizer):
         
         chain_gradients = grad_step
         
+        atomn = chain[0].coords.shape[0]
+        max_disp = self.step_size
+        scaling = 1
         
         if self.use_linesearch:
         
@@ -207,13 +210,15 @@ class BFGS(Optimizer):
             ) 
             
         else:
-            disp = 1.0
-            
-        atomn = chain[0].coords.shape[0]
-        max_disp = self.step_size*atomn*len(chain)
-        scaling = 1
+            disp = self.step_size
+        
+        
+        
         if np.linalg.norm(chain_gradients*disp) > max_disp: # if step size is too large
             scaling = (1/(np.linalg.norm(chain_gradients)))*max_disp
+        
+    
+        
             
         new_chain_coordinates = chain.coordinates - chain_gradients * disp*scaling
         new_nodes = []
@@ -221,7 +226,16 @@ class BFGS(Optimizer):
 
             new_nodes.append(node.update_coords(new_coords))
 
+
+
+        # need to copy the gradients from the converged nodes
         new_chain = Chain(new_nodes, parameters=chain.parameters)
+        for new_node, old_node in zip(new_chain.nodes, chain.nodes):
+            if old_node.converged:
+                new_node._cached_energy = old_node._cached_energy
+                new_node._cached_gradient = old_node._cached_gradient
+        
+        
         
         # hessian update from wikipedia
         if self.update_using_gperp:

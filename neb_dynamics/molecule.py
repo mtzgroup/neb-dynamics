@@ -254,7 +254,7 @@ class Molecule(nx.Graph):
                 "Am": "R21",
                 "Cm": "R22",
             }
-            smiles = self.replace_r_with_wild_names(d).force_smiles()
+            smiles = self.force_smiles()
             svg_str = moldrawsvg(smiles, d, molSize=size, fixed_bond_length=fixed_bond_length, fixedScale=fixedScale, fontSize=fontSize, lineWidth=lineWidth)
             if string_mode:
                 return svg_str
@@ -552,7 +552,7 @@ class Molecule(nx.Graph):
         """
         Return a SMILES representation, tries to avoid recomputing the smiles string
         """
-        if self._smiles == "" and not self.is_template:
+        if self._smiles == "":
             try:
                 self._smiles = self.create_smiles()
             except Exception as e:

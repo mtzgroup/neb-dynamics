@@ -138,6 +138,8 @@ class NEB:
             max_grad_val = new_chain.get_maximum_grad_magnitude()
             max_rms_grad_val = new_chain.get_maximum_rms_grad()
             chain_converged = self._chain_converged(chain_prev=chain_previous, chain_new=new_chain)
+            
+            
             # print([node._cached_energy for node in new_chain])
             # print([node.converged for node in new_chain])
             
@@ -229,34 +231,17 @@ class NEB:
         
         return new_vel, total_force
 
+    def _copy_node_information_to_converged(self, new_chain, old_chain):
+        for new_node, old_node in zip(new_chain.nodes, old_chain.nodes):
+            if old_node.converged:
+                new_node._cached_energy = old_node._cached_energy
+                new_node._cached_gradient = old_node._cached_gradient
 
     def update_chain(self, chain: Chain) -> Chain:
         grad_step = chain.gradients
-        # print('inside update_chain',[node._cached_energy for node in chain])
-        do_vv = False
-        # do_vv = self.do_velvel(chain=chain)
-        if do_vv:
-            new_vel, force = self.get_chain_velocity(chain=chain)
-            new_chain_coordinates = chain.coordinates + force
-            chain.velocity = new_vel
-            
-            new_nodes = []
-            for node, new_coords in zip(chain.nodes, new_chain_coordinates):
 
-                new_nodes.append(node.update_coords(new_coords))
+        new_chain = self.optimizer.optimize_step(chain=chain, chain_gradients=grad_step)        
 
-            new_chain = Chain(new_nodes, parameters=chain.parameters)
-            
-            
-            
-        else:
-            new_chain = self.optimizer.optimize_step(chain=chain, chain_gradients=grad_step)        
-            for new_node, old_node in zip(new_chain.nodes, chain.nodes):
-                if old_node.converged:
-                    new_node._cached_energy = old_node._cached_energy
-                    new_node._cached_gradient = old_node._cached_gradient
-
-        
         return new_chain
 
 
@@ -294,12 +279,10 @@ class NEB:
     def _update_node_convergence(self, chain: Chain, indices: np.array, prev_chain: Chain) -> None:
         for i, (node, prev_node) in enumerate(zip(chain, prev_chain)):
             if i in indices:
-                # print(f"node_{i} converged.")
-                node.converged = True
-                # print(f"prev_node en:{prev_node._cached_energy}")
-                
-                node._cached_energy = prev_node._cached_energy
-                node._cached_gradient = prev_node._cached_gradient
+                if prev_node._cached_energy is not None and prev_node._cached_gradient is not None:
+                    node.converged = True
+                    node._cached_energy = prev_node._cached_energy
+                    node._cached_gradient = prev_node._cached_gradient
             else:
                 node.converged = False
 
@@ -383,8 +366,10 @@ class NEB:
 
         if chain_new.parameters.node_freezing:
             self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices, prev_chain=chain_prev)
+            self._copy_node_information_to_converged(new_chain=chain_new, old_chain=chain_prev)
             
         if self.parameters.v > 1:
+            print("\n")
             [
                 print(
                     f"\t\tnode{i} | ∆E : {en_deltas[i]} | Max(RMS Grad): {max_rms_grads[i]} | Max(Grad components): {max_grad_components[i]} | Converged? : {chain_new.nodes[i].converged}"
@@ -401,8 +386,8 @@ class NEB:
             max(max_grad_components) <=self.parameters.grad_thre]
         # return len(converged_nodes_indices) == len(chain_new)
 
-        # return sum(criteria_converged) >= 2
-        return sum(criteria_converged) >= 3
+        return sum(criteria_converged) >= 2
+        # return sum(criteria_converged) >= 3
     
        
 

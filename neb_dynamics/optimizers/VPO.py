@@ -64,7 +64,16 @@ class VelocityProjectedOptimizer(Optimizer):
 
             new_nodes.append(node.update_coords(new_coords))
 
+
+
         new_chain = Chain(new_nodes, parameters=chain.parameters)
+        # need to copy the gradients from the converged nodes
+        new_chain = Chain(new_nodes, parameters=chain.parameters)
+        for new_node, old_node in zip(new_chain.nodes, chain.nodes):
+            if old_node.converged:
+                new_node._cached_energy = old_node._cached_energy
+                new_node._cached_gradient = old_node._cached_gradient
+        
         new_vel = vj + timestep*force*scaling
         new_chain.velocity = new_vel
         
