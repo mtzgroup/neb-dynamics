@@ -90,7 +90,7 @@ class TreeNode:
 
     def draw(self):
         foo = self.adj_matrix - np.identity(len(self.adj_matrix))
-        g = nx.from_numpy_matrix(foo)
+        g = nx.from_numpy_array(foo)
         nx.draw_networkx(g)
 
 

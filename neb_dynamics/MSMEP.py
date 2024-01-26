@@ -126,7 +126,7 @@ class MSMEP:
 
     def get_neb_chain(self, input_chain: Chain):
         
-        if len(input_chain) < self.gi_inputs.nimages:
+        if len(input_chain) != self.gi_inputs.nimages:
             interpolation = self._create_interpolation(input_chain)
         else:
             interpolation = input_chain
@@ -146,6 +146,12 @@ class MSMEP:
                     "\nWarning! A chain did not converge. Returning an unoptimized chain..."
                 )
                 out_chain = n.chain_trajectory[-1]
+                
+            except Exception as e:
+                print(e)
+                print("Warning! Electronic structure error. Aborting.")
+                out_chain = n.chain_trajectory[-1]
+                
 
         else:
             print("Using DL-Find as NEB optimizer")

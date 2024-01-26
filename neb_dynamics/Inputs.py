@@ -12,6 +12,7 @@ class NEBInputs:
     en_thre: float = None
     rms_grad_thre: float = None
     grad_thre: float = None
+    barrier_thre: float = 0.1 # kcal/mol
     max_steps: float = 1000
     early_stop_force_thre: float = 0.0
     early_stop_chain_rms_thre: float = 0.0
@@ -21,6 +22,8 @@ class NEBInputs:
 
     vv_force_thre: float = 0.0
     v: bool = False
+    
+    preopt_with_xtb: bool = False
     
     bfgs_flush_steps: int = None
     bfgs_flush_thre: float = 0.98

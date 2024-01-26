@@ -14,6 +14,8 @@ from openeye import oechem
 from neb_dynamics.geodesic_interpolation.fileio import read_xyz
 from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
 
+from openbabel import openbabel, pybel
+from neb_dynamics.helper_functions import atomic_number_to_symbol
 
 # from retropaths.abinitio.tdstructure import TDStructure
 from neb_dynamics.tdstructure import TDStructure
@@ -327,3 +329,23 @@ class Trajectory:
                     )
                     tdss.append(tds)
         return cls(tdss)
+    
+    def _obmol_to_coords(self, obmol):
+        return [atom.coords for atom in pybel.Molecule(obmol).atoms]
+    
+    def _obmol_to_symbs(self, obmol):
+        return [atomic_number_to_symbol(atom.atomicnum) for atom in pybel.Molecule(obmol).atoms]
+    
+    def as_xyz(self):
+        """
+        returns the trajectory array as a list of xyz coordinates and
+        a list of symbols for each coord
+        """
+        xyz_arr = []
+        for molecule in self.traj:
+            molecule_coords = self._obmol_to_coords(molecule.molecule_obmol)
+            xyz_arr.append(molecule_coords)
+
+        symbols = self._obmol_to_symbs(molecule.molecule_obmol)
+        return xyz_arr, symbols
+

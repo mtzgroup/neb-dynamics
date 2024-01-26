@@ -17,6 +17,7 @@ from scipy.signal import argrelextrema
 from neb_dynamics.Chain import Chain
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Node import Node
+from neb_dynamics.nodes.Node3D import Node3D
 from neb_dynamics.optimizers import ALS
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers.Linesearch import Linesearch
@@ -40,7 +41,7 @@ class NoneConvergedException(Exception):
 class NEB:
     initial_chain: Chain
     parameters: NEBInputs
-    optimizer: Optimizer = Linesearch
+    optimizer: Optimizer
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
@@ -71,11 +72,40 @@ class NEB:
 
             for ind in inds_maxima:
                 chain[ind].do_climb = True
-
+                
+                
+    def _check_set_climbing_node(self, chain: Chain):
+        max_grad_val = chain.get_maximum_grad_magnitude()
+        if max_grad_val <= self.parameters.grad_thre*10:
+            self.set_climbing_nodes(chain=chain)
+            self.parameters.climb = False  # no need to set climbing nodes again
+    
+    def _do_early_stop_check(self, chain: Chain):
+        """
+        this function calls geometry minimizations to actually verify if
+        chain is an elementary step
+        """
+        
+        is_elem_step, split_method = chain.is_elem_step()
+            
+        if not is_elem_step:
+            print(f"\nStopped early because chain is not an elementary step.")
+            print(f"Split chain based on: {split_method}")
+            self.optimized = chain
+            return True
+        
+        else:
+            self.n_steps_still_chain = 0
+            return False
 
     def _check_early_stop(self, chain: Chain):
-        max_grad_val = chain.get_maximum_grad_magnitude()
+        """
+        this function computes chain distances and checks gradient 
+        values in order to decide whether the expensive minimization of
+        the chain should be done. 
+        """
         
+        max_grad_val = chain.get_maximum_grad_magnitude()
         dist_to_prev_chain = chain._distance_to_chain(self.chain_trajectory[-2]) # the -1 is the chain im looking at
         if dist_to_prev_chain < self.parameters.early_stop_chain_rms_thre:
             self.n_steps_still_chain += 1
@@ -93,38 +123,49 @@ class NEB:
         # if any(conditions):
         if (conditions[0] and conditions[1]) or conditions[3]: # if we've dipped below the force thre and chain rms is low
                                                                 # or chain has stayed still for a long time
-            is_elem_step, split_method = chain.is_elem_step()
-            
-            if not is_elem_step:
-                print(f"\nStopped early because chain is not an elementary step.")
-                print(f"Split chain based on: {split_method}")
-                self.optimized = chain
-                return True
-            
-            else:
-                
-                if (conditions[0] and conditions[1]): # dont reset them if you stopped due to stillness
+            if (conditions[0] and conditions[1]): # dont reset them if you stopped due to stillness
                     # reset early stop checks
                     self.parameters.early_stop_force_thre = 0.0
                     self.parameters.early_stop_chain_rms_thre = 0.0
                     self.parameters.early_stop_corr_thre = 10.
                     self.parameters.early_stop_still_steps_thre = 100000
                     
-                    self.set_climbing_nodes(chain=chain)
-                    self.parameters.climb = False  # no need to set climbing nodes again
-                else:
-                    self.n_steps_still_chain = 0
-                    
+            return self._do_early_stop_check(chain)
+    
                 
-                return False
-
         else:
             return False
-            
+    def _do_xtb_preopt(self, chain):
+        xtb_params = chain.parameters.copy()
+        xtb_params.node_class = Node3D
+        chain_traj = chain.to_trajectory()
+        xtb_chain = Chain.from_traj(chain_traj, parameters=xtb_params)
+        xtb_nbi = NEBInputs(tol=100*self.parameters.tol, v=True, preopt_with_xtb=False)        
+        
+        n = NEB(initial_chain=xtb_chain, parameters=xtb_nbi, optimizer=self.optimizer)
+        # try:
+        n.optimize_chain()
+        print(f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
+        # except:
+        #     print(f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
+        
+        
+        xtb_seed_tr =  n.chain_trajectory[-1].to_trajectory()
+        xtb_seed_tr.update_tc_parameters(chain[0].tdstructure)
+        
+        xtb_seed = Chain.from_traj(xtb_seed_tr, parameters=chain.parameters.copy())
+        
+        return xtb_seed
 
     def optimize_chain(self):
         nsteps = 1
-        chain_previous = self.initial_chain.copy()
+        if self.parameters.preopt_with_xtb:
+            chain_previous = self._do_xtb_preopt(self.initial_chain)
+            stop_early = self._do_early_stop_check(chain_previous)
+            if stop_early: 
+                return
+        else:
+            chain_previous = self.initial_chain.copy()
         chain_previous._zero_velocity()
         self.chain_trajectory.append(chain_previous)
         
@@ -133,6 +174,9 @@ class NEB:
                 stop_early = self._check_early_stop(chain_previous)
                 if stop_early: 
                     return
+                
+                if self.parameters.climb: 
+                    self._check_set_climbing_node(chain=chain_previous)
             
             new_chain = self.update_chain(chain=chain_previous)
             max_grad_val = new_chain.get_maximum_grad_magnitude()
@@ -155,6 +199,7 @@ class NEB:
                 print(
                     f"step {nsteps} // max |gradient| {max_grad_val} // rms grad {max_rms_grad_val} // |velocity| {np.linalg.norm(new_chain.velocity)} // nodes_frozen {n_nodes_frozen} // {new_chain._gradient_correlation(chain_previous)}{' '*20}", end="\r"
                 )
+                sys.stdout.flush()
 
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)
@@ -323,6 +368,13 @@ class NEB:
 
             
             # return np.where(gps_conv), gps
+    
+    def _check_barrier_height_conv(self, chain_prev: Chain, chain_new: Chain):
+        prev_eA = chain_prev.get_eA_chain()
+        new_eA = chain_new.get_eA_chain()
+        
+        delta_eA = np.abs(new_eA - prev_eA)
+        return delta_eA <= self.parameters.barrier_thre
 
     def _check_rms_grad_converged(self, chain: Chain):
         
@@ -379,15 +431,20 @@ class NEB:
         if self.parameters.v > 1:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
             
-            
+        barrier_height_converged = self._check_barrier_height_conv(chain_prev=chain_prev, chain_new=chain_new)
+        ind_ts_guess = np.argmax(chain_new.energies)
+        ts_guess = chain_new[ind_ts_guess]
+        
         criteria_converged = [
             max(max_rms_grads) <= self.parameters.rms_grad_thre,
-            max(en_deltas) <= self.parameters.en_thre,
-            max(max_grad_components) <=self.parameters.grad_thre]
+            # max(en_deltas) <= self.parameters.en_thre,
+            # max(max_grad_components) <=self.parameters.grad_thre,
+            np.amax(np.abs(ts_guess.gradient)) <= self.parameters.grad_thre,
+            barrier_height_converged]
         # return len(converged_nodes_indices) == len(chain_new)
 
-        return sum(criteria_converged) >= 2
-        # return sum(criteria_converged) >= 3
+        # return sum(criteria_converged) >= 2
+        return sum(criteria_converged) >= 3
     
        
 

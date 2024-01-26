@@ -620,12 +620,15 @@ class Chain:
         minima_present = len(ind_minima) != 0
         if minima_present:
             minimas_is_r_or_p = []
-            for i in ind_minima:
-                opt = self[i].do_geometry_optimization()
-                minimas_is_r_or_p.append(
-                    opt.is_identical(self[0]) or opt.is_identical(self[-1])
-                )
-
+            try:
+                for i in ind_minima:
+                    opt = self[i].do_geometry_optimization()
+                    minimas_is_r_or_p.append(
+                        opt.is_identical(self[0]) or opt.is_identical(self[-1])
+                    )
+            except:
+                print("Error in geometry optimization. Pretending this is an elem step.")
+                return True
             print(f"\n{minimas_is_r_or_p=}\n")
             return all(minimas_is_r_or_p)
 
@@ -646,19 +649,22 @@ class Chain:
 
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
+        try:
+            if not self.parameters.node_class == Node3D_TC:
+                r = candidate_r.do_geometry_optimization()
+                p = candidate_p.do_geometry_optimization()
 
-        if not self.parameters.node_class == Node3D_TC:
-            r = candidate_r.do_geometry_optimization()
-            p = candidate_p.do_geometry_optimization()
-
-        else:  # i am sorry for this
-            traj = Trajectory([candidate_r.tdstructure, candidate_p.tdstructure])
-            traj.update_tc_parameters(candidate_r.tdstructure)
-            out_traj = traj.tc_geom_opt_all_geometries()
-            r, p = self.parameters.node_class(out_traj[0]), self.parameters.node_class(
-                out_traj[1]
-            )
-
+            else:  # i am sorry for this
+                traj = Trajectory([candidate_r.tdstructure, candidate_p.tdstructure])
+                traj.update_tc_parameters(candidate_r.tdstructure)
+                out_traj = traj.tc_geom_opt_all_geometries()
+                r, p = self.parameters.node_class(out_traj[0]), self.parameters.node_class(
+                    out_traj[1]
+                )
+        except Exception as e:
+            print(e)
+            print("Error in geometry optimization. Pretending this is elementary chain.")
+            return chain[0], chain[len(chain) - 1]
         return r, p
 
     def _select_split_method(self, conditions: dict):

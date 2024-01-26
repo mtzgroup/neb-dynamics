@@ -49,7 +49,7 @@ class CompetitorAnalyzer:
             self.input_file = self.inputs_dir / "dlfind_input.txt"
             self.command = """
 source activate rp
-ml TeraChem/2020.11-intel-2017.0.098-MPICH2-1.4.1p1-CUDA-9.0.176
+ml TeraChem
 terachem input.in
 """
 
@@ -57,7 +57,7 @@ terachem input.in
             self.out_folder = self.comparisons_dir / "pygsm"
             self.input_file = self.inputs_dir / "pygsm_input.txt"
             self.command = """
-ml TeraChem/2020.11-intel-2017.0.098-MPICH2-1.4.1p1-CUDA-9.0.176
+ml TeraChem
 eval "$(conda shell.bash hook)"
 conda activate gsm_env
 /home/jdep/.conda/envs/gsm_env/bin/gsm  -xyzfile initial_guess.xyz -mode DE_GSM -num_nodes 15 -package TeraChem -lot_inp_file input.in -interp_method Geodesic -coordinate_type DLC -CONV_TOL 0.001 -reactant_geom_fixed -product_geom_fixed > log 2>&1
@@ -120,7 +120,8 @@ create_msmep_from_geodesic.py -f ./initial_guess.xyz  -c 0 -s 1 -nc node3d_tc &>
         shutil.copy(self.input_file, out_path / "input.in")
         shutil.copy(guess_path, out_path / "initial_guess.xyz")
         # shutil.copy(self.comparisons_dir / "submit_template.sh", out_path / "submit.sh")
-        shutil.copy(self.comparisons_dir / "submit_template_cpu.sh", out_path / "submit.sh")
+        # shutil.copy(self.comparisons_dir / "submit_template_cpu.sh", out_path / "submit.sh")
+        shutil.copy(self.comparisons_dir / "submit_template_new.sh", out_path / "submit.sh")
 
         self.edit_submit_file(out_path)
 

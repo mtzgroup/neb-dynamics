@@ -313,7 +313,9 @@ class Node3D_TC_TCPB(Node):
         elif status == 1:
             raise ValueError("Mismatch in the variables passed to compute_energy_gradient")
         elif status == 2:
+            time.sleep(5) # so the terachem server can restart
             raise ValueError("Error in compute_energy_gradient.")
+        
         else:
             raise ValueError(
                 "Status on compute_energy_gradient function is not recognized!"

@@ -21,7 +21,7 @@ from openeye import oechem
 import os
 from rdkit import Chem
 
-
+import sys
 
 
 from neb_dynamics.elements import ElementData
@@ -143,6 +143,8 @@ def linear_distance(coords1, coords2):
     return np.linalg.norm(coords2 - coords1)
 
 def create_friction_optimal_gi(traj, gi_inputs):
+    print("GI: Scanning over friction parameter for geodesic interpolation.")
+    sys.stdout.flush()
     frics = [0.0001, 0.001, 0.01, 0.1, 1]
     all_gis = [
         traj.run_geodesic(
@@ -160,6 +162,8 @@ def create_friction_optimal_gi(traj, gi_inputs):
             eAs.append(10000000)
     ind_best = np.argmin(eAs)
     gi = all_gis[ind_best]
+    print(f"GI: Used friction val: {frics[ind_best]}")
+    sys.stdout.flush()
     return gi
 
 def mass_weight_coords(labels, coords):
@@ -235,6 +239,10 @@ def bond_ord_number_to_string(i):
 
 def from_number_to_element(i):
     return __ATOM_LIST__[i - 1].capitalize()
+
+def atomic_number_to_symbol(n):
+    ed = ElementData()
+    return ed.from_atomic_number(n).symbol
 
 def graph_to_smiles(mol):
 

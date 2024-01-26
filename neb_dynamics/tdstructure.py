@@ -352,8 +352,8 @@ class TDStructure:
         tc_kwds = self.tc_kwds.copy()
         tc_geom_opt_kwds = self.tc_geom_opt_kwds.copy()
         tc_c0 = self.tc_c0
-
-        return TDStructure(
+        
+        tds = TDStructure(
             molecule_obmol=copy_obmol,
             tc_model_method=tc_model_method,
             tc_model_basis=tc_model_basis,
@@ -361,6 +361,11 @@ class TDStructure:
             tc_geom_opt_kwds=tc_geom_opt_kwds,
             tc_c0=tc_c0,
         )
+        
+        tds._cached_freqs = self._cached_freqs
+        tds._cached_nma = self._cached_nma
+
+        return tds
 
     def mm_optimization(self, method="gaff", steps=2000):
         """
@@ -620,10 +625,15 @@ class TDStructure:
                 )
 
             else:
+                if method is not 'hessian':
+                    inp_kwds = self.tc_kwds
+                else:
+                    inp_kwds = {}
+                
                 opt_input = DualProgramInput(
                     calctype=method,
                     molecule=tc_mol,
-                    keywords=self.tc_geom_opt_kwds,
+                    keywords=inp_kwds,
                     subprogram=ES_PROGRAM,
                     subprogram_args={
                         "model": self.tc_d_model,
@@ -660,7 +670,7 @@ class TDStructure:
             tc_inp_str += f"\nguess {str(tmp.name)}"
 
         kwds_strings = "\n".join(
-            f"{pair[0]}  {pair[1]}" for pair in self.tc_kwds.items()
+            f"{pair[0]}  {pair[1]}\n" for pair in self.tc_kwds.items()
         )
         tc_inp_str += kwds_strings
 
@@ -789,7 +799,12 @@ class TDStructure:
 
     def tc_local_geom_optimization(self, method="minima"):
         if method == "minima":
-            opt_input = self._prepare_input(method="optimization")
+            # opt_input = self._prepare_input(method="optimization")
+            return self.run_tc_local(
+                calculation="minimize",
+                method=self.tc_model_method,
+                basis=self.tc_model_basis,
+            )
         elif method == "ts":
             opt_input = self._prepare_input(method="transition_state")
         else:
@@ -841,16 +856,9 @@ class TDStructure:
             self.to_xyz(tmp.name)
 
         # make the tc input file
-        inp = f"""run {calculation}
-        coordinates {tmp.name}
-        method {method}
-        basis {basis}
-        charge {self.charge}
-        spinmult {self.spinmult}
-        scrdir {tmp.name[:-4]}
-        
-        maxiter 500
-        """
+        inp = f"""run {calculation}\ncoordinates {tmp.name}\n"""
+        inp+= self._tcpb_input_string()
+        inp+=f"""scrdir {tmp.name[:-4]}\nmaxiter 500"""
 
         if "wf_guess" in self.tc_kwds:
             guess_path = self.tc_kwds["wf_guess"]  # this must be a string

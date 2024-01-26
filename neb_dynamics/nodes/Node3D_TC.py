@@ -16,7 +16,7 @@ from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
 RMSD_CUTOFF = 0.5
-KCAL_MOL_CUTOFF = 0.1
+KCAL_MOL_CUTOFF = 0.3
 
 
 @dataclass
@@ -86,11 +86,15 @@ class Node3D_TC(Node):
         return pe_grad_nudged
 
     def copy(self):
-        return Node3D_TC(
+        copy_node =  Node3D_TC(
             tdstructure=self.tdstructure.copy(),
             converged=self.converged,
             do_climb=self.do_climb,
         )
+        
+        copy_node._cached_energy = self._cached_energy
+        
+        return copy_node
 
     def update_coords(self, coords: np.array) -> None:
 
@@ -165,7 +169,9 @@ class Node3D_TC(Node):
     def do_geometry_optimization(self) -> Node3D_TC:
         # td_opt_xtb = self.tdstructure.xtb_geom_optimization()
         # td_opt = td_opt_xtb.tc_geom_optimization()
-        td_opt = self.tdstructure.tc_geom_optimization()
+        # td_opt = self.tdstructure.tc_geom_optimization()
+        td_opt = self.tdstructure.tc_local_geom_optimization() ### this is being done locally because it is too slow to use the chemcloud version. 
+        
         return Node3D_TC(tdstructure=td_opt)
     
     
