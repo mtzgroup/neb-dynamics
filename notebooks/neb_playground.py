@@ -1,18 +1,542 @@
 # -*- coding: utf-8 -*-
+# +
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Chain import Chain
-from neb_dynamics.Node3D import Node3D
-from neb_dynamics.Inputs import ChainInputs, NEBInputs
+from neb_dynamics.nodes.Node3D import Node3D
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
+from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB, NoneConvergedException
+from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+
+from neb_dynamics.optimizers.BFGS import BFGS
+from neb_dynamics.optimizers.SD import SteepestDescent
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.Linesearch import Linesearch
+from neb_dynamics.NEB_TCDLF import NEB_TCDLF
+from pathlib import Path
+
+
+# +
+# from neb_dynamics.trajectory import Trajectory
+# -
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Robinson-Gabriel-Synthesis/explicit_solvent_xtb/")
+
+from neb_dynamics.tdstructure import TDStructure
+
+coco = TDStructure.from_smiles("COCOCOCO")
+
+# %%time
+coco_opt_2 = coco.run_tc_local(method=coco.tc_model_method,
+                               basis=coco.tc_model_basis,
+                               calculation='minimize')
+
+# %%time
+coco_opt_3 = coco.run_tc_local(method=coco.tc_model_method,
+                               basis=coco.tc_model_basis,
+                               calculation='minimize')
+
+coco.tc_kwds = {'new_minimizer': True}
+
+# %%time
+coco_opt = coco.tc_local_geom_optimization()
+
+coco.tc_kwds = {'new_minimizer':False}
+
+# %%time
+coco_opt_4 = coco.tc_local_geom_optimization()
+
+coco_opt_2
+
+coco_opt_3
+
+coco_opt
+
+coco_opt_4
+
+coco_opt_2
+
+h.output_chain.plot_chain()
+
+h.data.plot_opt_history(1)
 
 from retropaths.abinitio.trajectory import Trajectory
 
-# t = Trajectory.from_xyz('/home/jdep/T3D_data/template_rxns/Chan-Rearrangement/traj_0-79.xyz')
-t = Trajectory.from_xyz('/home/jdep/T3D_data/geometry_spawning/claisen_results/claisen_ts_profile.xyz')
+t = Trajectory.from_xyz('/home/jdep/T3D_data/colton_debug/sn2_endpoints.xyz', tot_charge=-1)
 
-r,p = t[0], t[-1]
+start = t[0]
+end = t[-1]
 
-gi = Trajectory([r,p]).run_geodesic(nimages=10)
+from retropaths.abinitio.solvator import Solvator
+
+solv = Solvator(n_solvent=5)
+
+start_solv = solv.solvate_td(start)
+
+start_solv
+
+end_solv = solv.solvate_td(end)
+
+t_solv = Trajectory([start_solv, end_solv]).run_geodesic(nimages=12)
+
+# +
+cni = ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D, do_parallel=True, node_freezing=True)
+# cni = ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D, do_parallel=True, node_freezing=True)
+nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, v=1, _use_dlf_conv=False, early_stop_force_thre=0.01, early_stop_chain_rms_thre=1)
+gii = GIInputs(nimages=12)
+# chain = Chain.from_traj(tr, parameters=cni)
+chain = Chain.from_traj(t_solv, parameters=cni)
+# neb = NEB_TCDLF(initial_chain=chain, parameters=nbi) 
+
+# optimizer = Linesearch(step_size=0.33*len(chain), min_step_size=.01*len(chain), activation_tol=0.1)
+# optimizer = SteepestDescent(step_size_per_atom=0.01)
+# optimizer = VelocityProjectedOptimizer(timestep=.1, activation_tol=0.5)
+# optimizer = Linesearch(step_size=1.0, min_step_size=0.33)
+optimizer = BFGS(step_size=3, min_step_size=0.1, use_linesearch=False, bfgs_flush_thre=0.80,
+                 activation_tol=0.1, bfgs_flush_steps=500)
+
+neb = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+# neb2 = NEB(initial_chain=chain2, parameters=nbi, optimizer=optimizer)
+
+# -
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer)
+
+h, out = m.find_mep_multistep(chain)
+
+out.plot_chain()
+
+# %%time
+try:
+    neb.optimize_chain()
+except Exception as e:
+    print(e)
+
+
+
+
+neb.plot_opt_history(0)
+
+r, p = neb.optimized._approx_irc()
+
+from retropaths.abinitio.tdstructure import TDStructure
+
+td = TDStructure.from_smiles("O.O.O.O.[O-][H]")
+
+foobar = td.xtb_geom_optimization()
+
+foobar
+
+tsg = neb.optimized.get_ts_guess()
+
+tsg.tc_model_method
+
+tsg.tc_model_basis
+
+ts = tsg.tc_geom_optimization('ts')
+
+ts.to_xyz("/home/jdep/T3D_data/colton_debug/ts_sn2.xyz")
+
+from neb_dynamics.tdstructure import TDStructure
+
+ts = TDStructure.from_xyz("/home/jdep/T3D_data/colton_debug/ts_sn2.xyz", tot_charge=-1)
+
+ts.tc_model_method = 'wb97xd3'
+ts.tc_model_basis = 'def2-svp'
+ts.tc_kwds = {"pcm":"cosmo","epsilon":80}
+# ts.tc_kwds = {}
+
+ts.tc_freq_calculation()
+
+nma = ts.tc_nma_calculation()
+
+ind = 1
+Trajectory([ts.displace_by_dr(nma[ind]), ts, ts.displace_by_dr(-1*nma[ind])] )
+
+m = MSMEP(neb_inputs=nbi, 
+          chain_inputs=cni, gi_inputs=GIInputs(nimages=15), 
+          optimizer=optimizer)
+
+neb2 = NEB_TCDLF(initial_chain=chain, parameters=nbi) 
+
+# %%time
+try:
+    neb2.optimize_chain()
+except Exception as e:
+    print(e)
+
+
+neb2.plot_opt_history()
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=16),optimizer=optimizer)
+
+h, out = m.find_mep_multistep(chain)
+
+# ## h.ordered_leaves[0].data.plot_opt_history(0)
+
+out.plot_chain()
+
+# +
+# neb.write_to_disk(Path("/home/jdep/T3D_data/dlfind_vs_jan/jan_SD_deltak_notConv"))
+# -
+
+import time
+
+# %%time
+try:
+    neb.optimize_chain()
+except Exception as e:
+    print(e)
+
+
+neb.plot_opt_history(1)
+
+# +
+# neb.write_to_disk(Path("/home/jdep/T3D_data/dlfind_vs_jan/jan_VPO_deltak_nimg16_rms_en_conv"))
+# -
+
+
+
+neb.optimized.gradients[14]
+
+neb.optimized.plot_chain()
+
+598/(14*3)
+
+np.argmax(np.abs(neb.optimized.gradients))
+
+neb.plot_opt_history(1)
+
+tr_dlf = Trajectory.from_xyz('/home/jdep/T3D_data/dlfind_vs_jan/dlfind/scr.claisen_initial_guess/nebpath.xyz')
+tr_dlf.update_tc_parameters(tr[0])
+
+
+from retropaths.abinitio.tdstructure import TDStructure
+
+ci_tr = Trajectory.from_xyz('/home/jdep/T3D_data/dlfind_vs_jan/dlfind/scr.claisen_initial_guess/optim.xyz')
+ci_tr.update_tc_parameters(tr[0])
+
+ci = chain.parameters.node_class(ci_tr[-1])
+
+dlf_neb = Chain.from_traj(tr_dlf, parameters=cni)
+
+dlf_neb.nodes.insert(0, neb.chain_trajectory[-1][0])
+
+dlf_neb.nodes.insert(10, ci)
+
+dlf_neb.nodes.append(neb.chain_trajectory[-1][-1])
+
+import numpy as np
+
+np.loadtxt('/home/jdep/T3D_data/dlfind_vs_jan/dlfind/scr.claisen_initial_guess/nebinfo')[:,0]
+
+plt.plot(dlf_neb.path_length, dlf_neb.energies,'o-', label='dlf')
+# plt.plot(np.loadtxt('/home/jdep/T3D_data/dlfind_vs_jan/dlfind/scr.claisen_initial_guess/nebinfo')[:,0], np.loadtxt('/home/jdep/T3D_data/dlfind_vs_jan/dlfind/scr.claisen_initial_guess/nebinfo')[:,1]*627.5,'o-', label='dlf')
+plt.plot(neb.optimized.path_length, neb.optimized.energies,'o-', label='jan')
+plt.legend()
+
+
+Trajectory.from_xyz("/home/jdep/T3D_data/dlfind_vs_jan/dlfind/scr.claisen_initial_guess/optim.xyz")
+
+dlf_neb.get_ts_guess()
+
+h, out = m.find_mep_multistep(chain)
+
+out.plot_chain()
+
+# %%time
+try:
+    neb2.optimize_chain()
+except:
+    print("done")
+
+# %%time
+neb.optimize_chain(remove_all=False)
+
+neb2.plot_opt_history()
+
+# +
+# chain_traj = neb.get_
+# -
+
+neb.plot_opt_history(1, 1)
+
+# +
+# chain_traj = neb.get_chain_trajectory(Path('/tmp/tmpn_nqmg77'))
+
+# +
+# neb.optimize_chain(remove_all=False)
+
+# +
+# chain_traj = neb.chain_trajectory
+# -
+
+h_loser = NEB.read_from_disk("./hey_loser")
+
+# +
+
+[node._cached_energy for node in chain_traj[0]]
+# -
+
+neb.chain_trajectory = chain_traj
+
+neb.write_to_disk(Path('hey_loser'))
+
+# !pwd
+
+# +
+# amadori = NEB.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Amadori-Rearrangement/debug_msmep/')
+# -
+
+
+
+# +
+
+neb.plot_opt_history(0,0)
+
+# +
+# # %%time
+# neb2.optimize_chain()
+
+# +
+# # %%time
+# neb.optimize_chain(remove_all=True)
+# -
+
+h, out = m.find_mep_multistep(chain)
+
+leaves = [leaf.data for leaf in h.ordered_leaves if leaf.data]
+
+leaves_jan = [leaf.data for leaf in h_jan.ordered_leaves if leaf.data]
+
+tsg1_jan = leaves_jan[0].optimized.get_ts_guess()
+
+tsg1_dlf = leaves[0].optimized.get_ts_guess()
+
+# +
+#### JAN: TODO: write a function that scrapes the DLF energies and adds them to the _cached_energies for creating chain trajectories
+# -
+
+
+
+
+
+import numpy as np
+
+
+
+len(h.data.chain_trajectory)
+
+import matplotlib.pyplot as plt
+
+tsg1_jan.tc_model_method = 'uwb97xd3'
+tsg1_jan.tc_model_basis = 'def2-svp'
+
+tsg1_jan.tc_freq_calculation()
+
+tsg1_dlf.tc_freq_calculation()
+
+out.plot_chain()
+
+h_jan = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Wittig/local_jan_msmep")
+
+len(h_jan.get_optimization_history())
+
+h.
+
+len(h.get_optimization_history())
+
+h.write_to_disk(Path("/home/jdep/T3D_data/dlfind_vs_jan/dlfind/wittig_msmep"))
+
+out.to_trajectory()
+
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+
+
+# +
+print(f"doing reference")
+# cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D_TC, node_freezing=True)
+cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D, node_freezing=True)
+optimizer2 = Linesearch(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn)
+chain = Chain.from_traj(gi, cni)
+
+nbi = NEBInputs(v=True,tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, climb=True,
+               _use_dlf_conv=True)
+
+# +
+# n_ref = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer2)
+# n_ref.optimize_chain()
+
+# +
+print(f"doing reference")
+cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D_TC, node_freezing=True)
+# cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D, node_freezing=True)
+optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn, 
+                 bfgs_flush_steps=10000, bfgs_flush_thre=0.10)
+chain = Chain.from_traj(gi, cni)
+
+# nbi = NEBInputs(v=True,tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, climb=True)
+nbi = NEBInputs(v=True,tol=0.001*BOHR_TO_ANGSTROMS, max_steps=70, climb=True,
+                en_thre=0.001*BOHR_TO_ANGSTROMS,
+               _use_dlf_conv=True)
+# -
+
+n_bfgs = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+n_bfgs.optimize_chain()
+
+traj = new_chain.to_trajectory()
+
+foobar = traj.energies_and_gradients_tc()
+
+new_chain.plot_chain()
+
+
+
+new_chain.plot_chain()
+
+n_bfgs_cont = NEB(initial_chain=n_bfgs.chain_trajectory[-1], parameters=nbi, optimizer=optimizer)
+n_bfgs_cont.optimize_chain()
+
+import matplotlib.pyplot as plt
+
+len(n_bfgs.chain_trajectory)
+
+n_bfgs.chain_trajectory[-1].plot_chain()
+
+plt.plot(n_ref.optimized.integrated_path_length, n_ref.optimized.energies_kcalmol, 'o-',label='ref')
+plt.plot(n_bfgs.optimized.integrated_path_length, n_bfgs.optimized.energies_kcalmol, 'o-',label='bfgs')
+
+cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D_TC, node_freezing=True)
+n_ref = NEB.read_from_disk(Path("/home/jdep/T3D_data/dlfind_vs_jan/jan_linesearch"), chain_parameters=cni)
+
+# n_bfgs.write_to_disk(Path("/home/jdep/T3D_data/dlfind_vs_jan/jan_bfgs"))
+cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D_TC, node_freezing=True)
+n_bfgs = NEB.read_from_disk(Path("/home/jdep/T3D_data/dlfind_vs_jan/jan_bfgs"), chain_parameters=cni)
+
+n_bfgs.plot_opt_history(do_3d=True)
+
+n_bfgs.write_to_disk(Path("/home/jdep/T3D_data/dlfind_vs_jan/jan_bfgs_dlf_conv"))
+
+len(n_bfgs.chain_trajectory)
+
+# +
+# n_bfgs = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+# n_bfgs.optimize_chain()
+# -
+
+t = Trajectory.from_xyz("/home/jdep/T3D_data/dlfind_vs_jan/dlfind/scr.claisen_initial_guess/nebpath.xyz")
+t.traj.insert(0, r)
+t.traj.append(p)
+t.update_tc_parameters(r)
+
+c = Chain.from_traj(t, parameters=cni)
+
+import matplotlib.pyplot as plt
+
+
+
+import numpy as np
+
+
+def hard_reset_chain(chain):
+    for node in chain:
+        node._cached_gradient = None
+        node._cached_energy = None
+        node.converged = False
+
+
+
+hard_reset_chain(jan_chain)
+
+len(jan_chain)
+
+gperps_jan, gparr_jan = jan_chain.pe_grads_spring_forces_nudged()
+
+gperps_dlf, gparr_dlf = c.pe_grads_spring_forces_nudged()
+
+len(gperps_dlf)
+
+np.linalg.norm(gperps_dlf[4]) / np.sqrt(11*3 + 3)
+
+a, b = conv_chain.pe_grads_spring_forces_nudged()
+
+for node in conv_chain.nodes:
+    node.tdstructure.update_tc_parameters(r)
+
+hard_reset_chain(conv_chain)
+
+c4_grad = c[4].tdstructure.gradient_tc()
+
+tan = c._create_tangent_path(c[3],c[4],c[5])
+
+unit_tan = tan / np.linalg.norm(tan)
+
+hard_reset_chain(c)
+
+# for grad in c:
+for grad in jan_chain:
+    print(grad._cached_gradient, grad.converged)
+
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+import numpy as np
+
+# +
+conv_chain = None
+conv_step = None
+
+for i, chain in enumerate(n_bfgs.chain_trajectory):
+# for i, chain in enumerate(n_ref.chain_trajectory):
+    gperp, _ = chain.pe_grads_spring_forces_nudged()
+    tol = 0.001*BOHR_TO_ANGSTROMS
+    
+    
+    
+    grad_conv = np.linalg.norm(gperp) / np.sqrt(11*3 + 3) <= tol
+    rms_grad_conv = np.sqrt(sum(np.square(gperp.flatten())) / len(gperp.flatten())) <= (tol / (1.5))
+    
+    if grad_conv and rms_grad_conv:
+        conv_chain = chain
+        conv_step = i
+        break
+# -
+
+conv_step
+
+n_bfgs._chain_converged(n_bfgs.chain_trajectory[conv_step-1], conv_chain)
+
+n_bfgs.parameters._use_dlf_conv = True
+n_bfgs.parameters.v = 3
+n_bfgs.parameters.en_thre = n_bfgs.parameters.tol
+
+n_bfgs._chain_converged(n_bfgs.chain_trajectory[conv_step-1], conv_chain)
+
+# +
+# jan_chain = n_bfgs.chain_trajectory[223]
+# jan_chain = n_bfgs.chain_trajectory[-1]
+jan_chain = conv_chain
+
+plt.plot(jan_chain.integrated_path_length, jan_chain.energies,'o-', label='jan')
+
+plt.plot(c.integrated_path_length, c.energies,'o-', label='dlfind')
+plt.legend()
+# -
+
+tsg_jan = jan_chain.get_ts_guess()
+
+tsg_jan.update_tc_parameters(r)
+
+tsg_jan.
+
+tsg_jan.tc_freq_calculation()
+
+c.get_maximum_gperp()
+
+n_bfgs.plot_projector_history()
+
+n_bfgs.chain_trajectory[-1].to_trajectory()
 
 import numpy as np
 
@@ -21,37 +545,45 @@ flush_thres = [.50, .80, .90, .99]
 
 from itertools import product
 
-len(results_nebs)
-
-len(list(product(flush_steps, flush_thres)))
-
 results_nebs = []
 for fs, ft in list(product(flush_steps, flush_thres)):
     print(f"doing: force steps:{fs} force thre: {ft}")
-    cni = ChainInputs(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn)
+    cni = ChainInputs(k=0.1, delta_k=0.09)
     chain = Chain.from_traj(gi, cni)
+    opt = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn, bfgs_flush_steps=fs, bfgs_flush_thre=ft)
+    nbi = NEBInputs(v=True,tol=0.001, max_steps=500)
 
-    nbi = NEBInputs(v=True,tol=0.001, bfgs_flush_steps=fs, bfgs_flush_thre=ft, max_steps=500)
-
-    n = NEB(initial_chain=chain, parameters=nbi)
+    n = NEB(initial_chain=chain, parameters=nbi, optimizer=opt)
     try:
         n.optimize_chain()
         results_nebs.append(n)
     except NoneConvergedException as e:
         results_nebs.append(e.obj)
+    except:
+        results_nebs.append(None)
+
+from neb_dynamics.optimizers.Linesearch import Linesearch
 
 # +
 print(f"doing reference")
-cni = ChainInputs(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn)
+cni = ChainInputs(k=0.1, delta_k=0.09)
+optimizer2 = Linesearch(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn)
 chain = Chain.from_traj(gi, cni)
 
-nbi = NEBInputs(v=True,tol=0.001, bfgs_flush_steps=fs, bfgs_flush_thre=ft, max_steps=500, do_bfgs=False)
+nbi = NEBInputs(v=True,tol=0.001, max_steps=500, do_bfgs=False)
 
-n = NEB(initial_chain=chain, parameters=nbi)
-n.optimize_chain()
+n_ref = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer2)
+n_ref.optimize_chain()
 # -
 
+n = results_nebs[7]
+n.optimized.plot_chain()
 
+n_ref.optimized.get_eA_chain()
+
+n.optimized.get_eA_chain()
+
+n_ref.optimized.plot_chain()
 
 for neb, params in zip(results_nebs, list(product(flush_steps, flush_thres))):
     fs, ft = params
@@ -65,6 +597,18 @@ for n_result, (f_steps, f_thre)  in zip(results_nebs, conditions):
     results.append([f_steps, f_thre, len(n_result.chain_trajectory)])
 
 df = pd.DataFrame(results, columns=['f_steps','f_thre','n_steps'])
+
+import matplotlib.pyplot as plt
+
+df
+
+plt.plot(n.optimized.integrated_path_length, n.optimized.energies, label='ref')
+plt.plot(results_nebs[6].optimized.integrated_path_length, results_nebs[6].optimized.energies, label='new opt')
+plt.legend()
+
+results_nebs[6].optimized.plot_chain()
+
+len(n.chain_trajectory)
 
 df.sort_values(by='n_steps')
 

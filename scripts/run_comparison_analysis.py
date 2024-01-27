@@ -5,7 +5,7 @@ from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.NEB import NEB
-from neb_dynamics.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.TreeNode import TreeNode
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
@@ -215,11 +215,14 @@ batch1_inputs[6].keywords["program"] = 'terachem_pbs'
 comparisons_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons") 
 # ca = CompetitorAnalyzer(comparisons_dir=comparisons_dir,method='dlfind')
 # ca2 = CompetitorAnalyzer(comparisons_dir=comparisons_dir,method='pygsm')
-ca3 = CompetitorAnalyzer(comparisons_dir=comparisons_dir,method='nebd')
+# ca3 = CompetitorAnalyzer(comparisons_dir=comparisons_dir,method='nebd')
+ca3 = CompetitorAnalyzer(comparisons_dir=comparisons_dir,method='asneb')
 
 ca3.create_all_files_and_folders()
 
-ca3.submit_all_jobs()
+# +
+# ca3.submit_all_jobs()
+# -
 
 ca4 = CompetitorAnalyzer(comparisons_dir=comparisons_dir,method='asneb')
 

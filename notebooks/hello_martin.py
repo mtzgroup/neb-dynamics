@@ -7,11 +7,11 @@ from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
-from neb_dynamics.Node2d import Node2D_Flower, Node2D, Node2D_Zero, Node2D_2
-from neb_dynamics.Node3D_TC import Node3D_TC
-from neb_dynamics.Node3D import Node3D
+from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D, Node2D_Zero, Node2D_2
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D import Node3D
 
-from neb_dynamics.Node3D_gfn1xtb import Node3D_gfn1xtb
+from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 
 from neb_dynamics.TreeNode import TreeNode
@@ -451,8 +451,8 @@ plt.legend(loc='upper right')
 # +
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Inputs import ChainInputs
-from neb_dynamics.Node3D_TC import Node3D_TC
-from neb_dynamics.Node3D import Node3D
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D import Node3D
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Inputs import NEBInputs
 

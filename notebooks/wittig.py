@@ -1,3 +1,197 @@
+from retropaths.abinitio.tdstructure import TDStructure
+
+td = TDStructure.from_smiles("O")
+
+from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
+
+node = Node3D_TC_TCPB(td)
+
+node2 = node.copy()
+
+node.gradient
+
+import numpy as np
+
+np.array(wtf).reshape(td.coords.shape)
+
+dir(wtf)
+
+
+def _tcpb_input_string(tdstruct):
+    tc_inp_str = f"""method {tdstruct.tc_model_method}
+    basis {tdstruct.tc_model_basis}
+    """
+    kwds_strings = "\n".join(f"{pair[0]}  {pair[1]}" for pair in tdstruct.tc_kwds.items())
+
+    tc_inp_str+=kwds_strings
+    
+    return tc_inp_str
+
+
+_tcpb_input_string(td)
+
+# +
+import sys
+from ase.io import read
+from ase import units
+import time
+
+
+# Set information about the server
+host = "localhost"
+
+# Get Port
+port = 8888
+
+str_inp = _tcpb_input_string(td)
+
+fname = '/tmp/inputfile.in'
+with open(fname,'w') as f:
+    f.write(str_inp)
+
+
+# tcfile = '/home/jdep/tc2.in' ### HERE
+tcfile = fname
+
+
+
+
+
+
+
+# +
+# Set global treatment (for how TeraChem will handle wavefunction initial guess)
+# 0 means continue and use casguess, 1 is keep global variables the same, but recalc casguess, 2 means reinitialize everything
+globaltreatment = {"Cont": 0, "Cont_Reset": 1, "Reinit": 2}
+
+# Information about initial QM region
+# structures = read("/home/jdep/heyjona.xyz", index=":")  ### HERE
+structures = [td]
+
+# qmattypes = structures[0].get_chemical_symbols() ### HERE
+qmattypes = td.symbols
+
+# Attempts to connect to the TeraChem server
+print(f"Attempting to connect to TeraChem server using host {host} and {port}.")
+status = tc.connect(host, port)
+if status == 0:
+    print("Connected to TC server.")
+elif status == 1:
+    raise ValueError("Connection to TC server failed.")
+elif status == 2:
+    raise ValueError(
+        "Connection to TC server succeeded, but the server is not available."
+    )
+else:
+    raise ValueError("Status on tc.connect function is not recognized!")
+
+
+# Setup TeraChem
+status = tc.setup(str(tcfile), qmattypes) ### HERE
+# status = tc.setup(tc_inp_str, qmattypes) ### HERE
+if status == 0:
+    print("TC setup completed with success.")
+elif status == 1:
+    raise ValueError(
+        "No options read from TC input file or mismatch in the input options!"
+    )
+elif status == 2:
+    raise ValueError("Failed to setup TC.")
+else:
+    raise ValueError("Status on tc_setup function is not recognized!")
+# -
+
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
+
+BOHR_TO_ANGSTROMS
+
+# +
+# %%time
+
+
+for i, structure in enumerate(structures):
+    qmcoords = structure.coords.flatten() / units.Bohr
+    qmcoords = qmcoords.tolist()
+
+    # Compute energy and gradient
+    time.sleep(0.010)  # TCPB needs a small delay between calls
+    if i == 0:
+        totenergy, qmgrad, mmgrad, status = tc.compute_energy_gradient(
+            qmattypes, qmcoords, globaltreatment=globaltreatment["Cont_Reset"]
+        )
+        print("Starting new positions file")
+    else:
+        print(f"Continuing with job {i}")
+        totenergy, qmgrad, mmgrad, status = tc.compute_energy_gradient(
+            qmattypes, qmcoords, globaltreatment=globaltreatment["Cont"]
+        )
+        
+
+    print(f"Status: {status}")
+    if status == 0:
+        print("Successfully computed energy and gradients")
+    elif status == 1:
+        raise ValueError("Mismatch in the variables passed to compute_energy_gradient")
+    elif status == 2:
+        raise ValueError("Error in compute_energy_gradient.")
+    else:
+        raise ValueError(
+            "Status on compute_energy_gradient function is not recognized!"
+        )
+# -
+
+# %%time
+td.energy_tc_local()
+
+totenergy
+
+# !ml Amber
+
+tds = TDStructure.from_smiles("CCCCCCCCCC")
+
+# %%time
+tds.energy_tc()
+
+# %%time
+tds.energy_tc()
+
+# +
+from qcio import Molecule, ProgramInput, SinglePointOutput
+
+from chemcloud import CCClient
+
+water = Molecule(
+    symbols=["O", "H", "H"],
+    geometry=[
+        [0.0000, 0.00000, 0.0000],
+        [0.2774, 0.89290, 0.2544],
+        [0.6067, -0.23830, -0.7169],
+    ],
+)
+
+client = CCClient()
+
+prog_inp = ProgramInput(
+    molecule=water,
+    model={"method": "wb97xd3", "basis": "def2-svp"},
+    calctype="energy",  # Or "gradient" or "hessian"
+    keywords={},
+    files={'c0':c0}
+)
+future_result = client.compute("terachem", prog_inp, collect_files=True, collect_wavefunction=True)
+output: SinglePointOutput = future_result.get()
+# SinglePointOutput object containing all returned data
+print(output.stdout)
+print(output)
+# The energy value requested
+print(output.return_result)
+print(output.files.keys())
+# -
+
+output.files.keys()
+
+c0 = output.files['scr.geometry/c0']
+
 # +
 from retropaths.molecules.molecule import Molecule
 from IPython.core.display import HTML
@@ -19,6 +213,70 @@ from retropaths.helper_functions import pairwise
 import retropaths.helper_functions as hf
 
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+# -
+
+from retropaths.molecules.molecule import Molecule
+from retropaths.abinitio.tdstructure import TDStructure
+from retropaths.reactions.changes import Changes3D, Changes3DList, ChargeChanges
+from retropaths.reactions.conditions import Conditions
+from retropaths.reactions.rules import Rules
+from retropaths.reactions.template import ReactionTemplate
+
+# +
+# mol1 =  Molecule.from_smiles('[P](=CC)(C1=CC=CC=C1)(C2=CC=CC=C2)C3=CC=CC=C3')
+# mol1 =  Molecule.from_smiles('[P](=CC)(C)(C)C')
+# mol2 =  Molecule.from_smiles('C(=O)C')
+
+# mol = Molecule.from_smiles('[P](=CC)(C)(C)C.C(=O)C')
+mol = Molecule.from_smiles('[P](=C)(C)(C)C.CC(=O)C')
+# -
+
+td = TDStructure.from_RP(mol)
+
+# +
+p_ind = 0
+cp_ind = 1
+
+me1 = 2
+me2 = 3
+me3 = 4
+
+o_ind = 7
+co_ind = 6
+
+ind=0
+settings = [
+
+    (
+        td.molecule_rp,
+        {'charges': [], 'delete':[(co_ind, o_ind), (cp_ind, p_ind)], 'double':[(o_ind, p_ind), (cp_ind, co_ind)]},
+        [
+            (me1, p_ind, 'Me'),
+            (me2, p_ind, 'Me'),
+            (me3, p_ind, 'Me'),
+  
+        ],
+        [Changes3D(start=s, end=e, bond_order=1) for s, e in [(co_ind, o_ind), (cp_ind, p_ind)]],
+        [Changes3D(start=s, end=e, bond_order=2) for s, e in [(o_ind, p_ind), (cp_ind, co_ind)]]
+
+    )]
+
+mol, d, cg, deleting_list, forming_list = settings[ind]
+# -
+
+conds = Conditions()
+rules = Rules()
+temp = ReactionTemplate.from_components(name='Wittig', reactants=mol, changes_react_to_prod_dict=d, conditions=conds, rules=rules, collapse_groups=cg)
+
+c3d_list = Changes3DList(deleted=deleting_list, forming=forming_list, charges=[])
+
+root = TDStructure.from_RP(temp.reactants).xtb_geom_optimization()
+root_ps = root.pseudoalign(c3d_list)
+
+target = root_ps_opt.copy()
+target.add_bonds(c3d_list.forming)
+target.delete_bonds(c3d_list.deleted)
+target.gum_mm_optimization()
 
 # +
 # for r in reactions:

@@ -9,8 +9,8 @@ from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 
-# from neb_dynamics.Node3D_TC_Local import Node3D_TC_Local
-# from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
+from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.optimizers.BFGS import BFGS
 from neb_dynamics.optimizers.Linesearch import Linesearch
 
@@ -25,6 +25,9 @@ from neb_dynamics.optimizers.BFGS import BFGS
 
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 import numpy as np
+
+import sys
+
 
 
 def read_single_arguments():
@@ -138,8 +141,8 @@ def read_single_arguments():
 def main():
     args = read_single_arguments()
 
-    # nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
-    nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
+    nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
+    # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
 
     start = TDStructure.from_xyz(args.st, tot_charge=args.c, tot_spinmult=args.s)
@@ -173,7 +176,7 @@ def main():
 
     traj = Trajectory([start, end]).run_geodesic(nimages=args.nimg)
 
-    if args.nc == "node3d_tcpb" or args.nc == "node3d_tc_local":
+    if args.nc == "node3d_tc_local":
         do_parallel = False
     else:
         do_parallel = True
@@ -182,7 +185,8 @@ def main():
 
     # cni = ChainInputs(k=0.1,delta_k=0.09, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
     cni = ChainInputs(
-        k=0.01,
+        k=0.1,
+        delta_k=0.09,
         node_class=nc,
         friction_optimal_gi=True,
         do_parallel=do_parallel,
@@ -191,9 +195,8 @@ def main():
     # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=False)
     # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
     # optimizer = BFGS(bfgs_flush_steps=1000, bfgs_flush_thre=0.1, step_size=0.33*traj[0].atomn, min_step_size=0.01*traj[0].atomn)
-    optimizer = Linesearch(
-        step_size=0.33 * traj[0].atomn, min_step_size=0.001 * traj[0].atomn
-    )
+    optimizer = BFGS(step_size=3, min_step_size=.1, use_linesearch=False, bfgs_flush_thre=0.50, 
+                 activation_tol=0.1, bfgs_flush_steps=200)
     # nbi = NEBInputs(grad_thre=tol*BOHR_TO_ANGSTROMS,
     #            rms_grad_thre=(tol/2)*BOHR_TO_ANGSTROMS,
     #            en_thre=(tol/10)*BOHR_TO_ANGSTROMS,
@@ -212,11 +215,15 @@ def main():
         v=1,
         max_steps=500,
         early_stop_chain_rms_thre=1,  # not really caring about chain distances
-        early_stop_force_thre=tol * 10 * BOHR_TO_ANGSTROMS,
+        early_stop_force_thre=0.01,
         early_stop_still_steps_thre=100,
         vv_force_thre=0.0,
         _use_dlf_conv=True,
+        preopt_with_xtb=True
     )
+    
+    print(f"Using node_class: {nc}\Min ends?{bool(int(args.min_ends))}")
+    sys.stdout.flush()
 
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
     traj = create_friction_optimal_gi(traj, gii)

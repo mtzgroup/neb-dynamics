@@ -197,6 +197,7 @@ class Node3D_TC_TCPB(Node):
     
     def do_geometry_optimization(self) -> Node3D_TC_TCPB:
         td_opt = self.tdstructure.tc_local_geom_optimization()
+        time.sleep(0.3) # sleep time so server can reset
         return Node3D_TC_TCPB(td_opt)
     
     def _is_connectivity_identical(self, other) -> bool:

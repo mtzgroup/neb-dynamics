@@ -45,7 +45,7 @@ def read_single_arguments():
         "--nimages",
         dest="nimg",
         type=int,
-        default=8,
+        default=12,
         help="number of images in the chain",
     )
 
@@ -207,7 +207,9 @@ def main():
     # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
     # optimizer = BFGS(bfgs_flush_steps=1000, bfgs_flush_thre=0.1, step_size=0.33*traj[0].atomn, min_step_size=0.01*traj[0].atomn)
     # optimizer = Linesearch(step_size=0.33*traj[0].atomn, min_step_size=.001*traj[0].atomn)
-    optimizer = SteepestDescent(step_size_per_atom=0.01)
+    # optimizer = SteepestDescent(step_size_per_atom=0.01)
+    optimizer = BFGS(step_size=3, min_step_size=.5, use_linesearch=False, bfgs_flush_thre=0.80, 
+                 activation_tol=0.1, bfgs_flush_steps=20)
     # nbi = NEBInputs(grad_thre=tol*BOHR_TO_ANGSTROMS,
     #            rms_grad_thre=(tol/2)*BOHR_TO_ANGSTROMS,
     #            en_thre=(tol/10)*BOHR_TO_ANGSTROMS,
@@ -230,6 +232,7 @@ def main():
         early_stop_still_steps_thre=100,
         vv_force_thre=0.0,
         _use_dlf_conv=bool(args.dlf_conv),
+        preopt_with_xtb=True
     )
 
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})

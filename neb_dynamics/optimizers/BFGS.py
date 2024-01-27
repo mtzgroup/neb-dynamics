@@ -181,94 +181,110 @@ class BFGS(Optimizer):
         
     
     def optimize_step(self, chain, chain_gradients):
-        if np.mod(self.steps_since_last_flush, self.bfgs_flush_steps)==0:
-            self.flush_chain_hess(chain=chain)
-            self.steps_since_last_flush = 0
-        
-        hess_prev = chain.bfgs_hess        
-        orig_shape = chain_gradients.shape
-        
-        grad_step_flat = chain_gradients.flatten()
-        grad_step_flat = np.linalg.inv(hess_prev)@grad_step_flat
-        grad_step = grad_step_flat.reshape(orig_shape)
-        
-        chain_gradients = grad_step
-        
-        atomn = chain[0].coords.shape[0]
         max_disp = self.step_size
+        atomn = chain[0].coords.shape[0]
         scaling = 1
         
-        if self.use_linesearch:
-        
-            disp = ALS.ArmijoLineSearch(
-                    chain=chain,
-                    t=self.step_size,
-                    alpha=self.alpha,
-                    beta=self.beta,
-                    grad=chain_gradients,
-                    max_steps=self.als_max_steps
-            ) 
-            
-        else:
-            disp = self.step_size
-        
-        
-        
-        if np.linalg.norm(chain_gradients*disp) > max_disp: # if step size is too large
-            scaling = (1/(np.linalg.norm(chain_gradients)))*max_disp
-        
-    
-        
-            
-        new_chain_coordinates = chain.coordinates - chain_gradients * disp*scaling
-        new_nodes = []
-        for node, new_coords in zip(chain.nodes, new_chain_coordinates):
-
-            new_nodes.append(node.update_coords(new_coords))
-
-
-
-        # need to copy the gradients from the converged nodes
-        new_chain = Chain(new_nodes, parameters=chain.parameters)
-        for new_node, old_node in zip(new_chain.nodes, chain.nodes):
-            if old_node.converged:
-                new_node._cached_energy = old_node._cached_energy
-                new_node._cached_gradient = old_node._cached_gradient
-        
-        
-        
-        # hessian update from wikipedia
-        if self.update_using_gperp:
-            sk = ((- chain.get_g_perps()) * disp).flatten().reshape(-1,1) # warning
-            yk = (new_chain.get_g_perps()  - chain.get_g_perps() ).flatten().reshape(-1,1) # warning
-        else:
-            sk = (- grad_step * disp).flatten().reshape(-1,1)
-            yk = (new_chain.gradients - chain.gradients).flatten().reshape(-1,1)
-        
-        # print(f"yk={yk.shape}\nsk={sk.shape}")
-        
-        ## this updates the hessian that would have to be inverted
-        A = ((yk@yk.T) / (yk.T@sk))
-        B = (hess_prev@sk@sk.T@(hess_prev.T)) / (sk.T@hess_prev@sk)
-        
-        ## this updates an approximate inverted hessian
-        # A = ((sk.T*yk + yk.T*hess_prev*yk)*(sk*sk.T)) / ((sk.T*yk)**2)
-        
-        # B = (hess_prev*yk*sk.T + sk*yk.T*hess_prev) / (sk.T*yk)
-        new_hess = hess_prev + A - B
-    
-    
-        # hess_upt = A - B
-    
         if np.amax(np.abs(chain.gradients)) <= self.activation_tol:
-            new_chain.bfgs_hess = new_hess
-        else:
-            new_chain.bfgs_hess = np.eye(chain.gradients.flatten().shape[0])
+
+            if np.mod(self.steps_since_last_flush, self.bfgs_flush_steps)==0:
+                self.flush_chain_hess(chain=chain)
+                self.steps_since_last_flush = 0
             
-        if new_chain._gradient_correlation(chain) < self.bfgs_flush_thre:
-            self.flush_chain_hess(new_chain)
-            self.steps_since_last_flush = 0
+            hess_prev = chain.bfgs_hess        
+            orig_shape = chain_gradients.shape
+            
+            grad_step_flat = chain_gradients.flatten()
+            grad_step_flat = np.linalg.inv(hess_prev)@grad_step_flat
+            grad_step = grad_step_flat.reshape(orig_shape)
+            
+            chain_gradients = grad_step
+            
+            
+            
+            if self.use_linesearch:
+            
+                disp = ALS.ArmijoLineSearch(
+                        chain=chain,
+                        t=self.step_size,
+                        alpha=self.alpha,
+                        beta=self.beta,
+                        grad=chain_gradients,
+                        max_steps=self.als_max_steps
+                ) 
+                
+            else:
+                disp = self.min_step_size
+        else:
+            disp = self.min_step_size
+            grad_step = chain_gradients
         
-        self.steps_since_last_flush += 1
+
+        new_chain_gradients_fails = True
+        retry_count_max = 5
+        retry_count = 0
+        while new_chain_gradients_fails and retry_count < retry_count_max:
+            try:
+                if np.linalg.norm(chain_gradients*disp) > max_disp: # if step size is too large
+                    scaling = (1/(np.linalg.norm(chain_gradients)))*max_disp
+                
+                new_chain_coordinates = chain.coordinates - chain_gradients * disp*scaling
+                new_nodes = []
+                for node, new_coords in zip(chain.nodes, new_chain_coordinates):
+
+                    new_nodes.append(node.update_coords(new_coords))
+
+
+
+                # need to copy the gradients from the converged nodes
+                new_chain = Chain(new_nodes, parameters=chain.parameters)
+                for new_node, old_node in zip(new_chain.nodes, chain.nodes):
+                    if old_node.converged:
+                        new_node._cached_energy = old_node._cached_energy
+                        new_node._cached_gradient = old_node._cached_gradient
+                
+                
+                if np.amax(np.abs(chain.gradients)) <= self.activation_tol:
+                    # hessian update from wikipedia
+                    if self.update_using_gperp:
+                        sk = ((- chain.get_g_perps()) * disp).flatten().reshape(-1,1) # warning
+                        yk = (new_chain.get_g_perps()  - chain.get_g_perps() ).flatten().reshape(-1,1) # warning
+                    else:
+                        sk = (- grad_step * disp).flatten().reshape(-1,1)
+                        yk = (new_chain.gradients - chain.gradients).flatten().reshape(-1,1)
+                    
+                    # print(f"yk={yk.shape}\nsk={sk.shape}")
+                    
+                    ## this updates the hessian that would have to be inverted
+                    A = ((yk@yk.T) / (yk.T@sk))
+                    B = (hess_prev@sk@sk.T@(hess_prev.T)) / (sk.T@hess_prev@sk)
+                    
+                    ## this updates an approximate inverted hessian
+                    # A = ((sk.T*yk + yk.T*hess_prev*yk)*(sk*sk.T)) / ((sk.T*yk)**2)
+                    
+                    # B = (hess_prev*yk*sk.T + sk*yk.T*hess_prev) / (sk.T*yk)
+                    new_hess = hess_prev + A - B
+                
+                
+                    # hess_upt = A - B
+            
+                    new_chain.bfgs_hess = new_hess
+                    
+                    # print(np.linalg.norm(new_hess))
+                    
+                else:
+                    new_chain.bfgs_hess = np.eye(chain.gradients.flatten().shape[0])
+                    
+                if new_chain._gradient_correlation(chain) < self.bfgs_flush_thre:
+                    self.flush_chain_hess(new_chain)
+                    self.steps_since_last_flush = 0
+                
+                self.steps_since_last_flush += 1
+                
+                new_chain_gradients_fails = False
+            except:
+                print("BFGS: step size was too big. decreasing and flushing")
+                disp *= 0.5
+                retry_count+=1
         
         return new_chain

@@ -24,6 +24,7 @@ def _attempt_step(chain: Chain, t):
 def ArmijoLineSearch(chain: Chain, t, alpha, beta, grad, max_steps):
     count = 0
     # en_struct = np.linalg.norm(grad)
+    orig_grad = chain.gradients
     en_struct = chain.get_maximum_grad_magnitude()
     t *= (1/beta)
     condition = True
@@ -33,10 +34,12 @@ def ArmijoLineSearch(chain: Chain, t, alpha, beta, grad, max_steps):
             count += 1
 
             en_struct_prime, t = _attempt_step(chain=chain, t=t)
-            condition = en_struct - (en_struct_prime + alpha * t * (np.linalg.norm(grad) ** 2)) < 0
+            condition = en_struct - (en_struct_prime + alpha * t * (np.dot(grad, orig_grad))) < 0
+            # condition = en_struct_prime <= en_struct + alpha * t * (np.linalg.norm(grad) ** 2)
             
         except:
             t *= 0.5*beta 
     sys.stdout.flush()
+    print(f'\ndid {count} ALS steps\n')
     return t
 

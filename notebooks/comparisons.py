@@ -1,12 +1,20 @@
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.BFGS import BFGS
+from neb_dynamics.optimizers.Linesearch import Linesearch
+
 # +
 from pathlib import Path
-from retropaths.abinitio.trajectory import Trajectory
-from retropaths.abinitio.tdstructure import TDStructure
+# from retropaths.abinitio.trajectory import Trajectory
+# from retropaths.abinitio.tdstructure import TDStructure
+
+# from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.tdstructure import TDStructure
 import numpy as np
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
+from neb_dynamics.NEB_TCDLF import NEB_TCDLF
 from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D, Node2D_LEPS
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D import Node3D
@@ -39,6 +47,274 @@ from neb_dynamics.MSMEP import MSMEP
 from IPython.core.display import HTML
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D_Water import Node3D_Water
+from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
+from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+
+# rn = 'Benzimidazolone-Synthesis-1-X-Iodine'
+rn = 'Aza-Grob-Fragmentation-X-Bromine'
+orig = TreeNode.read_from_disk(Path(f"/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}/start_opt_2024_msmep/"))
+
+orig_obj = [obj for obj in orig.get_optimization_history()]
+
+cni = ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D_TC_TCPB, do_parallel=True, node_freezing=True)
+# cni = ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D_TC_TCPB, do_parallel=True, node_freezing=True)
+nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, v=1, _use_dlf_conv=False, climb=True, 
+                early_stop_chain_rms_thre=1, early_stop_force_thre=0.01, early_stop_still_steps_thre=100, preopt_with_xtb=True)
+
+optimizer = BFGS(step_size=3, min_step_size=.5, use_linesearch=False, bfgs_flush_thre=0.80, 
+                 activation_tol=0.1, bfgs_flush_steps=200)
+
+# +
+# optimizer = VelocityProjectedOptimizer(timestep=0.5)
+
+# +
+# h = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Claisen-Rearrangement/start_opt_2024_msmep"), neb_parameters=nbi, chain_parameters=cni)
+
+# +
+# chain  = h.data.initial_chain
+# -
+
+from neb_dynamics.trajectory import Trajectory
+
+# tr = Trajectory.from_xyz('/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Claisen-Rearrangement/initial_guess.xyz')
+tr = orig.data.initial_chain.to_trajectory()
+
+ref = tr[0]
+
+ref.tc_model_method = 'wb97xd3'
+ref.tc_model_basis = 'def2-svp'
+
+tr.update_tc_parameters(ref)
+
+initial_chain = Chain.from_traj(tr, parameters=cni)
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=12), optimizer=optimizer)
+
+h, out = m.find_mep_multistep(initial_chain)
+
+h.write_to_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Aza-Grob-Fragmentation-X-Bromine/xtb_seed_2024"))
+
+len(h.get_optimization_history())
+
+orig.output_chain.plot_chain()
+
+out[0].energy
+
+orig.output_chain[0].energy
+
+orig.output_chain.get_eA_chain()
+
+out.get_eA_chain()
+
+# plt.plot(orig.output_chain.path_length, orig.output_chain.energies, 'o-',label='orig')
+plt.plot(h.output_chain.path_length, h.output_chain.energies, 'o-',label='xtb-seeded')
+plt.legend()
+
+for obj in orig.get_optimization_history():
+    if obj:
+        print(len(obj.chain_trajectory))
+
+for obj in h.get_optimization_history():
+    if obj:
+        print(len(obj.chain_trajectory))
+
+tsg = out.get_ts_guess()
+
+out.to_trajectory()
+
+plt.plot(n.initial_chain.integrated_path_length, n.initial_chain.energies_kcalmol)
+plt.plot(n.chain_trajectory[-1].integrated_path_length, n.chain_trajectory[-1].energies_kcalmol)
+# n.chain_trajectory[-1].to_trajectory()
+
+n.chain_trajectory[-1].to_trajectory()
+
+plt.plot(n.initial_chain.integrated_path_length, n.initial_chain.energies_kcalmol,'o-')
+plt.plot(n.chain_trajectory[-1].integrated_path_length, n.chain_trajectory[-1].energies_kcalmol,'o-')
+# n.chain_trajectory[-1].to_trajectory()
+
+# +
+# m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=12), optimizer=optimizer)
+# -
+
+h, out = m.find_mep_multistep(initial_chain)
+
+out.plot_chain()
+
+n2.plot_projector_history(var='gradients')
+
+n.plot_opt_history(1)
+
+n2.optimized[0].is_identical(n.optimized[0])
+
+n2.plot_opt_history(1)
+
+len(n2.chain_trajectory)
+
+t[-1]
+
+n.chain_trajectory[-1].get_ts_guess()
+
+# %%time
+try:
+    neb.optimize_chain(remove_all=False)
+except Exception as e:
+    print(e)
+
+
+def get_ens_from_fp(fp):
+        lines = open(fp).read().splitlines()
+        atomn = int(lines[0])
+        inds = list(range(1, len(lines), atomn+2))
+        ens = np.array([float(line.split()[0]) for line in np.array(lines)[inds]])
+        return ens
+
+
+# +
+def upsample_images_and_ens(nested_imgs_list, nested_ens_list):
+    """
+    will take a list of lists that contain variable number of images, and will upsample them to tot_number 
+    if they are below the number. 
+    """
+    tot_number = get_number_to_upsample_to(nested_imgs_list)
+    
+    
+    output_list = []
+    output_ens = []
+    for l, l_ens in zip(nested_imgs_list, nested_ens_list):
+        if len(l) < tot_number:
+            n_to_add = tot_number - len(l)
+            new_list = l
+            new_list_ens = list(l_ens)
+            
+            new_list.extend([l[-1]]*n_to_add)
+            new_list_ens.extend([l_ens[-1]]*n_to_add)
+            
+            
+            
+            output_list.append(new_list)
+            output_ens.append(new_list_ens)
+        else:
+            output_list.append(l)
+            output_ens.append(l_ens)
+    return output_list, output_ens
+            
+    
+def get_number_to_upsample_to(nested_imgs_list):
+    max_n = 0
+    for l in nested_imgs_list:
+        if len(l) > max_n:
+            max_n = len(l)
+    return max_n
+    
+
+
+# -
+
+def get_chain_trajectory(data_dir, parameters):
+    
+        # start = self.initial_chain[0].tdstructure
+        # start_en = self.initial_chain[0].energy
+        # end = self.initial_chain[-1].tdstructure
+        # end_en = self.initial_chain[-1].energy
+        
+        
+        all_paths = list(data_dir.glob("neb_*.xyz"))
+        max_ind = len(all_paths)
+        
+        all_fps = [data_dir / f'neb_{ind+1}.xyz' for ind in range(1, max_ind)]
+        
+        img_trajs = [Trajectory.from_xyz(fp).traj for fp in all_fps]
+        img_ens = [get_ens_from_fp(fp) for fp in all_fps]
+        img_trajs, img_ens = upsample_images_and_ens(img_trajs, img_ens)
+        
+        
+        
+        chains_imgs = list(zip(*img_trajs))
+        chains_ens = list(zip(*img_ens))
+        
+        start = img_trajs[0][0]
+        start_en = img_ens[0][0]
+        end = img_trajs[-1][0]
+        end_en = img_ens[-1][0]
+        
+        
+        
+        all_trajs = []
+        for imgs in chains_imgs:
+            t = Trajectory([start]+list(imgs)+[end])
+            t.update_tc_parameters(start)
+            all_trajs.append(t)
+                    
+        chain_trajectory = []
+        for t, raw_ens in zip(all_trajs, chains_ens):
+            ens = [start_en]+list(raw_ens)+[end_en] # dlf gives only the middle image energies
+            c = Chain.from_traj(t, parameters)
+            for node, en in zip(c.nodes, ens):
+                node._cached_energy = en
+            chain_trajectory.append(c) 
+        
+        return chain_trajectory
+
+ct = get_chain_trajectory(Path('/tmp/tmphtv8v0q9'), ChainInputs())
+
+neb.plot_opt_history(1)
+
+t1 = Trajectory.from_xyz('/tmp/tmphtv8v0q9/neb_1.xyz')
+
+tr[0]
+
+t1
+
+neb.write_to_disk(Path("/home/jdep/T3D_data/dlfind_vs_jan/jan_bfgs_new_conv"))
+
+neb.optimized.is_elem_step()
+
+neb.optimized.get_ts_guess()
+
+neb.plot_opt_history(1)
+
+tsg = neb.optimized.get_ts_guess()
+
+tsg
+
+ts = tsg.tc_geom_optimization(method='ts')
+
+ts
+
+neb.optimized.plot_chain()
+
+neb.optimized.get_ts_guess()
+
+neb.plot_opt_history(0)
+
+# +
+
+
+cni2 = ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D, do_parallel=True, node_freezing=True)
+nbi2 = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, v=1, _use_dlf_conv=False, climb=False)
+chain2 = Chain.from_traj(tr, parameters=cni2)
+# -
+
+optimizer2 = VelocityProjectedOptimizer(timestep=1, activation_tol=0.5)
+
+neb2 = NEB(initial_chain=chain2, parameters=nbi2, optimizer=optimizer)
+
+# %%time
+try:
+    neb2.optimize_chain()
+except Exception as e:
+    print(e)
+    print("done")
+
+plt.plot(neb.optimized.path_length, neb.optimized.energies,'o-', label='cNEB')
+plt.plot(neb2.optimized.path_length, neb2.optimized.energies,'o-',label='NEB')
+plt.legend()
+
+# tr[2].tc_kwds = {'pcm':'cosmo','epsilon':80}
+tr[2].tc_kwds = {}
+
 # # Helper Functions
 
 # +

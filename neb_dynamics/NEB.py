@@ -140,14 +140,14 @@ class NEB:
         xtb_params.node_class = Node3D
         chain_traj = chain.to_trajectory()
         xtb_chain = Chain.from_traj(chain_traj, parameters=xtb_params)
-        xtb_nbi = NEBInputs(tol=100*self.parameters.tol, v=True, preopt_with_xtb=False)        
+        xtb_nbi = NEBInputs(tol=self.parameters.tol, v=True, preopt_with_xtb=False)        
         
         n = NEB(initial_chain=xtb_chain, parameters=xtb_nbi, optimizer=self.optimizer)
-        # try:
-        n.optimize_chain()
-        print(f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
-        # except:
-        #     print(f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
+        try:
+            n.optimize_chain()
+            print(f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
+        except:
+            print(f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
         
         
         xtb_seed_tr =  n.chain_trajectory[-1].to_trajectory()
@@ -161,13 +161,17 @@ class NEB:
         nsteps = 1
         if self.parameters.preopt_with_xtb:
             chain_previous = self._do_xtb_preopt(self.initial_chain)
+            self.chain_trajectory.append(chain_previous)
+            
+            
             stop_early = self._do_early_stop_check(chain_previous)
             if stop_early: 
                 return
         else:
             chain_previous = self.initial_chain.copy()
+            self.chain_trajectory.append(chain_previous)
         chain_previous._zero_velocity()
-        self.chain_trajectory.append(chain_previous)
+            
         
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:    

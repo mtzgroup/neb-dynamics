@@ -1,50 +1,145 @@
-# +
-from retropaths.abinitio.trajectory import Trajectory
+from retropaths.molecules.molecule import Molecule
 from retropaths.abinitio.tdstructure import TDStructure
-import numpy as np
-import math
-import scipy.sparse.linalg
-from neb_dynamics.Inputs import ChainInputs, NEBInputs
-import warnings
-warnings.filterwarnings('ignore')
-from neb_dynamics.Node3D import Node3D
-import matplotlib.pyplot as plt
+from retropaths.reactions.changes import Changes3D, Changes3DList, ChargeChanges
+from retropaths.reactions.conditions import Conditions
+from retropaths.reactions.rules import Rules
+from retropaths.reactions.template import ReactionTemplate
+
+mol = Molecule.from_smiles('C=C=O.O.O')
+
+td = TDStructure.from_RP(mol)
+
+# +
+single = [(2,9), (0, 10), # new bonds
+          (0,1),(2, 1) # double bonds which are now single
+         ]
+
+double = [(1,4)]
+
+delete = [(4,9), (4,10), (1,0)]
+
+c3d_single = [Changes3D(start=s, end=e, bond_order=1) for s, e in single]
+c3d_double = [Changes3D(start=s, end=e, bond_order=2) for s, e in double]
+c3d_delete = [Changes3D(start=s, end=e, bond_order=1) for s, e in delete]
+# -
+
+d = {'charges': [], 
+ 'delete':delete,
+'double':double,
+ 'single':single}
+
+conds = Conditions()
+rules = Rules()
+temp = ReactionTemplate.from_components(name='alex', reactants=mol, changes_react_to_prod_dict=d,
+           conditions=conds, rules=rules)                             
+
+temp.reactants.draw()
+
+c3d_list = Changes3DList(deleted=c3d_delete, forming=c3d_single+c3d_double, charges=[])
+
+root = TDStructure.from_RP(mol)
+
+target = root.copy()
+
+target.delete_bonds(c3d_delete)
+
+target.add_bonds(c3d_single)
+
+target.add_bonds(c3d_double)
+
+target.gum_mm_optimization()
+
+# +
+from neb_dynamics.NEB import NoneConvergedException
+from neb_dynamics.optimizers.BFGS import BFGS
+from neb_dynamics.optimizers.Linesearch import Linesearch
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+from neb_dynamics.nodes.Node3D import Node3D
+
+from neb_dynamics.Chain import Chain
+# -
+
+tr = Trajectory([root, target]).run_geodesic(nimages=12)
+
+nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS,early_stop_force_thre=0.01, 
+                early_stop_chain_rms_thre=1, v=True)
+# cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D_TC,node_freezing=True)
+cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D,node_freezing=True)
+gii = GIInputs(nimages=12)
+optimizer = BFGS(bfgs_flush_steps=20, bfgs_flush_thre=0.80, use_linesearch=False, 
+                 step_size=3, 
+                 min_step_size= 0.5,
+                 activation_tol=0.1
+            )
+
+from neb_dynamics.MSMEP import MSMEP
+
+
+initial_chain = Chain.from_traj(tr, parameters=cni)
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer)
+
 from pathlib import Path
 
+data_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/")
 
-from neb_dynamics.NEB import NEB
-from neb_dynamics.helper_functions import RMSD, get_mass
-from neb_dynamics.Chain import Chain
-from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
-from neb_dynamics.MSMEP import MSMEP
-# -
+all_paths = list(data_dir.iterdir())
 
-from rdkit import RDLogger
-RDLogger.DisableLog('rdApp.*')
-
-# +
-# import os
-# del os.environ['OE_LICENSE']
-
-# +
-# REFERENCE=None
-# REFERENCE = TDStructure.from_xyz("../example_cases/alex_chang/reference.xyz")
-# REFERENCE = TDStructure.from_xyz("../example_cases/alex_chang/reference_gi.xyz")
-# add little noise to ref structure
-# shape = REFERENCE.coords.shape
-# REFERENCE = REFERENCE.update_coords(REFERENCE.coords+np.random.normal(scale=.01, size=shape))
+subset = []
+subset_tags = []
+for path in all_paths:
+    tag = "".join(path.stem.split("-")[:2])
+    new_tag = tag not in subset_tags
 
 
-# REFERENCE_CHAIN = Trajectory.from_xyz("../example_cases/alex_chang/neb_opt.xyz")
+    if new_tag:
+        subset.append(path)
+        subset_tags.append(tag)
 
-# opt_trajs1 = [Trajectory.from_xyz(f"../example_cases/alex_chang/attempt0/root_neb_bias/historic_opt_{i}.xyz") for i in range(0,190,20)]
-# opt_trajs2 = [Trajectory.from_xyz(f"../example_cases/alex_chang/attempt0/neb_biased_history/traj_{i}.xyz") for i in range(0,548,50)]
 
-# REFERENCE_OPT_TRAJ = [Trajectory.from_xyz(f"../example_cases/alex_chang/attempt0/root_neb_bias/historic_opt_{i}.xyz") for i in range(0,190,20)]
-# REFERENCE_OPT_TRAJ = [opt_trajs1[-1],opt_trajs2[-1]]
-# REFERENCE_OPT_TRAJ = opt_trajs1+opt_trajs2
-# REFERENCE_CHAIN = REFERENCE
-# -
+
+
+subset
+
+smaller_subset = []
+sizes = []
+for p in subset:
+    try:
+        tr_path = p / 'initial_guess.xyz'
+        tr = Trajectory.from_xyz(tr_path)
+        natoms = len(tr[0].coords)
+        if natoms < 40:
+            smaller_subset.append(p)
+    except:
+        continue
+
+with open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo.txt","w+") as f:
+    for p in smaller_subset:
+        f.write(str(p.resolve())+"\n")
+
+len(smaller_subset)
+
+h, out = m.find_mep_multistep(initial_chain)
+
+out.to_trajectory()
+
+# # root.pseudoalign(c3d_list)
+
+target = root.copy()
+target.add_bonds(c3d_list.forming)
+target.delete_bonds(c3d_list.deleted)
+target.gum_mm_optimization()
+
+target.molecule_rp.draw(mode='d3')
+
+
+
+
+
+target
 
 # # Node3D shit
 
