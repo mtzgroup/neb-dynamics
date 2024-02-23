@@ -858,7 +858,7 @@ class TDStructure:
         # make the tc input file
         inp = f"""run {calculation}\ncoordinates {tmp.name}\n"""
         inp+= self._tcpb_input_string()
-        inp+=f"""scrdir {tmp.name[:-4]}\nmaxiter 500"""
+        inp+=f"""scrdir {tmp.name[:-4]}\nmaxiter 500\n"""
 
         if "wf_guess" in self.tc_kwds:
             guess_path = self.tc_kwds["wf_guess"]  # this must be a string
@@ -908,6 +908,8 @@ class TDStructure:
             Path(tmp_out.name).unlink()
 
             shutil.rmtree(tmp.name[:-4])  # delete scratch dir
+        elif not remove_all:
+            print(f"{tmp.name=} {tmp_inp.name=} {tmp_out.name=}")
         return result
 
     def make_geom_and_inp_file(self, calculation="gradient"):

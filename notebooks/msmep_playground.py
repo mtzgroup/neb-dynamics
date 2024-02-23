@@ -9,8 +9,10 @@ from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.NEB_TCDLF import NEB_TCDLF
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import NEBInputs
-from retropaths.abinitio.trajectory import Trajectory
-from retropaths.abinitio.tdstructure import TDStructure
+from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.trajectory import Trajectory
+# from retropaths.abinitio.trajectory import Trajectory
+# from retropaths.abinitio.tdstructure import TDStructure
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.helper_functions import create_friction_optimal_gi
@@ -18,42 +20,336 @@ from neb_dynamics.optimizers.SD import SteepestDescent
 
 from pathlib import Path
 import numpy as np
+# -
 
+from neb_dynamics.NEB import NoneConvergedException
+from neb_dynamics.optimizers.BFGS import BFGS
+from neb_dynamics.optimizers.Linesearch import Linesearch
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer as VPO
+
+from neb_dynamics.NEB import NEB
+
+start = TDStructure.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Azaindole-Synthesis/start_opt.xyz")
+
+end = TDStructure.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Azaindole-Synthesis/end_opt.xyz")
+
+tr = Trajectory([start, end]).run_geodesic(nimages=12)
 
 # +
-def get_xtb_seed(chain, neb_params, optimizer):
-    xtb_params = chain.parameters.copy()
-    xtb_params.node_class = Node3D
-    chain_traj = chain.to_trajectory()
-    xtb_chain = Chain.from_traj(chain_traj, parameters=xtb_params)
+cni = ChainInputs(k=0.1, delta_k=0.09, do_parallel=True, node_freezing=True)
+
+# optimizer1 = BFGS(step_size=3, min_step_size=0.1, bfgs_flush_steps=50, 
+#                  bfgs_flush_thre=0.8, use_linesearch=False)
+optimizer2 = VPO(timestep=0.1)
+
+nbi = NEBInputs(v=1,tol=0.01*BOHR_TO_ANGSTROMS)
+init_c = Chain.from_traj(tr, parameters=cni)
+# n1 = NEB(initial_chain=init_c, parameters=nbi, optimizer=optimizer1)
+# n1.optimize_chain()
+# all_nebs_bfgs.append(n1)
+
+n2 = NEB(initial_chain=init_c, parameters=nbi, optimizer=optimizer2)
+n2.optimize_chain()
+# all_nebs_vpo.append(n2)
+# -
+
+n2.plot_opt_history(1)
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Wittig/local_jan_msmep/")
+
+init_guess = h.output_chain.to_trajectory().run_geodesic(nimages=12)
+
+# +
+# c = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_b3lyp_631g_02012024.xyz", ChainInputs() )
+# c = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/permutation_experiments/claisen_original.xyz", ChainInputs() )
+
+# +
+# start = c[0].tdstructure
+# end = c[-1].tdstructure
+
+# +
+from neb_dynamics.optimizers.BFGS import BFGS
+
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer as VPO
+# -
+
+# tr = Trajectory([start, end]).run_geodesic(nimages=len(c))
+tr = init_guess
+
+tols = [0.1, 0.01*BOHR_TO_ANGSTROMS, 0.001, 0.001*BOHR_TO_ANGSTROMS]
+all_nebs_bfgs = []
+all_nebs_vpo = []
+
+# +
+for tol in tols:
+
+    cni = ChainInputs(k=0.1, delta_k=0.09, do_parallel=True, node_freezing=True)
+
+    optimizer1 = BFGS(step_size=3, min_step_size=0.1, bfgs_flush_steps=50, 
+                     bfgs_flush_thre=0.8, use_linesearch=False)
+    optimizer2 = VPO(timestep=0.1)
+
+    nbi = NEBInputs(v=1,tol=tol)
+    init_c = Chain.from_traj(tr, parameters=cni)
+    n1 = NEB(initial_chain=init_c, parameters=nbi, optimizer=optimizer1)
+    n1.optimize_chain()
+    all_nebs_bfgs.append(n1)
     
-    n = NEB(initial_chain=xtb_chain, parameters=neb_params, optimizer=optimizer)
-    try:
-        n.optimize_chain()
-        print(f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
-    except:
-        print(f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
+    n2 = NEB(initial_chain=init_c, parameters=nbi, optimizer=optimizer2)
+    n2.optimize_chain()
+    all_nebs_vpo.append(n2)
     
-     
-    xtb_seed_tr =  n.chain_trajectory[-1].to_trajectory()
-    xtb_seed_tr.update_tc_parameters(chain[0].tdstructure)
-    
-    xtb_seed = Chain.from_traj(xtb_seed_tr, parameters=chain.parameters.copy())
-    
-    return xtb_seed
     
     
     
 # -
 
+from retropaths.reactions.pot import Pot
+
+
+def get_minima_from_tree(tree_obj):
+    minima = []
+    for i, leaf in enumerate(tree_obj.ordered_leaves):
+        if leaf.data:
+            if i == 0:
+                minima.append(leaf.data.chain_trajectory[-1][0].tdstructure)
+            minima.append(leaf.data.chain_trajectory[-1][-1].tdstructure)
+    return minima
+
+
+tds = get_minima_from_tree(h)
+
+molecules = [td.molecule_rp for td in tds]
+
+import retropaths.helper_functions as hf
+
+pot = Pot(root=molecules[0])
+edges = list(hf.pairwise(list(range(len(tds)))))
+edges_to_do = []
+for i, mol_to_add in enumerate(molecules[1:], start=1):
+    child_ind = i
+    parent_ind = i-1
+
+    pot.graph.add_node(child_ind, molecule=mol_to_add, converged=False)
+    if (child_ind, parent_ind) in edges or (parent_ind, child_ind) in edges:
+        pot.graph.add_edge(child_ind, parent_ind, reaction='neb0')
+    else:
+        edges_to_do.append((child_ind, parent_ind))
+
+import matplotlib.pyplot as plt
+
+# +
+for tol, neb_obj in zip(tols, all_nebs_bfgs):
+    plt.plot(neb_obj.chain_trajectory[-1].integrated_path_length, 
+             neb_obj.chain_trajectory[-1].energies_kcalmol, 'o-',
+             label=f'{round(tol,5)}_bfgs')
+    
+for tol, neb_obj in zip(tols, all_nebs_bfgs):
+    plt.plot(neb_obj.optimized.integrated_path_length, 
+             neb_obj.optimized.energies_kcalmol, 'o-',
+             label=f'{round(tol,5)}_vpo')
+# plt.plot(gi_chain.integrated_path_length, tr.energies_xtb(),'o-',label='gi')
+plt.legend()
+# -
+
+chains_dft_bfgs = []
+for neb_obj in all_nebs_bfgs:
+    out_tr = neb_obj.optimized.to_trajectory()
+    c = Chain.from_traj(out_tr, parameters=ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D_TC))
+    c.gradients
+    chains_dft_bfgs.append(c)
+
+
+chains_dft_vpo = []
+for neb_obj in all_nebs_vpo:
+    out_tr = neb_obj.optimized.to_trajectory()
+    c = Chain.from_traj(out_tr, parameters=ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D_TC))
+    c.gradients
+    chains_dft_vpo.append(c)
+
+neb_obj = all_nebs_vpo[-1]
+out_tr = neb_obj.chain_trajectory[-1].to_trajectory()
+c = Chain.from_traj(out_tr, parameters=ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D_TC))
+c.gradients
+chains_dft_vpo.append(c)
+
+gi_chain = Chain.from_traj(tr, 
+                           parameters=ChainInputs(k=0.1, delta_k=0.09, 
+                                                  node_class=Node3D_TC))
+
+all_nebs_bfgs[-2].plot_opt_history(1)
+
+# +
+for tol, c in zip(tols, chains_dft_bfgs):
+    if tol==0.1:
+        continue
+    plt.plot(c.integrated_path_length, 
+             c.energies_kcalmol, 'o-',
+             label=f'{round(tol,5)}_bfgs')
+    
+    
+for tol, c in zip(tols, chains_dft_vpo):
+    if tol==0.1:
+        continue
+    plt.plot(c.integrated_path_length, 
+             c.energies_kcalmol, 'o-',
+             label=f'{round(tol,5)}_vpo')
+
+    
+plt.plot(gi_chain.integrated_path_length, 
+         gi_chain.energies_kcalmol, 'o-', label='gi')
+plt.legend()
+
+# +
+# plt.plot(chains_dft[1].integrated_path_length, chains_dft[1].energies_kcalmol,'o-')
+# plt.plot(chains_dft[2].integrated_path_length, chains_dft[2].energies_kcalmol,'o-')
+plt.plot(chains_dft[3].integrated_path_length, chains_dft[2].energies_kcalmol,'o-')
+
+
+plt.plot(c.integrated_path_length, c.energies_kcalmol,'o-')
+# -
+
+# chains_dft_bfgs[1].write_to_disk("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_tol_0.01_b3lyp_631g_conv_using_xtb.xyz")
+chains_dft_bfgs[2].write_to_disk("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_tol_0.001_b3lyp_631g_conv_using_xtb.xyz")
+
+
+
+# +
+
+plt.plot(n_seeded[0].optimized.integrated_path_length, n_seeded[0].optimized.energies_kcalmol,'o-')
+plt.plot(n_seeded[1].optimized.integrated_path_length, n_seeded[1].optimized.energies_kcalmol, 'o-')
+# -
+
+n_seeded[0].write_to_disk("/home/jdep/T3D_data/msmep_draft/seeding_experiments/claisen_xtb_seed_tol0.01")
+
+n_seeded = []
+for init_seed in chains_dft_bfgs[1:3]:
+    optimizer = BFGS(step_size=3, min_step_size=0.1, bfgs_flush_steps=50, 
+                     bfgs_flush_thre=0.8, use_linesearch=False)
+
+    nbi = NEBInputs(v=1,tol=tol)
+    init_seed.parameters.node_freezing = True
+    n = NEB(initial_chain=init_seed, parameters=nbi, optimizer=optimizer)
+    n.optimize_chain()
+    n_seeded.append(n)
+
+n_seeded[1].plot_opt_history(1)
+
+len(n_seeded[0].chain_trajectory)
+
+len(n_seeded[1].chain_trajectory)
+
+n_seeded[0].grad_calls_made
+
+chains_dft[1].get_ts_guess()
+
+c.get_ts_guess()
+
+# # bias away from node 0-1
+
+cb = ChainBiaser(reference_chains=[h.ordered_leaves[0].data.optimized])
+
+tol = 0.01
+
+nbi = NEBInputs(
+        grad_thre=tol * BOHR_TO_ANGSTROMS,
+        rms_grad_thre=(tol / 2) * BOHR_TO_ANGSTROMS,
+        en_thre=(tol)* BOHR_TO_ANGSTROMS,  # loose energy threshold cause DLF doesnt use en thresh
+        v=1,
+        max_steps=500,
+        early_stop_chain_rms_thre=1,  # not really caring about chain distances
+        early_stop_force_thre=0.01,
+        early_stop_still_steps_thre=100,
+        vv_force_thre=0.0,                                                                                                                                                                                         
+        _use_dlf_conv=False,
+        preopt_with_xtb=False)
+
+cni_bias = ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D, 
+                       node_freezing=True, do_parallel=True,
+                       cb=cb,
+                  )
+
+cni_bias.do_chain_biasing = True
+
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+
+optimizer = VelocityProjectedOptimizer()
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni_bias, optimizer=optimizer, 
+         gi_inputs=GIInputs(nimages=12))
+
+chain_bias = Chain.from_traj(h.data.initial_chain.to_trajectory(),
+                            cni_bias)
+
+h_bias, out_bias = m.find_mep_multistep(chain_bias)
+
+pot.draw_from_single_path(list(pot.paths_from(3))[0])
+
+
+def sort_td(td):
+    c = td.coords
+    symbols = td.symbols
+    sorted_inds = np.argsort(td.symbols)
+    coords_sorted = np.array(c[sorted_inds])
+    symbols_sorted = symbols[sorted_inds]
+    
+    sorted_td =  TDStructure.from_coords_symbols(coords=coords_sorted, symbols=symbols_sorted, 
+                                           tot_charge=td.charge, tot_spinmult=td.spinmult)
+    
+    return sorted_td
+
+
+def permute_indices_td(td, element):
+    td = sort_td(td)
+    coords = td.coords
+    symbols = td.symbols
+    
+    inds_element = np.nonzero(td.symbols == element)[0]
+    permutation_element = np.random.permutation(inds_element)
+    
+    inds_original = np.arange(len(td.symbols))
+    inds_permuted = inds_original.copy()
+    inds_permuted[inds_element] = permutation_element
+    
+    coords_permuted = coords[inds_permuted]
+    permuted_td = TDStructure.from_coords_symbols(coords_permuted, symbols)
+    permuted_td.update_tc_parameters(td)
+    return permuted_td
+
+
+start = c[0].tdstructure
+
+end = c[-1].tdstructure
+
+start_shuffled = permute_indices_td(start, 'C')
+
+tr = Trajectory([start_shuffled, end]).run_geodesic(nimages=12)
+
+# +
+nbi = NEBInputs(tol=0.01,
+                early_stop_force_thre=0.03, 
+                early_stop_chain_rms_thre=1, v=True, preopt_with_xtb=False, max_steps=500)
+
+cni = ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D, node_freezing=True)
+gii = GIInputs(nimages=12)
+optimizer = BFGS(bfgs_flush_steps=200, bfgs_flush_thre=0.80, use_linesearch=False, 
+                 step_size=3, 
+                 min_step_size= 0.1,
+                 activation_tol=0.1
+            )
+# -
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer)
+
+chain = Chain.from_traj(tr, cni)
+
+h, out = m.find_mep_multistep(chain)
+
+out.plot_chain()
+
 # # Foobar
 
 from neb_dynamics.NEB import NEB
-
-from neb_dynamics.NEB import NoneConvergedException
-from neb_dynamics.optimizers.BFGS import BFGS
-from neb_dynamics.optimizers.Linesearch import Linesearch
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 import retropaths.helper_functions as hf
 
@@ -61,18 +357,25 @@ reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
 
 rxn = reactions['1,3-Dipolar-Cycloaddition-Type-II']
 
-nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS,early_stop_force_thre=0.01, 
-                early_stop_chain_rms_thre=1, v=True)
+nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS,
+                early_stop_force_thre=0.01*BOHR_TO_ANGSTROMS, 
+                early_stop_chain_rms_thre=1, v=True, preopt_with_xtb=True, max_steps=500)
 # cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D_TC,node_freezing=True)
-cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D,node_freezing=True)
+cni = ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D, node_freezing=True)
 gii = GIInputs(nimages=12)
-optimizer = BFGS(bfgs_flush_steps=200, bfgs_flush_thre=0.50, use_linesearch=False, 
+optimizer = BFGS(bfgs_flush_steps=200, bfgs_flush_thre=0.80, use_linesearch=False, 
                  step_size=3, 
-                 min_step_size= 0.5,
+                 min_step_size= 0.1,
                  activation_tol=0.1
             )
 
 m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer)
+
+chain = Chain.from_traj(tr, cni)
+
+out.plot_chain()
+
+h, out = m.find_mep_multistep(chain)
 
 from retropaths.abinitio.tdstructure import TDStructure
 
@@ -136,9 +439,31 @@ initial_chain = Chain.from_traj(tr, parameters=cni)
 # get_xtb_seed(initial_chain, nbi, optimizer)
 # -
 
+leaves = [l.data for l in h.ordered_leaves if l.data]
+
+m2 = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=25), optimizer=optimizer)
+h_2, out_2 = m2.find_mep_multistep(leaves[1].chain_trajectory[-1])
+
+
+
+leaves[1].plot_opt_history()
+# leaves[1].optimized.to_trajectory()
+
 h, out = m.find_mep_multistep(input_chain=initial_chain)
 
-out.to_trajectory()
+out.plot_chain()
+
+opt = out[0].do_geometry_optimization()
+
+out[0].tdstructure
+
+opt.tdstructure
+
+
+
+opt.energy
+
+out[0].energy
 
 rn = 'Benzimidazolone-Synthesis-1-X-Iodine'
 

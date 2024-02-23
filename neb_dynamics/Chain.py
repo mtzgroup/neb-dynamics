@@ -39,6 +39,8 @@ import scipy
 class Chain:
     nodes: List[Node]
     parameters: ChainInputs
+    
+    _cached_chain_bias: np.array = None
 
     def __post_init__(self):
         if not hasattr(self, "velocity"):
@@ -462,12 +464,15 @@ class Chain:
         # add chain bias if relevant
         if self.parameters.do_chain_biasing:
             tans = self.unit_tangents
-
-            # cb = ChainBiaser(reference_chain=n_ref.optimized, amplitude=self.parameters.amp, sigma=self.parameters.sig, distance_func=self.parameters.distance_func)
-            bias_grads = self.parameters.cb.grad_chain_bias(self)
-            proj_grads = np.array(
-                [get_nudged_pe_grad(tan, grad) for tan, grad in zip(tans, bias_grads)]
-            )
+            if type(self._cached_chain_bias) is type(None):
+                # cb = ChainBiaser(reference_chain=n_ref.optimized, amplitude=self.parameters.amp, sigma=self.parameters.sig, distance_func=self.parameters.distance_func)
+                bias_grads = self.parameters.cb.grad_chain_bias(self)
+                proj_grads = np.array(
+                    [get_nudged_pe_grad(tan, grad) for tan, grad in zip(tans, bias_grads)]
+                )
+                self._cached_chain_bias = proj_grads
+            else:
+                proj_grads = self._cached_chain_bias
 
             grads += proj_grads
 
@@ -593,12 +598,13 @@ class Chain:
             return True, None
 
         conditions = {}
-        is_concave = self._chain_is_concave()
+        is_concave, concavity_results = self._chain_is_concave()
         conditions["concavity"] = is_concave
         if not is_concave:
-            return False, "minima"
+            return False, "minima", concavity_results
 
         r, p = self._approx_irc()
+        irc_results = (r,p)
 
         cases = [
             r.is_identical(chain[0]) and p.is_identical(chain[-1]),  # best case
@@ -611,29 +617,32 @@ class Chain:
         minimizing_gives_endpoints = any(cases)
         conditions["irc"] = minimizing_gives_endpoints
 
-        split_method = self._select_split_method(conditions)
-        elem_step = True if split_method is None else False
-        return elem_step, split_method
+        # split_method, output_geometries = self._select_split_method(conditions)
+        elem_step = True if minimizing_gives_endpoints else False
+        return elem_step, 'maxima', irc_results
 
     def _chain_is_concave(self):
         ind_minima = _get_ind_minima(self)
         minima_present = len(ind_minima) != 0
+        opt_results = []
+        
         if minima_present:
             minimas_is_r_or_p = []
             try:
                 for i in ind_minima:
                     opt = self[i].do_geometry_optimization()
+                    opt_results.append(opt)
                     minimas_is_r_or_p.append(
                         opt.is_identical(self[0]) or opt.is_identical(self[-1])
                     )
-            except:
-                print("Error in geometry optimization. Pretending this is an elem step.")
-                return True
+            except Exception as e:
+                print("Error in geometry optimization: {e}. Pretending this is an elem step.")
+                return True, opt_results
             print(f"\n{minimas_is_r_or_p=}\n")
-            return all(minimas_is_r_or_p)
+            return all(minimas_is_r_or_p), opt_results
 
         else:
-            return True
+            return True, opt_results
 
     def _approx_irc(self, index=None):
         chain = self.copy()
@@ -650,24 +659,24 @@ class Chain:
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
         try:
-            if not self.parameters.node_class == Node3D_TC:
-                r = candidate_r.do_geometry_optimization()
-                p = candidate_p.do_geometry_optimization()
+            # if not self.parameters.node_class == Node3D_TC:
+            r = candidate_r.do_geometry_optimization()
+            p = candidate_p.do_geometry_optimization()
 
-            else:  # i am sorry for this
-                traj = Trajectory([candidate_r.tdstructure, candidate_p.tdstructure])
-                traj.update_tc_parameters(candidate_r.tdstructure)
-                out_traj = traj.tc_geom_opt_all_geometries()
-                r, p = self.parameters.node_class(out_traj[0]), self.parameters.node_class(
-                    out_traj[1]
-                )
+            # else:  # i am sorry for this
+            #     traj = Trajectory([candidate_r.tdstructure, candidate_p.tdstructure])
+            #     traj.update_tc_parameters(candidate_r.tdstructure)
+            #     out_traj = traj.tc_geom_opt_all_geometries()
+            #     r, p = self.parameters.node_class(out_traj[0]), self.parameters.node_class(
+            #         out_traj[1]
+            #     )
         except Exception as e:
             print(e)
             print("Error in geometry optimization. Pretending this is elementary chain.")
             return chain[0], chain[len(chain) - 1]
         return r, p
 
-    def _select_split_method(self, conditions: dict):
+    def _select_split_method(self, conditions: dict, irc_results, concavity_results):
         all_conditions_met = all([val for key, val in conditions.items()])
         if all_conditions_met:
             return None

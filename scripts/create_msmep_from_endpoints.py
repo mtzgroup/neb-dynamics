@@ -188,14 +188,14 @@ def main():
         k=0.1,
         delta_k=0.09,
         node_class=nc,
-        friction_optimal_gi=True,
+        friction_optimal_gi=False,
         do_parallel=do_parallel,
         node_freezing=True,
     )
     # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=False)
     # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
     # optimizer = BFGS(bfgs_flush_steps=1000, bfgs_flush_thre=0.1, step_size=0.33*traj[0].atomn, min_step_size=0.01*traj[0].atomn)
-    optimizer = BFGS(step_size=3, min_step_size=.1, use_linesearch=False, bfgs_flush_thre=0.50, 
+    optimizer = BFGS(step_size=3, min_step_size=.1, use_linesearch=False, bfgs_flush_thre=0.80, 
                  activation_tol=0.1, bfgs_flush_steps=200)
     # nbi = NEBInputs(grad_thre=tol*BOHR_TO_ANGSTROMS,
     #            rms_grad_thre=(tol/2)*BOHR_TO_ANGSTROMS,
@@ -218,7 +218,7 @@ def main():
         early_stop_force_thre=0.01,
         early_stop_still_steps_thre=100,
         vv_force_thre=0.0,
-        _use_dlf_conv=True,
+        _use_dlf_conv=False,
         preopt_with_xtb=True
     )
     

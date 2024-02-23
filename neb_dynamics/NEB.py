@@ -86,17 +86,18 @@ class NEB:
         chain is an elementary step
         """
         
-        is_elem_step, split_method = chain.is_elem_step()
+        elem_step_results = chain.is_elem_step()
+        is_elem_step, split_method, minimization_results = elem_step_results
             
         if not is_elem_step:
             print(f"\nStopped early because chain is not an elementary step.")
             print(f"Split chain based on: {split_method}")
             self.optimized = chain
-            return True
+            return True, elem_step_results
         
         else:
             self.n_steps_still_chain = 0
-            return False
+            return False, elem_step_results
 
     def _check_early_stop(self, chain: Chain):
         """
@@ -134,17 +135,19 @@ class NEB:
     
                 
         else:
-            return False
+            return False, None
+            
     def _do_xtb_preopt(self, chain):
         xtb_params = chain.parameters.copy()
         xtb_params.node_class = Node3D
         chain_traj = chain.to_trajectory()
         xtb_chain = Chain.from_traj(chain_traj, parameters=xtb_params)
-        xtb_nbi = NEBInputs(tol=self.parameters.tol, v=True, preopt_with_xtb=False)        
-        
-        n = NEB(initial_chain=xtb_chain, parameters=xtb_nbi, optimizer=self.optimizer)
+        xtb_nbi = NEBInputs(tol=self.parameters.tol*10, v=True, preopt_with_xtb=False, max_steps=1000)        
+        from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+        opt_xtb = VelocityProjectedOptimizer(timestep=0.1)
+        n = NEB(initial_chain=xtb_chain, parameters=xtb_nbi, optimizer=opt_xtb)
         try:
-            n.optimize_chain()
+            elem_step_results = n.optimize_chain()
             print(f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
         except:
             print(f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
@@ -164,9 +167,9 @@ class NEB:
             self.chain_trajectory.append(chain_previous)
             
             
-            stop_early = self._do_early_stop_check(chain_previous)
+            stop_early, elem_step_results = self._do_early_stop_check(chain_previous)
             if stop_early: 
-                return
+                return elem_step_results
         else:
             chain_previous = self.initial_chain.copy()
             self.chain_trajectory.append(chain_previous)
@@ -175,9 +178,9 @@ class NEB:
         
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:    
-                stop_early = self._check_early_stop(chain_previous)
+                stop_early, elem_step_results = self._check_early_stop(chain_previous)
                 if stop_early: 
-                    return
+                    return elem_step_results
                 
                 if self.parameters.climb: 
                     self._check_set_climbing_node(chain=chain_previous)
@@ -211,9 +214,10 @@ class NEB:
             if chain_converged:
                 if self.parameters.v:
                     print("\nChain converged!")
-
+                    
                 self.optimized = new_chain
-                return
+                elem_step_results = new_chain.is_elem_step() # N.B. One could skip this if you don't want to do minimization on converged chain.
+                return elem_step_results
             
             
             

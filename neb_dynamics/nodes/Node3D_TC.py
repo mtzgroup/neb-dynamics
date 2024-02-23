@@ -106,8 +106,8 @@ class Node3D_TC(Node):
         
         return Node3D_TC(tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb)
 
-    def opt_func(self, v=True):
-        return self.tdstructure.tc_geom_optimization()
+    # def opt_func(self, v=True):
+    #     return self.tdstructure.tc_geom_optimization()
 
     def check_symmetric(self, a, rtol=1e-05, atol=1e-08):
         return np.allclose(a, a.T, rtol=rtol, atol=atol)
@@ -167,10 +167,15 @@ class Node3D_TC(Node):
         return ens_grads_lists
     
     def do_geometry_optimization(self) -> Node3D_TC:
-        # td_opt_xtb = self.tdstructure.xtb_geom_optimization()
-        # td_opt = td_opt_xtb.tc_geom_optimization()
-        # td_opt = self.tdstructure.tc_geom_optimization()
-        td_opt = self.tdstructure.tc_local_geom_optimization() ### this is being done locally because it is too slow to use the chemcloud version. 
+        try:
+            td_opt_xtb = self.tdstructure.xtb_geom_optimization()
+            # td_opt = td_opt_xtb.tc_geom_optimization()
+            # td_opt = td_opt_xtb.tc_geom_optimization()
+            td_opt = td_opt_xtb.tc_local_geom_optimization() 
+            
+        except:
+            # td_opt = self.tdstructure.tc_geom_optimization()
+            td_opt = self.tdstructure.tc_local_geom_optimization() ### this is being done locally because it is too slow to use the chemcloud version. 
         
         return Node3D_TC(tdstructure=td_opt)
     

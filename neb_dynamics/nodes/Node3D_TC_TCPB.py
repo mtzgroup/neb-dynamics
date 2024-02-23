@@ -263,9 +263,11 @@ class Node3D_TC_TCPB(Node):
         elif status == 1:
             raise ValueError("Connection to TC server failed.")
         elif status == 2:
-            raise ValueError(
-                "Connection to TC server succeeded, but the server is not available."
-            )
+            # raise ValueError(
+            #     "Connection to TC server succeeded, but the server is not available."
+            # )
+            time.sleep(3)
+            self._connect_to_server()
         else:
             raise ValueError("Status on tc.connect function is not recognized!")
         

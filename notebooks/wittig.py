@@ -316,6 +316,8 @@ t = Trajectory([n.tdstructure for n in out])
 
 t.draw();
 
+from neb_dynamics.tdstructure import TDStructure
+
 t.write_trajectory(f"../example_cases/{rxn_name}/msmep_tol001.xyz")
 
 # # NEB stuff
