@@ -254,6 +254,10 @@ class Chain:
     @classmethod
     def from_traj(cls, traj: Trajectory, parameters: ChainInputs):
         nodes = [parameters.node_class(s) for s in traj]
+        for node in nodes:
+            node.BARRIER_THRE = parameters.node_conf_barrier_thre
+            node.KCAL_MOL_CUTOFF = parameters.node_conf_en_thre
+            
         return Chain(nodes, parameters=parameters)
 
     @classmethod
@@ -389,24 +393,6 @@ class Chain:
         spring_forces_nudged = np.array(spring_forces_nudged)
         return pe_grads_nudged, spring_forces_nudged
 
-    def get_maximum_grad_magnitude(self):
-        return np.max([np.amax(np.abs(grad)) for grad in self.gradients])
-
-    def get_maximum_gperp(self):
-        gperp, gspring = self.pe_grads_spring_forces_nudged()
-        max_gperps = []
-        for gp, node in zip(gperp, self):
-            # if not node.converged:
-            max_gperps.append(np.amax(np.abs(gp)))
-        return np.max(max_gperps)
-
-    def get_maximum_rms_grad(self):
-        return np.max(
-            [
-                np.sqrt(np.mean(np.square(grad.flatten())) / len(grad.flatten()))
-                for grad in self.gradients
-            ]
-        )
 
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
@@ -492,6 +478,25 @@ class Chain:
         #         grads[i] = grad*0
 
         return grads
+    
+    @property
+    def rms_gradients(self):
+        grads = self.gradients
+        rms_grads = []
+        for grad in grads:
+            rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / len(grad))
+            rms_grads.append(rms_gradient)
+        return np.array(rms_grads)
+    
+    @property
+    def rms_gperps(self):
+        grads = self.get_g_perps()
+        rms_grads = []
+        for grad in grads:
+            rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / len(grad))
+            rms_grads.append(rms_gradient)
+        return np.array(rms_grads)
+            
 
     @property
     def unit_tangents(self):
@@ -608,10 +613,8 @@ class Chain:
 
         cases = [
             r.is_identical(chain[0]) and p.is_identical(chain[-1]),  # best case
-            r.is_identical(chain[0])
-            and p.is_identical(chain[0]),  # both collapsed to reactants
-            r.is_identical(chain[-1])
-            and p.is_identical(chain[-1]),  # both collapsed to products
+            r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
+            r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
         ]
 
         minimizing_gives_endpoints = any(cases)

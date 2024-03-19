@@ -158,7 +158,7 @@ def create_friction_optimal_gi(traj, gi_inputs):
     for gi in all_gis:
         try:
             eAs.append(max(gi.energies_xtb()) )
-        except:
+        except TypeError:
             eAs.append(10000000)
     ind_best = np.argmin(eAs)
     gi = all_gis[ind_best]

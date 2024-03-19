@@ -25,11 +25,17 @@ from chemcloud import CCClient
 # oechem.OEThrow.SetLevel(oechem.OEErrorLevel_Quiet) # oechem VERBOSITY controller
 # ES_PROGRAM = 'psi4'
 ES_PROGRAM = 'terachem'
-
-
 ANGSTROM_TO_BOHR = 1.88973
 BOHR_TO_ANGSTROM = 1/ANGSTROM_TO_BOHR
 HARTREE_TO_KCALM = 627.503
+
+
+@dataclass
+class ElectronicStructureError:
+    message: str
+    
+    
+
 
 @dataclass
 class Trajectory:
@@ -108,9 +114,11 @@ class Trajectory:
 
     def copy(self):
         list_of_trajs = [td.copy() for td in self.traj]
-        return Trajectory(
+        copy_tr = Trajectory(
             traj=list_of_trajs
         )
+        copy_tr.update_tc_parameters(self.traj[0])
+        return copy_tr
 
     def insert(self, index, structure):
         self.traj.insert(index, structure)
@@ -273,18 +281,22 @@ class Trajectory:
             future_result = client.compute(
                 ES_PROGRAM, prog_input
             )
-            output_list = future_result.get()
-                
-            for res in output_list:
-                if not res.success:
-                    res.ptraceback
-                    print(f"{ES_PROGRAM} failed.")
-                    return None
-                
-                
-            grads = np.array([output.return_result for output in output_list])
-            ens = np.array([output.results.energy for output in output_list])
-            return ens, grads
+            try:
+                # print(f"\n\nusing {ES_PROGRAM}\n{prog_input=}")
+                output_list = future_result.get()
+                    
+                for res in output_list:
+                    if not res.success:
+                        res.ptraceback
+                        res.pstdout
+                        raise ElectronicStructureError(message=f"{ES_PROGRAM} failed.")
+                    
+                    
+                grads = np.array([output.return_result for output in output_list])
+                ens = np.array([output.results.energy for output in output_list])
+                return ens, grads
+            except ElectronicStructureError as e: 
+                print(f"\n\n Electronic structure failed:\nerror:{e.message}\nusing {ES_PROGRAM}\n{prog_input=}\njsons:{[inp.model_dump_json() for inp in prog_input]}")
         else:
             future_result = client.compute(
                 ES_PROGRAM, prog_input[0]

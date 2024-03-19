@@ -15,12 +15,11 @@ from xtb.utils import get_method
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
+from neb_dynamics.trajectory import Trajectory
 import multiprocessing as mp
 from pathlib import Path
 
-RMSD_CUTOFF = 0.5
-# RMSD_CUTOFF = 10.0
-KCAL_MOL_CUTOFF = 0.1
+
 
 @dataclass
 class Node3D(Node):
@@ -30,8 +29,12 @@ class Node3D(Node):
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
 
-
     is_a_molecule = True
+    RMSD_CUTOFF: float = 0.5
+    KCAL_MOL_CUTOFF: float = 0.1
+    BARRIER_THRE: float = 15  # kcal/mol
+    
+    
 
     @property
     def coords(self):
@@ -62,13 +65,18 @@ class Node3D(Node):
 
     def do_geometry_optimization(self) -> Node3D:
         td_opt = self.tdstructure.xtb_geom_optimization()
-        return Node3D(tdstructure=td_opt)
+        return Node3D(tdstructure=td_opt,
+            converged=self.converged, 
+            do_climb=self.do_climb,
+            BARRIER_THRE=self.BARRIER_THRE,
+            RMSD_CUTOFF=self.RMSD_CUTOFF,
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF)
         # max_steps=8000
         # ss=.05
         # tol=0.0001
         # nsteps = 0
         # traj = []
-        
+
         # node = self.copy()
         # while nsteps < max_steps:
         #     traj.append(node)
@@ -86,56 +94,75 @@ class Node3D(Node):
         #     print(f"\nDid not converge in {nsteps} steps. grad={np.linalg.norm(grad) / len(grad)}\n")
 
         # return node
-        
-    
+
     def _is_connectivity_identical(self, other) -> bool:
-        connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
+        # print("different graphs")
+        connectivity_identical = self.tdstructure.molecule_rp.is_bond_isomorphic_to(
             other.tdstructure.molecule_rp
         )
         return connectivity_identical
-    
+
     def _is_conformer_identical(self, other) -> bool:
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
-            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+
+            traj = Trajectory([aligned_self, other.tdstructure]).run_geodesic(
+                nimages=10)
+            barrier = max(
+                traj.energies_xtb()
+            )  # energies are given relative to start struct
+
+            # dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            barrier_accessible =  barrier <= self.BARRIER_THRE
             en_delta = np.abs((self.energy - other.energy)*627.5)
-            
-            
-            rmsd_identical = dist < RMSD_CUTOFF
-            energies_identical = en_delta < KCAL_MOL_CUTOFF
-            if rmsd_identical and energies_identical:
-                conformer_identical = True
-            
-            if not rmsd_identical and energies_identical:
-                # going to assume this is a rotation issue. Need To address.
-                conformer_identical = False
-            
-            if not rmsd_identical and not energies_identical:
-                conformer_identical = False
-            
-            if rmsd_identical and not energies_identical:
-                conformer_identical = False
-            print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
-            return conformer_identical
+            print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
+
+            # rmsd_identical = dist < self.RMSD_CUTOFF
+            energies_identical = en_delta < self.KCAL_MOL_CUTOFF
+            # if rmsd_identical and energies_identical:
+            #     conformer_identical = True
+            if barrier_accessible and energies_identical:
+                return True
+            else:
+                return False
+
+            # if not rmsd_identical and energies_identical:
+            #     # going to assume this is a rotation issue. Need To address.
+            #     conformer_identical = False
+
+            # if not rmsd_identical and not energies_identical:
+            #     conformer_identical = False
+
+            # if rmsd_identical and not energies_identical:
+            #     conformer_identical = False
+            # print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
+            # return conformer_identical
         else:
             return False
 
     def is_identical(self, other) -> bool:
 
         # return self._is_connectivity_identical(other)
-        return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
-        
+        return all(
+            [
+                self._is_connectivity_identical(other),
+                self._is_conformer_identical(other),
+            ]
+        )
 
     @property
     def gradient(self):
         if self.converged:
             return np.zeros_like(self.coords)
-        
+
         else:
             if self._cached_gradient is not None:
                 return self._cached_gradient
             else:
-                grad = Node3D.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
+                grad = (
+                    Node3D.run_xtb_calc(self.tdstructure).get_gradient()
+                    * BOHR_TO_ANGSTROMS
+                )
                 self._cached_gradient = grad
                 return grad
 
@@ -173,12 +200,14 @@ class Node3D(Node):
             tdstructure=self.tdstructure.copy(),
             converged=self.converged,
             do_climb=self.do_climb,
+            BARRIER_THRE=self.BARRIER_THRE,
+            RMSD_CUTOFF=self.RMSD_CUTOFF,
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF
         )
-        # if copy_node.converged:        
+        # if copy_node.converged:
         copy_node._cached_energy = self._cached_energy
-            # copy_node._cached_gradient = self._cached_gradient
+        # copy_node._cached_gradient = self._cached_gradient
         return copy_node
-
 
     def update_coords(self, coords: np.array) -> None:
 
@@ -186,7 +215,12 @@ class Node3D(Node):
 
         copy_tdstruct = copy_tdstruct.update_coords(coords=coords)
         return Node3D(
-            tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb
+            tdstructure=copy_tdstruct, 
+            converged=self.converged, 
+            do_climb=self.do_climb,
+            BARRIER_THRE=self.BARRIER_THRE,
+            RMSD_CUTOFF=self.RMSD_CUTOFF,
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF
         )
 
     def opt_func(self, v=True):
@@ -259,7 +293,6 @@ class Node3D(Node):
             self.tdstructure.spinmult,
         )
 
-
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
         atomic_numbers, coords_bohr, charge, spinmult, converged, prev_en = tuple
@@ -277,8 +310,6 @@ class Node3D(Node):
 
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
-    
-    
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
         iterator = (
@@ -288,15 +319,11 @@ class Node3D(Node):
                 n.tdstructure.charge,
                 n.tdstructure.spinmult,
                 n.converged,
-                n._cached_energy
+                n._cached_energy,
             )
             for n in chain.nodes
         )
-        
-        
-        
-        
-        
+
         with mp.Pool() as p:
             ene_gradients = p.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator)
         return ene_gradients

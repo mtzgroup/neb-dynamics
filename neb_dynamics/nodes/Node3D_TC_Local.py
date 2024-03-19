@@ -53,7 +53,6 @@ class Node3D_TC_Local(Node):
         prog_input = self.tdstructure._prepare_input(method='gradient')
 
         output = qcop.compute('terachem', prog_input, propagate_wfn=True, collect_files=True)
-        
         ene = output.results.energy
         grad = output.results.gradient*BOHR_TO_ANGSTROMS
         self._cached_gradient = grad

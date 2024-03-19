@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import py3Dmol
 from ase import Atoms
-from ase.optimize import LBFGS, FIRE
+from ase.optimize import LBFGSLineSearch, BFGS, FIRE, LBFGS
 from chemcloud import CCClient
 
 
@@ -297,7 +297,7 @@ class TDStructure:
         )
 
         atoms.calc = XTB(method="GFN1-xTB", accuracy=0.1)
-        opt = LBFGS(atoms, logfile=None)
+        opt = LBFGSLineSearch(atoms, logfile=None)
         # opt = BFGS(atoms, logfile=None)
         opt.run(fmax=0.001)
         new_tds = TDStructure.from_ase_Atoms(
@@ -325,13 +325,18 @@ class TDStructure:
         )
 
         atoms.calc = XTB(method="GFN2-xTB", accuracy=0.001)
-        # opt = BFGS(atoms, logfile=None)
-        opt = FIRE(atoms, logfile=None)
+        opt = LBFGSLineSearch(atoms, logfile=None)
+        # opt = LBFGS(atoms, logfile=None)
+        # opt = FIRE(atoms, logfile=None)
         # opt = /(atoms, logfile=None)
         opt.run(fmax=0.005)
         new_tds = TDStructure.from_ase_Atoms(
             atoms=atoms, charge=self.charge, spinmult=self.spinmult
         )
+        
+        new_tds.update_tc_parameters(self)
+        
+        
         return new_tds
 
     def copy(self):
@@ -694,7 +699,7 @@ class TDStructure:
             print(f"TeraChem {calctype} failed.")
             return None
 
-    def compute_tc_local(self, program: str, calctype: str):
+    def compute_tc_local(self, program: str, calctype: str, return_object: bool = False):
         prog_input = self._prepare_input(method=calctype)
 
         output = qcop.compute(
@@ -704,11 +709,13 @@ class TDStructure:
         if output.success:
             if "scr.geometry/c0" in output.files.keys():
                 self.tc_c0 = output.files["scr.geometry/c0"]
+            if return_object: return output
             return output.return_result
 
         else:
             output.ptraceback
             print(f"TeraChem {calctype} failed.")
+            if return_object: return output
             return None
 
     def tc_freq_calculation(self):
@@ -768,12 +775,12 @@ class TDStructure:
             raise ValueError(
                 f"Unrecognized method: {method}. Use either: 'minima', or 'ts'"
             )
-
+        pwfn_bool = ES_PROGRAM == 'terachem'
         future_result = self.tc_client.compute(
             "geometric",
             opt_input,
             queue=q,
-            propagate_wfn=True,  # this cannot be true is using psi4 for some reason...
+            propagate_wfn=pwfn_bool,  # this cannot be true is using psi4 for some reason...
         )
         output = future_result.get()
         result = output.results
@@ -801,9 +808,7 @@ class TDStructure:
         if method == "minima":
             # opt_input = self._prepare_input(method="optimization")
             return self.run_tc_local(
-                calculation="minimize",
-                method=self.tc_model_method,
-                basis=self.tc_model_basis,
+                calculation="minimize"
             )
         elif method == "ts":
             opt_input = self._prepare_input(method="transition_state")
@@ -849,7 +854,7 @@ class TDStructure:
         )
 
     def run_tc_local(
-        self, method, basis, calculation="energy", remove_all=True, return_object=False
+        self, calculation="energy", remove_all=True, return_object=False
     ):
         # make the geometry file
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w+", delete=False) as tmp:
@@ -896,10 +901,10 @@ class TDStructure:
                 result = result_obj.energy
             elif calculation == "gradient":
                 result = result_obj.gradient
-            # if return_object:
-            #     result = result_obj
-            # else:
-            #     result = result_obj.return_result
+            if return_object:
+                result = result_obj
+            else:
+                result = result_obj.return_result
 
         # remove everything
         if remove_all:

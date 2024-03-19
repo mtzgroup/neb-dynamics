@@ -42,7 +42,7 @@ class TreeNode:
     def ordered_leaves(self):
         leaves = []
         for node in self.depth_first_ordered_nodes:
-            if node.is_leaf: 
+            if node.is_leaf and bool(node.data): 
                 leaves.append(node)
         return leaves
     
