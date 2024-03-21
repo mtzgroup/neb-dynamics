@@ -13,6 +13,7 @@ from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
 from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.optimizers.BFGS import BFGS
 from neb_dynamics.optimizers.Linesearch import Linesearch
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 from neb_dynamics.nodes.Node3D import Node3D
 from neb_dynamics.Janitor import Janitor
@@ -64,7 +65,7 @@ def read_single_arguments():
         "--do_cleanup",
         dest="dc",
         type=bool,
-        default=True,
+        default=False,
         help="whether to do conformer-conformer NEBs at the end",
     )
 
@@ -134,6 +135,16 @@ def read_single_arguments():
         help="name of folder to output to || defaults to react_msmep",
         default=None,
     )
+    
+    parser.add_argument(
+        "-preopt",
+        "--preopt_with_xtb",
+        dest="preopt",
+        required=True,
+        type=int,
+        help="whether to preconverge chains using xtb",
+        default=1
+    )
 
     return parser.parse_args()
 
@@ -149,25 +160,24 @@ def main():
     end = TDStructure.from_xyz(args.en, tot_charge=args.c, tot_spinmult=args.s)
 
     if args.nc != "node3d":
-        # method = 'b3lyp'
-        method = "wb97xd3"
+        method = "wb97xd3" #terachem
+        # method = "wb97x-d3" # psi4
         basis = "def2-svp"
-        # method = 'gfn2xtb'
-        # basis = 'gfn2xtb'
-        # kwds = {'reference':'uks'}
+        kwds = {'maxit':'500'}
+        
         start.tc_model_method = method
         end.tc_model_method = method
 
         start.tc_model_basis = basis
         end.tc_model_basis = basis
+        
+        start.tc_kwds =  kwds
+        end.tc_kwds = kwds
 
         if int(args.min_ends):
             start = start.tc_geom_optimization()
             end = end.tc_geom_optimization()
 
-        # kwds = {'reference':'uks'}
-        kwds = {"restricted": False}
-        # kwds = {'restricted': False, 'pcm':'cosmo','epsilon':80}
 
     else:
         if int(args.min_ends):
@@ -188,15 +198,16 @@ def main():
         k=0.1,
         delta_k=0.09,
         node_class=nc,
-        friction_optimal_gi=False,
+        friction_optimal_gi=True,
         do_parallel=do_parallel,
         node_freezing=True,
     )
     # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=False)
     # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
     # optimizer = BFGS(bfgs_flush_steps=1000, bfgs_flush_thre=0.1, step_size=0.33*traj[0].atomn, min_step_size=0.01*traj[0].atomn)
-    optimizer = BFGS(step_size=3, min_step_size=.1, use_linesearch=False, bfgs_flush_thre=0.80, 
-                 activation_tol=0.1, bfgs_flush_steps=200)
+    # optimizer = BFGS(step_size=3, min_step_size=.1, use_linesearch=False, bfgs_flush_thre=0.80, 
+    #             activation_tol=0.1, bfgs_flush_steps=200)
+    optimizer = VelocityProjectedOptimizer(timestep=1, activation_tol=0.1)
     # nbi = NEBInputs(grad_thre=tol*BOHR_TO_ANGSTROMS,
     #            rms_grad_thre=(tol/2)*BOHR_TO_ANGSTROMS,
     #            en_thre=(tol/10)*BOHR_TO_ANGSTROMS,
@@ -208,21 +219,27 @@ def main():
     #            early_stop_still_steps_thre=500,
     #            vv_force_thre=0.0)
     nbi = NEBInputs(
-        grad_thre=tol * BOHR_TO_ANGSTROMS,
-        rms_grad_thre=(tol / 2) * BOHR_TO_ANGSTROMS,
-        en_thre=(tol)
-        * BOHR_TO_ANGSTROMS,  # loose energy threshold cause DLF doesnt use en thresh
+        tol=tol * BOHR_TO_ANGSTROMS,
+        barrier_thre=0.1, #kcalmol,
+        climb=False,
+        
+        rms_grad_thre=tol * BOHR_TO_ANGSTROMS*2,
+        max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS*5,
+        ts_grad_thre=tol * BOHR_TO_ANGSTROMS*5,
+        
         v=1,
         max_steps=500,
-        early_stop_chain_rms_thre=1,  # not really caring about chain distances
-        early_stop_force_thre=0.01,
+        
+        early_stop_chain_rms_thre=.003,
+        early_stop_force_thre=0.03,
         early_stop_still_steps_thre=100,
-        vv_force_thre=0.0,
+        
         _use_dlf_conv=False,
-        preopt_with_xtb=True
+        preopt_with_xtb=bool(int(args.preopt))
     )
-    
-    print(f"Using node_class: {nc}\Min ends?{bool(int(args.min_ends))}")
+    print(f"{args.preopt=}")
+    # print(f"Using node_class: {nc}\Min ends?{bool(int(args.min_ends))}")
+    print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
     sys.stdout.flush()
 
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
@@ -236,6 +253,10 @@ def main():
         optimizer=optimizer,
     )
     history, out_chain = m.find_mep_multistep(chain)
+    
+    leaves_nebs = [obj.data for obj in history.ordered_leaves if obj.data]
+    tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
+    print(f">>> Made {tot_grad_calls} gradient calls total.")
 
     fp = Path(args.st)
     data_dir = fp.parent

@@ -1,9 +1,8 @@
+# +
+from pathlib import Path
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.optimizers.BFGS import BFGS
 from neb_dynamics.optimizers.Linesearch import Linesearch
-
-# +
-from pathlib import Path
 # from retropaths.abinitio.trajectory import Trajectory
 # from retropaths.abinitio.tdstructure import TDStructure
 
@@ -38,6 +37,7 @@ RDLogger.DisableLog('rdApp.*')
 # import os
 # del os.environ['OE_LICENSE']
 
+
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
@@ -45,6 +45,7 @@ from chemcloud import CCClient
 
 from neb_dynamics.MSMEP import MSMEP
 from IPython.core.display import HTML
+import matplotlib.pyplot as plt
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
@@ -53,6 +54,265 @@ from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D_Water import Node3D_Water
 from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+
+from neb_dynamics.trajectory import Trajectory
+
+import retropaths.helper_functions as hf
+
+reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
+
+from retropaths.abinitio.tdstructure import TDStructure as TD2
+
+for r in reactions:
+    print(r)
+
+rn = 'Hammick-Reaction'
+rxn = reactions[rn]
+
+rxn.draw()
+
+root = TD2.from_rxn_name(rn, reactions)
+
+c3d_list = root.get_changes_in_3d(rxn)
+
+root = root.pseudoalign(c3d_list)
+
+target = root.copy()
+target.apply_changed3d_list(c3d_list)
+
+root_opt = root.xtb_geom_optimization()
+target_opt = target.xtb_geom_optimization()
+
+root_opt
+
+target_opt
+
+tr = Trajectory([root_opt, target_opt]).run_geodesic(nimages=12)
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Oxazole-Synthesis/production_vpo_tjm_msmep/")
+
+
+hd = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Oxazole-Synthesis/debug_msmep/")
+
+hd.output_chain.plot_chain()
+
+h.output_chain.plot_chain()
+
+h.output_chain.plot_chain()
+
+tol = 0.001
+nbi = NEBInputs(
+        tol=tol * BOHR_TO_ANGSTROMS,
+        v=1,
+        max_steps=500,
+        early_stop_chain_rms_thre=.1,
+        early_stop_force_thre=0.01,
+        early_stop_still_steps_thre=100,
+        _use_dlf_conv=False,
+        preopt_with_xtb=0)
+
+cni = ChainInputs(
+        k=0.1,
+        delta_k=0.09,
+        node_class=Node3D,
+        friction_optimal_gi=False,
+        do_parallel=True,
+        node_freezing=True,
+        node_conf_en_thre=1
+    )
+
+# +
+# tr = Trajectory([root, target]).run_geodesic(nimages=12)
+# -
+
+# chain = Chain.from_traj(h_tr, parameters=cni)
+chain = Chain.from_traj(tr, parameters=cni)
+
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+
+opt = VelocityProjectedOptimizer(timestep=.5, activation_tol=0.01)
+# opt2 = BFGS(step_size=10, min_step_size=.5, use_linion_tol=.1esearch=False, bfgs_flush_thre=0.80, 
+#                  activation_tol=0.1, bfgs_flush_steps=200)
+
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=12), optimizer=opt)
+
+# +
+# m2 = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=12), optimizer=opt2)
+
+# +
+# h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/debug_msmep/")
+# -
+
+# %%time
+h_xtb, out_xtb = m.find_mep_multistep(chain)
+
+out_xtb.to_trajectory()
+
+
+start_opt.write_xyz("~/T3msco
+
+h_xtb.write_to_disk(Path("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/vpo_xtb_msmep"))
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/vpo_xtb_msmep")
+
+h_xtb.output_chain.plot_chain()
+
+tsg = h_xtb.ordered_leaves[1].data.optimized.get_ts_guess()
+
+ts = tsg.tc_geom_optimization('ts')
+
+ts
+
+tsg
+
+out_xtb.to_trajectory()
+
+# +
+# h_xtb2, out_xtb2 = m2.find_mep_multistep(chain)
+# -
+
+t = Trajectory.from_xyz('/home/jdep/T3D_data/crest_debug/all_confs.xyz')
+
+ens = [td.energy_xtb() for td in t]
+
+from itertools import combinations
+
+all_combs = list(combinations(t.traj, 2))
+
+all_eAs = []
+for combo in all_combs:
+# combo = all_combs[5]
+    tr = Trajectory([combo[0], combo[1]]).run_geodesic(nimages=10)
+    eA = max(tr.energies_xtb())
+    all_eAs.append(eA)
+
+all_eDeltas = []
+for combo in all_combs:
+    e_del = (combo[1].energy_xtb() - combo[0].energy_xtb())*627.5
+    all_eDeltas.append(e_del)
+
+
+def _dist(td1, td2):
+    from neb_dynamics.helper_functions import RMSD
+    aligned_self = td1.align_to_td(td2)
+    dist = RMSD(aligned_self.coords, td2.coords)[0]
+    return dist
+
+
+all_rmsds = []
+for combo in all_combs:
+    rmsd = _dist(*combo)
+    all_rmsds.append(rmsd)
+
+plt.hist(all_eAs, bins=200)
+plt.show()
+
+plt.hist(all_eAs, bins=200)
+plt.xlim(-1, 20)
+plt.show()
+
+all_eAs_arr = np.array(all_eAs)
+sort_inds = np.argsort(all_eAs_arr)
+
+sorted_combs = np.array(all_combs)[sort_inds]
+
+# +
+inds_satisfied = np.where(np.array(all_eAs)[sort_inds] <= 15)
+inds_not_satisfied = np.where(np.array(all_eAs)[sort_inds] > 15)
+f, ax = plt.subplots()
+ax.scatter(inds_satisfied, np.array(all_eAs)[sort_inds][inds_satisfied], label='pseudo barrier')
+# plt.scatter(inds_not_satisfied, np.array(all_eAs)[inds_not_satisfied])
+
+ax2 = plt.twinx()
+# ax2.scatter(inds_satisfied, np.array(all_rmsds)[sort_inds][inds_satisfied], marker='x', s=20, c='green', label='rmsd of confs')
+f.legend()
+# plt.scatter(inds_not_satisfied, np.array(all_rmsds)[inds_not_satisfied], marker='x', s=20, c='green')
+
+# +
+f, ax = plt.subplots()
+ax.scatter(np.arange(len(all_eAs_arr)), np.array(all_eAs)[sort_inds], label='pseudo barrier')
+
+
+ax2 = plt.twinx()
+ax2.scatter(np.arange(len(all_eAs_arr)), np.array(all_rmsds)[sort_inds], marker='x', s=20, c='green', label='rmsd of confs')
+# ax2.scatter(np.arange(len(all_eAs_arr)), np.array(np.abs(all_eDeltas))[sort_inds], marker='+', s=20, c='gray', label='|e Deltas| of confs')
+f.legend()
+xmin = ax.get_xlim()[0]
+xmax = ax.get_xlim()[1]
+ymin = ax.get_ylim()[0]
+ymax = ax.get_ylim()[1]
+# ax2.hlines(y=0.5,xmin=xmin, xmax=xmax, linestyles='-', linewidth=2, color='black')
+# ax.vlines(x=150,ymin=ymin, ymax=ymax, linestyles='-', linewidth=2, color='black')
+ax.set_xlim(xmin, xmax)
+ax.set_ylim(ymin, ymax)
+# ax.set_ylim(0, 15)
+# -
+
+np.setxor1d(iden_old, iden_new)
+
+from neb_dynamics.helper_functions import RMSD
+
+
+def vis_combo(td1, td2):
+    print(RMSD(td1.coords, td2.coords)[0])
+    print(abs(td1.energy_xtb()-td2.energy_xtb()))
+    tr = Trajectory([td1, td2]).run_geodesic(nimages=10)
+    print(max(tr.energies_xtb()))
+    return tr
+
+
+vis_combo(*all_combs[163])
+
+len(iden_old), len(iden_new)
+
+satis_rmsd = np.where(np.array(all_rmsds) < 0.5)
+satis_endel = np.where(np.array(all_eDeltas) < 0.5)
+satis_barr = np.where(np.array(all_eAs) < 5)
+
+iden_old = np.intersect1d(satis_endel, satis_rmsd)
+
+iden_new = np.intersect1d(satis_endel, satis_barr)
+
+np.intersect1d(iden_old, iden_new)
+
+np.in
+
+ind = -8
+np.array(all_eAs)[sort_inds][ind], np.array(all_rmsds)[sort_inds][ind]
+
+all_eAs[16]
+
+_dist(*all_combs[16])
+
+tr = Trajectory([all_combs[16][0],all_combs[16][1]]).run_geodesic(nimages=10)
+
+all_eAs[106], _dist(*all_combs[106])
+
+sorted(list(enumerate(zip(all_eAs, all_rmsds, all_eDeltas))), key=lambda x: x[1])
+
+combo = all_combs[58]
+tr = Trajectory([combo[0], combo[1]]).run_geodesic(nimages=10)
+
+Node3D(combo[0]).is_identical(Node3D(combo[1]))
+
+Node3D(combo[0]).is_identical(Node3D(combo[1]))
+
+len(all_combs)
+
+Node3D(t[0]).is_identical(Node3D(t[8]))
+
+(ens[6] - ens[0])*627.5
+
+plt.plot(ens,'o-')
+
+t0 = h.output_chain[0].tdstructure
+t1 = h.data.optimized[0].tdstructure
+
+tr = Trajectory([t0, t1]).run_geodesic(nimages=10)
+
+tr
+
+max(tr.energies_xtb())
 
 huh = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Elimination-Lg-Alkoxide/production_msmep/")
 

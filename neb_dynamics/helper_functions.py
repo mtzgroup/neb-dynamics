@@ -373,3 +373,20 @@ __ATOM_LIST__ = [
     "np",
     "pu",
 ]
+
+
+def run_tc_local_optimization(td, tmp, return_optim_traj):
+    from neb_dynamics.tdstructure import TDStructure
+    from neb_dynamics.trajectory import Trajectory
+    optim_fp = Path(tmp.name[:-4]) / "optim.xyz"
+    tr = Trajectory.from_xyz(optim_fp,
+        tot_charge=td.charge,
+        tot_spinmult=td.spinmult)
+    tr.update_tc_parameters(td)
+    
+    if return_optim_traj:
+        return tr
+    else:
+        return tr[-1]
+        
+        

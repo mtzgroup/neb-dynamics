@@ -14,6 +14,7 @@ from chemcloud import CCClient
 
 # from chemcloud.models import AtomicInput
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+from neb_dynamics.helper_functions import run_tc_local_optimization
 
 from qcio import ProgramInput, DualProgramInput
 import qcop
@@ -887,14 +888,8 @@ class TDStructure:
             tmp_out.write(out.stdout.decode())
 
         if calculation == "minimize":
-            optim_fp = Path(tmp.name[:-4]) / "optim.xyz"
-            data_list = open(optim_fp).read().splitlines()
-            result = TDStructure.from_xyz_string(
-                "\n".join(data_list[-(self.atomn + 2) :]),
-                tot_charge=self.charge,
-                tot_spinmult=self.spinmult,
-            )
-            result.update_tc_parameters(self)
+            result = run_tc_local_optimization(td=self, tmp=tmp, return_optim_traj=return_object)
+                
         else:
             result_obj = parse(tmp_out.name, program="terachem")
             if calculation == "energy":

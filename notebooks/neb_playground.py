@@ -18,10 +18,184 @@ from neb_dynamics.optimizers.Linesearch import Linesearch
 from neb_dynamics.NEB_TCDLF import NEB_TCDLF
 from pathlib import Path
 
+from neb_dynamics.Refiner import Refiner
+# -
+
+
+# all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo.txt").read().splitlines()
+all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons/reactions_todo_xtb.txt").read().splitlines()
 
 # +
-# from neb_dynamics.trajectory import Trajectory
+# rn = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
+# p = f"/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}/production_msmep/"
+do_refine = True
+multi = []
+elem = []
+failed = []
+skipped = []
+n_steps = []
+
+n_opt_steps = []
+n_opt_splits = []
+
+success_names = []
+
+
+for i, rn in enumerate(all_rns):
+    # p = Path(rn) / 'production_vpo_tjm_xtb_preopt_msmep'
+    p = Path(rn) / 'production_vpo_tjm_msmep'
+    print(p.parent)
+    
+    try:
+        h = TreeNode.read_from_disk(p)
+        
+        # refine reactions
+        refined_fp = Path(rn) / 'refined_results'
+        print('Refinement done: ', refined_fp.exists())
+        if not refined_fp.exists() and do_refine:
+            print("Refining...")
+
+            refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09, 
+                                              node_class=Node3D_TC, 
+                                              node_conf_en_thre=1.5))
+            refined_leaves = refiner.create_refined_leaves(h.ordered_leaves)
+            refiner.write_leaves_to_disk(refined_fp, refined_leaves)
+            
+            
+            tot_grad_calls = sum([leaf.get_num_grad_calls() for leaf in refined_leaves if leaf])
+            print(f"Refinement took: {tot_grad_calls} calls")
+            with open(refined_fp.parent/'refined_grad_calls.txt','w+') as f:
+                f.write(f"Refinement took: {tot_grad_calls} gradient calls")
+        
+        
+        es = len(h.output_chain)==12
+        print('elem_step: ', es)
+        print([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
+        n_splits = len(h.get_optimization_history())
+        print(sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()]))
+        tot_steps = sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
+        
+        n_opt_steps.append(tot_steps)
+        n_opt_splits.append(n_splits)
+        
+        
+        
+        
+        if es:
+            elem.append(p)
+        else:
+            multi.append(p)
+            
+            
+        n = len(h.output_chain) / 12
+        n_steps.append((i,n))
+        success_names.append(rn)
+
+    except IndexError:
+        neb_obj = NEB.read_from_disk(p / 'node_0.xyz')
+        # refine reactions
+        refined_fp = Path(rn) / 'refined_results'
+        try:
+            if not refined_fp.exists()  and do_refine:
+                refiner = Refiner()
+                refined_leaves = refiner.create_refined_leaves([TreeNode(data=neb_obj,children=[],index=0)])
+                refiner.write_leaves_to_disk(refined_fp, refined_leaves)
+                
+                
+                
+                
+                tot_grad_calls = sum([leaf.get_num_grad_calls() for leaf in refined_leaves if leaf])
+                print(f"Refinement took: {tot_grad_calls} calls")
+        except Exception as e:
+            print(e)
+            print(f"{rn} had an error")
+            continue
+            
+        
+        
+        
+        es = len(neb_obj.optimized)==12
+        print('elem_step: ', es)
+        print(len(neb_obj.chain_trajectory))
+        # sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
+        if es:
+            elem.append(p)
+        else:
+            multi.append(p)
+        n = len(neb_obj.optimized) / 12
+        n_steps.append((i,n)) 
+        tot_steps = len(neb_obj.chain_trajectory)
+        n_opt_steps.append(tot_steps)
+        n_opt_splits.append(0)
+        
+        success_names.append(rn)
+        
+    
+    except FileNotFoundError:
+        failed.append(p)
+        
+    except TypeError:
+        failed.append(p)
+        
+    except KeyboardInterrupt:
+        skipped.append(p)
+        
+
+    print("")
+
 # -
+
+from neb_dynamics.trajectory import Trajectory
+
+from neb_dynamics.tdstructure import TDStructure
+
+tsg = TDStructure.from_xyz("/home/jdep/T3D_data/tsg.xyz")
+
+tsg.tc_model_method = 'wb97xd3'
+tsg.tc_model_basis = 'def2-svp'
+
+ts = tsg.tc_geom_optimization('ts')
+
+ts
+
+ts_plus = ts.displace_by_dr(0.5*ts.tc_nma_calculation()[0])
+
+ts_minus = ts.displace_by_dr(-0.5*ts.tc_nma_calculation()[0])
+
+ts_plus.update_tc_parameters(ts)
+ts_minus.update_tc_parameters(ts)
+
+ts_plus_opt = ts_plus.tc_local_geom_optimization()
+
+profile = Trajectory([ts_minus_opt, ts, ts_plus_opt ])
+
+profile.update_tc_parameters(ts)
+
+c = Chain.from_traj(profile, ChainInputs(node_class=Node3D_TC))
+
+c.gradients
+
+c.write_to_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Lossen-Rearrangement/exact_ts_profile.xyz")
+
+ens = profile.energies_tc()
+
+(ens[1]-ens[0])*627.5
+
+ts_plus_opt
+
+ts_minus_opt = ts_minus.tc_local_geom_optimization()
+
+ts_minus_opt
+
+tr = Trajectory.from_xyz('/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Claisen-Rearrangement/start_opt_msmep/node_0.xyz').run_geodesic(nimages=100)
+
+init_c = Chain.from_traj(tr, parameters=ChainInputs(k=0.0, node_class=Node3D_TC, node_freezing=True))
+
+opt = VelocityProjectedOptimizer(timestep=0.5, activation_tol=0.1)
+
+n = NEB(initial_chain=init_c, parameters=NEBInputs(v=1), optimizer=opt)
+
+output = n.optimize_chain()
 
 h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Robinson-Gabriel-Synthesis/explicit_solvent_xtb/")
 

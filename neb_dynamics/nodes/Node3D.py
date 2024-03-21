@@ -64,7 +64,11 @@ class Node3D(Node):
             return ene
 
     def do_geometry_optimization(self) -> Node3D:
-        td_opt = self.tdstructure.xtb_geom_optimization()
+        td_copy = self.tdstructure.copy()
+        td_copy.tc_model_method = 'gfn2xtb'
+        td_copy.tc_model_basis = 'gfn2xtb'
+        td_opt = td_copy.tc_local_geom_optimization()
+        # td_opt = self.tdstructure.xtb_geom_optimization()
         return Node3D(tdstructure=td_opt,
             converged=self.converged, 
             do_climb=self.do_climb,

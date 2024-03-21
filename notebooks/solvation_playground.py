@@ -1,6 +1,6 @@
 # +
 from neb_dynamics.Chain import Chain     
-from neb_dynamics.Node3D import Node3D
+from neb_dynamics.nodes.Node3D import Node3D
 from neb_dynamics.NEB import NEB
 import retropaths.helper_functions as hf
 from retropaths.abinitio.trajectory import Trajectory
@@ -21,10 +21,49 @@ from IPython.core.display import HTML
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
+from retropaths.abinitio.solvator import Solvator
+
+
+
 n_waters = 0
 smi = "[C](C)(C)(C)Cl"
 # smi = "[C](C)(H)([H])F"
-smi+= ".O"*n_waters
+# smi+= ".O"*n_waters
+
+td = TDStructure.from_smiles(smi)
+
+solv = Solvator(n_solvent=5)
+
+td_solv = solv.solvate_td(td)
+
+from neb_dynamics.TreeNode import TreeNode
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Meyer-Schuster-Rearrangement/production_vpo_tjm_xtb_preopt_msmep/")
+
+init_c = h.ordered_leaves[1].data.initial_chain
+
+raw_r = TDStructure.from_coords_symbols(init_c[0].tdstructure.coords, init_c[0].tdstructure.symbols)
+
+raw_p = TDStructure.from_coords_symbols(init_c[-1].tdstructure.coords, init_c[-1].tdstructure.symbols)
+
+solv_r = solv.solvate_single_td(raw_r)
+
+solv_p = solv.solvate_td(raw_p)
+
+tr = Trajectory([solv_r, solv_p]).run_geodesic(nimages=12)
+
+from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
+from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+
+chain = Chain.from_traj(tr, ChainInputs(k=0.1, delta_k=0.09, node_freezing=True))
+
+opt = VelocityProjectedOptimizer()
+
+m = MSMEP(neb_inputs=NEBInputs(v=1,early_stop_force_thre=0.03, max_steps=500), 
+          chain_inputs=ChainInputs(k=0.1, delta_k=0.09, node_freezing=True),gi_inputs=GIInputs(nimages=12), optimizer=opt)
+
+h_solv, out_solv = m.find_mep_multistep(chain)
 
 # +
 mol = Molecule.from_smiles(smi)

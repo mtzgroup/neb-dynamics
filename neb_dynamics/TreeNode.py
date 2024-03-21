@@ -60,6 +60,12 @@ class TreeNode:
     @property
     def total_nodes(self):
         return len(self.depth_first_ordered_nodes)
+    
+    def get_num_opt_steps(self):
+        return sum([len(leaf.chain_trajectory) for leaf in self.get_optimization_history() if leaf])
+    
+    def get_num_grad_calls(self):
+        return sum([leaf.grad_calls_made for leaf in self.get_optimization_history() if leaf])
 
     def get_nodes_at_depth(self, depth):
         curr_depth = 0
