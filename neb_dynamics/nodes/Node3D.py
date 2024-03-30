@@ -68,6 +68,7 @@ class Node3D(Node):
         td_copy.tc_model_method = 'gfn2xtb'
         td_copy.tc_model_basis = 'gfn2xtb'
         td_opt = td_copy.tc_local_geom_optimization()
+        td_opt.update_tc_parameters(td_copy)
         # td_opt = self.tdstructure.xtb_geom_optimization()
         return Node3D(tdstructure=td_opt,
             converged=self.converged, 
@@ -218,6 +219,8 @@ class Node3D(Node):
         copy_tdstruct = self.tdstructure.copy()
 
         copy_tdstruct = copy_tdstruct.update_coords(coords=coords)
+        copy_tdstruct.update_tc_parameters(self.tdstructure)
+        
         return Node3D(
             tdstructure=copy_tdstruct, 
             converged=self.converged, 
@@ -226,29 +229,6 @@ class Node3D(Node):
             RMSD_CUTOFF=self.RMSD_CUTOFF,
             KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF
         )
-
-    def opt_func(self, v=True):
-        atoms = Atoms(
-            symbols=self.tdstructure.symbols.tolist(),
-            positions=self.coords,  # ASE works in angstroms
-        )
-
-        atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1)
-        # atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1, solvent='h2o')
-        if not v:
-            opt = LBFGS(atoms, logfile=None)
-        else:
-            opt = LBFGS(atoms)
-        opt.run(fmax=0.1)
-
-        opt_struct = TDStructure.from_coords_symbols(
-            coords=atoms.positions,
-            symbols=self.tdstructure.symbols,
-            tot_charge=self.tdstructure.charge,
-            tot_spinmult=self.tdstructure.spinmult,
-        )  # ASE works in agnstroms
-
-        return opt_struct
 
     def check_symmetric(self, a, rtol=1e-05, atol=1e-08):
         return np.allclose(a, a.T, rtol=rtol, atol=atol)
