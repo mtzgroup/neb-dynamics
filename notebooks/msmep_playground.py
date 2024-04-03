@@ -28,10 +28,6 @@ import matplotlib.pyplot as plt
 
 h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Bamford-Stevens-Reaction/debug_msmep/")
 
-[len(obj.chain_trajectory) for obj in h.get_optimization_history()]
-
-h.get_optimization_history()[-1].plot_opt_history(1)
-
 h.output_chain.plot_chain()
 h.output_chain.to_trajectory()
 
