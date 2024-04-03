@@ -60,6 +60,7 @@ class MSMEP:
 
     def find_mep_multistep(self, input_chain, tree_node_index=0):
         
+        
         if input_chain[0].is_a_molecule:
             if input_chain[0]._is_connectivity_identical(input_chain[-1]) and self.skip_identical_graphs:
                 print("Endpoints are identical. Returning nothing")
@@ -69,16 +70,16 @@ class MSMEP:
                 print("Endpoints are identical. Returning nothing")
                 return TreeNode(data=None,children=[],index=tree_node_index), None
         
-        root_neb_obj, chain = self.get_neb_chain(input_chain=input_chain)
+        root_neb_obj, chain, elem_step_results = self.get_neb_chain(input_chain=input_chain)
         history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
         
-        elem_step, split_method = chain.is_elem_step()
+        elem_step, split_method, minimization_results = elem_step_results
         
         if elem_step:
             return history, chain
        
         else:
-            sequence_of_chains = self.make_sequence_of_chains(chain,split_method)
+            sequence_of_chains = self.make_sequence_of_chains(chain,split_method, minimization_results)
             print(f"Splitting chains based on: {split_method}")
             elem_steps = []
             new_tree_node_index = tree_node_index + 1
@@ -123,22 +124,26 @@ class MSMEP:
             )
 
         return interpolation
+    
 
     def get_neb_chain(self, input_chain: Chain):
-        
+
+        # make sure the chain parameters are reset if they come from a converged chain
+        input_chain.parameters = self.chain_inputs
         if len(input_chain) != self.gi_inputs.nimages:
             interpolation = self._create_interpolation(input_chain)
+            
         else:
             interpolation = input_chain
-            
+                        
         print("Running NEB calculation...")
         if not self._use_dlf_as_backend:
             print("Using in-house NEB optimizer")
             sys.stdout.flush()
             
-            n = NEB(initial_chain=interpolation, parameters=self.neb_inputs, optimizer=self.optimizer)
+            n = NEB(initial_chain=interpolation, parameters=self.neb_inputs.copy(), optimizer=self.optimizer.copy())
             try:
-                n.optimize_chain()
+                elem_step_results = n.optimize_chain()
                 out_chain = n.optimized
 
             except NoneConvergedException:
@@ -146,11 +151,15 @@ class MSMEP:
                     "\nWarning! A chain did not converge. Returning an unoptimized chain..."
                 )
                 out_chain = n.chain_trajectory[-1]
+                elem_step_results = out_chain.is_elem_step()
                 
-            except Exception as e:
-                print(e)
-                print("Warning! Electronic structure error. Aborting.")
-                out_chain = n.chain_trajectory[-1]
+                
+                
+            # except Exception as e:
+            #     print(e)
+            #     print("Warning! Electronic structure error. Aborting.")
+            #     out_chain = n.chain_trajectory[-1]
+            #     elem_step_results = out_chain.is_elem_step()
                 
 
         else:
@@ -182,22 +191,25 @@ class MSMEP:
             
             n.chain_trajectory = total_chain_traj
             out_chain = total_chain_traj[-1]
+            elem_step_results = out_chain.is_elem_step()
             
         
         
-        return n, out_chain
+        return n, out_chain, elem_step_results
     
 
-    def _make_chain_frag(self, chain: Chain, pair_of_inds):
-        start, end = pair_of_inds
-        chain_frag = chain.copy()
-        chain_frag.nodes = chain[start : end + 1]
-        opt_start = chain[start].do_geometry_optimization()
-        opt_end = chain[end].do_geometry_optimization()
+    # def _make_chain_frag(self, chain: Chain, pair_of_inds):
+    def _make_chain_frag(self, chain: Chain, geom_pair, ind_pair):
+        start_ind, end_ind = ind_pair
+        opt_start, opt_end = geom_pair
+        chain_frag_nodes = chain.nodes[start_ind:end_ind+1]
+        chain_frag = Chain(nodes=[opt_start]+chain_frag_nodes+[opt_end], parameters=chain.parameters)
+        # opt_start = chain[start].do_geometry_optimization()
+        # opt_end = chain[end].do_geometry_optimization()
 
-        chain_frag.insert(0, opt_start)
-        chain_frag.append(opt_end)
-
+        # chain_frag.insert(0, opt_start)
+        # chain_frag.append(opt_end)
+        print(f"using a frag of {len(chain_frag)} nodes")
         return chain_frag
 
     def _make_chain_pair(self, chain: Chain, pair_of_inds):
@@ -210,26 +222,34 @@ class MSMEP:
         return chain_frag
 
 
-    def _do_minima_based_split(self, chain):
+    def _do_minima_based_split(self, chain, minimization_results):
+        all_geometries = [chain[0]]
+        all_geometries.extend(minimization_results)
+        all_geometries.append(chain[-1])
+        
         all_inds = [0]
         ind_minima = _get_ind_minima(chain)
         all_inds.extend(ind_minima)
         all_inds.append(len(chain) - 1)
 
         pairs_inds = list(pairwise(all_inds))
+        pairs_geoms = list(pairwise(all_geometries))
 
         chains = []
-        for ind_pair in pairs_inds:
-            chains.append(self._make_chain_frag(chain, ind_pair))
+        # for ind_pair in pairs_inds:
+            # chains.append(self._make_chain_frag(chain, ind_pair))
+        for geom_pair, ind_pair in zip(pairs_geoms, pairs_inds):
+            chains.append(self._make_chain_frag(chain, geom_pair, ind_pair))
 
         return chains
 
-    def _do_maxima_based_split(self, chain: Chain):
-        
-        
+    def _do_maxima_based_split(self, chain: Chain, minimization_results):
+
         ind_maxima = _get_ind_maxima(chain)
-        r, p = chain._approx_irc(index=ind_maxima)
+        # r, p = chain._approx_irc(index=ind_maxima)
+        r, p = minimization_results
         chains_list = []
+        orig_nodes = chain.copy().nodes
         
         # add the input start, to R
         nodes = [chain[0], r]
@@ -238,7 +258,10 @@ class MSMEP:
         chains_list.append(chain_frag)
 
         # add the r to p, passing through the maxima
-        nodes2 = [r, chain[ind_maxima], p]
+        
+        # orig_nodes[1:ind_maxima+1]
+        # nodes2 = [r, chain[ind_maxima], p]
+        nodes2 = [r]+orig_nodes[ind_maxima-1:ind_maxima+2]+[p] # recycling triplet near TS guess
         chain_frag2 = chain.copy()
         chain_frag2.nodes = nodes2
         chains_list.append(chain_frag2)
@@ -252,12 +275,12 @@ class MSMEP:
         
         return chains_list
 
-    def make_sequence_of_chains(self, chain, split_method):
+    def make_sequence_of_chains(self, chain, split_method, minimization_results):
         if split_method == 'minima':
-            chains = self._do_minima_based_split(chain)
+            chains = self._do_minima_based_split(chain, minimization_results)
 
         elif split_method == 'maxima':
-            chains = self._do_maxima_based_split(chain)
+            chains = self._do_maxima_based_split(chain, minimization_results)
 
         return chains
 

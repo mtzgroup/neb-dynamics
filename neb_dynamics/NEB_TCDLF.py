@@ -21,6 +21,11 @@ class NEB_TCDLF:
     chain_trajectory: list[Chain] = field(default_factory=list)
     scf_maxit: int = 100
     converged: bool = False
+    min_images: int = None
+
+    def __post_init__(self):
+        if self.min_images is None:
+            self.min_images = len(self.initial_chain)
 
     def _create_input_file(self):
 
@@ -46,7 +51,7 @@ class NEB_TCDLF:
             run ts
             nstep {self.parameters.max_steps}
             timings yes
-            min_image {len(traj)}
+            min_image {self.min_images}
             min_coordinates cartesian
             threall 1.0e-12
             maxit {self.scf_maxit}
@@ -193,7 +198,7 @@ class NEB_TCDLF:
         converged = self.neb_converged(tmp_out.name)
         out_chain = Chain.from_traj(out_tr, parameters=self.initial_chain.parameters)
         print(f"scr dir : {Path(tmp.name[:-4])}")
-        chain_traj = self.get_chain_trajectory(Path(tmp.name[:-4]))
+        chain_traj = self.get_chain_trajectory(Path(tmp.name[:-4]), parameters=self.initial_chain.parameters)
         
         self.chain_trajectory.extend(chain_traj)
 

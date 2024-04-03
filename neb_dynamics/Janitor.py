@@ -46,7 +46,7 @@ class Janitor:
     
     
     def cleanup_nebs(self):
-        leaves = self.history_object.ordered_leaves
+        leaves = [l for l in self.history_object.ordered_leaves if l.data]
         cleanup_results = []
         original_start = self.starting_chain[0]
         
@@ -64,7 +64,7 @@ class Janitor:
                 curr_start = leaves[index].data.optimized[0]
             
             chain_pair = Chain(nodes=[prev_end, curr_start], parameters=self.starting_chain.parameters)
-            neb_obj, _ = self.msmep_object.get_neb_chain(chain_pair)
+            neb_obj, chain, elem_step_results = self.msmep_object.get_neb_chain(chain_pair)
             if self.out_path:
                 fp = self.out_path / f"cleanup_neb_{index}.xyz"
                 if not self.out_path.exists():
@@ -113,7 +113,7 @@ class Janitor:
     
     def _merge_cleanups_and_leaves(self, list_of_cleanup_nebs):
         list_of_cleanup_nodes = [TreeNode(data=neb_i, children=[], index=99) for neb_i in list_of_cleanup_nebs]
-        orig_leaves = self.history_object.ordered_leaves
+        orig_leaves = [l for l in self.history_object.ordered_leaves if l.data]
         print('before:',len(orig_leaves))
         new_leaves = self.merge_by_indices(
             insertions_inds=self.insertion_points,

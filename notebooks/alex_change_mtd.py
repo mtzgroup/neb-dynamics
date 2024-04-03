@@ -1,3 +1,15 @@
+from neb_dynamics.TreeNode import TreeNode
+
+h = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Robinson-Gabriel-Synthesis/wb97xd3_def2svp_2024/"))
+
+h.output_chain.to_trajectory().write_trajectory("/home/jdep/hey_todd.xyz")
+
+h_xtb = TreeNode.read_from_disk(Path('/home/jdep/T3D_data/msmep_draft/comparisons/asneb/Robinson-Gabriel-Synthesis/explicit_solvent_xtb/'))
+
+h_xtb.output_chain.plot_chain()
+
+h_xtb.output_chain[0].tdstructure.molecule_rp.draw(mode='d3')
+
 from retropaths.molecules.molecule import Molecule
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.reactions.changes import Changes3D, Changes3DList, ChargeChanges
