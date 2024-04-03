@@ -28,6 +28,107 @@ import matplotlib.pyplot as plt
 
 h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Bamford-Stevens-Reaction/debug_msmep/")
 
+from neb_dynamics.Refiner import Refiner
+
+ref = Refiner(v=True)
+
+chain = h.ordered_leaves[0].data.optimized
+
+ref
+
+
+# +
+def resample_chain(chain, n=None, method='gfn2xtb', basis='gfn2xtb', kwds={}):
+    if n is None:
+        n = len(chain)
+        
+    tsg_ind = chain.energies.argmax()
+    candidate_r = chain[tsg_ind-1].tdstructure
+    candidate_p = chain[tsg_ind+1].tdstructure
+    
+    candidate_r.tc_model_method = method
+    candidate_r.tc_model_basis = basis
+    candidate_r.tc_kwds = kwds
+    
+    candidate_p.tc_model_method = method
+    candidate_p.tc_model_basis = basis
+    candidate_p.tc_kwds = kwds
+    
+    
+    total_len = len(chain)
+    if is_even(total_len):
+        half1_len = (total_len / 2) 
+        half2_len = (total_len / 2) - 1
+    else:
+        half1_len = (total_len / 2) 
+        half2_len = (total_len / 2) 
+
+
+    raw_half1 = candidate_r.run_tc_local(calculation='minimize',return_object=True)
+    raw_half1.traj.reverse()
+    
+    half1 = raw_half1.run_geodesic(nimages=half1_len)
+
+    raw_half2 = candidate_p.run_tc_local(calculation='minimize',return_object=True)
+
+    half2 = raw_half2.run_geodesic(nimages=half2_len)
+
+    joined = Trajectory(traj=half1.traj+[chain.get_ts_guess()]+half2.traj)
+    joined.update_tc_parameters(candidate_r)
+    
+    out_chain = Chain.from_traj(joined, parameters=chain.parameters)
+    return out_chain
+    
+    
+# -
+
+rsc = resample_chain(chain)
+
+plt.plot(chain.integrated_path_length, chain.energies,'o-', label='orig')
+plt.plot(rsc.integrated_path_length, rsc.energies,'o-', label='resamped')
+plt.legend()
+plt.show()
+
+tsg_ind = chain.energies.argmax()
+candidate_r = chain[tsg_ind-1].tdstructure
+candidate_p = chain[tsg_ind+1].tdstructure
+
+candidate_r.tc_model_method = 'gfn2xtb'
+candidate_r.tc_model_basis = 'gfn2xtb'
+
+from neb_dynamics.helper_functions import run_tc_local_optimization
+
+
+def is_even(n):
+    return not np.mod(n, 2)
+
+
+# +
+total_len = len(chain)
+if is_even(total_len):
+    half1_len = (total_len / 2) 
+    half2_len = (total_len / 2) - 1
+else:
+    half1_len = (total_len / 2) 
+    half2_len = (total_len / 2) 
+    
+    
+raw_half1 = candidate_r.run_tc_local(calculation='minimize',return_object=True)
+raw_half1.traj.reverse()
+# -
+
+candidate_p.update_tc_parameters(candidate_r)
+
+# +
+half1 = raw_half1.run_geodesic(nimages=half1_len)
+
+raw_half2 = candidate_p.run_tc_local(calculation='minimize',return_object=True)
+
+half2 = raw_half2.run_geodesic(nimages=half2_len)
+
+joined = Trajectory(traj=half1.traj+[chain.get_ts_guess()]+half2.traj)
+# -
+
 h.output_chain.plot_chain()
 h.output_chain.to_trajectory()
 
