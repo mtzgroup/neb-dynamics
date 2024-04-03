@@ -135,6 +135,26 @@ def read_single_arguments():
         help="name of folder to output to || defaults to react_msmep",
         default=None,
     )
+
+    parser.add_argument(
+        "-climb",
+        "--do_climb",
+        dest="climb",
+        required=False,
+        type=int,
+        help="whether to use cNEB",
+        default=0
+    )
+
+    parser.add_argument(
+        "-es_ft",
+        "--early_stop_ft",
+        dest="es_ft",
+        required=False,
+        type=int,
+        help="force threshold for early stopping",
+        default=0.03
+    )
     
     parser.add_argument(
         "-preopt",
@@ -221,7 +241,7 @@ def main():
     nbi = NEBInputs(
         tol=tol * BOHR_TO_ANGSTROMS,
         barrier_thre=0.1, #kcalmol,
-        climb=False,
+        climb=bool(args.climb),
         
         rms_grad_thre=tol * BOHR_TO_ANGSTROMS*2,
         max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS*5,
@@ -230,8 +250,8 @@ def main():
         v=1,
         max_steps=500,
         
-        early_stop_chain_rms_thre=.003,
-        early_stop_force_thre=0.03,
+        early_stop_chain_rms_thre=1,
+        early_stop_force_thre=args.es_ft,
         early_stop_still_steps_thre=100,
         
         _use_dlf_conv=False,
@@ -254,7 +274,7 @@ def main():
     )
     history, out_chain = m.find_mep_multistep(chain)
     
-    leaves_nebs = [obj.data for obj in history.ordered_leaves if obj.data]
+    leaves_nebs = [obj.data for obj in history.get_optimization_history() if obj.data]
     tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
     print(f">>> Made {tot_grad_calls} gradient calls total.")
 
