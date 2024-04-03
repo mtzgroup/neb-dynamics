@@ -61,7 +61,8 @@ class NEB:
         # self._reset_node_convergence(chain=chain)
         
         if self.parameters.climb:
-            inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
+            # inds_maxima = argrelextrema(chain.energies, np.greater, order=2)[0]
+            inds_maxima = [chain.energies.argmax()]
             
             if self.parameters.v > 0:
                 print(f"\n----->Setting {len(inds_maxima)} nodes to climb\n")
@@ -70,11 +71,11 @@ class NEB:
                 chain[ind].do_climb = True
                 
                 
-    def _check_set_climbing_node(self, chain: Chain):
-        rms_val = sum(chain.rms_gperps)/len(chain)
-        if rms_val <= self.parameters.rms_grad_thre*3:
-            self.set_climbing_nodes(chain=chain)
-            self.parameters.climb = False  # no need to set climbing nodes again
+    # def _check_set_climbing_node(self, chain: Chain):
+    #     rms_val = sum(chain.rms_gperps)/len(chain)
+    #     if rms_val <= self.parameters.rms_grad_thre*3:
+    #         self.set_climbing_nodes(chain=chain)
+    #         self.parameters.climb = False  # no need to set climbing nodes again
     
     def _do_early_stop_check(self, chain: Chain):
         """
@@ -131,7 +132,12 @@ class NEB:
                     new_params.early_stop_still_steps_thre = 100000
 
                     self.parameters = new_params
-                    
+            
+            # going to set climbing nodes when checking early stop
+            if self.parameters.climb: 
+                    self.set_climbing_nodes(chain=chain)
+                    self.parameters.climb = False  # no need to set climbing nodes again
+
             return self._do_early_stop_check(chain)
     
                 
@@ -184,9 +190,6 @@ class NEB:
                 if stop_early: 
                     return elem_step_results
                 
-                if self.parameters.climb: 
-                    self._check_set_climbing_node(chain=chain_previous)
-            
             new_chain = self.update_chain(chain=chain_previous)
             max_grad_val = np.amax(np.abs(new_chain.gradients))
             max_rms_grad_val = np.amax(new_chain.rms_gradients)
