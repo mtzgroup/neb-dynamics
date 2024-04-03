@@ -222,22 +222,9 @@ def main():
         do_parallel=do_parallel,
         node_freezing=True,
     )
-    # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=False)
-    # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
-    # optimizer = BFGS(bfgs_flush_steps=1000, bfgs_flush_thre=0.1, step_size=0.33*traj[0].atomn, min_step_size=0.01*traj[0].atomn)
-    # optimizer = BFGS(step_size=3, min_step_size=.1, use_linesearch=False, bfgs_flush_thre=0.80, 
-    #             activation_tol=0.1, bfgs_flush_steps=200)
+    
     optimizer = VelocityProjectedOptimizer(timestep=1, activation_tol=0.1)
-    # nbi = NEBInputs(grad_thre=tol*BOHR_TO_ANGSTROMS,
-    #            rms_grad_thre=(tol/2)*BOHR_TO_ANGSTROMS,
-    #            en_thre=(tol/10)*BOHR_TO_ANGSTROMS,
-    #            v=1,
-    #            max_steps=500,
-    #            early_stop_chain_rms_thre=0.002,
-    #            early_stop_force_thre=0.003,
-
-    #            early_stop_still_steps_thre=500,
-    #            vv_force_thre=0.0)
+    
     nbi = NEBInputs(
         tol=tol * BOHR_TO_ANGSTROMS,
         barrier_thre=0.1, #kcalmol,
@@ -258,7 +245,6 @@ def main():
         preopt_with_xtb=bool(int(args.preopt))
     )
     print(f"{args.preopt=}")
-    # print(f"Using node_class: {nc}\Min ends?{bool(int(args.min_ends))}")
     print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
     sys.stdout.flush()
 
@@ -274,7 +260,7 @@ def main():
     )
     history, out_chain = m.find_mep_multistep(chain)
     
-    leaves_nebs = [obj.data for obj in history.get_optimization_history() if obj.data]
+    leaves_nebs = [obj for obj in history.get_optimization_history() if obj]
     tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
     print(f">>> Made {tot_grad_calls} gradient calls total.")
 
