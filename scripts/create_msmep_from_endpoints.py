@@ -151,7 +151,7 @@ def read_single_arguments():
         "--early_stop_ft",
         dest="es_ft",
         required=False,
-        type=int,
+        type=float,
         help="force threshold for early stopping",
         default=0.03
     )
