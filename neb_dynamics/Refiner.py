@@ -28,7 +28,7 @@ class Refiner:
     
     gii: GIInputs = None
     
-    minimize_endpoints: bool = True
+    resample_chain: bool = True
     
     def __post_init__(self):
         if self.cni is None:
@@ -39,7 +39,7 @@ class Refiner:
             friction_optimal_gi=False,
             do_parallel=True,
             node_freezing=True,
-            node_conf_en_thre=1
+            node_conf_en_thre=.1
         )
         
         if self.nbi is None:
@@ -69,7 +69,7 @@ class Refiner:
         return h_dft
     
     
-    def convert_to_dft(self, xtb_chain):
+    def convert_to_dft(self, xtb_chain: Chain):
     
         out_xtb = xtb_chain
 
@@ -79,21 +79,11 @@ class Refiner:
         ref.tc_model_basis = self.basis
         ref.tc_kwds = self.kwds 
         out_tr.update_tc_parameters(ref)
-
-
-        if self.minimize_endpoints:
-            ind_ts = np.argmax(out_xtb.energies)
-            start = out_tr[ind_ts-1]
-            end = out_tr[ind_ts+1]
-            # start = out_tr[0]
-            # end = out_tr[-1]
-            start_opt = start.tc_local_geom_optimization()
-            end_opt = end.tc_local_geom_optimization()
-
-            out_tr.traj[0] = start_opt
-            out_tr.traj[-1] = end_opt
-
         out_dft = Chain.from_traj(out_tr, parameters=self.cni)
+
+        if self.resample_chain:
+            out_dft = out_dft.resample_chain(out_dft, n=len(out_dft), method=self.method, basis=self.basis, kwds=self.kwds)
+        
         return out_dft
     
     def create_refined_leaves(self, seed_leaves):

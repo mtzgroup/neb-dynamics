@@ -245,28 +245,20 @@ class MSMEP:
 
     def _do_maxima_based_split(self, chain: Chain, minimization_results):
 
-        ind_maxima = _get_ind_maxima(chain)
-        # r, p = chain._approx_irc(index=ind_maxima)
-        r, p = minimization_results
+        resampled_chain = minimization_results
+        r,p = resampled_chain[0], resampled_chain[-1]
         chains_list = []
-        orig_nodes = chain.copy().nodes
         
-        # add the input start, to R
+        # add the input_R->R
         nodes = [chain[0], r]
         chain_frag = chain.copy()
         chain_frag.nodes = nodes
         chains_list.append(chain_frag)
 
-        # add the r to p, passing through the maxima
-        
-        # orig_nodes[1:ind_maxima+1]
-        # nodes2 = [r, chain[ind_maxima], p]
-        nodes2 = [r]+orig_nodes[ind_maxima-1:ind_maxima+2]+[p] # recycling triplet near TS guess
-        chain_frag2 = chain.copy()
-        chain_frag2.nodes = nodes2
-        chains_list.append(chain_frag2)
+        # add the R->P transition
+        chains_list.append(resampled_chain)
 
-        # add the p to final chain
+        # add the P -> input_P
         nodes3 = [p, chain[len(chain)-1]]
         chain_frag3 = chain.copy()
         chain_frag3.nodes = nodes3

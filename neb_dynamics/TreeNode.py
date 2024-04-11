@@ -4,6 +4,7 @@ from neb_dynamics.NEB import NEB
 from pathlib import Path
 import numpy as np
 import networkx as nx
+import shutil
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
 
@@ -80,8 +81,11 @@ class TreeNode:
         return nodes_to_iter_through        
 
     def write_to_disk(self, folder_name: Path):
-        if not folder_name.exists():
-            folder_name.mkdir()
+
+        if folder_name.exists():
+            shutil.rmtree(folder_name)
+        folder_name.mkdir()
+            
 
         np.savetxt(fname=folder_name / "adj_matrix.txt", X=self.adj_matrix)
         
@@ -127,20 +131,24 @@ class TreeNode:
         if isinstance(folder_name, str):
             folder_name = Path(folder_name)
         adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
-        
-        nodes = list(folder_name.glob("node*.xyz"))
-        true_node_indices = [int(p.stem.split("_")[1]) for p in nodes]
-        node_list_indices = list(range(len(true_node_indices)))
-        
-        translator = {}
-        for true_ind, local_ind in zip(true_node_indices, node_list_indices):
-            translator[true_ind] = local_ind
-        
-        
-        neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters) for i in range(len(nodes))]
-        root = cls._get_node_helper(
-            true_node_index=0, matrix=adj_mat, list_of_nodes=neb_nodes, indices_translator=translator
-        )
+        if len(adj_mat.shape) > 0:
+            
+            nodes = list(folder_name.glob("node*.xyz"))
+            true_node_indices = [int(p.stem.split("_")[1]) for p in nodes]
+            node_list_indices = list(range(len(true_node_indices)))
+            
+            translator = {}
+            for true_ind, local_ind in zip(true_node_indices, node_list_indices):
+                translator[true_ind] = local_ind
+            
+            
+            neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters) for i in range(len(nodes))]
+            root = cls._get_node_helper(
+                true_node_index=0, matrix=adj_mat, list_of_nodes=neb_nodes, indices_translator=translator
+            )
+        else:
+            neb_nodes = [NEB.read_from_disk(folder_name / 'node_0.xyz', chain_parameters=chain_parameters, neb_parameters=neb_parameters)]
+            root = cls(data=neb_nodes[0], children=[], index=0)
 
         return root
 

@@ -187,8 +187,15 @@ class NEB:
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:    
                 stop_early, elem_step_results = self._check_early_stop(chain_previous)
+                
+
                 if stop_early: 
                     return elem_step_results
+                else:
+                    if elem_step_results:
+                        is_elem_step, split_method, minimization_results = elem_step_results
+                        if  minimization_results:
+                            chain_previous = minimization_results
                 
             new_chain = self.update_chain(chain=chain_previous)
             max_grad_val = np.amax(np.abs(new_chain.gradients))
@@ -230,9 +237,16 @@ class NEB:
             if chain_converged:
                 if self.parameters.v:
                     print("\nChain converged!")
-                    
-                self.optimized = new_chain
+                
                 elem_step_results = new_chain.is_elem_step() # N.B. One could skip this if you don't want to do minimization on converged chain.
+                is_elem_step, split_method, minimization_results = elem_step_results
+
+                # self.optimized = new_chain
+                if is_elem_step:
+                    self.optimized = minimization_results # Controversial! Now the optimized chain is the 'resampled' chain from IRC check
+                    self.chain_trajectory.append(minimization_results)
+                else:
+                    self.optimized = new_chain
                 return elem_step_results
             
             
@@ -427,9 +441,7 @@ class NEB:
             return np.where(rms_gps_conv), rms_gps
         
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-        """
-        https://chemshell.org/static_files/py-chemshell/manual/build/html/opt.html?highlight=nudged
-        """
+    
         rms_grad_conv_ind, rms_gperps = self._check_rms_grad_converged(chain_new)
         en_converged_indices, en_deltas = self._check_en_converged(
             chain_prev=chain_prev, chain_new=chain_new

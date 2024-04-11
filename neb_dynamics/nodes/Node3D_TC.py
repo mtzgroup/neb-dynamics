@@ -168,6 +168,14 @@ class Node3D_TC(Node):
         
         return ens_grads_lists
     
+
+    def do_geom_opt_trajectory(self) -> Trajectory:
+        td_copy = self.tdstructure.copy()
+        td_opt_traj = td_copy.run_tc_local(calculation='minimize', return_object=True)
+        print(f"len opt traj: {len(td_opt_traj)}")
+        td_opt_traj.update_tc_parameters(td_copy)
+        return  td_opt_traj
+    
     def do_geometry_optimization(self) -> Node3D_TC:
         try:
             # td_opt_xtb = self.tdstructure.xtb_geom_optimization()

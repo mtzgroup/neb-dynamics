@@ -70,6 +70,7 @@ class ChainInputs:
     do_local_xtb: bool = True
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
+    use_maxima_recyling: bool = False
     friction_optimal_gi: bool = True
     
     do_chain_biasing: bool = False

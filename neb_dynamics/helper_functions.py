@@ -388,5 +388,9 @@ def run_tc_local_optimization(td, tmp, return_optim_traj):
         return tr
     else:
         return tr[-1]
+    
+
+def is_even(n):
+    return not np.mod(n, 2)
         
-        
+

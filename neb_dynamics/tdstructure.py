@@ -306,7 +306,10 @@ class TDStructure:
         )
         return new_tds
 
-    def xtb_geom_optimization(self):
+    def xtb_geom_optimization(self, return_traj=False):
+        from ase.io.trajectory import Trajectory as ASETraj
+        from neb_dynamics.trajectory import Trajectory
+        
         # XTB api is summing the initial charges from the ATOM object.
         # it returns a vector of charges (maybe Mulliken), but to initialize the calculation,
         # it literally sums this vector up. So we create a zero vector (natoms long) and we
@@ -326,19 +329,26 @@ class TDStructure:
         )
 
         atoms.calc = XTB(method="GFN2-xTB", accuracy=0.001)
-        opt = LBFGSLineSearch(atoms, logfile=None)
-        # opt = LBFGS(atoms, logfile=None)
+        opt = LBFGSLineSearch(atoms, logfile=None, trajectory='/tmp/log.traj')
+        # opt = LBFGS(atoms, logfile=None, trajectory='/tmp/log.traj')
         # opt = FIRE(atoms, logfile=None)
-        # opt = /(atoms, logfile=None)
-        opt.run(fmax=0.005)
-        new_tds = TDStructure.from_ase_Atoms(
-            atoms=atoms, charge=self.charge, spinmult=self.spinmult
-        )
-        
-        new_tds.update_tc_parameters(self)
+        opt.run(fmax=0.05)
         
         
-        return new_tds
+        
+        aT = ASETraj('/tmp/log.traj')
+        traj_list = []
+        for i,_ in enumerate(aT):
+            traj_list.append(TDStructure.from_ase_Atoms(aT[i], charge=self.charge, spinmult=self.spinmult))
+        traj = Trajectory(traj_list)
+        traj.update_tc_parameters(self)
+
+        Path('/tmp/log.traj').unlink()
+        if return_traj:
+            print('len opt traj: ',len(traj))
+            return traj
+        else:
+            return traj[-1]
 
     def copy(self):
         obmol = self.molecule_obmol

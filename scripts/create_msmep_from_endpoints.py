@@ -147,6 +147,16 @@ def read_single_arguments():
     )
 
     parser.add_argument(
+        "-mr",
+        "--maxima_recyling",
+        dest="mr",
+        required=False,
+        type=int,
+        help="whether to use maxima recyling",
+        default=0
+    )
+
+    parser.add_argument(
         "-es_ft",
         "--early_stop_ft",
         dest="es_ft",
@@ -219,11 +229,12 @@ def main():
         delta_k=0.09,
         node_class=nc,
         friction_optimal_gi=True,
+        use_maxima_recyling=bool(args.mr),
         do_parallel=do_parallel,
         node_freezing=True,
     )
     
-    optimizer = VelocityProjectedOptimizer(timestep=1, activation_tol=0.1)
+    optimizer = VelocityProjectedOptimizer(timestep=.5, activation_tol=0.1)
     
     nbi = NEBInputs(
         tol=tol * BOHR_TO_ANGSTROMS,

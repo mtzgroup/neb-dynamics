@@ -62,14 +62,23 @@ class Node3D(Node):
             ene = Node3D.run_xtb_calc(self.tdstructure).get_energy()
             self._cached_energy = ene
             return ene
+    
+    def do_geom_opt_trajectory(self) -> Trajectory:
+        td_copy = self.tdstructure.copy()
+        td_copy.tc_model_method = 'gfn2xtb'
+        td_copy.tc_model_basis = 'gfn2xtb'
+        td_opt_traj = td_copy.xtb_geom_optimization(return_traj=True)
+        td_opt_traj.update_tc_parameters(td_copy)
+        # td_opt = self.tdstructure.xtb_geom_optimization()
+        return  td_opt_traj
 
     def do_geometry_optimization(self) -> Node3D:
         td_copy = self.tdstructure.copy()
         td_copy.tc_model_method = 'gfn2xtb'
         td_copy.tc_model_basis = 'gfn2xtb'
-        td_opt = td_copy.tc_local_geom_optimization()
-        td_opt.update_tc_parameters(td_copy)
-        # td_opt = self.tdstructure.xtb_geom_optimization()
+        # td_opt = td_copy.tc_local_geom_optimization()
+        # td_opt.update_tc_parameters(td_copy)
+        td_opt = self.tdstructure.xtb_geom_optimization()
         return Node3D(tdstructure=td_opt,
             converged=self.converged, 
             do_climb=self.do_climb,

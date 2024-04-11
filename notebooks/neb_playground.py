@@ -25,6 +25,20 @@ from neb_dynamics.Refiner import Refiner
 # all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo.txt").read().splitlines()
 all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons/reactions_todo_xtb.txt").read().splitlines()
 
+import shutil
+
+# +
+refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09, 
+                      node_class=Node3D_TC, 
+                      node_conf_en_thre=1.5, use_maxima_recyling=True), resample_chain=True)
+
+
+# -
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Claisen-Rearrangement-Aromatic/production_maxima_recycling_msmep/")
+
+refined_leaves = refiner.create_refined_leaves(h.ordered_leaves)
+
 # +
 # rn = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
 # p = f"/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}/production_msmep/"
@@ -52,7 +66,9 @@ for i, rn in enumerate(all_rns):
         # refine reactions
         refined_fp = Path(rn) / 'refined_results'
         print('Refinement done: ', refined_fp.exists())
-        if not refined_fp.exists() and do_refine:
+        if do_refine:
+            if refined_fp.exists():
+                shutil.rmtree(refined_results)
             print("Refining...")
 
             refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09, 
