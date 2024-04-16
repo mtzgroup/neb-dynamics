@@ -194,7 +194,31 @@ def main():
         # method = "wb97x-d3" # psi4
         basis = "def2-svp"
         kwds = {'maxit':'500'}
-        
+        #method = 'ub3lyp'
+        #basis = '3-21gs'
+#        kwds = {
+#         'convthre': 0.0001,
+#         'maxit':    700,
+#         'diismaxvecs':    20,
+#         'precision':   'mixed',
+#         'dftgrid':     1,
+#         'threall':     1.0e-14,
+         #levelshift:    'yes'
+         #levelshiftvala: 2.7
+         #levelshiftvalb: 1.0
+#         'fon':   'yes',
+#         'fon_anneal': 'yes',
+#         'fon_target': 0.0,
+#         'fon_temperature':  0.1,
+#         'fon_anneal_iter':  500,
+#         'fon_converger': 'yes',
+#         'fon_coldstart': 'yes',
+#         'fon_tests': 1,
+#         'purify': 'no'
+#        }
+
+
+
         start.tc_model_method = method
         end.tc_model_method = method
 
@@ -205,8 +229,8 @@ def main():
         end.tc_kwds = kwds
 
         if int(args.min_ends):
-            start = start.tc_geom_optimization()
-            end = end.tc_geom_optimization()
+            start = start.tc_local_geom_optimization()
+            end = end.tc_local_geom_optimization()
 
 
     else:
@@ -261,6 +285,7 @@ def main():
 
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
     traj = create_friction_optimal_gi(traj, gii)
+    print(traj[0].spinmult)
     chain = Chain.from_traj(traj=traj, parameters=cni)
     m = MSMEP(
         neb_inputs=nbi,

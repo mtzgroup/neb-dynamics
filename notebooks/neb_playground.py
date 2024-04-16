@@ -22,18 +22,21 @@ from neb_dynamics.Refiner import Refiner
 # -
 
 
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/for_alex/failed_gsms/failed_pygsms_0_init_guess_msmep/")
+
+h.data.initial_chain.to_trajectory()
+
+h.data.plot_opt_history(1)
+
+h.ordered_leaves[0].data.chain_trajectory[-2].to_trajectory()
+
 # all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo.txt").read().splitlines()
 all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons/reactions_todo_xtb.txt").read().splitlines()
 
 import shutil
 
-# +
 refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09, 
-                      node_class=Node3D_TC, 
-                      node_conf_en_thre=1.5, use_maxima_recyling=True), resample_chain=True)
-
-
-# -
+                      node_class=Node3D_TC_Local, use_maxima_recyling=True, do_parallel=False), resample_chain=True)
 
 h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Claisen-Rearrangement-Aromatic/production_maxima_recycling_msmep/")
 

@@ -164,6 +164,7 @@ class NEB:
         xtb_seed_tr.update_tc_parameters(chain[0].tdstructure)
         
         xtb_seed = Chain.from_traj(xtb_seed_tr, parameters=chain.parameters.copy())
+        xtb_seed.gradients # calling it to cache the values
         
         return xtb_seed
 
@@ -194,7 +195,7 @@ class NEB:
                 else:
                     if elem_step_results:
                         is_elem_step, split_method, minimization_results = elem_step_results
-                        if  minimization_results:
+                        if isinstance(minimization_results, Chain):
                             chain_previous = minimization_results
                 
             new_chain = self.update_chain(chain=chain_previous)
@@ -243,6 +244,7 @@ class NEB:
 
                 # self.optimized = new_chain
                 if is_elem_step:
+                    print(f"\nUsing resampled chain as output. \n\tEns: {minimization_results.energies}\n\t Grads:{minimization_results.gradients}")
                     self.optimized = minimization_results # Controversial! Now the optimized chain is the 'resampled' chain from IRC check
                     self.chain_trajectory.append(minimization_results)
                 else:

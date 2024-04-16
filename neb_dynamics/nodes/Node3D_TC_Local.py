@@ -13,6 +13,7 @@ from pathlib import Path
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
+from neb_dynamics.trajectory import Trajectory
 import qcop
 RMSD_CUTOFF = 0.5
 # KCAL_MOL_CUTOFF = 0.1
@@ -165,6 +166,7 @@ class Node3D_TC_Local(Node):
     
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
+        raise NotImplementedError("Please do not run this object using this method. It will not work.")
         all_geoms = []
         all_inps = []
         for n in chain.nodes:
@@ -184,6 +186,13 @@ class Node3D_TC_Local(Node):
         [Path(inp).unlink() for inp in all_inps]
         return ene_gradients
     
+    def do_geom_opt_trajectory(self) -> Trajectory:
+        td_copy = self.tdstructure.copy()
+        td_opt_traj = td_copy.run_tc_local(calculation='minimize', return_object=True)
+        print(f"len opt traj: {len(td_opt_traj)}")
+        td_opt_traj.update_tc_parameters(td_copy)
+        return  td_opt_traj
+    
     def do_geometry_optimization(self) -> Node3D_TC_Local:
         td_opt = self.tdstructure.tc_local_geom_optimization()
         return Node3D_TC_Local(td_opt)
@@ -194,29 +203,52 @@ class Node3D_TC_Local(Node):
         )
         return connectivity_identical
     
+    # def _is_conformer_identical(self, other) -> bool:
+    #     if self._is_connectivity_identical(other):
+    #         aligned_self = self.tdstructure.align_to_td(other.tdstructure)
+    #         dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+    #         en_delta = np.abs((self.energy - other.energy)*627.5)
+            
+            
+    #         rmsd_identical = dist < RMSD_CUTOFF
+    #         energies_identical = en_delta < KCAL_MOL_CUTOFF
+    #         if rmsd_identical and energies_identical:
+    #             conformer_identical = True
+            
+    #         if not rmsd_identical and energies_identical:
+    #             # going to assume this is a rotation issue. Need To address.
+    #             conformer_identical = False
+            
+    #         if not rmsd_identical and not energies_identical:
+    #             conformer_identical = False
+            
+    #         if rmsd_identical and not energies_identical:
+    #             conformer_identical = False
+    #         print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
+    #         return conformer_identical
     def _is_conformer_identical(self, other) -> bool:
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
-            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+
+            traj = Trajectory([aligned_self, other.tdstructure]).run_geodesic(
+                nimages=10)
+            barrier = max(
+                traj.energies_xtb()
+            )  # energies are given relative to start struct
+
+            
+            barrier_accessible =  (barrier <= self.BARRIER_THRE)
             en_delta = np.abs((self.energy - other.energy)*627.5)
+            print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
+
             
-            
-            rmsd_identical = dist < RMSD_CUTOFF
-            energies_identical = en_delta < KCAL_MOL_CUTOFF
-            if rmsd_identical and energies_identical:
-                conformer_identical = True
-            
-            if not rmsd_identical and energies_identical:
-                # going to assume this is a rotation issue. Need To address.
-                conformer_identical = False
-            
-            if not rmsd_identical and not energies_identical:
-                conformer_identical = False
-            
-            if rmsd_identical and not energies_identical:
-                conformer_identical = False
-            print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
-            return conformer_identical
+            energies_identical = en_delta < self.KCAL_MOL_CUTOFF
+            if barrier_accessible and energies_identical:
+                return True
+            else:
+                return False
+        else:
+            return False
 
     def is_identical(self, other) -> bool:
 

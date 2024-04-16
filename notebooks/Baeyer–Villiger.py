@@ -2,11 +2,12 @@
 from retropaths.molecules.molecule import Molecule
 from IPython.core.display import HTML
 from retropaths.reactions.changes import Changes3DList, Changes3D
-from retropaths.abinitio.tdstructure import TDStructure
+# from retropaths.abinitio.tdstructure import TDStructure
+from neb_dynamics.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
-from neb_dynamics.Node3D import Node3D
+from neb_dynamics.nodes.Node3D import Node3D
 
 from neb_dynamics.MSMEP import MSMEP
 import matplotlib.pyplot as plt
@@ -71,15 +72,43 @@ target.gum_mm_optimization()
 
 target_opt = target.xtb_geom_optimization()
 
-target_opt
+# +
+from retropaths.molecules.molecule import Molecule
+from IPython.core.display import HTML
+from retropaths.reactions.changes import Changes3DList, Changes3D
+# from retropaths.abinitio.tdstructure import TDStructure
+from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.NEB import NEB, NoneConvergedException
+from neb_dynamics.Chain import Chain
+from neb_dynamics.nodes.Node3D import Node3D
 
-nbi = NEBInputs(v=True,grad_thre=0.001*BOHR_TO_ANGSTROMS, rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS, 
-                    en_thre=0.005*BOHR_TO_ANGSTROMS, early_stop_force_thre=0.03,early_stop_chain_rms_thre=0.002)
-cni = ChainInputs(k=0.1,delta_k=0.09,step_size=3)
+from neb_dynamics.MSMEP import MSMEP
+import matplotlib.pyplot as plt
+from retropaths.reactions.template import ReactionTemplate
+from retropaths.reactions.conditions import Conditions
+from retropaths.reactions.rules import Rules
+import numpy as np
+from scipy.signal import argrelextrema
+from retropaths.helper_functions import pairwise
+import retropaths.helper_functions as hf
+from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS 
+
+HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+# -
+
+nbi = NEBInputs(v=True)
+cni = ChainInputs(k=0.1,delta_k=0.09, use_maxima_recyling=True, node_freezing=True)
 gii = GIInputs(nimages=15)
-m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
+m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=VelocityProjectedOptimizer())
 
-traj = Trajectory([root_opt, target_opt]).run_geodesic(nimages=15)
+# traj = Trajectory([root_opt, target_opt]).run_geodesic(nimages=15)
+root = TDStructure.from_xyz("/home/jdep/T3D_data/template_rxns/Baeyer-Villiger_oxidation/react.xyz")
+target = TDStructure.from_xyz("/home/jdep/T3D_data/template_rxns/Baeyer-Villiger_oxidation/prod.xyz")
+traj = Trajectory([root, target]).run_geodesic(nimages=15)
 chain = Chain.from_traj(traj, cni)
 
 h, out = m.find_mep_multistep(chain)

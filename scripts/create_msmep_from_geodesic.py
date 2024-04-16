@@ -10,9 +10,11 @@ from neb_dynamics.Chain import Chain
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
 
+import sys
 # from neb_dynamics.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.optimizers.BFGS import BFGS
 from neb_dynamics.optimizers.Linesearch import Linesearch
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 from neb_dynamics.nodes.Node3D import Node3D
 from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
@@ -37,6 +39,14 @@ def read_single_arguments():
     parser = ArgumentParser(description=description_string)
 
     parser.add_argument(
+        "-fp",
+        "--file_path",
+        dest="fp",
+        required=True,
+        type=str,
+        help="path to the xyz trajectory",
+    )
+    parser.add_argument(
         "-c", "--charge", dest="c", type=int, default=0, help="total charge of system"
     )
 
@@ -45,7 +55,7 @@ def read_single_arguments():
         "--nimages",
         dest="nimg",
         type=int,
-        default=12,
+        default=None,
         help="number of images in the chain",
     )
 
@@ -63,7 +73,7 @@ def read_single_arguments():
         "--do_cleanup",
         dest="dc",
         type=bool,
-        default=True,
+        default=False,
         help="whether to do conformer-conformer NEBs at the end",
     )
 
@@ -74,15 +84,6 @@ def read_single_arguments():
         type=str,
         default="node3d",
         help="what node type to use. options are: node3d, node3d_tc, node3d_tc_local, node3d_tcpb",
-    )
-
-    parser.add_argument(
-        "-fp",
-        "--file_path",
-        dest="fp",
-        required=True,
-        type=str,
-        help="path to the xyz trajectory",
     )
 
     parser.add_argument(
@@ -106,136 +107,156 @@ def read_single_arguments():
     )
 
     parser.add_argument(
-        "-min_ends",
-        "--minimize_endpoints",
-        dest="min_ends",
-        required=True,
-        type=int,
-        help="whether to minimize the endpoints before starting",
-        default=False,
-    )
-
-    parser.add_argument(
         "-name",
         "--file_name",
         dest="name",
         required=False,
         type=str,
-        help="name of folder to output to || defaults to [input_file_name]_msmep",
+        help="name of folder to output to || defaults to react_msmep",
         default=None,
     )
 
     parser.add_argument(
-        "-dlf_be",
-        "--dlf_backend",
-        dest="dlf_be",
+        "-climb",
+        "--do_climb",
+        dest="climb",
         required=False,
         type=int,
-        help="Whether to use DLF as the NEB optimizer. Default is no.",
-        default=False,
+        help="whether to use cNEB",
+        default=0
     )
 
     parser.add_argument(
-        "-dlf_conv",
-        "--dlf_convergence",
-        dest="dlf_conv",
+        "-mr",
+        "--maxima_recyling",
+        dest="mr",
         required=False,
         type=int,
-        help="Whether to use DLF definition of convergence as the criterion. Default is no.",
-        default=False,
+        help="whether to use maxima recyling",
+        default=0
+    )
+
+    parser.add_argument(
+        "-es_ft",
+        "--early_stop_ft",
+        dest="es_ft",
+        required=False,
+        type=float,
+        help="force threshold for early stopping",
+        default=0.03
+    )
+    
+    parser.add_argument(
+        "-preopt",
+        "--preopt_with_xtb",
+        dest="preopt",
+        required=True,
+        type=int,
+        help="whether to preconverge chains using xtb",
+        default=1
     )
 
     return parser.parse_args()
 
 
 def main():
+    
     args = read_single_arguments()
-
-    # nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
-    nodes = {
-        "node3d": Node3D,
-        "node3d_tc": Node3D_TC,
-        "node3d_tc_local": Node3D_TC_Local,
-        "node3d_tcpb": Node3D_TC_TCPB,
-    }
-    nc = nodes[args.nc]
 
     fp = Path(args.fp)
 
     traj = Trajectory.from_xyz(fp, tot_charge=args.c, tot_spinmult=args.s)
 
-    ref = traj[0]
+    nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
+    nc = nodes[args.nc]
 
     if args.nc != "node3d":
-        # method = 'b3lyp'
-        method = "wb97xd3"
-        basis = "def2-svp"
-        # method = 'gfn2xtb'
-        # basis = 'gfn2xtb'
-        # kwds = {'reference':'uks'}
+        # method = "wb97xd3" #terachem
+        # method = "wb97x-d3" # psi4
+        # basis = "def2-svp"
+        # kwds = {'maxit':'500'}
+        method = 'ub3lyp'
+        basis = '3-21gs'
+        kwds = {
+        'convthre': 0.0001,
+        'maxit':    700,
+        'diismaxvecs':    20,
+        'precision':   'mixed',
+        'dftgrid':     1,
+        'threall':     1.0e-14,
+        #  levelshift:    'yes'
+        #  levelshiftvala: 2.7
+        #  levelshiftvalb: 1.0
+        'fon':   'yes',
+        'fon_anneal': 'yes',
+        'fon_target': 0.0,
+        'fon_temperature':  0.1,
+        'fon_anneal_iter':  500,
+        'fon_converger': 'yes',
+        'fon_coldstart': 'yes',
+        'fon_tests': 1,
+        'purify': 'no'
+       }
+
+
+        ref = traj[0]
         ref.tc_model_method = method
         ref.tc_model_basis = basis
+        ref.tc_kwds =  kwds
 
-        # kwds = {'reference':'uks'}
-        kwds = {}
-        # kwds = {'restricted': False, 'pcm':'cosmo','epsilon':80}
+        traj.update_tc_parameters(ref)
 
-    else:
-        if int(args.min_ends):
-            start = start.xtb_geom_optimization()
-            end = end.xtb_geom_optimization()
 
     if args.nc == "node3d_tc_local":
         do_parallel = False
     else:
         do_parallel = True
 
-    traj.update_tc_parameters(ref)
-
     tol = args.tol
 
+    # cni = ChainInputs(k=0.1,delta_k=0.09, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
     cni = ChainInputs(
         k=0.1,
         delta_k=0.09,
         node_class=nc,
         friction_optimal_gi=True,
+        use_maxima_recyling=bool(args.mr),
         do_parallel=do_parallel,
         node_freezing=True,
     )
-    # cni = ChainInputs(k=0.01, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
-    # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=False)
-    # cni = ChainInputs(k=0, node_class=nc,friction_optimal_gi=True, do_parallel=do_parallel, node_freezing=True)
-    # optimizer = BFGS(bfgs_flush_steps=1000, bfgs_flush_thre=0.1, step_size=0.33*traj[0].atomn, min_step_size=0.01*traj[0].atomn)
-    # optimizer = Linesearch(step_size=0.33*traj[0].atomn, min_step_size=.001*traj[0].atomn)
-    # optimizer = SteepestDescent(step_size_per_atom=0.01)
-    optimizer = BFGS(step_size=3, min_step_size=.5, use_linesearch=False, bfgs_flush_thre=0.80, 
-                 activation_tol=0.1, bfgs_flush_steps=20)
-    # nbi = NEBInputs(grad_thre=tol*BOHR_TO_ANGSTROMS,
-    #            rms_grad_thre=(tol/2)*BOHR_TO_ANGSTROMS,
-    #            en_thre=(tol/10)*BOHR_TO_ANGSTROMS,
-    #            v=1,
-    #            max_steps=500,
-    #            early_stop_chain_rms_thre=0.002,
-    #            early_stop_force_thre=0.003,
-
-    #            early_stop_still_steps_thre=500,
-    #            vv_force_thre=0.0)
+    
+    optimizer = VelocityProjectedOptimizer(timestep=.5, activation_tol=0.1)
+    
     nbi = NEBInputs(
-        grad_thre=tol * BOHR_TO_ANGSTROMS,
-        rms_grad_thre=(tol / 2) * BOHR_TO_ANGSTROMS,
-        en_thre=(tol)
-        * BOHR_TO_ANGSTROMS,  # loose energy threshold cause DLF doesnt use en thresh
+        tol=tol * BOHR_TO_ANGSTROMS,
+        barrier_thre=0.1, #kcalmol,
+        climb=bool(args.climb),
+        
+        rms_grad_thre=tol * BOHR_TO_ANGSTROMS*2,
+        max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS*5,
+        ts_grad_thre=tol * BOHR_TO_ANGSTROMS*5,
+        
         v=1,
         max_steps=500,
-        early_stop_chain_rms_thre=1,  # not really caring about chain distances
-        early_stop_force_thre=tol * 10 * BOHR_TO_ANGSTROMS,
+        
+        early_stop_chain_rms_thre=1,
+        early_stop_force_thre=args.es_ft,
         early_stop_still_steps_thre=100,
-        vv_force_thre=0.0,
-        _use_dlf_conv=bool(args.dlf_conv),
-        preopt_with_xtb=True
+        
+        _use_dlf_conv=False,
+        preopt_with_xtb=bool(int(args.preopt))
     )
+    print(f"{args.preopt=}")
+    print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
+    sys.stdout.flush()
 
-    gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
+
+    if args.nimg is None:
+        nimg = len(traj)
+
+    gii = GIInputs(nimages=nimg, extra_kwds={"sweep": False})
+    # traj = create_friction_optimal_gi(traj, gii)
+    # print(traj[0].spinmult)
     chain = Chain.from_traj(traj=traj, parameters=cni)
     m = MSMEP(
         neb_inputs=nbi,
@@ -243,9 +264,12 @@ def main():
         gi_inputs=gii,
         skip_identical_graphs=bool(args.sig),
         optimizer=optimizer,
-        _use_dlf_as_backend=bool(args.dlf_be),
     )
     history, out_chain = m.find_mep_multistep(chain)
+    
+    leaves_nebs = [obj for obj in history.get_optimization_history() if obj]
+    tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
+    print(f">>> Made {tot_grad_calls} gradient calls total.")
 
     data_dir = fp.parent
 

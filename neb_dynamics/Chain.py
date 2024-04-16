@@ -601,51 +601,56 @@ class Chain:
     def is_elem_step(self):
         chain = self.copy()
         if len(self) <= 1:
-            return True, None
+            return True, None, None
 
         conditions = {}
         is_concave, concavity_results = self._chain_is_concave()
         conditions["concavity"] = is_concave
         if not is_concave and isinstance(concavity_results, list):
             return False, "minima", concavity_results
-        elif is_concave and isinstance(concavity_results, Chain):
-            return True, 'minima', concavity_results
 
         r, p, resampled_chain = self._approx_irc()
         irc_results = resampled_chain
 
-        if self.parameters.use_maxima_recyling:
-            cases = [
-                r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
-                ]
-            
-
-            ### If we are checking a chain that looks like it has one elementary step, but the 'IRC' chec
-            ### is not actually connecting the input endpoints, the resampled chain may no longer
-            ### contain the actual R-->P reaction, since you could have replaced the P for a second R. 
-            ### The following block of code checks for this case and will simply continue NEB optimization 
-            ### as if we were working with an elementary step, since this chain is not near convergence. 
-            bad_cases = [
-                r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
-                r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
-                r.is_identical(chain[-1]) and p.is_identical(chain[0]),  # somehow flipped
+        # if self.parameters.use_maxima_recyling:
+        cases = [
+            r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
             ]
-            if any(bad_cases):
-                resampled_chain = chain
-                cases.append(True) 
+        
 
-        else:
-            cases = [
-                r.is_identical(chain[0]) and p.is_identical(chain[-1]),  # best case
-                r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
-                r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
-            ]
+        ### If we are checking a chain that looks like it has one elementary step, but the 'IRC' chec
+        ### is not actually connecting the input endpoints, the resampled chain may no longer
+        ### contain the actual R-->P reaction, since you could have replaced the P for a second R. 
+        ### The following block of code checks for this case and will simply continue NEB optimization 
+        ### as if we were working with an elementary step, since this chain is not near convergence. 
+        bad_cases = [
+            r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
+            r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
+            r.is_identical(chain[-1]) and p.is_identical(chain[0]),  # somehow flipped
+        ]
+        if any(bad_cases):
+            resampled_chain = chain
+            cases.append(True) 
+
+        # else:
+        #     cases = [
+        #         r.is_identical(chain[0]) and p.is_identical(chain[-1]),  # best case
+        #         r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
+        #         r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
+        #     ]
 
         minimizing_gives_endpoints = any(cases)
         conditions["irc"] = minimizing_gives_endpoints
 
         # split_method, output_geometries = self._select_split_method(conditions)
         elem_step = True if minimizing_gives_endpoints else False
+        
+        # if it actually is an elementary step, use the resampled one from the minima
+        # in case we have a kinky chain that goes through multiple Rs and Ps. Maxima based
+        # split might hone in on the wrong maxima
+        if elem_step and isinstance(concavity_results, Chain):
+                    return True, 'minima', concavity_results
+
         return elem_step, 'maxima', irc_results
 
     def _chain_is_concave(self):
@@ -653,24 +658,31 @@ class Chain:
         minima_present = len(ind_minima) != 0
         opt_results = []
 
-        r_trajs = []
-        p_trajs = []
+        opt_trajs = []
+
+        reuse_start_ind = 0
+        reuse_end_ind = -1
+
         
         if minima_present:
             minimas_is_r_or_p = []
             try:
                 for i in ind_minima:
                     if self.parameters.use_maxima_recyling:
-                        opt_traj = self[1].do_geom_opt_trajectory()
-                        opt = opt_traj[-1]
+                        opt_traj = self[i].do_geom_opt_trajectory()
+                        opt = self.parameters.node_class(opt_traj[-1])
                         
                         minima_is_r = opt._is_connectivity_identical(self[0])
                         minima_is_p = opt._is_connectivity_identical(self[-1])
 
-                        if minima_is_r: r_trajs.append(opt_traj)
-                        elif minima_is_p: p_trajs.append(opt_traj)
-
                         minimas_is_r_or_p.append(minima_is_r or minima_is_p)
+                        opt_trajs.append(opt_traj)
+                        if minima_is_r: # i.e. write the last instance where a minimum was R
+                            reuse_start_ind = i
+                        elif minima_is_p and reuse_end_ind==-1: # i.e. only write the first instance where a minimum is P
+                            reuse_end_ind = i+1
+
+                        opt_results.append(opt)
 
                     else:
                         opt = self[i].do_geometry_optimization()
@@ -683,18 +695,33 @@ class Chain:
                 return True, self.copy()
             
             
-            return all(minimas_is_r_or_p), opt_results
+            if all(minimas_is_r_or_p) and self.parameters.use_maxima_recyling:
+                r_half_traj = None
+                p_half_traj = None
+                reuse_chain = self.copy()
+                reuse_chain.nodes = self.nodes[reuse_start_ind:reuse_end_ind]
+                resampled_chain = self.resample_chain(reuse_chain, n=len(self), 
+                                                    raw_half1=r_half_traj, raw_half2=p_half_traj)
+
+                return True, resampled_chain
+            elif all(minimas_is_r_or_p) and not self.parameters.use_maxima_recyling:
+                return True, self.copy()
+            else:
+                return False, opt_results
 
         else:
-            return True, opt_results
+            return True, self.copy()
         
     @staticmethod
-    def resample_chain(chain, n=None, method=None, basis=None, kwds={}):
+    def resample_chain(chain, n=None, method=None, basis=None, kwds={}, raw_half1=None, raw_half2=None):
         print(f'\n Resampling chain with parameters: {chain.parameters} and TDproperties: {chain[0].tdstructure}')
         if n is None:
             n = len(chain)
             
         tsg_ind = chain.energies.argmax()
+        if tsg_ind == len(chain)-1 or tsg_ind == 0:
+            print("***Chain endpoint is a maximum. Returning chain back.")
+            return chain.copy()
         candidate_r = chain[tsg_ind-1]
         candidate_p = chain[tsg_ind+1]
         
@@ -708,7 +735,7 @@ class Chain:
             candidate_p.tdstructure.tc_kwds = kwds
         
         
-        total_len = len(chain)
+        total_len = n
         if is_even(total_len):
             half1_len = (total_len / 2) 
             half2_len = (total_len / 2) - 1
@@ -717,21 +744,26 @@ class Chain:
             half2_len = (total_len / 2) 
 
 
-        raw_half1 = candidate_r.do_geom_opt_trajectory()
+        if raw_half1 is None:
+            raw_half1 = candidate_r.do_geom_opt_trajectory()
+
+        raw_half1 = raw_half1.copy()
         raw_half1.traj.reverse()
         
         half1 = raw_half1.run_geodesic(nimages=half1_len)
 
-        raw_half2 = candidate_p.do_geom_opt_trajectory()
+        if raw_half2 is None:
+            raw_half2 = candidate_p.do_geom_opt_trajectory()
 
+        raw_half2 = raw_half2.copy()
         half2 = raw_half2.run_geodesic(nimages=half2_len)
 
         joined = Trajectory(traj=half1.traj+[chain.get_ts_guess()]+half2.traj)
         joined.update_tc_parameters(candidate_r.tdstructure)
         
         out_chain = Chain.from_traj(joined, parameters=chain.parameters.copy())
-        out_chain.gradients # calling it so gradients and energies are cached
-
+        _ = out_chain.gradients # calling it so gradients and energies are cached
+        print(f"Resampled chain energies: {out_chain.energies}")
         return out_chain
 
     def _approx_irc(self, index=None):
@@ -764,6 +796,8 @@ class Chain:
                 new_nodes = [r]+self.nodes[1:-1]+[p]
                 resampled_chain = self.copy()
                 resampled_chain.nodes = new_nodes
+                for node in resampled_chain:
+                    node.converged = False
 
 
             
@@ -771,6 +805,7 @@ class Chain:
             print(e)
             print("Error in geometry optimization. Pretending this is elementary chain.")
             return chain[0], chain[len(chain) - 1], chain
+        
         return r, p, resampled_chain
 
     def _select_split_method(self, conditions: dict, irc_results, concavity_results):
