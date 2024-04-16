@@ -31,7 +31,7 @@ HARTREE_TO_KCALM = 627.503
 
 
 @dataclass
-class ElectronicStructureError:
+class ElectronicStructureError(BaseException):
     message: str
     
     
