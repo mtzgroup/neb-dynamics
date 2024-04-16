@@ -613,10 +613,15 @@ class Chain:
         irc_results = resampled_chain
 
         # if self.parameters.use_maxima_recyling:
-        cases = [
-            r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
-            ]
-        
+        if chain[0].is_a_molecule:
+            cases = [
+                r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
+                ]
+        else:
+            cases = [
+                r.is_identical(chain[0]) and p.is_identical(chain[-1])
+                ]
+            
 
         ### If we are checking a chain that looks like it has one elementary step, but the 'IRC' chec
         ### is not actually connecting the input endpoints, the resampled chain may no longer

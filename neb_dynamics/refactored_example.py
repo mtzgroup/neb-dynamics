@@ -7,6 +7,7 @@ from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
 from neb_dynamics.nodes.Node2d import Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, Node2D_Flower
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.Node import AlessioError
 from itertools import product
 from TS.TS_PRFO import TS_PRFO
@@ -20,7 +21,7 @@ from neb_dynamics.potential_functions import (
 from neb_dynamics.Inputs import ChainInputs, NEBInputs
 
 sfs = [sorry_func_0, sorry_func_1, sorry_func_2, sorry_func_3, flower_func]
-index = 0
+index = 1
 nodes = [Node2D, Node2D_2, Node2D_ITM, Node2D_LEPS, Node2D_Flower]
 min_sizes = [-4, -2, -2, 0.5, -4]
 max_sizes = [4, 2, 2, 4, 4]
@@ -45,7 +46,7 @@ def animate_func(neb_obj: NEB):
     n_nodes = len(neb_obj.initial_chain.nodes)
     en_func = neb_obj.initial_chain[0].en_func
     chain_traj = neb_obj.chain_trajectory
-    plt.style.use("seaborn-pastel")
+    # plt.style.use("seaborn-pastel")
 
     figsize = 5
 
@@ -201,14 +202,14 @@ def main():
 
     ### node 2d
     # end_point = (3.00002182, 1.99995542)
-    end_point = (2.129, 2.224)
-    start_point = (-3.77928812, -3.28320392)
+    # end_point = (2.129, 2.224)
+    # start_point = (-3.77928812, -3.28320392)
 
     ### node 2d - 2
-    # start_point = (-1, 1)
+    start_point = (-1, 1)
     # end_point = (1, 1)
     # end_point = (1, -1)
-    # end_point = (1.01, -1.01)
+    end_point = (1.01, -1.01)
 
     # ## node 2d - ITM
     # start_point = (0, 0)
@@ -234,17 +235,19 @@ def main():
     # kval = .01
     ks = .1
     cni = ChainInputs(
-        k=ks, node_class=presets["node"], delta_k=0, step_size=.1, do_parallel=False
+        k=ks, node_class=presets["node"], delta_k=0, do_parallel=False
     )
-    nbi = NEBInputs(tol=0.1, v=True, max_steps=1000,climb=False)
+    nbi = NEBInputs(tol=.1, barrier_thre=5, v=True, max_steps=500,climb=False)
     chain = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni)
-    n = NEB(initial_chain=chain, parameters=nbi)
+    opt = VelocityProjectedOptimizer(timestep=.01, activation_tol=0.1)
+    n = NEB(initial_chain=chain, parameters=nbi, optimizer=opt)
     
     try:
         n.optimize_chain()
 
         print(f"{n.optimized.coordinates=}")
         animate_func(n)
+        n.plot_convergence_metrics()
         # plot_func(n)
         # # plot_2D(n)
 
