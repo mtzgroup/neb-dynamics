@@ -44,7 +44,7 @@ def animate_func(neb_obj: NEB):
     n_nodes = len(neb_obj.initial_chain.nodes)
     en_func = neb_obj.initial_chain[0].en_func
     chain_traj = neb_obj.chain_trajectory
-    plt.style.use("seaborn-pastel")
+    # plt.style.use("seaborn-pastel")
 
     figsize = 5
 
@@ -253,29 +253,29 @@ def main():
 
     # biased stuff
     #### asneb
-    gii = GIInputs(nimages=nimages)
-    nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=True, early_stop_chain_rms_thre=0.0002, early_stop_force_thre=1, early_stop_still_steps_thre=100)
+    # gii = GIInputs(nimages=nimages)
+    # nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=4000, climb=True, early_stop_chain_rms_thre=0.0002, early_stop_force_thre=1, early_stop_still_steps_thre=100)
 
-    amp=50
-    sig=1
-    distance_func='simp_frechet'
+    # amp=50
+    # sig=1
+    # distance_func='simp_frechet'
 
-    bias_chains = [out_chain]
-    cb = ChainBiaser(reference_chains=bias_chains, amplitude=amp, sigma=sig, distance_func=distance_func)
-    cni = ChainInputs(step_size=.1,min_step_size=0.001, node_class=presets["node"], k=1, delta_k=0, do_parallel=False, 
-                 do_chain_biasing=True, cb=cb, use_geodesic_interpolation=False)
-    cni.do_chain_biasing = True
-    cni.cb = cb 
+    # bias_chains = [out_chain]
+    # cb = ChainBiaser(reference_chains=bias_chains, amplitude=amp, sigma=sig, distance_func=distance_func)
+    # cni = ChainInputs(step_size=.1,min_step_size=0.001, node_class=presets["node"], k=1, delta_k=0, do_parallel=False, 
+    #              do_chain_biasing=True, cb=cb, use_geodesic_interpolation=False)
+    # cni.do_chain_biasing = True
+    # cni.cb = cb 
 
-    init_chain = Chain(chain.nodes, parameters=cni)
+    # init_chain = Chain(chain.nodes, parameters=cni)
 
-    for i, node in enumerate(init_chain):
-        init_chain.nodes[i] = presets["node"](pair_of_coordinates=node.coords)
+    # for i, node in enumerate(init_chain):
+    #     init_chain.nodes[i] = presets["node"](pair_of_coordinates=node.coords)
         
 
 
-    m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni, gi_inputs=gii)
-    history, out_chain = m.find_mep_multistep(init_chain)
+    # m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni, gi_inputs=gii)
+    # history, out_chain = m.find_mep_multistep(init_chain)
 
 
 
@@ -283,7 +283,7 @@ def main():
     h_root_node.draw()
     # plot_func(h[0])
     [animate_func(obj) for obj in h_root_node.get_optimization_history()]
-    [animate_func(obj) for obj in history.get_optimization_history()]
+    # [animate_func(obj) for obj in history.get_optimization_history()]
     f = plot_ethan(out_chain)
     plt.show()
     
