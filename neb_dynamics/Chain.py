@@ -612,37 +612,37 @@ class Chain:
         r, p, resampled_chain = self._approx_irc()
         irc_results = resampled_chain
 
-        # if self.parameters.use_maxima_recyling:
-        if chain[0].is_a_molecule:
-            cases = [
-                r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
-                ]
+        if self.parameters.use_maxima_recyling:
+            if chain[0].is_a_molecule:
+                cases = [
+                    r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
+                    ]
+            else:
+                cases = [
+                    r.is_identical(chain[0]) and p.is_identical(chain[-1])
+                    ]
+                
+
+            ### If we are checking a chain that looks like it has one elementary step, but the 'IRC' chec
+            ### is not actually connecting the input endpoints, the resampled chain may no longer
+            ### contain the actual R-->P reaction, since you could have replaced the P for a second R. 
+            ### The following block of code checks for this case and will simply continue NEB optimization 
+            ### as if we were working with an elementary step, since this chain is not near convergence. 
+            bad_cases = [
+                r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
+                r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
+                r.is_identical(chain[-1]) and p.is_identical(chain[0]),  # somehow flipped
+            ]
+            if any(bad_cases):
+                resampled_chain = chain
+                cases.append(True) 
+
         else:
             cases = [
-                r.is_identical(chain[0]) and p.is_identical(chain[-1])
-                ]
-            
-
-        ### If we are checking a chain that looks like it has one elementary step, but the 'IRC' chec
-        ### is not actually connecting the input endpoints, the resampled chain may no longer
-        ### contain the actual R-->P reaction, since you could have replaced the P for a second R. 
-        ### The following block of code checks for this case and will simply continue NEB optimization 
-        ### as if we were working with an elementary step, since this chain is not near convergence. 
-        bad_cases = [
-            r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
-            r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
-            r.is_identical(chain[-1]) and p.is_identical(chain[0]),  # somehow flipped
-        ]
-        if any(bad_cases):
-            resampled_chain = chain
-            cases.append(True) 
-
-        # else:
-        #     cases = [
-        #         r.is_identical(chain[0]) and p.is_identical(chain[-1]),  # best case
-        #         r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
-        #         r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
-        #     ]
+                r.is_identical(chain[0]) and p.is_identical(chain[-1]),  # best case
+                r.is_identical(chain[0]) and p.is_identical(chain[0]),  # both collapsed to reactants
+                r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
+            ]
 
         minimizing_gives_endpoints = any(cases)
         conditions["irc"] = minimizing_gives_endpoints
