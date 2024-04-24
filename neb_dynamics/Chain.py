@@ -659,6 +659,17 @@ class Chain:
         return elem_step, 'maxima', irc_results
 
     def _chain_is_concave(self):
+        rxn_is_isomorphic = None
+        if self[0].is_a_molecule:
+            if self[0]._is_connectivity_identical(self[-1]):
+                rxn_is_isomorphic = True
+            else:
+                rxn_is_isomorphic = False
+
+        else:
+            rxn_is_isomorphic = False
+    
+
         ind_minima = _get_ind_minima(self)
         minima_present = len(ind_minima) != 0
         opt_results = []
@@ -677,8 +688,12 @@ class Chain:
                         opt_traj = self[i].do_geom_opt_trajectory()
                         opt = self.parameters.node_class(opt_traj[-1])
                         
-                        minima_is_r = opt._is_connectivity_identical(self[0])
-                        minima_is_p = opt._is_connectivity_identical(self[-1])
+                        if rxn_is_isomorphic:
+                            minima_is_r = opt.is_identical(self[0])
+                            minima_is_p = opt.is_identical(self[-1])
+                        else:
+                            minima_is_r = opt._is_connectivity_identical(self[0])
+                            minima_is_p = opt._is_connectivity_identical(self[-1])
 
                         minimas_is_r_or_p.append(minima_is_r or minima_is_p)
                         opt_trajs.append(opt_traj)
@@ -696,7 +711,7 @@ class Chain:
                             opt.is_identical(self[0]) or opt.is_identical(self[-1])
                         )
             except Exception as e:
-                print("Error in geometry optimization: {e}. Pretending this is an elem step.")
+                print(f"Error in geometry optimization: {e}. Pretending this is an elem step.")
                 return True, self.copy()
             
             
@@ -704,6 +719,8 @@ class Chain:
                 r_half_traj = None
                 p_half_traj = None
                 reuse_chain = self.copy()
+                if reuse_end_ind > reuse_start_ind: 
+                    raise ValueError('Chain is very distorted. Has gone back and forth between Reactant and Products.\n')
                 reuse_chain.nodes = self.nodes[reuse_start_ind:reuse_end_ind]
                 resampled_chain = self.resample_chain(reuse_chain, n=len(self), 
                                                     raw_half1=r_half_traj, raw_half2=p_half_traj)
@@ -718,10 +735,13 @@ class Chain:
             return True, self.copy()
         
     @staticmethod
-    def resample_chain(chain, n=None, method=None, basis=None, kwds={}, raw_half1=None, raw_half2=None):
+    def resample_chain(chain, n=None, method=None, basis=None, kwds={}, raw_half1=None, raw_half2=None, parameters=None):
         print(f'\n Resampling chain with parameters: {chain.parameters} and TDproperties: {chain[0].tdstructure}')
         if n is None:
             n = len(chain)
+        if parameters is None:
+            parameters = chain.parameters.copy()
+        
             
         tsg_ind = chain.energies.argmax()
         if tsg_ind == len(chain)-1 or tsg_ind == 0:
@@ -766,7 +786,7 @@ class Chain:
         joined = Trajectory(traj=half1.traj+[chain.get_ts_guess()]+half2.traj)
         joined.update_tc_parameters(candidate_r.tdstructure)
         
-        out_chain = Chain.from_traj(joined, parameters=chain.parameters.copy())
+        out_chain = Chain.from_traj(joined, parameters=parameters)
         _ = out_chain.gradients # calling it so gradients and energies are cached
         print(f"Resampled chain energies: {out_chain.energies}")
         return out_chain
@@ -797,8 +817,8 @@ class Chain:
                 p = candidate_p.do_geometry_optimization()
                 tsg_ind = self.energies.argmax()
                 
-                # new_nodes = [r]+self.nodes[tsg_ind-1:tsg_ind+2]+[p]
-                new_nodes = [r]+self.nodes[1:-1]+[p]
+                new_nodes = [r]+self.nodes[tsg_ind-1:tsg_ind+2]+[p]
+                # new_nodes = [r]+self.nodes[1:-1]+[p]
                 resampled_chain = self.copy()
                 resampled_chain.nodes = new_nodes
                 for node in resampled_chain:
