@@ -36,7 +36,7 @@ class VelocityProjectedOptimizer(Optimizer):
         while new_chain_gradients_fails and retry_count < retry_count_max:
             try:
         
-                if np.linalg.norm(new_force) < self.activation_tol:
+                if np.amax(np.abs(new_force)) < self.activation_tol:
                     orig_shape = new_force.shape
                     prev_velocity_flat = prev_velocity.flatten()
                     projection = np.dot(prev_velocity_flat, new_force_unit.flatten())
