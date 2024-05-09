@@ -9,6 +9,10 @@ import numpy as np
 import py3Dmol
 from ase import Atoms
 from ase.optimize import LBFGSLineSearch, BFGS, FIRE, LBFGS
+from xtb.ase.calculator import XTB
+from xtb.interface import Calculator, XTBException
+from xtb.libxtb import VERBOSITY_MUTED
+from xtb.utils import get_method
 from chemcloud import CCClient
 
 
@@ -21,11 +25,7 @@ import qcop
 from qcio import Molecule as TCMolecule
 from IPython.core.display import HTML
 from openbabel import openbabel, pybel
-from openeye import oechem
-from xtb.ase.calculator import XTB
-from xtb.interface import Calculator, XTBException
-from xtb.libxtb import VERBOSITY_MUTED
-from xtb.utils import get_method
+# from openeye import oechem
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.elements import (
     atomic_number_to_symbol,
@@ -305,11 +305,8 @@ class TDStructure:
             atoms=atoms, charge=self.charge, spinmult=self.spinmult
         )
         return new_tds
-
-    def xtb_geom_optimization(self, return_traj=False):
-        from ase.io.trajectory import Trajectory as ASETraj
-        from neb_dynamics.trajectory import Trajectory
-        
+    
+    def to_ASE_atoms(self):
         # XTB api is summing the initial charges from the ATOM object.
         # it returns a vector of charges (maybe Mulliken), but to initialize the calculation,
         # it literally sums this vector up. So we create a zero vector (natoms long) and we
@@ -327,23 +324,35 @@ class TDStructure:
             charges=charges,
             magmoms=spins,
         )
+        return atoms
+
+    def xtb_geom_optimization(self, return_traj=False):
+        from ase.io.trajectory import Trajectory as ASETraj
+        from neb_dynamics.trajectory import Trajectory
+        tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
+
+        
+        
+        atoms = self.to_ASE_atoms()
+        # print(tmp.name)
 
         atoms.calc = XTB(method="GFN2-xTB", accuracy=0.001)
-        opt = LBFGSLineSearch(atoms, logfile=None, trajectory='/tmp/log.traj')
+        opt = LBFGSLineSearch(atoms, logfile=None, trajectory=tmp.name)
         # opt = LBFGS(atoms, logfile=None, trajectory='/tmp/log.traj')
         # opt = FIRE(atoms, logfile=None)
-        opt.run(fmax=0.05)
+        opt.run(fmax=0.001)
+        # opt.run(fmax=0.5)
         
         
         
-        aT = ASETraj('/tmp/log.traj')
+        aT = ASETraj(tmp.name)
         traj_list = []
         for i,_ in enumerate(aT):
             traj_list.append(TDStructure.from_ase_Atoms(aT[i], charge=self.charge, spinmult=self.spinmult))
         traj = Trajectory(traj_list)
         traj.update_tc_parameters(self)
 
-        Path('/tmp/log.traj').unlink()
+        Path(tmp.name).unlink()
         if return_traj:
             print('len opt traj: ',len(traj))
             return traj
@@ -524,20 +533,20 @@ class TDStructure:
     def from_xyz(cls, fp: Path, tot_charge=0, tot_spinmult=1):
         if isinstance(fp, str):
             fp = Path(fp)
-        if "OE_LICENSE" not in os.environ:
-            obmol = load_obmol_from_fp(fp)
-            obmol.SetTotalCharge(tot_charge)
-            obmol.SetTotalSpinMultiplicity(tot_spinmult)
-            return cls(molecule_obmol=obmol)
+        # if "OE_LICENSE" not in os.environ:
+        obmol = load_obmol_from_fp(fp)
+        obmol.SetTotalCharge(tot_charge)
+        obmol.SetTotalSpinMultiplicity(tot_spinmult)
+        return cls(molecule_obmol=obmol)
 
-        else:
-            ifs = oechem.oemolistream()
-            ifs.SetFormat(oechem.OEFormat_XYZ)
-            if ifs.open(str(fp.resolve())):
-                for mol in ifs.GetOEGraphMols():
-                    return cls.from_oe(
-                        mol, tot_charge=tot_charge, tot_spinmult=tot_spinmult
-                    )
+        # else:
+        #     ifs = oechem.oemolistream()
+        #     ifs.SetFormat(oechem.OEFormat_XYZ)
+        #     if ifs.open(str(fp.resolve())):
+        #         for mol in ifs.GetOEGraphMols():
+        #             return cls.from_oe(
+        #                 mol, tot_charge=tot_charge, tot_spinmult=tot_spinmult
+        #             )
 
     @classmethod
     def from_cc_result(cls, result):

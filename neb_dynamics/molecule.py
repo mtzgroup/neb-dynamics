@@ -9,7 +9,7 @@ import networkx as nx
 from cairosvg import svg2png
 from IPython.core.display import HTML
 from IPython.display import SVG
-from openeye import oechem, oedepict
+# from openeye import oechem, oedepict
 from neb_dynamics.isomorphism_tools import SubGraphMatcher
 from neb_dynamics.rdkit_draw import moldrawsvg
 
@@ -261,31 +261,31 @@ class Molecule(nx.Graph):
             else:
                 return SVG(svg_str)
 
-        elif mode == "oe":
-            width, height = 400, 400
+        # elif mode == "oe":
+        #     width, height = 400, 400
 
-            mol = oechem.OEGraphMol()
-            oechem.OESmilesToMol(mol, self.smiles)
-            oedepict.OEPrepareDepiction(mol)
+        #     mol = oechem.OEGraphMol()
+        #     oechem.OESmilesToMol(mol, self.smiles)
+        #     oedepict.OEPrepareDepiction(mol)
 
-            opts = oedepict.OE2DMolDisplayOptions(width, height, oedepict.OEScale_AutoScale)
-            opts.SetMargins(10)
-            disp = oedepict.OE2DMolDisplay(mol, opts)
+        #     opts = oedepict.OE2DMolDisplayOptions(width, height, oedepict.OEScale_AutoScale)
+        #     opts.SetMargins(10)
+        #     disp = oedepict.OE2DMolDisplay(mol, opts)
 
-            font = oedepict.OEFont(oedepict.OEFontFamily_Default, oedepict.OEFontStyle_Default, 12,
-                                   oedepict.OEAlignment_Center, oechem.OEDarkRed)
+        #     font = oedepict.OEFont(oedepict.OEFontFamily_Default, oedepict.OEFontStyle_Default, 12,
+        #                            oedepict.OEAlignment_Center, oechem.OEDarkRed)
 
-            for adisp in disp.GetAtomDisplays():
-                atom = adisp.GetAtom()
-                toggletext = f"{atom.GetIdx()}"
-                oedepict.OEDrawSVGToggleText(disp, adisp, toggletext, font)
+        #     for adisp in disp.GetAtomDisplays():
+        #         atom = adisp.GetAtom()
+        #         toggletext = f"{atom.GetIdx()}"
+        #         oedepict.OEDrawSVGToggleText(disp, adisp, toggletext, font)
 
-            ofs = oechem.oeosstream()
-            oedepict.OERenderMolecule(ofs, "svg", disp)
-            string = ofs.str()
+        #     ofs = oechem.oeosstream()
+        #     oedepict.OERenderMolecule(ofs, "svg", disp)
+        #     string = ofs.str()
 
-            sss = f'<div style="width: {100}%; display: table;"> <div style="display: table-row;">'
-            sss += f'{string.decode()}</div></div>'
+        #     sss = f'<div style="width: {100}%; display: table;"> <div style="display: table-row;">'
+        #     sss += f'{string.decode()}</div></div>'
             if string_mode:
                 return sss
             else:

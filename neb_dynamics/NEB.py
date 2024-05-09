@@ -21,7 +21,8 @@ from neb_dynamics.nodes.Node3D import Node3D
 from neb_dynamics.optimizers import ALS
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers.Linesearch import Linesearch
-from neb_dynamics.Inputs import NEBInputs, ChainInputs
+from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from kneed import KneeLocator
 
 import matplotlib.pyplot as plt
@@ -104,7 +105,11 @@ class NEB:
         """
         
         # max_grad_val = chain.get_maximum_grad_magnitude()
-        max_grad_val = np.linalg.norm(chain.get_g_perps())
+        # max_grad_val = np.linalg.norm(chain.get_g_perps())
+        ind_ts_guess = np.argmax(chain.energies)
+        ts_guess = chain[ind_ts_guess]
+        ts_guess_grad = np.amax(np.abs(chain.get_g_perps()[ind_ts_guess]))
+
         dist_to_prev_chain = chain._distance_to_chain(self.chain_trajectory[-2]) # the -1 is the chain im looking at
         if dist_to_prev_chain < self.parameters.early_stop_chain_rms_thre:
             self.n_steps_still_chain += 1
@@ -114,7 +119,7 @@ class NEB:
         
         correlation = self.chain_trajectory[-2]._gradient_correlation(chain)
         conditions = [ 
-                      max_grad_val <= self.parameters.early_stop_force_thre,
+                      ts_guess_grad <= self.parameters.early_stop_force_thre,
                       dist_to_prev_chain <= self.parameters.early_stop_chain_rms_thre,
                       correlation >= self.parameters.early_stop_corr_thre,
                       self.n_steps_still_chain >= self.parameters.early_stop_still_steps_thre
@@ -150,7 +155,7 @@ class NEB:
         chain_traj = chain.to_trajectory()
         xtb_chain = Chain.from_traj(chain_traj, parameters=xtb_params)
         xtb_nbi = NEBInputs(tol=self.parameters.tol*10, v=True, preopt_with_xtb=False, max_steps=1000)        
-        from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+        
         opt_xtb = VelocityProjectedOptimizer(timestep=1)
         n = NEB(initial_chain=xtb_chain, parameters=xtb_nbi, optimizer=opt_xtb)
         try:
@@ -244,7 +249,9 @@ class NEB:
 
                 # self.optimized = new_chain
                 if is_elem_step:
-                    print(f"\nUsing resampled chain as output. \n\tEns: {minimization_results.energies}\n\t Grads:{minimization_results.gradients}")
+                    # print(f"\nUsing resampled chain as output. \n\tEns: {minimization_results.energies}\n\t Grads:{minimization_results.gradients}")
+                    
+                    minimization_results.gradients # making sure they're cached for writeup
                     self.optimized = minimization_results # Controversial! Now the optimized chain is the 'resampled' chain from IRC check
                     self.chain_trajectory.append(minimization_results)
                 else:
@@ -666,7 +673,9 @@ class NEB:
             ens = np.array([c.energies-c.energies[0] for c in all_chains])
             all_integrated_path_lengths = np.array([c.integrated_path_length for c in all_chains])
             opt_step = np.array(list(range(len(all_chains))))
-            ax = plt.figure().add_subplot(projection='3d')
+            s=7
+            fs=18
+            ax = plt.figure(figsize=(1.16*s, s)).add_subplot(projection='3d')
 
             # Plot a sin curve using the x and y axes.
             x = opt_step
@@ -679,13 +688,13 @@ class NEB:
                     ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='blue',markersize=3)
             ax.grid(False)
 
-            ax.set_xlabel('optimization step')
-            ax.set_ylabel('integrated path length')
-            ax.set_zlabel('energy (hartrees)')
+            ax.set_xlabel('optimization step', fontsize=fs)
+            ax.set_ylabel('integrated path length', fontsize=fs)
+            ax.set_zlabel('energy (hartrees)', fontsize=fs)
 
             # Customize the view angle so it's easier to see that the scatter points lie
             # on the plane y=0
-            ax.view_init(elev=20., azim=-45, roll=0)
+            ax.view_init(elev=20., azim=-45)
             plt.tight_layout()
             plt.show()
         
@@ -812,7 +821,8 @@ class NEB:
             plt.show()
 
 
-    def read_from_disk(fp: Path, history_folder: Path = None, chain_parameters=ChainInputs(), neb_parameters=NEBInputs()):
+    def read_from_disk(fp: Path, history_folder: Path = None, chain_parameters=ChainInputs(), neb_parameters=NEBInputs(),
+    gi_parameters=GIInputs(), optimizer=VelocityProjectedOptimizer()):
         if isinstance(fp, str):
             fp = Path(fp)
         
@@ -835,6 +845,6 @@ class NEB:
             parameters=neb_parameters,
             optimized=history[-1],
             chain_trajectory=history,
-            optimizer=Linesearch()
+            optimizer=optimizer
         )
         return n

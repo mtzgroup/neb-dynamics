@@ -72,13 +72,19 @@ class ChainInputs:
     use_geodesic_interpolation: bool = True
     use_maxima_recyling: bool = False
     friction_optimal_gi: bool = True
+
+    skip_identical_graphs: bool = True
     
     do_chain_biasing: bool = False
     cb: ChainBiaser = None
     
-    node_freezing: bool = False
+    node_freezing: bool = True
     node_conf_barrier_thre: float = 5 # kcal/mol
     node_conf_en_thre: float = 0.5 # kcal/mol
+
+    tc_model_method: str  = 'b3lyp'
+    tc_model_basis: str = '6-31g'
+    tc_kwds: dict = field(default_factory=dict)
     
     def __post_init__(self):
         if self.do_chain_biasing and self.cb is None:

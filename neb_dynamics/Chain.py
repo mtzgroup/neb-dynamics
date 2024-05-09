@@ -68,6 +68,11 @@ class Chain:
         if isinstance(fp, str):
             fp = Path(fp)
         traj = Trajectory.from_xyz(fp)
+        traj[0].tc_model_method = parameters.tc_model_method
+        traj[0].tc_model_basis = parameters.tc_model_basis
+        traj[0].tc_kwds = parameters.tc_kwds
+        traj.update_tc_parameters(traj[0])
+
         chain = cls.from_traj(traj, parameters=parameters)
         energies_fp = fp.parent / Path(str(fp.stem) + ".energies")
         grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
@@ -601,7 +606,7 @@ class Chain:
     def is_elem_step(self):
         chain = self.copy()
         if len(self) <= 1:
-            return True, None, None
+            return True, None, self.copy()
 
         conditions = {}
         is_concave, concavity_results = self._chain_is_concave()
@@ -613,16 +618,22 @@ class Chain:
         irc_results = resampled_chain
 
         if self.parameters.use_maxima_recyling:
-            if chain[0].is_a_molecule:
-                cases = [
-                    r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
-                    ]
-            else:
-                cases = [
+            # if chain[0].is_a_molecule and chain.parameters.skip_identical_graphs:
+            #     cases = [
+            #         r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
+            #         ]
+            # else:
+                # cases = [
+                #     r.is_identical(chain[0]) and p.is_identical(chain[-1])
+                #     ]
+            cases = [
                     r.is_identical(chain[0]) and p.is_identical(chain[-1])
                     ]
-                
 
+            irc_succeeded = r.is_identical(chain[0]) and p.is_identical(chain[-1])
+            graphs_matched = r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
+            new_conformers_found = (not irc_succeeded) and graphs_matched
+            print(f"\n{irc_succeeded=} {graphs_matched=} {new_conformers_found=}\n")
             ### If we are checking a chain that looks like it has one elementary step, but the 'IRC' chec
             ### is not actually connecting the input endpoints, the resampled chain may no longer
             ### contain the actual R-->P reaction, since you could have replaced the P for a second R. 
@@ -633,7 +644,7 @@ class Chain:
                 r.is_identical(chain[-1]) and p.is_identical(chain[-1]),  # both collapsed to products
                 r.is_identical(chain[-1]) and p.is_identical(chain[0]),  # somehow flipped
             ]
-            if any(bad_cases):
+            if any(bad_cases) or new_conformers_found:
                 resampled_chain = chain
                 cases.append(True) 
 
@@ -677,9 +688,11 @@ class Chain:
         opt_trajs = []
 
         reuse_start_ind = 0
-        reuse_end_ind = -1
+        reuse_start_geom = self[0].copy()
+        reuse_end_ind = len(self)
+        reuse_end_geom = self[-1].copy()
 
-        
+        print(f"\n{minima_present=}")
         if minima_present:
             minimas_is_r_or_p = []
             try:
@@ -688,7 +701,7 @@ class Chain:
                         opt_traj = self[i].do_geom_opt_trajectory()
                         opt = self.parameters.node_class(opt_traj[-1])
                         
-                        if rxn_is_isomorphic:
+                        if rxn_is_isomorphic or not self.parameters.skip_identical_graphs:
                             minima_is_r = opt.is_identical(self[0])
                             minima_is_p = opt.is_identical(self[-1])
                         else:
@@ -699,8 +712,10 @@ class Chain:
                         opt_trajs.append(opt_traj)
                         if minima_is_r: # i.e. write the last instance where a minimum was R
                             reuse_start_ind = i
+                            reuse_start_geom = opt
                         elif minima_is_p and reuse_end_ind==-1: # i.e. only write the first instance where a minimum is P
                             reuse_end_ind = i+1
+                            reuse_end_geom = opt
 
                         opt_results.append(opt)
 
@@ -719,11 +734,22 @@ class Chain:
                 r_half_traj = None
                 p_half_traj = None
                 reuse_chain = self.copy()
-                if reuse_end_ind > reuse_start_ind: 
-                    raise ValueError('Chain is very distorted. Has gone back and forth between Reactant and Products.\n')
-                reuse_chain.nodes = self.nodes[reuse_start_ind:reuse_end_ind]
-                resampled_chain = self.resample_chain(reuse_chain, n=len(self), 
-                                                    raw_half1=r_half_traj, raw_half2=p_half_traj)
+                # print(f'\n\n{reuse_end_ind=} {reuse_start_ind=}')
+                if reuse_end_ind < reuse_start_ind: 
+                    # raise ValueError('Chain is very distorted. Has gone back and forth between Reactant and Products.\n')
+                    print('Warning: Chain is very distorted. Has gone back and forth between Reactant and Products.\n.')
+                    reuse_start_ind = 0
+                    reuse_chain.nodes = self.nodes[reuse_start_ind:reuse_end_ind]
+                    reuse_chain.nodes.append(reuse_end_geom)
+                else:
+                    reuse_chain.nodes = self.nodes[reuse_start_ind:reuse_end_ind]
+                    reuse_chain.nodes.insert(0, reuse_start_geom)
+                    reuse_chain.nodes.append(reuse_end_geom)
+                # print(f"/n/nLEN OF SELF: {len(self)}// reuse start_ind: {reuse_start_ind} reuse_end: {reuse_end_ind}")
+                # resampled_chain = self.resample_chain(reuse_chain, n=len(self), 
+                                                    # raw_half1=r_half_traj, raw_half2=p_half_traj)
+                upsampled_traj = reuse_chain.to_trajectory().run_geodesic(nimages=len(self))
+                resampled_chain = Chain.from_traj(upsampled_traj, parameters=self.parameters.copy())
 
                 return True, resampled_chain
             elif all(minimas_is_r_or_p) and not self.parameters.use_maxima_recyling:
@@ -736,7 +762,8 @@ class Chain:
         
     @staticmethod
     def resample_chain(chain, n=None, method=None, basis=None, kwds={}, raw_half1=None, raw_half2=None, parameters=None):
-        print(f'\n Resampling chain with parameters: {chain.parameters} and TDproperties: {chain[0].tdstructure}')
+        print(f'\n Resampling chain with parameters: {chain.parameters} and TDproperties: {chain[0].tdstructure}\\\\\len of chain: {len(chain)} \\\\ requested n: {n}')
+        run_gi_on_total_chain = False
         if n is None:
             n = len(chain)
         if parameters is None:
@@ -746,7 +773,13 @@ class Chain:
         tsg_ind = chain.energies.argmax()
         if tsg_ind == len(chain)-1 or tsg_ind == 0:
             print("***Chain endpoint is a maximum. Returning chain back.")
-            return chain.copy()
+            if len(chain)==n:
+                return chain.copy()
+            else: 
+                new_tr = chain.to_trajectory().run_geodesic(nimages=n)
+                new_chain = Chain.from_traj(new_tr, parameters=chain.parameters.copy())
+                return new_chain
+                
         candidate_r = chain[tsg_ind-1]
         candidate_p = chain[tsg_ind+1]
         
@@ -774,29 +807,42 @@ class Chain:
 
         raw_half1 = raw_half1.copy()
         raw_half1.traj.reverse()
-        
-        half1 = raw_half1.run_geodesic(nimages=half1_len)
+        if len(raw_half1)==1:
+            half1 = raw_half1
+            run_gi_on_total_chain = True
+        else:
+            half1 = raw_half1.run_geodesic(nimages=half1_len)
 
         if raw_half2 is None:
             raw_half2 = candidate_p.do_geom_opt_trajectory()
 
         raw_half2 = raw_half2.copy()
-        half2 = raw_half2.run_geodesic(nimages=half2_len)
+        if len(raw_half2)==1:
+            half2 = raw_half2
+            run_gi_on_total_chain = True
+        else:
+            half2 = raw_half2.run_geodesic(nimages=half2_len)
 
-        joined = Trajectory(traj=half1.traj+[chain.get_ts_guess()]+half2.traj)
+        # joined = Trajectory(traj=half1.traj+[chain.get_ts_guess()]+half2.traj)
+        joined = Trajectory(traj=[half1[0]]+[chain.get_ts_guess()]+[half2[-1]])
         joined.update_tc_parameters(candidate_r.tdstructure)
+        if run_gi_on_total_chain:
+            joined = joined.run_geodesic(nimages=n)
         
         out_chain = Chain.from_traj(joined, parameters=parameters)
         _ = out_chain.gradients # calling it so gradients and energies are cached
-        print(f"Resampled chain energies: {out_chain.energies}")
+       #  print(f"Resampled chain energies: {out_chain.energies}")
         return out_chain
 
     def _approx_irc(self, index=None):
         chain = self.copy()
+
         if index is None:
             arg_max = np.argmax(chain.energies)
         else:
             arg_max = index
+
+        # print(f">>>>>argmax: {arg_max}")
 
         if (
             arg_max == len(chain) - 1 or arg_max == 0

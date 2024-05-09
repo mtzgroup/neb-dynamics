@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from neb_dynamics.Chain import Chain
 from neb_dynamics.TreeNode import TreeNode
 from pathlib import Path
@@ -11,8 +11,11 @@ class Janitor:
     history_object: TreeNode
     msmep_object: MSMEP
     out_path: Path = None
+    cleanup_trees: list[TreeNode] = field(default_factory=list)
     
-    
+    def get_n_grad_calls(self):
+        return sum([tree.get_num_grad_calls() for tree in self.cleanup_trees])
+
     @property
     def starting_chain(self):
         return self.history_object.data.initial_chain
@@ -45,6 +48,8 @@ class Janitor:
         return insertion_indices
     
     
+
+
     def cleanup_nebs(self):
         leaves = [l for l in self.history_object.ordered_leaves if l.data]
         cleanup_results = []
@@ -63,20 +68,21 @@ class Janitor:
                 prev_end = leaves[index-1].data.optimized[-1]
                 curr_start = leaves[index].data.optimized[0]
             
-            chain_pair = Chain(nodes=[prev_end, curr_start], parameters=self.starting_chain.parameters)
-            neb_obj, chain, elem_step_results = self.msmep_object.get_neb_chain(chain_pair)
-            if self.out_path:
-                fp = self.out_path / f"cleanup_neb_{index}.xyz"
-                if not self.out_path.exists():
-                    self.out_path.mkdir()
-                    
-                neb_obj.write_to_disk(fp, write_history=True)
+            chain_pair = Chain(nodes=[prev_end, curr_start], parameters=self.starting_chain.parameters.copy())
+            h, output_chain = self.msmep_object.find_mep_multistep(chain_pair)
             
-            cleanup_results.append(neb_obj) 
+            
+            self.cleanup_trees.append(h)
+            # cleanup_results.append(h.ordered_leaves)
 
-        return cleanup_results
+        #return cleanup_results
     
-    
+    def write_to_disk(self, out_path: Path):
+        out_path.mkdir(exist_ok=True)
+        for index, h in enumerate(self.cleanup_trees):
+            fp = out_path / f"cleanup_neb_{index}.xyz"
+                
+            h.write_to_disk(fp)
     
     def merge_by_indices(
         self,
@@ -93,11 +99,11 @@ class Janitor:
         out = []
         while len(insertions_inds) > 0:
             if 0 <= insertions_inds[0] <= orig_inds[0]:
-                out.append(insertions_vals[0])
+                out.extend(insertions_vals[0])
                 insertions_inds.pop(0)
                 insertions_vals.pop(0)
             elif insertions_inds[0] == -1 and len(orig_values) == 0:
-                out.append(insertions_vals[0])
+                out.extend(insertions_vals[0])
                 insertions_inds.pop(0)
                 insertions_vals.pop(0)
             else:
@@ -111,8 +117,8 @@ class Janitor:
         return out
     
     
-    def _merge_cleanups_and_leaves(self, list_of_cleanup_nebs):
-        list_of_cleanup_nodes = [TreeNode(data=neb_i, children=[], index=99) for neb_i in list_of_cleanup_nebs]
+    def _merge_cleanups_and_leaves(self, list_of_cleanup_nodes: list[TreeNode]):
+        #list_of_cleanup_nodes = [TreeNode(data=neb_i, children=[], index=99) for neb_i in list_of_cleanup_nebs]
         orig_leaves = [l for l in self.history_object.ordered_leaves if l.data]
         print('before:',len(orig_leaves))
         new_leaves = self.merge_by_indices(
@@ -125,11 +131,14 @@ class Janitor:
         clean_out_chain = Chain.from_list_of_chains(new_chains,parameters=self.starting_chain.parameters)
         return clean_out_chain
     
-    def create_clean_msmep(self):        
-        list_of_cleanup_nebs = self.cleanup_nebs()
-        if len(list_of_cleanup_nebs) == 0:
+    def create_clean_msmep(self):
+        if len(self.cleanup_trees)==0:
+            self.cleanup_nebs()
+        
+        if len(self.cleanup_trees) == 0:
             return None
         
-        clean_out_chain = self._merge_cleanups_and_leaves(list_of_cleanup_nebs)
+        list_of_cleanup_nodes = [tree.ordered_leaves for tree in self.cleanup_trees]
+        clean_out_chain = self._merge_cleanups_and_leaves(list_of_cleanup_nodes)
         return clean_out_chain
     

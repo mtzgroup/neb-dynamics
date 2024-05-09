@@ -327,20 +327,22 @@ class Trajectory:
     def from_xyz(cls, fn: Path, tot_charge=0, tot_spinmult=1):
         tdss = []
         
-        if 'OE_LICENSE' not in os.environ:
-            file_path = fn
-            symbols, coords = read_xyz(str(file_path.resolve()))
-            return cls.from_coords_symbols(coords=np.array(coords), symbs=symbols, tot_charge=tot_charge, tot_spinmult=tot_spinmult)
-        else:
-            ifs = oechem.oemolistream()
-            ifs.SetFormat(oechem.OEFormat_XYZ)
-            if ifs.open(str(fn)):
-                for mol in ifs.GetOEGraphMols():
-                    tds = TDStructure.from_oe(
-                        mol, tot_charge=tot_charge, tot_spinmult=tot_spinmult
-                    )
-                    tdss.append(tds)
-        return cls(tdss)
+        # if 'OE_LICENSE' not in os.environ:
+        if isinstance(fn, str):
+            fn = Path(fn)
+        file_path = fn
+        symbols, coords = read_xyz(str(file_path.resolve()))
+        return cls.from_coords_symbols(coords=np.array(coords), symbs=symbols, tot_charge=tot_charge, tot_spinmult=tot_spinmult)
+        # else:
+        #     ifs = oechem.oemolistream()
+        #     ifs.SetFormat(oechem.OEFormat_XYZ)
+        #     if ifs.open(str(fn)):
+        #         for mol in ifs.GetOEGraphMols():
+        #             tds = TDStructure.from_oe(
+        #                 mol, tot_charge=tot_charge, tot_spinmult=tot_spinmult
+        #             )
+        #             tdss.append(tds)
+        # return cls(tdss)
     
     def _obmol_to_coords(self, obmol):
         return [atom.coords for atom in pybel.Molecule(obmol).atoms]

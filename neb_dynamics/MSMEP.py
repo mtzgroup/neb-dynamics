@@ -24,13 +24,7 @@ class MSMEP:
     
     optimizer: Optimizer
     
-    # other parameters
-    skip_identical_graphs: bool = True
     _use_dlf_as_backend: bool = False
-
-    # electronic structure params
-    charge: int = 0
-    spinmult: int = 1
 
     def create_endpoints_from_rxn_name(self, rxn_name, reactions_object):
         rxn = reactions_object[rxn_name]
@@ -61,10 +55,11 @@ class MSMEP:
     def find_mep_multistep(self, input_chain, tree_node_index=0):
         
         
-        if input_chain[0].is_a_molecule:
-            if input_chain[0]._is_connectivity_identical(input_chain[-1]) and self.skip_identical_graphs:
+        if input_chain.parameters.skip_identical_graphs and input_chain[0].is_a_molecule:
+            if input_chain[0]._is_connectivity_identical(input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
                 return TreeNode(data=None,children=[],index=tree_node_index), None
+
         else:
             if input_chain[0].is_identical(input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")

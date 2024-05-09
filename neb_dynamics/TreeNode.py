@@ -6,7 +6,8 @@ import numpy as np
 import networkx as nx
 import shutil
 from neb_dynamics.Chain import Chain
-from neb_dynamics.Inputs import ChainInputs, NEBInputs
+from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 @dataclass
 class TreeNode:
@@ -127,7 +128,8 @@ class TreeNode:
         return mat
 
     @classmethod
-    def read_from_disk(cls, folder_name, neb_parameters=NEBInputs(), chain_parameters=ChainInputs()):
+    def read_from_disk(cls, folder_name, neb_parameters=NEBInputs(), chain_parameters=ChainInputs(), 
+            gi_parameters=GIInputs(),optimizer=VelocityProjectedOptimizer()):
         if isinstance(folder_name, str):
             folder_name = Path(folder_name)
         adj_mat = np.loadtxt(folder_name / "adj_matrix.txt")
@@ -142,12 +144,12 @@ class TreeNode:
                 translator[true_ind] = local_ind
             
             
-            neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters) for i in range(len(nodes))]
+            neb_nodes = [NEB.read_from_disk(nodes[i], chain_parameters=chain_parameters, neb_parameters=neb_parameters, gi_parameters=gi_parameters,optimizer=optimizer) for i in range(len(nodes))]
             root = cls._get_node_helper(
                 true_node_index=0, matrix=adj_mat, list_of_nodes=neb_nodes, indices_translator=translator
             )
         else:
-            neb_nodes = [NEB.read_from_disk(folder_name / 'node_0.xyz', chain_parameters=chain_parameters, neb_parameters=neb_parameters)]
+            neb_nodes = [NEB.read_from_disk(folder_name / 'node_0.xyz', chain_parameters=chain_parameters, neb_parameters=neb_parameters, optimizer=optimizer)]
             root = cls(data=neb_nodes[0], children=[], index=0)
 
         return root
