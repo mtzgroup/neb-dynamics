@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from IPython.core.display import HTML
 from scipy.signal import argrelextrema
-import openbabel
+from openbabel import openbabel
 from pysmiles import write_smiles
 
 # from openeye import oechem

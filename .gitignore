@@ -23,7 +23,6 @@ usr/
 *.energies
 *.gradients
 *.txt
-example_cases/*
 notebooks/A2B.traj
 notebooks/chain_traj10.energies
 notebooks/alex_long_radicals/node_0_history/traj_0.energies
