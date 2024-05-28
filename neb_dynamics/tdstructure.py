@@ -1,60 +1,41 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import py3Dmol
+import qcop
 from ase import Atoms
-from ase.optimize import LBFGSLineSearch, BFGS, FIRE, LBFGS
+from ase.optimize import LBFGS, LBFGSLineSearch
+from chemcloud import CCClient
+from IPython.core.display import HTML
+from openbabel import openbabel, pybel
+from qcio import DualProgramInput
+from qcio import Molecule as TCMolecule
+from qcio import ProgramInput
+from qcparse import parse
 from xtb.ase.calculator import XTB
 from xtb.interface import Calculator, XTBException
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
-from chemcloud import CCClient
 
-
-# from chemcloud.models import AtomicInput
-from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
-from neb_dynamics.helper_functions import run_tc_local_optimization
-
-from qcio import ProgramInput, DualProgramInput
-import qcop
-from qcio import Molecule as TCMolecule
-from IPython.core.display import HTML
-from openbabel import openbabel, pybel
-
-# from openeye import oechem
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from neb_dynamics.elements import (
-    atomic_number_to_symbol,
-    symbol_to_atomic_number,
-)
-
-# from retropaths.abinitio.geodesic_interpolation.coord_utils import align_geom
-
-
-from neb_dynamics.helper_functions import (
-    load_obmol_from_fp,
-    write_xyz,
-    from_number_to_element,
-    bond_ord_number_to_string,
-)
-
+from neb_dynamics.elements import ElementData
+from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+from neb_dynamics.helper_functions import (atomic_number_to_symbol,
+                                           bond_ord_number_to_string,
+                                           from_number_to_element,
+                                           load_obmol_from_fp,
+                                           run_tc_local_optimization,
+                                           write_xyz)
 from neb_dynamics.molecule import Molecule
 
-# from retropaths.molecules.smiles_tools import (
-#     bond_ord_number_to_string,
-#     from_number_to_element,
-# )
-
-
-from qcparse import parse
-import tempfile
-import subprocess
-import shutil
+# JDEP: 05282024: Have commented out all features using tc_c0 until it stabilized.
 
 # q = 'private'
 q = None
@@ -78,7 +59,7 @@ class TDStructure:
     tc_geom_opt_kwds: dict = field(
         default_factory=lambda: {"maxiter": 300, "trust": 0.005}
     )
-    tc_c0: bytes = b""
+    # tc_c0: bytes = b""
 
     _cached_nma: list = None
     _cached_freqs: list = None
@@ -127,7 +108,7 @@ class TDStructure:
     def symbols(self):
         return np.array(
             [
-                self._atomic_number_to_symbol(atom.atomicnum)
+                atomic_number_to_symbol(atom.atomicnum)
                 for atom in pybel.Molecule(self.molecule_obmol).atoms
             ]
         )
@@ -136,6 +117,10 @@ class TDStructure:
         __, new_coords = align_geom(other_td.coords, self.coords)
         new_td = self.update_coords(new_coords)
         return new_td
+
+    def _symbol_to_atomic_number(self, s):
+        d = ElementData().from_symbol(s)
+        return d.atomic_num
 
     @property
     def atomic_numbers(self):
@@ -163,19 +148,6 @@ class TDStructure:
         returns number of atoms
         """
         return self.molecule_obmol.NumAtoms()
-
-    @property
-    def symbols(self):
-        return np.array(
-            [
-                atomic_number_to_symbol(atom.atomicnum)
-                for atom in pybel.Molecule(self.molecule_obmol).atoms
-            ]
-        )
-
-    @property
-    def atomic_numbers(self):
-        return np.array([symbol_to_atomic_number(s) for s in self.symbols])
 
     def view_mol(self, string_mode=False, style="sphere", center=True, custom_image=""):
         if center:
@@ -327,6 +299,7 @@ class TDStructure:
 
     def xtb_geom_optimization(self, return_traj=False):
         from ase.io.trajectory import Trajectory as ASETraj
+
         from neb_dynamics.trajectory import Trajectory
 
         tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
@@ -377,7 +350,7 @@ class TDStructure:
 
         tc_kwds = self.tc_kwds.copy()
         tc_geom_opt_kwds = self.tc_geom_opt_kwds.copy()
-        tc_c0 = self.tc_c0
+        # tc_c0 = self.tc_c0
 
         tds = TDStructure(
             molecule_obmol=copy_obmol,
@@ -385,7 +358,7 @@ class TDStructure:
             tc_model_basis=tc_model_basis,
             tc_kwds=tc_kwds,
             tc_geom_opt_kwds=tc_geom_opt_kwds,
-            tc_c0=tc_c0,
+            # tc_c0=tc_c0,
         )
 
         tds._cached_freqs = self._cached_freqs
@@ -617,59 +590,59 @@ class TDStructure:
             print(f"{method} not allowed. Methods: {allowed_methods}")
             return
 
-        if self.tc_c0:
-            self.tc_kwds["guess"] = "c0"
+        # if self.tc_c0:
+        #     self.tc_kwds["guess"] = "c0"
 
         tc_mol = self._as_tc_molecule()
         if method in ["energy", "gradient"]:
-            if self.tc_c0:
-                prog_input = ProgramInput(
-                    calctype=method,
-                    molecule=tc_mol,
-                    model=self.tc_d_model,
-                    keywords=self.tc_kwds,
-                    files={"c0": self.tc_c0},
-                )
-                inp = prog_input
-            else:
-                prog_input = ProgramInput(
-                    calctype=method,
-                    molecule=tc_mol,
-                    model=self.tc_d_model,
-                    keywords=self.tc_kwds,
-                )
-                inp = prog_input
+            # if self.tc_c0:
+            #     prog_input = ProgramInput(
+            #         calctype=method,
+            #         molecule=tc_mol,
+            #         model=self.tc_d_model,
+            #         keywords=self.tc_kwds,
+            #         files={"c0": self.tc_c0},
+            #     )
+            #     inp = prog_input
+            # else:
+            prog_input = ProgramInput(
+                calctype=method,
+                molecule=tc_mol,
+                model=self.tc_d_model,
+                keywords=self.tc_kwds,
+            )
+            inp = prog_input
 
         elif method in ["optimization", "transition_state", "hessian"]:
-            if self.tc_c0:
-                opt_input = DualProgramInput(
-                    calctype=method,
-                    molecule=tc_mol,
-                    keywords=self.tc_geom_opt_kwds,
-                    subprogram=ES_PROGRAM,
-                    subprogram_args={
-                        "model": self.tc_d_model,
-                        "keywords": self.tc_kwds,
-                    },
-                    files={"c0": self.tc_c0},
-                )
+            # if self.tc_c0:
+            #     opt_input = DualProgramInput(
+            #         calctype=method,
+            #         molecule=tc_mol,
+            #         keywords=self.tc_geom_opt_kwds,
+            #         subprogram=ES_PROGRAM,
+            #         subprogram_args={
+            #             "model": self.tc_d_model,
+            #             "keywords": self.tc_kwds,
+            #         },
+            #         files={"c0": self.tc_c0},
+            #     )
 
+            # else:
+            if method != "hessian":
+                inp_kwds = self.tc_kwds
             else:
-                if method is not "hessian":
-                    inp_kwds = self.tc_kwds
-                else:
-                    inp_kwds = {}
+                inp_kwds = {}
 
-                opt_input = DualProgramInput(
-                    calctype=method,
-                    molecule=tc_mol,
-                    keywords=inp_kwds,
-                    subprogram=ES_PROGRAM,
-                    subprogram_args={
-                        "model": self.tc_d_model,
-                        "keywords": self.tc_kwds,
-                    },
-                )
+            opt_input = DualProgramInput(
+                calctype=method,
+                molecule=tc_mol,
+                keywords=inp_kwds,
+                subprogram=ES_PROGRAM,
+                subprogram_args={
+                    "model": self.tc_d_model,
+                    "keywords": self.tc_kwds,
+                },
+            )
             inp = opt_input
 
         return inp
@@ -691,13 +664,13 @@ class TDStructure:
         charge {self.charge}
         """
 
-        if bool(self.tc_c0):
-            with tempfile.NamedTemporaryFile(
-                suffix=".xyz", mode="wb", delete=False
-            ) as tmp:
-                tmp.write(self.tc_c0)
+        # if bool(self.tc_c0):
+        #     with tempfile.NamedTemporaryFile(
+        #         suffix=".xyz", mode="wb", delete=False
+        #     ) as tmp:
+        #         tmp.write(self.tc_c0)
 
-            tc_inp_str += f"\nguess {str(tmp.name)}"
+        #     tc_inp_str += f"\nguess {str(tmp.name)}"
 
         kwds_strings = "\n".join(
             f"{pair[0]}  {pair[1]}\n" for pair in self.tc_kwds.items()
@@ -715,8 +688,8 @@ class TDStructure:
         output = future_result.get()
 
         if output.success:
-            if "scr.geometry/c0" in output.files.keys():
-                self.tc_c0 = output.files["scr.geometry/c0"]
+            # if "scr.geometry/c0" in output.files.keys():
+            #     self.tc_c0 = output.files["scr.geometry/c0"]
             return output.return_result
 
         else:
@@ -734,8 +707,8 @@ class TDStructure:
         )
 
         if output.success:
-            if "scr.geometry/c0" in output.files.keys():
-                self.tc_c0 = output.files["scr.geometry/c0"]
+            # if "scr.geometry/c0" in output.files.keys():
+            #     self.tc_c0 = output.files["scr.geometry/c0"]
             if return_object:
                 return output
             return output.return_result
