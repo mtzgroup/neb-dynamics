@@ -19,28 +19,87 @@ from neb_dynamics.NEB_TCDLF import NEB_TCDLF
 from pathlib import Path
 
 from neb_dynamics.Refiner import Refiner
+from IPython.core.display import HTML
+HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/for_alex/failed_gsms/failed_pygsms_0_init_guess_msmep/")
+c = Chain.from_xyz("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/conformer_sampling/best_ugi_chain.xyz", ChainInputs())
 
-h.data.initial_chain.to_trajectory()
+c2 = Chain.from_xyz("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/ugi_apr132024_msmep.xyz", ChainInputs())
 
-h.data.plot_opt_history(1)
+import matplotlib.pyplot as plt
 
-h.ordered_leaves[0].data.chain_trajectory[-2].to_trajectory()
+# +
+fs=18
+s=5
+f,ax = plt.subplots(figsize=(1.61*s, s))
+plt.plot(c.integrated_path_length, c.energies,'o-', label='conformer sampled msmep')
+plt.plot(c2.integrated_path_length, c2.energies,'-', alpha=.7, label='pseudoaligned msmep')
+plt.xlabel("Normalized path length",
+           fontsize=fs)
+plt.ylabel("Energies (kcal/mol)",
+           fontsize=fs)
+plt.legend(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+
+
+plt.legend(fontsize=fs)#, bbox_to_anchor=(1.01, 1.05))
+# -
+
+from retropaths.abinitio.tdstructure import TDStructure as TD2
+from retropaths.abinitio.trajectory import Trajectory as Tr2
+
+Tr2([TD2(td.molecule_obmol) for td in c.to_trajectory().traj])
+
+TD2(c[4].tdstructure.molecule_obmol).xtb_geom_optimization()
+
+c[0].tdstructure.molecule_rp.draw(mode='d3')
+
+from neb_dynamics.trajectory import Trajectory
+
+tr = Trajectory.from_xyz("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement/start_conformers/crest_conformers.xyz")
+
+tr2 = Trajectory.from_xyz("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement/end_conformers/crest_conformers.xyz")
+
+# +
+start_confs = tr.traj
+end_confs = tr2.traj
+
+from itertools import product
+
+pairs_to_do = list(product(start_confs, end_confs))
+
+template = open("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/new_template.sh").read().splitlines()
+
+data_dir = Path("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement/pairs_to_do/")
+submissions_dir = Path("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement/submissions/")
+for i, (start, end) in enumerate(pairs_to_do):
+    
+    print(f'***Doing pair {i}')
+    start_fp = data_dir / f'start_pair_{i}.xyz'
+    end_fp = data_dir / f'end_pair_{i}.xyz'
+    start.to_xyz(start_fp)
+    end.to_xyz(end_fp)
+    out_fp = Path(f'/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement/conformer_sampling/results_pair{i}_msmep')
+    
+    
+    cmd = f"create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.001 -sig 0 -mr 0 -nc node3d -preopt 0 -climb 0 -nimg 12 -name {out_fp} -min_ends 1"
+    
+    new_template = template.copy()
+    new_template[-1] = cmd
+    
+    with open(submissions_dir / f'submission_{i}.sh', 'w+') as f:
+        f.write("\n".join(new_template))
+# -
+
+from neb_dynamics.tdstructure import TDStructure
 
 # all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo.txt").read().splitlines()
 all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons/reactions_todo_xtb.txt").read().splitlines()
 
 import shutil
-
-refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09, 
-                      node_class=Node3D_TC_Local, use_maxima_recyling=True, do_parallel=False), resample_chain=True)
-
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Claisen-Rearrangement-Aromatic/production_maxima_recycling_msmep/")
-
-refined_leaves = refiner.create_refined_leaves(h.ordered_leaves)
 
 # +
 # rn = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
@@ -60,30 +119,35 @@ success_names = []
 
 for i, rn in enumerate(all_rns):
     # p = Path(rn) / 'production_vpo_tjm_xtb_preopt_msmep'
-    p = Path(rn) / 'production_vpo_tjm_msmep'
+    # p = Path(rn) / 'production_maxima_recycling_msmep'
+    p = Path(rn) / 'ASNEB_5_noSIG'
     print(p.parent)
     
     try:
+        with open("/home/jdep/T3D_data/msmep_draft/comparisons/status_refinement.txt","w+") as f:
+            f.write(f"doing {p}")
         h = TreeNode.read_from_disk(p)
         
         # refine reactions
-        refined_fp = Path(rn) / 'refined_results'
+        refined_fp = Path(rn) / 'refined_ASNEB_5_noSIG'
         print('Refinement done: ', refined_fp.exists())
-        if do_refine:
-            if refined_fp.exists():
-                shutil.rmtree(refined_results)
+        if do_refine and not refined_fp.exists():
+            # if refined_fp.exists():
+            #     shutil.rmtree(refined_results)
             print("Refining...")
 
             refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09, 
-                                              node_class=Node3D_TC, 
-                                              node_conf_en_thre=1.5))
+                                              node_class=Node3D_TC,
+                                              use_maxima_recyling=False, 
+                                              do_parallel=True,
+                                              node_freezing=True))
             refined_leaves = refiner.create_refined_leaves(h.ordered_leaves)
             refiner.write_leaves_to_disk(refined_fp, refined_leaves)
             
             
             tot_grad_calls = sum([leaf.get_num_grad_calls() for leaf in refined_leaves if leaf])
             print(f"Refinement took: {tot_grad_calls} calls")
-            with open(refined_fp.parent/'refined_grad_calls.txt','w+') as f:
+            with open(refined_fp.parent/'refined_ASNEB_5_noSIG_grad_calls.txt','w+') as f:
                 f.write(f"Refinement took: {tot_grad_calls} gradient calls")
         
         
@@ -110,25 +174,10 @@ for i, rn in enumerate(all_rns):
         n_steps.append((i,n))
         success_names.append(rn)
 
-    except IndexError:
-        neb_obj = NEB.read_from_disk(p / 'node_0.xyz')
-        # refine reactions
-        refined_fp = Path(rn) / 'refined_results'
-        try:
-            if not refined_fp.exists()  and do_refine:
-                refiner = Refiner()
-                refined_leaves = refiner.create_refined_leaves([TreeNode(data=neb_obj,children=[],index=0)])
-                refiner.write_leaves_to_disk(refined_fp, refined_leaves)
-                
-                
-                
-                
-                tot_grad_calls = sum([leaf.get_num_grad_calls() for leaf in refined_leaves if leaf])
-                print(f"Refinement took: {tot_grad_calls} calls")
-        except Exception as e:
-            print(e)
-            print(f"{rn} had an error")
-            continue
+    except Exception as e:
+        print(e)
+        print(f"{rn} had an error")
+        continue
             
         
         
@@ -163,6 +212,8 @@ for i, rn in enumerate(all_rns):
     print("")
 
 # -
+
+
 
 from neb_dynamics.trajectory import Trajectory
 
@@ -822,7 +873,9 @@ p = Path('/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/')
 msma = MSMEPAnalyzer(parent_dir=p, msmep_root_name='react')
 msma_dft = MSMEPAnalyzer(parent_dir=p, msmep_root_name='dft_early_stop')
 
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/ugi_apr132024_msmep/")
 
+h.output_chain[-1].tdstructure.molecule_rp.draw(mode='d3')
 
 name = 'system23'
 msma_obj = msma

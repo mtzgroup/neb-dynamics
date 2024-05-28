@@ -25,17 +25,23 @@ class SubGraphMatcher:
         self.timeout_seconds = timeout_seconds
 
     def _node_matcher(self, n1, n2):
-        nodes_equiv = n1["element"] == n2["element"] and n1["neighbors"] == n2["neighbors"] and n1["charge"] == n2["charge"]
+        nodes_equiv = (
+            n1["element"] == n2["element"]
+            and n1["neighbors"] == n2["neighbors"]
+            and n1["charge"] == n2["charge"]
+        )
         return nodes_equiv
-    
+
     def _node_matcher_no_charge(self, n1, n2):
-        nodes_equiv = n1["element"] == n2["element"] and n1["neighbors"] == n2["neighbors"]
+        nodes_equiv = (
+            n1["element"] == n2["element"] and n1["neighbors"] == n2["neighbors"]
+        )
         return nodes_equiv
 
     def _edge_matcher(self, e1, e2):
         edge_equiv = e1["bond_order"] == e2["bond_order"]
         return edge_equiv
-    
+
     def _edge_match_by_existence(self, e1, e2):
         """
         will only check whether a bond exists in both cases.
@@ -46,28 +52,42 @@ class SubGraphMatcher:
         return edge_equiv
 
     def is_isomorphic(self, g):
-        '''
+        """
         returns a boolean to see if it's isomorphic.
-        '''
+        """
         try:
             with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
-                GM = self.GM(self.mol, g, node_match=self._node_matcher, edge_match=self._edge_matcher)
+                GM = self.GM(
+                    self.mol,
+                    g,
+                    node_match=self._node_matcher,
+                    edge_match=self._edge_matcher,
+                )
                 result = GM.is_isomorphic()
         except TimeoutIsomorphism:
-            print(f'A SubGraphMatcher timeout error occurred in is_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}.')
+            print(
+                f"A SubGraphMatcher timeout error occurred in is_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}."
+            )
             result = False
         return result
-    
+
     def is_bond_isomorphic(self, g):
-        '''
+        """
         returns a boolean to see if it's isomorphic in connectivity
-        '''
+        """
         try:
             with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
-                GM = self.GM(self.mol, g, node_match=self._node_matcher_no_charge, edge_match=self._edge_match_by_existence)
+                GM = self.GM(
+                    self.mol,
+                    g,
+                    node_match=self._node_matcher_no_charge,
+                    edge_match=self._edge_match_by_existence,
+                )
                 result = GM.is_isomorphic()
         except TimeoutIsomorphism:
-            print(f'A SubGraphMatcher timeout error occurred in is_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}.')
+            print(
+                f"A SubGraphMatcher timeout error occurred in is_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}."
+            )
             result = False
         return result
 
@@ -78,23 +98,37 @@ class SubGraphMatcher:
         """
         try:
             with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
-                GM = self.GM(self.mol, g, node_match=self._node_matcher, edge_match=self._edge_matcher)
+                GM = self.GM(
+                    self.mol,
+                    g,
+                    node_match=self._node_matcher,
+                    edge_match=self._edge_matcher,
+                )
                 isos = [a for a in GM.isomorphisms_iter()]
         except TimeoutIsomorphism:
-            print(f'A SubGraphMatcher timeout error occurred in get_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}.')
+            print(
+                f"A SubGraphMatcher timeout error occurred in get_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}."
+            )
             isos = []
         return isos
 
     def is_subgraph_isomorphic(self, g):
-        '''
+        """
         Returns a boolean if self is subgraph isomorphic of g
-        '''
+        """
         try:
             with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
-                GM = self.GM(self.mol, g, node_match=self._node_matcher, edge_match=self._edge_matcher)
+                GM = self.GM(
+                    self.mol,
+                    g,
+                    node_match=self._node_matcher,
+                    edge_match=self._edge_matcher,
+                )
                 result = GM.subgraph_is_isomorphic()
         except TimeoutIsomorphism:
-            print(f'A SubGraphMatcher timeout error occurred in is_subgraph_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}.')
+            print(
+                f"A SubGraphMatcher timeout error occurred in is_subgraph_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}."
+            )
             result = False
         return result
 
@@ -105,13 +139,20 @@ class SubGraphMatcher:
         """
         try:
             with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
-                GM = self.GM(self.mol, g, node_match=self._node_matcher, edge_match=self._edge_matcher)
+                GM = self.GM(
+                    self.mol,
+                    g,
+                    node_match=self._node_matcher,
+                    edge_match=self._edge_matcher,
+                )
                 isos = [a for a in GM.subgraph_isomorphisms_iter()]
         except TimeoutIsomorphism:
-            print(f'A SubGraphMatcher timeout error occurred in get_subgraph_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}.')
+            print(
+                f"A SubGraphMatcher timeout error occurred in get_subgraph_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}."
+            )
             isos = []
         return isos
-    
+
     def get_bond_subgraph_isomorphisms(self, g):
         """
         Returns a list of dictionaries of node mappings.
@@ -119,18 +160,27 @@ class SubGraphMatcher:
         """
         try:
             with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
-                GM = self.GM(self.mol, g, node_match=self._node_matcher_no_charge, edge_match=self._edge_matcher)
+                GM = self.GM(
+                    self.mol,
+                    g,
+                    node_match=self._node_matcher_no_charge,
+                    edge_match=self._edge_matcher,
+                )
                 isos = [a for a in GM.subgraph_isomorphisms_iter()]
         except TimeoutIsomorphism:
-            print(f'A SubGraphMatcher timeout error occurred in get_subgraph_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}.')
+            print(
+                f"A SubGraphMatcher timeout error occurred in get_subgraph_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}."
+            )
             isos = []
         return isos
 
     def largest_common_subgraph(self, g):
-        '''
+        """
         This returns the ISMAGS largest common subgraph.
-        '''
-        GM = self.GM(self.mol, g, node_match=self._node_matcher, edge_match=self._edge_matcher)
+        """
+        GM = self.GM(
+            self.mol, g, node_match=self._node_matcher, edge_match=self._edge_matcher
+        )
         return list(GM.largest_common_subgraph())
 
 

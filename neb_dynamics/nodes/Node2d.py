@@ -15,7 +15,7 @@ class Node2D(Node):
     do_climb: bool = False
 
     is_a_molecule = False
-    
+
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
 
@@ -43,8 +43,7 @@ class Node2D(Node):
         other_opt = other.do_geometry_optimization()
         self_opt = self.do_geometry_optimization()
         dist = np.linalg.norm(other_opt.coords - self_opt.coords)
-        return abs(dist) < .1
-
+        return abs(dist) < 0.1
 
     @staticmethod
     def grad_func(node: Node2D):
@@ -108,7 +107,7 @@ class Node2D_2(Node):
     do_climb: bool = False
 
     is_a_molecule = False
-    
+
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
 
@@ -134,7 +133,7 @@ class Node2D_2(Node):
         C = np.pi * np.exp(-np.pi * x**2)
         D = (np.exp(-np.pi * (y - 0.8) ** 2)) + np.exp(-np.pi * (y + 0.8) ** 2)
         return A + B + C * D
-    
+
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
         out_node = self.copy()
@@ -145,8 +144,7 @@ class Node2D_2(Node):
         other_opt = other.do_geometry_optimization()
         self_opt = self.do_geometry_optimization()
         dist = np.linalg.norm(other_opt.coords - self_opt.coords)
-        return abs(dist) < .1
-
+        return abs(dist) < 0.1
 
     @staticmethod
     def grad_func(node):
@@ -246,7 +244,7 @@ class Node2D_ITM(Node):
     do_climb: bool = False
 
     is_a_molecule = False
-    
+
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
 
@@ -276,7 +274,7 @@ class Node2D_ITM(Node):
         dx = 2 * Ax * np.pi * np.sin(2 * np.pi * x)
         dy = 2 * Ay * np.pi * np.sin(2 * np.pi * y)
         return np.array([dx, dy])
-    
+
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
         out_node = self.copy()
@@ -329,7 +327,7 @@ class Node2D_LEPS(Node):
     do_climb: bool = False
 
     is_a_molecule = False
-    
+
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
 
@@ -346,7 +344,7 @@ class Node2D_LEPS(Node):
     @staticmethod
     def exchange(r, d, r0, alpha):
         return (d / 4) * (np.exp(-2 * alpha * (r - r0)) - 6 * np.exp(-alpha * (r - r0)))
-    
+
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
         out_node = self.copy()
@@ -582,7 +580,6 @@ class Node2D_LEPS(Node):
         return pe_grad_nudged
 
 
-
 @dataclass
 class Node2D_Flower(Node):
     pair_of_coordinates: np.array
@@ -590,7 +587,7 @@ class Node2D_Flower(Node):
     do_climb: bool = False
 
     is_a_molecule = False
-    
+
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
 
@@ -601,14 +598,24 @@ class Node2D_Flower(Node):
     @staticmethod
     def en_func(node):
         x, y = node.coords
-        
-        return (1./20.)*(( 1*(x**2 + y**2) - 6*np.sqrt(x**2 + y**2))**2 + 30 ) * -1*np.abs(.4 * np.cos(6  * np.arctan(x/y))+1) 
-        
+
+        return (
+            (1.0 / 20.0)
+            * ((1 * (x**2 + y**2) - 6 * np.sqrt(x**2 + y**2)) ** 2 + 30)
+            * -1
+            * np.abs(0.4 * np.cos(6 * np.arctan(x / y)) + 1)
+        )
+
     @staticmethod
     def en_func_arr(xy_vals):
         x, y = xy_vals
-        return (1./20.)*(( 1*(x**2 + y**2) - 6*np.sqrt(x**2 + y**2))**2 + 30 ) * -1*np.abs(.4 * np.cos(6  * np.arctan(x/y))+1) 
-    
+        return (
+            (1.0 / 20.0)
+            * ((1 * (x**2 + y**2) - 6 * np.sqrt(x**2 + y**2)) ** 2 + 30)
+            * -1
+            * np.abs(0.4 * np.cos(6 * np.arctan(x / y)) + 1)
+        )
+
     def do_geometry_optimization(self) -> Node:
         out = minimize(self.en_func_arr, self.coords)
         out_node = self.copy()
@@ -618,42 +625,56 @@ class Node2D_Flower(Node):
     def is_identical(self, other: Node):
         other_opt = other.do_geometry_optimization()
         self_opt = self.do_geometry_optimization()
-        
+
         dist = np.linalg.norm(other_opt.coords - self_opt.coords)
-        
-        return abs(dist) < .1
+
+        return abs(dist) < 0.1
 
     @staticmethod
     def grad_func(node):
         x, y = node.coords
         x2y2 = x**2 + y**2
-        
-        cos_term  = 0.4*np.cos(6*np.arctan(x/y)) + 1
+
+        cos_term = 0.4 * np.cos(6 * np.arctan(x / y)) + 1
         # d/dx
-        Ax = 0.12*((-6*np.sqrt(x2y2) + x2y2)**2 + 30) 
-        
-        Bx = np.sin(6*np.arctan(x/y))*(cos_term)
-        
-        Cx = y*(x**2 / y**2 + 1)*np.abs(cos_term)
-                                       
-        Dx = (1/10)*(2*x - (6*x / np.sqrt(x2y2) ))*(-6*np.sqrt(x2y2) + x2y2)*np.abs(cos_term)
-        
-        dx = (Ax*Bx)/Cx - Dx
-        
+        Ax = 0.12 * ((-6 * np.sqrt(x2y2) + x2y2) ** 2 + 30)
+
+        Bx = np.sin(6 * np.arctan(x / y)) * (cos_term)
+
+        Cx = y * (x**2 / y**2 + 1) * np.abs(cos_term)
+
+        Dx = (
+            (1 / 10)
+            * (2 * x - (6 * x / np.sqrt(x2y2)))
+            * (-6 * np.sqrt(x2y2) + x2y2)
+            * np.abs(cos_term)
+        )
+
+        dx = (Ax * Bx) / Cx - Dx
+
         # d/dy
-        Ay = (-1/10)*(2*y - 6*y/(np.sqrt(x2y2)))*(-6*np.sqrt(x2y2) + x2y2)*(np.abs(cos_term))
-        
-        By = 0.12*x*((-6*np.sqrt(x2y2) + x2y2)**2 + 30)*np.sin(6*np.arctan(x/y))
-        
+        Ay = (
+            (-1 / 10)
+            * (2 * y - 6 * y / (np.sqrt(x2y2)))
+            * (-6 * np.sqrt(x2y2) + x2y2)
+            * (np.abs(cos_term))
+        )
+
+        By = (
+            0.12
+            * x
+            * ((-6 * np.sqrt(x2y2) + x2y2) ** 2 + 30)
+            * np.sin(6 * np.arctan(x / y))
+        )
+
         Cy = cos_term
-        
-        Dy = y**2 * (x**2 / y**2 + 1)*np.abs(cos_term)
-        
-        dy =   Ay - (By*Cy)/Dy
-        
-        return np.array([dx,dy])
-        
-        
+
+        Dy = y**2 * (x**2 / y**2 + 1) * np.abs(cos_term)
+
+        dy = Ay - (By * Cy) / Dy
+
+        return np.array([dx, dy])
+
     @property
     def energy(self) -> float:
         return self.en_func(self)
@@ -686,8 +707,6 @@ class Node2D_Flower(Node):
         pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
         return pe_grad_nudged
-    
-    
 
 
 @dataclass
@@ -697,7 +716,7 @@ class Node2D_Zero(Node):
     do_climb: bool = False
 
     is_a_molecule = False
-    
+
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
 
@@ -720,12 +739,11 @@ class Node2D_Zero(Node):
         other_opt = other.do_geometry_optimization()
         self_opt = self.do_geometry_optimization()
         dist = np.linalg.norm(other_opt.coords - self_opt.coords)
-        return abs(dist) < .1
-
+        return abs(dist) < 0.1
 
     @staticmethod
     def grad_func(node: Node2D_Zero):
-        return node.coords*0
+        return node.coords * 0
 
     @property
     def energy(self) -> float:
@@ -763,4 +781,3 @@ class Node2D_Zero(Node):
         pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
         return pe_grad_nudged
-

@@ -1,32 +1,37 @@
 from dataclasses import dataclass
 
-from pathlib import Path
 import sys
 import numpy as np
 from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.helper_functions import pairwise
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
-from neb_dynamics.helper_functions import _get_ind_minima, _get_ind_maxima, create_friction_optimal_gi
+from neb_dynamics.helper_functions import (
+    _get_ind_minima,
+    create_friction_optimal_gi,
+)
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Optimizer import Optimizer
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.NEB_TCDLF import NEB_TCDLF
+from neb_dynamics.errors import ElectronicStructureError
+
 
 @dataclass
 class MSMEP:
 
-    neb_inputs: NEBInputs
-    chain_inputs: ChainInputs 
-    gi_inputs: GIInputs 
-    
-    optimizer: Optimizer
-    
+    neb_inputs: NEBInputs = NEBInputs()
+    chain_inputs: ChainInputs = ChainInputs()
+    gi_inputs: GIInputs = GIInputs()
+
+    optimizer: Optimizer = VelocityProjectedOptimizer()
+
     _use_dlf_as_backend: bool = False
 
     def create_endpoints_from_rxn_name(self, rxn_name, reactions_object):
+
         rxn = reactions_object[rxn_name]
         root = TDStructure.from_rxn_name(rxn_name, reactions_object)
 
@@ -42,54 +47,72 @@ class MSMEP:
 
         if not root_opt.molecule_rp.is_bond_isomorphic_to(root.molecule_rp):
             raise ValueError(
-                "Pseudoaligned start molecule was not a minimum at this level of theory. Exiting."
+                "Pseudoaligned start molecule was not a minimum at this level \
+                    of theory. Exiting."
             )
 
         if not target_opt.molecule_rp.is_bond_isomorphic_to(target.molecule_rp):
             raise ValueError(
-                "Product molecule was not a minimum at this level of theory. Exiting."
+                "Product molecule was not a minimum at this level of theory.\
+                    Exiting."
             )
 
         return root_opt, target_opt
 
     def find_mep_multistep(self, input_chain, tree_node_index=0):
-        
-        
-        if input_chain.parameters.skip_identical_graphs and input_chain[0].is_a_molecule:
+
+        if (
+            input_chain.parameters.skip_identical_graphs
+            and input_chain[0].is_a_molecule
+        ):
             if input_chain[0]._is_connectivity_identical(input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
-                return TreeNode(data=None,children=[],index=tree_node_index), None
+                return TreeNode(data=None, children=[], index=tree_node_index), None
 
         else:
             if input_chain[0].is_identical(input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
-                return TreeNode(data=None,children=[],index=tree_node_index), None
-        
-        root_neb_obj, chain, elem_step_results = self.get_neb_chain(input_chain=input_chain)
-        history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
-        
-        elem_step, split_method, minimization_results = elem_step_results
-        
-        if elem_step:
-            return history, chain
-       
-        else:
-            sequence_of_chains = self.make_sequence_of_chains(chain,split_method, minimization_results)
-            print(f"Splitting chains based on: {split_method}")
-            elem_steps = []
-            new_tree_node_index = tree_node_index + 1
-            for i, chain_frag in enumerate(sequence_of_chains, start=1):
-                print(f"On chain {i} of {len(sequence_of_chains)}...")
-                out_history, chain = self.find_mep_multistep(chain_frag, tree_node_index=new_tree_node_index)
-                
-                # add the outputs
-                elem_steps.append(chain)
-                history.children.append(out_history)
-                
-                # increment the node indices
-                new_tree_node_index = out_history.max_index+1
-            stitched_elem_steps = self.stitch_elem_steps(elem_steps)
-            return history, stitched_elem_steps
+                return TreeNode(data=None, children=[], index=tree_node_index), None
+
+        try:
+            root_neb_obj, chain, elem_step_results = self.get_neb_chain(
+                input_chain=input_chain
+            )
+            history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
+
+            (
+                elem_step,
+                split_method,
+                minimization_results,
+                geom_grad_calls,
+            ) = elem_step_results
+
+            if elem_step:
+                return history, chain
+
+            else:
+                sequence_of_chains = self.make_sequence_of_chains(
+                    chain, split_method, minimization_results
+                )
+                print(f"Splitting chains based on: {split_method}")
+                elem_steps = []
+                new_tree_node_index = tree_node_index + 1
+                for i, chain_frag in enumerate(sequence_of_chains, start=1):
+                    print(f"On chain {i} of {len(sequence_of_chains)}...")
+                    out_history, chain = self.find_mep_multistep(
+                        chain_frag, tree_node_index=new_tree_node_index
+                    )
+
+                    # add the outputs
+                    elem_steps.append(chain)
+                    history.children.append(out_history)
+
+                    # increment the node indices
+                    new_tree_node_index = out_history.max_index + 1
+                stitched_elem_steps = self.stitch_elem_steps(elem_steps)
+                return history, stitched_elem_steps
+        except ElectronicStructureError:
+            return TreeNode(data=None, children=[], index=tree_node_index), None
 
     def _create_interpolation(self, chain: Chain):
 
@@ -104,7 +127,7 @@ class MSMEP:
                     nudge=self.gi_inputs.nudge,
                     **self.gi_inputs.extra_kwds,
                 )
-            
+
             interpolation = Chain.from_traj(traj=gi, parameters=self.chain_inputs)
             interpolation._zero_velocity()
 
@@ -119,43 +142,54 @@ class MSMEP:
             )
 
         return interpolation
-    
 
     def get_neb_chain(self, input_chain: Chain):
 
-        # make sure the chain parameters are reset if they come from a converged chain
+        # make sure the chain parameters are reset
+        # if they come from a converged chain
         input_chain.parameters = self.chain_inputs
         if len(input_chain) != self.gi_inputs.nimages:
             interpolation = self._create_interpolation(input_chain)
-            
+
         else:
             interpolation = input_chain
-                        
+
         print("Running NEB calculation...")
         if not self._use_dlf_as_backend:
             print("Using in-house NEB optimizer")
             sys.stdout.flush()
-            
-            n = NEB(initial_chain=interpolation, parameters=self.neb_inputs.copy(), optimizer=self.optimizer.copy())
+
+            n = NEB(
+                initial_chain=interpolation,
+                parameters=self.neb_inputs.copy(),
+                optimizer=self.optimizer.copy(),
+            )
             try:
                 elem_step_results = n.optimize_chain()
                 out_chain = n.optimized
 
             except NoneConvergedException:
                 print(
-                    "\nWarning! A chain did not converge. Returning an unoptimized chain..."
+                    "\nWarning! A chain did not converge.\
+                          Returning an unoptimized chain..."
                 )
                 out_chain = n.chain_trajectory[-1]
                 elem_step_results = out_chain.is_elem_step()
-                
-                
-                
+
+            except ElectronicStructureError:
+                print(
+                    "\nWarning! A chain has electronic structure errors. \
+                        Returning an unoptimized chain..."
+                )
+                out_chain = n.chain_trajectory[-1]
+                elem_step_results = True, None, out_chain, 0
+                # elem_step_results = out_chain.is_elem_step()
+
             # except Exception as e:
             #     print(e)
             #     print("Warning! Electronic structure error. Aborting.")
             #     out_chain = n.chain_trajectory[-1]
             #     elem_step_results = out_chain.is_elem_step()
-                
 
         else:
             print("Using DL-Find as NEB optimizer")
@@ -164,41 +198,43 @@ class MSMEP:
             dlf_inputs.tol = self.neb_inputs.early_stop_force_thre
             dlf_inputs.en_thre = dlf_inputs.tol
             dlf_inputs.grad_thre = dlf_inputs.tol
-            dlf_inputs.rms_grad_thre = dlf_inputs.tol * (2/3)
-            
+            dlf_inputs.rms_grad_thre = dlf_inputs.tol * (2 / 3)
+
             # dlf_inputs.max_steps = int(self.neb_inputs.max_steps / 5)
-            
+
             total_chain_traj = [interpolation]
-            
+
             # do neb until early stop
             n = NEB_TCDLF(initial_chain=total_chain_traj[-1], parameters=dlf_inputs)
             n.optimize_chain()
             total_chain_traj.extend(n.chain_trajectory)
-            
+
             if not n.optimized.is_elem_step()[0]:
                 print("Chain is not an elementary step...splitting")
             else:
                 print("Chain appears to be an elem step, continuing...")
-                n = NEB_TCDLF(initial_chain=total_chain_traj[-1], parameters=self.neb_inputs)
+                n = NEB_TCDLF(
+                    initial_chain=total_chain_traj[-1], parameters=self.neb_inputs
+                )
                 n.optimize_chain()
                 total_chain_traj.extend(n.chain_trajectory)
                 print(f"Converged? {n.converged}")
-            
+
             n.chain_trajectory = total_chain_traj
             out_chain = total_chain_traj[-1]
             elem_step_results = out_chain.is_elem_step()
-            
-        
-        
+
         return n, out_chain, elem_step_results
-    
 
     # def _make_chain_frag(self, chain: Chain, pair_of_inds):
     def _make_chain_frag(self, chain: Chain, geom_pair, ind_pair):
         start_ind, end_ind = ind_pair
         opt_start, opt_end = geom_pair
-        chain_frag_nodes = chain.nodes[start_ind:end_ind+1]
-        chain_frag = Chain(nodes=[opt_start]+chain_frag_nodes+[opt_end], parameters=chain.parameters)
+        chain_frag_nodes = chain.nodes[start_ind : end_ind + 1]
+        chain_frag = Chain(
+            nodes=[opt_start] + chain_frag_nodes + [opt_end],
+            parameters=chain.parameters,
+        )
         # opt_start = chain[start].do_geometry_optimization()
         # opt_end = chain[end].do_geometry_optimization()
 
@@ -216,12 +252,11 @@ class MSMEP:
 
         return chain_frag
 
-
     def _do_minima_based_split(self, chain, minimization_results):
         all_geometries = [chain[0]]
         all_geometries.extend(minimization_results)
         all_geometries.append(chain[-1])
-        
+
         all_inds = [0]
         ind_minima = _get_ind_minima(chain)
         all_inds.extend(ind_minima)
@@ -232,7 +267,7 @@ class MSMEP:
 
         chains = []
         # for ind_pair in pairs_inds:
-            # chains.append(self._make_chain_frag(chain, ind_pair))
+        # chains.append(self._make_chain_frag(chain, ind_pair))
         for geom_pair, ind_pair in zip(pairs_geoms, pairs_inds):
             chains.append(self._make_chain_frag(chain, geom_pair, ind_pair))
 
@@ -241,9 +276,9 @@ class MSMEP:
     def _do_maxima_based_split(self, chain: Chain, minimization_results):
 
         resampled_chain = minimization_results
-        r,p = resampled_chain[0], resampled_chain[-1]
+        r, p = resampled_chain[0], resampled_chain[-1]
         chains_list = []
-        
+
         # add the input_R->R
         nodes = [chain[0], r]
         chain_frag = chain.copy()
@@ -254,35 +289,24 @@ class MSMEP:
         chains_list.append(resampled_chain)
 
         # add the P -> input_P
-        nodes3 = [p, chain[len(chain)-1]]
+        nodes3 = [p, chain[len(chain) - 1]]
         chain_frag3 = chain.copy()
         chain_frag3.nodes = nodes3
         chains_list.append(chain_frag3)
-        
-        
+
         return chains_list
 
     def make_sequence_of_chains(self, chain, split_method, minimization_results):
-        if split_method == 'minima':
+        if split_method == "minima":
             chains = self._do_minima_based_split(chain, minimization_results)
 
-        elif split_method == 'maxima':
+        elif split_method == "maxima":
             chains = self._do_maxima_based_split(chain, minimization_results)
 
         return chains
-
 
     def stitch_elem_steps(self, list_of_chains):
         out_list_of_chains = [chain for chain in list_of_chains if chain is not None]
         return Chain.from_list_of_chains(
             out_list_of_chains, parameters=self.chain_inputs
         )
-        
-
-        
-    
-    
-    
-
-
-

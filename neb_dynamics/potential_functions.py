@@ -1,34 +1,47 @@
 import numpy as np
-def sorry_func_0(inp):
-    
-    x, y = inp
-    return (x ** 2 + y - 11) ** 2 + (x + y ** 2 - 7) ** 2
 
-def sorry_func_1(inp): # https://theory.cm.utexas.edu/henkelman/pubs/sheppard11_1769.pdf
+
+def sorry_func_0(inp):
+
     x, y = inp
-    A = np.cos(np.pi*x) 
-    B = np.cos(np.pi*y) 
-    C = np.pi*np.exp(-np.pi*x**2)
-    D = (np.exp(-np.pi*(y - 0.8)**2))  + np.exp(-np.pi*(y+0.8)**2)
-    return A + B + C*D
+    return (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
+
+
+def sorry_func_1(
+    inp,
+):  # https://theory.cm.utexas.edu/henkelman/pubs/sheppard11_1769.pdf
+    x, y = inp
+    A = np.cos(np.pi * x)
+    B = np.cos(np.pi * y)
+    C = np.pi * np.exp(-np.pi * x**2)
+    D = (np.exp(-np.pi * (y - 0.8) ** 2)) + np.exp(-np.pi * (y + 0.8) ** 2)
+    return A + B + C * D
 
 
 def sorry_func_2(inp):
     x, y = inp
     Ax = 1
     Ay = 1
-    return -1*(Ax*np.cos(2*np.pi*x) + Ay*np.cos(2*np.pi*y))
+    return -1 * (Ax * np.cos(2 * np.pi * x) + Ay * np.cos(2 * np.pi * y))
 
 
 def flower_func(inp):
     x, y = inp
-    return (1./20.)*(( 1*(x**2 + y**2) - 6*np.sqrt(x**2 + y**2))**2 + 30 ) * -1*np.abs(.4 * np.cos(6  * np.arctan(x/y))+1)
+    return (
+        (1.0 / 20.0)
+        * ((1 * (x**2 + y**2) - 6 * np.sqrt(x**2 + y**2)) ** 2 + 30)
+        * -1
+        * np.abs(0.4 * np.cos(6 * np.arctan(x / y)) + 1)
+    )
 
 
 ####### -------
 
+
 def coulomb(r, d, r0, alpha):
-    return (d / 2) * ((3 / 2) * np.exp(-2 * alpha * (r - r0)) - np.exp(-alpha * (r - r0)))
+    return (d / 2) * (
+        (3 / 2) * np.exp(-2 * alpha * (r - r0)) - np.exp(-alpha * (r - r0))
+    )
 
 
 coulomb(d=4.746, r=1, r0=0.742, alpha=1.942)
@@ -68,8 +81,16 @@ def sorry_func_3(
     J_AC = exchange(r=d_ac, d=d_ac, r0=r0, alpha=alpha)
 
     result_Qs = (Q_AB / (1 + a)) + (Q_BC / (1 + b)) + (Q_AC / (1 + c))
-    result_Js_1 = ((J_AB**2) / ((1 + a) ** 2)) + ((J_BC**2) / ((1 + b) ** 2)) + ((J_AC**2) / ((1 + c) ** 2))
-    result_Js_2 = ((J_AB * J_BC) / ((1 + a) * (1 + b))) + ((J_AC * J_BC) / ((1 + c) * (1 + b))) + ((J_AB * J_AC) / ((1 + a) * (1 + c)))
+    result_Js_1 = (
+        ((J_AB**2) / ((1 + a) ** 2))
+        + ((J_BC**2) / ((1 + b) ** 2))
+        + ((J_AC**2) / ((1 + c) ** 2))
+    )
+    result_Js_2 = (
+        ((J_AB * J_BC) / ((1 + a) * (1 + b)))
+        + ((J_AC * J_BC) / ((1 + c) * (1 + b)))
+        + ((J_AB * J_AC) / ((1 + a) * (1 + c)))
+    )
     result_Js = result_Js_1 - result_Js_2
 
     result = result_Qs - (result_Js) ** (1 / 2)
@@ -77,11 +98,17 @@ def sorry_func_3(
 
 
 def dQ_dr(d, alpha, r, r0):
-    return (d / 2) * ((3 / 2) * (-2 * alpha * np.exp(-2 * alpha * (r - r0))) + alpha * np.exp(-alpha * (r - r0)))
+    return (d / 2) * (
+        (3 / 2) * (-2 * alpha * np.exp(-2 * alpha * (r - r0)))
+        + alpha * np.exp(-alpha * (r - r0))
+    )
 
 
 def dJ_dr(d, alpha, r, r0):
-    return (d / 4) * (np.exp(-2 * alpha * (r - r0)) * (-2 * alpha) + 6 * alpha * np.exp(-alpha * (r - r0)))
+    return (d / 4) * (
+        np.exp(-2 * alpha * (r - r0)) * (-2 * alpha)
+        + 6 * alpha * np.exp(-alpha * (r - r0))
+    )
 
 
 def grad_x(
@@ -123,13 +150,25 @@ def grad_x(
         * ealpha_x
         * (
             -2 * (1 + a) * (-1 + 3 * ealpha_x)
-            + ((-3 + ealpha_x) * (2 * d * ealpha_x * (-6 + ealpha_x) - (1 + a) * d * ealpha_y * (-6 + ealpha_y) * bDenom - 4 * (1 + a) * Jconst * cDenom))
+            + (
+                (-3 + ealpha_x)
+                * (
+                    2 * d * ealpha_x * (-6 + ealpha_x)
+                    - (1 + a) * d * ealpha_y * (-6 + ealpha_y) * bDenom
+                    - 4 * (1 + a) * Jconst * cDenom
+                )
+            )
             / (
                 np.sqrt(
                     (
                         ((d**2 * e2alpha_x) * (-6 + ealpha_x) ** 2 * aDenom**2)
                         + (d**2 * e2alpha_y * (-6 + ealpha_y) ** 2) * bDenom**2
-                        - d**2 * np.exp(-2 * alpha * (-2 * r0 + r_ab + r_bc)) * (-1 + 6 * neg_ealpha_x) * (-1 + 6 * neg_ealpha_y) * aDenom * bDenom
+                        - d**2
+                        * np.exp(-2 * alpha * (-2 * r0 + r_ab + r_bc))
+                        * (-1 + 6 * neg_ealpha_x)
+                        * (-1 + 6 * neg_ealpha_y)
+                        * aDenom
+                        * bDenom
                     )
                     - 4 * d * ealpha_x * (-6 + ealpha_x) * Jconst * aDenom * cDenom
                     - 4 * d * ealpha_y * (-6 + ealpha_y * Jconst * bDenom * cDenom)
@@ -185,13 +224,25 @@ def grad_y(
         * ealpha_y
         * (
             -2 * (1 + b) * (-1 + 3 * ealpha_y)
-            + ((-3 + ealpha_y) * (2 * d * ealpha_y * (-6 + ealpha_y) - (1 + b) * d * ealpha_x * (-6 + ealpha_x) * aDenom - 4 * (1 + b) * Jconst * cDenom))
+            + (
+                (-3 + ealpha_y)
+                * (
+                    2 * d * ealpha_y * (-6 + ealpha_y)
+                    - (1 + b) * d * ealpha_x * (-6 + ealpha_x) * aDenom
+                    - 4 * (1 + b) * Jconst * cDenom
+                )
+            )
             / (
                 np.sqrt(
                     (
                         ((d**2 * e2alpha_x) * (-6 + ealpha_x) ** 2 * aDenom**2)
                         + (d**2 * e2alpha_y * (-6 + ealpha_y) ** 2) * bDenom**2
-                        - d**2 * np.exp(-2 * alpha * (-2 * r0 + r_ab + r_bc)) * (-1 + 6 * neg_ealpha_x) * (-1 + 6 * neg_ealpha_y) * aDenom * bDenom
+                        - d**2
+                        * np.exp(-2 * alpha * (-2 * r0 + r_ab + r_bc))
+                        * (-1 + 6 * neg_ealpha_x)
+                        * (-1 + 6 * neg_ealpha_y)
+                        * aDenom
+                        * bDenom
                     )
                     - 4 * d * ealpha_x * (-6 + ealpha_x) * Jconst * aDenom * cDenom
                     - 4 * d * ealpha_y * (-6 + ealpha_y * Jconst * bDenom * cDenom)

@@ -22,17 +22,8 @@ class CompetitorAnalyzer:
         "neb_dynamics",
     ]
 
-    ASNEB_NAMES = [
-        "as-neb",
-        'asneb',
-        'msmep',
-        'autosplitneb',
-        'autosplittingneb'
-    ]
-    ASNEB_DFT_NAMES = [
-        "asneb_dft",
-        "asneb-dft"
-    ]
+    ASNEB_NAMES = ["as-neb", "asneb", "msmep", "autosplitneb", "autosplittingneb"]
+    ASNEB_DFT_NAMES = ["asneb_dft", "asneb-dft"]
 
     def __post_init__(self):
         self.structures_dir = self.comparisons_dir / "structures"
@@ -82,7 +73,7 @@ export OMP_NUM_THREADS=1
 conda activate rp
 create_msmep_from_geodesic.py -f ./initial_guess.xyz  -c 0 -s 1 &> out.txt
             """
-            
+
         elif self.method.lower() in self.ASNEB_DFT_NAMES:
             self.out_folder = self.comparisons_dir / "asneb_dft"
             self.input_file = self.inputs_dir / "nebd_input.txt"
@@ -92,7 +83,7 @@ export OMP_NUM_THREADS=1
 conda activate rp
 create_msmep_from_geodesic.py -f ./initial_guess.xyz  -c 0 -s 1 -nc node3d_tc &> out.txt
             """
-            
+
         else:
             raise ValueError(f"Invalid input method: {self.method}")
 
@@ -121,7 +112,9 @@ create_msmep_from_geodesic.py -f ./initial_guess.xyz  -c 0 -s 1 -nc node3d_tc &>
         shutil.copy(guess_path, out_path / "initial_guess.xyz")
         # shutil.copy(self.comparisons_dir / "submit_template.sh", out_path / "submit.sh")
         # shutil.copy(self.comparisons_dir / "submit_template_cpu.sh", out_path / "submit.sh")
-        shutil.copy(self.comparisons_dir / "submit_template_new.sh", out_path / "submit.sh")
+        shutil.copy(
+            self.comparisons_dir / "submit_template_new.sh", out_path / "submit.sh"
+        )
 
         self.edit_submit_file(out_path)
 
@@ -142,7 +135,7 @@ create_msmep_from_geodesic.py -f ./initial_guess.xyz  -c 0 -s 1 -nc node3d_tc &>
             yield
         finally:
             os.chdir(prev_cwd)
-            
+
     def submit_a_job_by_name(self, name):
         fp = self.out_folder / name
         submit_file = fp / "submit.sh"

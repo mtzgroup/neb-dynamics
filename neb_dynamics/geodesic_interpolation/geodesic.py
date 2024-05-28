@@ -10,8 +10,6 @@ from scipy.optimize import least_squares
 from .coord_utils import align_path, compute_wij, get_bond_list, morse_scaler
 
 
-
-
 class Geodesic(object):
     """Optimizer to obtain geodesic in redundant internal coordinates.  Core part is the calculation
     of the path length in the internal metric."""
@@ -23,7 +21,6 @@ class Geodesic(object):
         scaler=1.7,
         threshold=3,
         min_neighbors=4,
-        
         friction=1e-3,
     ):
         """Initialize the interpolater
@@ -43,7 +40,7 @@ class Geodesic(object):
         """
         rmsd0, self.path = align_path(path)
         self.atoms = atoms
-        
+
         if self.path.ndim != 3:
             raise ValueError("The path to be interpolated must have 3 dimensions")
         self.nimages, self.natoms, _ = self.path.shape
@@ -54,7 +51,7 @@ class Geodesic(object):
         self.construct_coords()
         self.friction = friction
         # Initalize interal storages for mid points, internal coordinates and B matrices
-        
+
         self.neval = 0
         self.conv_path = []
 
@@ -69,7 +66,7 @@ class Geodesic(object):
             )
         else:
             self.rij_list, self.re = get_bond_list(
-                self.path[index - 1: index + 2],
+                self.path[index - 1 : index + 2],
                 self.atoms,
                 threshold=self.threshold,
                 min_neighbors=self.min_neighbors,
@@ -78,8 +75,7 @@ class Geodesic(object):
             self.scaler = morse_scaler(re=self.re, alpha=self.scaler_input)
         else:
             self.scaler = self.scaler_input
-        
-        
+
         nimages = len(self.path)
         self.nrij = len(self.rij_list)
         self.w = [None] * nimages
@@ -125,11 +121,11 @@ class Geodesic(object):
         # Calculate displacement vectors in each segment, and the total length
         vecs_l = [
             wm - wl
-            for wl, wm in zip(self.w[start - 1: end], self.w_mid[start - 1: end])
+            for wl, wm in zip(self.w[start - 1 : end], self.w_mid[start - 1 : end])
         ]
         vecs_r = [
             wr - wm
-            for wr, wm in zip(self.w[start: end + 1], self.w_mid[start - 1: end])
+            for wr, wm in zip(self.w[start : end + 1], self.w_mid[start - 1 : end])
         ]
         self.length = np.sum(np.linalg.norm(vecs_l, axis=1)) + np.sum(
             np.linalg.norm(vecs_r, axis=1)
@@ -154,7 +150,7 @@ class Geodesic(object):
         self.grad0 = self.grad[: length * 2 * self.nrij]
         grad_shape = (length, self.nrij, end - start, 3 * self.natoms)
         grad_l = self.grad[: length * self.nrij].reshape(grad_shape)
-        grad_r = self.grad[length * self.nrij: length * self.nrij * 2].reshape(
+        grad_r = self.grad[length * self.nrij : length * self.nrij * 2].reshape(
             grad_shape
         )
         for i, image in enumerate(range(start, end)):
@@ -167,9 +163,7 @@ class Geodesic(object):
         for idx in range((end - start) * 3 * self.natoms):
             self.grad[length * self.nrij * 2 + idx, idx] = friction
 
-    def compute_target_func(
-        self, X=None, start=1, end=-1, x0=None, friction=1e-3
-    ):
+    def compute_target_func(self, X=None, start=1, end=-1, x0=None, friction=1e-3):
         """Compute the vectorized target function, which is then used for least
         squares minimization."""
         if end < 0:
@@ -191,7 +185,7 @@ class Geodesic(object):
         self.optimality = np.linalg.norm(
             np.einsum("i,i...", self.disps, self.grad), ord=np.inf
         )
-        
+
         self.conv_path.append(self.path[1].copy())
         self.neval += 1
         return self.disps, self.grad
@@ -234,13 +228,11 @@ class Geodesic(object):
         if xref is None:
             xref = X0
         self.disps = self.grad = self.segment = None
-        
+
         if friction is None:
             friction = self.friction
         # Configure the keyword arguments that will be sent to the target function.
-        kwargs = dict(
-            start=start, end=end, x0=xref, friction=friction
-        )
+        kwargs = dict(start=start, end=end, x0=xref, friction=friction)
         self.compute_target_func(**kwargs)  # Compute length and optimality
         if self.optimality > tol:
             result = least_squares(
@@ -254,9 +246,9 @@ class Geodesic(object):
                 loss="soft_l1",
             )
             self.update_geometry(result["x"], start, end)
-            
+
         rmsd, self.path = align_path(self.path)
-        
+
         return self.path
 
     def sweep(
@@ -282,16 +274,16 @@ class Geodesic(object):
             end = self.nimages + end
         self.neval = 0
         images = range(start, end)
-        
+
         # Microiteration convergence tolerances are adjusted on the fly based on level of convergence.
         curr_tol = tol * 10
         self.compute_disps()  # Compute and print the initial path length
-        
+
         for iteration in range(max_iter):
             max_dL = 0
             X0 = self.path.copy()
             for i in images[:-1]:  # Use self.smooth() to optimize individual images
-                
+
                 if reconstruct:
                     self.construct_coords()
                 xmid = (self.path[i - 1] + self.path[i + 1]) * 0.5
@@ -300,7 +292,6 @@ class Geodesic(object):
                     max_iter=min(micro_iter, iteration + 6),
                     start=i,
                     end=i + 1,
-                    
                     friction=self.friction if iteration else 0.1,
                     xref=xmid,
                 )
@@ -308,16 +299,15 @@ class Geodesic(object):
             if reconstruct:
                 self.construct_coords()
             self.compute_disps()  # Compute final length after sweep
-            
+
             if max_dL < tol:  # Check for convergence.
-                
+
                 break
             curr_tol = max(tol * 0.5, max_dL * 0.2)  # Adjust micro-iteration threshold
             images = list(reversed(images))  # Alternate sweeping direction.
-        
-                
+
         rmsd, self.path = align_path(self.path)
-        
+
         return self.path
 
 
@@ -334,24 +324,31 @@ def run_geodesic_py(
     microiter=20,
     reconstruct=None,
     nimages=5,
-    min_neighbors=4
+    min_neighbors=4,
 ):
     from .interpolation import redistribute
 
-    
-
     # Read the initial geometries.
     symbols, X = input_object.symbols, input_object.coords
-    
+
     if len(X) < 2:
         raise ValueError("Need at least two initial geometries.")
 
     # First redistribute number of images.  Perform interpolation if too few and subsampling if too many
     # images are given
-    raw = redistribute(symbols, X, nimages=nimages, tol=tol * 5, nudge=nudge, ntries=ntries)
+    raw = redistribute(
+        symbols, X, nimages=nimages, tol=tol * 5, nudge=nudge, ntries=ntries
+    )
     # Perform smoothing by minimizing distance in Cartesian coordinates with redundant internal metric
     # to find the appropriate geodesic curve on the hyperspace.
-    smoother = Geodesic(symbols, raw, scaling, threshold=dist_cutoff, friction=friction, min_neighbors=min_neighbors)
+    smoother = Geodesic(
+        symbols,
+        raw,
+        scaling,
+        threshold=dist_cutoff,
+        friction=friction,
+        min_neighbors=min_neighbors,
+    )
     if sweep is None:
         sweep = len(symbols) > 35
     try:

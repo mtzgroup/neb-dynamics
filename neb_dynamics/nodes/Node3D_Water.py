@@ -22,6 +22,7 @@ RMSD_CUTOFF = 0.5
 # RMSD_CUTOFF = 10.0
 KCAL_MOL_CUTOFF = 0.1
 
+
 @dataclass
 class Node3D_Water(Node):
     tdstructure: TDStructure
@@ -29,7 +30,6 @@ class Node3D_Water(Node):
     do_climb: bool = False
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
-
 
     is_a_molecule = True
 
@@ -68,7 +68,7 @@ class Node3D_Water(Node):
         # tol=0.0001
         # nsteps = 0
         # traj = []
-        
+
         # node = self.copy()
         # while nsteps < max_steps:
         #     traj.append(node)
@@ -86,33 +86,31 @@ class Node3D_Water(Node):
         #     print(f"\nDid not converge in {nsteps} steps. grad={np.linalg.norm(grad) / len(grad)}\n")
 
         # return node
-        
-    
+
     def _is_connectivity_identical(self, other) -> bool:
-        connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
+        connectivity_identical = self.tdstructure.molecule_rp.is_bond_isomorphic_to(
             other.tdstructure.molecule_rp
         )
         return connectivity_identical
-    
+
     def _is_conformer_identical(self, other) -> bool:
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
             dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
-            en_delta = np.abs((self.energy - other.energy)*627.5)
-            
-            
+            en_delta = np.abs((self.energy - other.energy) * 627.5)
+
             rmsd_identical = dist < RMSD_CUTOFF
             energies_identical = en_delta < KCAL_MOL_CUTOFF
             if rmsd_identical and energies_identical:
                 conformer_identical = True
-            
+
             if not rmsd_identical and energies_identical:
                 # going to assume this is a rotation issue. Need To address.
                 conformer_identical = False
-            
+
             if not rmsd_identical and not energies_identical:
                 conformer_identical = False
-            
+
             if rmsd_identical and not energies_identical:
                 conformer_identical = False
             print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
@@ -123,19 +121,26 @@ class Node3D_Water(Node):
     def is_identical(self, other) -> bool:
 
         # return self._is_connectivity_identical(other)
-        return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
-        
+        return all(
+            [
+                self._is_connectivity_identical(other),
+                self._is_conformer_identical(other),
+            ]
+        )
 
     @property
     def gradient(self):
         if self.converged:
             return np.zeros_like(self.coords)
-        
+
         else:
             if self._cached_gradient is not None:
                 return self._cached_gradient
             else:
-                grad = Node3D_Water.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
+                grad = (
+                    Node3D_Water.run_xtb_calc(self.tdstructure).get_gradient()
+                    * BOHR_TO_ANGSTROMS
+                )
                 self._cached_gradient = grad
                 return grad
 
@@ -153,7 +158,8 @@ class Node3D_Water(Node):
             numbers=np.array(atomic_numbers),
             positions=tdstruct.coords_bohr,
             charge=tdstruct.charge,
-            uhf=tdstruct.spinmult - 1)
+            uhf=tdstruct.spinmult - 1,
+        )
         calc.set_verbosity(VERBOSITY_MUTED)
         calc.set_solvent(get_solvent("water"))
         res = calc.singlepoint()
@@ -174,11 +180,10 @@ class Node3D_Water(Node):
             converged=self.converged,
             do_climb=self.do_climb,
         )
-        # if copy_node.converged:        
+        # if copy_node.converged:
         copy_node._cached_energy = self._cached_energy
-            # copy_node._cached_gradient = self._cached_gradient
+        # copy_node._cached_gradient = self._cached_gradient
         return copy_node
-
 
     def update_coords(self, coords: np.array) -> None:
 
@@ -194,8 +199,8 @@ class Node3D_Water(Node):
             symbols=self.tdstructure.symbols.tolist(),
             positions=self.coords,  # ASE works in angstroms
         )
-        
-        atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1, solvent='h2o')
+
+        atoms.calc = XTB(method="GFN2-xTB", accuracy=0.1, solvent="h2o")
         if not v:
             opt = LBFGS(atoms, logfile=None)
         else:
@@ -258,7 +263,6 @@ class Node3D_Water(Node):
             self.tdstructure.spinmult,
         )
 
-
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
         atomic_numbers, coords_bohr, charge, spinmult, converged, prev_en = tuple
@@ -278,8 +282,6 @@ class Node3D_Water(Node):
 
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
-    
-    
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
         iterator = (
@@ -289,15 +291,11 @@ class Node3D_Water(Node):
                 n.tdstructure.charge,
                 n.tdstructure.spinmult,
                 n.converged,
-                n._cached_energy
+                n._cached_energy,
             )
             for n in chain.nodes
         )
-        
-        
-        
-        
-        
+
         with mp.Pool() as p:
             ene_gradients = p.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator)
         return ene_gradients

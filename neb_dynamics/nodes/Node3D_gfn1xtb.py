@@ -6,6 +6,7 @@ from functools import cached_property
 import numpy as np
 from ase import Atoms
 from ase.optimize import LBFGS
+
 # from retropaths.abinitio.tdstructure import TDStructure
 from neb_dynamics.tdstructure import TDStructure
 from xtb.ase.calculator import XTB
@@ -21,6 +22,7 @@ import multiprocessing as mp
 RMSD_CUTOFF = 0.1
 KCAL_MOL_CUTOFF = 0.5
 
+
 @dataclass
 class Node3D_gfn1xtb(Node):
     tdstructure: TDStructure
@@ -28,7 +30,6 @@ class Node3D_gfn1xtb(Node):
     do_climb: bool = False
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
-
 
     is_a_molecule = True
 
@@ -60,32 +61,38 @@ class Node3D_gfn1xtb(Node):
     def do_geometry_optimization(self) -> Node3D_gfn1xtb:
         td_opt = self.tdstructure.gfn1xtb_geom_optimization()
         return Node3D_gfn1xtb(tdstructure=td_opt)
-    
+
     def _is_connectivity_identical(self, other) -> bool:
-        connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
+        connectivity_identical = self.tdstructure.molecule_rp.is_bond_isomorphic_to(
             other.tdstructure.molecule_rp
         )
         return connectivity_identical
-    
+
     def _is_conformer_identical(self, other) -> bool:
-        
+
         if not self._is_connectivity_identical(other):
             return False
-        
+
         aligned_self = self.tdstructure.align_to_td(other.tdstructure)
-        rmsd_identical = RMSD(aligned_self.coords, other.tdstructure.coords)[0] < RMSD_CUTOFF
-        energies_identical = np.abs((self.energy - other.energy)*627.5) < KCAL_MOL_CUTOFF
-        
+        rmsd_identical = (
+            RMSD(aligned_self.coords, other.tdstructure.coords)[0] < RMSD_CUTOFF
+        )
+        energies_identical = (
+            np.abs((self.energy - other.energy) * 627.5) < KCAL_MOL_CUTOFF
+        )
+
         if rmsd_identical and energies_identical:
             conformer_identical = True
-        
+
         elif not rmsd_identical and energies_identical:
             conformer_identical = False
-        
+
         elif not rmsd_identical and not energies_identical:
             conformer_identical = False
         else:
-            print(f"{RMSD(aligned_self.coords, other.tdstructure.coords)[0]} < {RMSD_CUTOFF}")
+            print(
+                f"{RMSD(aligned_self.coords, other.tdstructure.coords)[0]} < {RMSD_CUTOFF}"
+            )
             print(f"{np.abs((self.energy - other.energy)*627.5)} < {KCAL_MOL_CUTOFF}")
 
         return conformer_identical
@@ -93,9 +100,13 @@ class Node3D_gfn1xtb(Node):
     def is_identical(self, other) -> bool:
 
         # return self._is_connectivity_identical(other)
-        
-        return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
-        
+
+        return all(
+            [
+                self._is_connectivity_identical(other),
+                self._is_conformer_identical(other),
+            ]
+        )
 
     @cached_property
     def gradient(self):
@@ -103,7 +114,8 @@ class Node3D_gfn1xtb(Node):
             return self._cached_gradient
         else:
             return (
-                Node3D_gfn1xtb.run_xtb_calc(self.tdstructure).get_gradient() * BOHR_TO_ANGSTROMS
+                Node3D_gfn1xtb.run_xtb_calc(self.tdstructure).get_gradient()
+                * BOHR_TO_ANGSTROMS
             )
 
     @staticmethod
@@ -219,7 +231,6 @@ class Node3D_gfn1xtb(Node):
             self.tdstructure.spinmult,
         )
 
-
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
         atomic_numbers, coords_bohr, charge, spinmult = tuple
@@ -236,8 +247,6 @@ class Node3D_gfn1xtb(Node):
 
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
-    
-    
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
         iterator = (
@@ -252,5 +261,3 @@ class Node3D_gfn1xtb(Node):
         with mp.Pool() as p:
             ene_gradients = p.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator)
         return ene_gradients
-    
-

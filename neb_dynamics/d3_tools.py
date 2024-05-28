@@ -28,28 +28,61 @@ def get_index_from_dictionary_indexx_list(list_of_dicts, number):
     I call the thing INDEXX because INDEX is a special function in d3.
 
     """
-    return [x for x, element in enumerate(list_of_dicts) if element["indexx"] == "{}".format(number)][0]
+    return [
+        x
+        for x, element in enumerate(list_of_dicts)
+        if element["indexx"] == "{}".format(number)
+    ][0]
 
 
-def molecule_to_d3json(graph_molecule, node_index=False, charges=False, neighbors=False):
+def molecule_to_d3json(
+    graph_molecule, node_index=False, charges=False, neighbors=False
+):
     if node_index:  # this is the drawing without indexes
-        nodes = [{"indexx": str(i), "atom_name": graph_molecule.nodes[i]["element"].strip(), "labelZ": f'{graph_molecule.nodes[i]["element"].strip()}_{i}'} for i in graph_molecule.nodes()]
+        nodes = [
+            {
+                "indexx": str(i),
+                "atom_name": graph_molecule.nodes[i]["element"].strip(),
+                "labelZ": f'{graph_molecule.nodes[i]["element"].strip()}_{i}',
+            }
+            for i in graph_molecule.nodes()
+        ]
     else:
-        nodes = [{"indexx": str(i), "atom_name": graph_molecule.nodes[i]["element"].strip(), "labelZ": graph_molecule.nodes[i]["element"].strip()} for i in graph_molecule.nodes()]
+        nodes = [
+            {
+                "indexx": str(i),
+                "atom_name": graph_molecule.nodes[i]["element"].strip(),
+                "labelZ": graph_molecule.nodes[i]["element"].strip(),
+            }
+            for i in graph_molecule.nodes()
+        ]
 
     if charges:  # I am appending the charge number to the string.
         for node in nodes:
-            node["labelZ"] = f'{node["labelZ"]} {graph_molecule.nodes[int(node["indexx"])]["charge"]}'
+            node[
+                "labelZ"
+            ] = f'{node["labelZ"]} {graph_molecule.nodes[int(node["indexx"])]["charge"]}'
 
     if neighbors:  # I am appending the charge number to the string.
         for node in nodes:
-            node["labelZ"] = f'{node["labelZ"]} {graph_molecule.nodes[int(node["indexx"])]["neighbors"]}'
+            node[
+                "labelZ"
+            ] = f'{node["labelZ"]} {graph_molecule.nodes[int(node["indexx"])]["neighbors"]}'
 
     for node in nodes:
         if node["atom_name"] == "A":
-            node["labelZ"] = f'{graph_molecule.nodes[int(node["indexx"])]["element_matching"]}'
+            node[
+                "labelZ"
+            ] = f'{graph_molecule.nodes[int(node["indexx"])]["element_matching"]}'
 
-    links = [{"source": get_index_from_dictionary_indexx_list(nodes, s), "target": get_index_from_dictionary_indexx_list(nodes, t), "order": d["bond_order"]} for s, t, d in graph_molecule.edges(data=True)]
+    links = [
+        {
+            "source": get_index_from_dictionary_indexx_list(nodes, s),
+            "target": get_index_from_dictionary_indexx_list(nodes, t),
+            "order": d["bond_order"],
+        }
+        for s, t, d in graph_molecule.edges(data=True)
+    ]
 
     return nodes, links
 
@@ -101,11 +134,28 @@ def retrotree_to_d3json(tree, node_index=False, draw_index=True):
     """
 
     if draw_index:
-        nodes = [{"indexx": str(i), "atom_name": get_type(tree.nodes[i]), "labelZ": str(i)} for i in tree.nodes()]
+        nodes = [
+            {"indexx": str(i), "atom_name": get_type(tree.nodes[i]), "labelZ": str(i)}
+            for i in tree.nodes()
+        ]
     else:
-        nodes = [{"indexx": str(i), "atom_name": get_type(tree.nodes[i]), "labelZ": get_name(tree.nodes[i], node_index)} for i in tree.nodes()]
+        nodes = [
+            {
+                "indexx": str(i),
+                "atom_name": get_type(tree.nodes[i]),
+                "labelZ": get_name(tree.nodes[i], node_index),
+            }
+            for i in tree.nodes()
+        ]
 
-    links = [{"source": get_index_from_dictionary_indexx_list(nodes, s), "target": get_index_from_dictionary_indexx_list(nodes, t), "order": "single"} for s, t, d in tree.edges(data=True)]
+    links = [
+        {
+            "source": get_index_from_dictionary_indexx_list(nodes, s),
+            "target": get_index_from_dictionary_indexx_list(nodes, t),
+            "order": "single",
+        }
+        for s, t, d in tree.edges(data=True)
+    ]
 
     return nodes, links
 
@@ -127,9 +177,23 @@ def forward_to_d3json(tree, leaves):
     """
     This is how we can do
     """
-    nodes = [{"indexx": str(i), "atom_name": get_type_forward(tree.nodes[i], i, leaves), "labelZ": str(i)} for i in tree.nodes()]
+    nodes = [
+        {
+            "indexx": str(i),
+            "atom_name": get_type_forward(tree.nodes[i], i, leaves),
+            "labelZ": str(i),
+        }
+        for i in tree.nodes()
+    ]
 
-    links = [{"source": get_index_from_dictionary_indexx_list(nodes, s), "target": get_index_from_dictionary_indexx_list(nodes, t), "order": "single"} for s, t, d in tree.edges(data=True)]
+    links = [
+        {
+            "source": get_index_from_dictionary_indexx_list(nodes, s),
+            "target": get_index_from_dictionary_indexx_list(nodes, t),
+            "order": "single",
+        }
+        for s, t, d in tree.edges(data=True)
+    ]
 
     return nodes, links
 
@@ -137,7 +201,17 @@ def forward_to_d3json(tree, leaves):
 #############################
 
 
-def draw_d3(nodes, links, smile=None, size=None, string_mode=False, percentage=None, force_layout_charge=None, force_field_size=None, draw_index=True):
+def draw_d3(
+    nodes,
+    links,
+    smile=None,
+    size=None,
+    string_mode=False,
+    percentage=None,
+    force_layout_charge=None,
+    force_field_size=None,
+    draw_index=True,
+):
     """
     string_mode :: Bool <- returns a string if true, a HTML canvas if false.
     """
@@ -374,7 +448,11 @@ def draw_d3(nodes, links, smile=None, size=None, string_mode=False, percentage=N
     )
 
     if smile is not None:
-        svg_code = moldrawsvg(Chem.MolFromSmiles(smile, fixed_bond_length=30)).replace("\n", " ").replace("'", '"')
+        svg_code = (
+            moldrawsvg(Chem.MolFromSmiles(smile, fixed_bond_length=30))
+            .replace("\n", " ")
+            .replace("'", '"')
+        )
     else:
         svg_code = ""
 
@@ -394,4 +472,6 @@ def draw_d3(nodes, links, smile=None, size=None, string_mode=False, percentage=N
     if string_mode:
         return html_template.substitute({"css_text": css_text, "js_text": js_text})
     else:
-        return HTML(html_template.substitute({"css_text": css_text, "js_text": js_text}))
+        return HTML(
+            html_template.substitute({"css_text": css_text, "js_text": js_text})
+        )

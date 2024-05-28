@@ -24,17 +24,15 @@ from chemcloud import CCClient
 
 # oechem.OEThrow.SetLevel(oechem.OEErrorLevel_Quiet) # oechem VERBOSITY controller
 # ES_PROGRAM = 'psi4'
-ES_PROGRAM = 'terachem'
+ES_PROGRAM = "terachem"
 ANGSTROM_TO_BOHR = 1.88973
-BOHR_TO_ANGSTROM = 1/ANGSTROM_TO_BOHR
+BOHR_TO_ANGSTROM = 1 / ANGSTROM_TO_BOHR
 HARTREE_TO_KCALM = 627.503
 
 
 @dataclass
 class ElectronicStructureError(BaseException):
     message: str
-    
-    
 
 
 @dataclass
@@ -56,7 +54,7 @@ class Trajectory:
         else:
             print("Trajectory is empty! Returning 0 for charge")
             return 0
-    
+
     @property
     def spinmult(self):
         if self.traj:
@@ -64,7 +62,6 @@ class Trajectory:
         else:
             print("Trajectory is empty! Returning 1 for spinmult")
             return 1
-
 
     def __iter__(self):
         return self.traj.__iter__()
@@ -90,11 +87,11 @@ class Trajectory:
     @classmethod
     def from_coords_symbols(cls, coords, symbs, tot_charge=0, tot_spinmult=1):
         traj = [
-                TDStructure.from_coords_symbols(
-                    i_coords, symbs, tot_charge=tot_charge, tot_spinmult=tot_spinmult
-                )
-                for i_coords in coords
-            ]
+            TDStructure.from_coords_symbols(
+                i_coords, symbs, tot_charge=tot_charge, tot_spinmult=tot_spinmult
+            )
+            for i_coords in coords
+        ]
         return cls(traj)
 
     @classmethod
@@ -105,7 +102,7 @@ class Trajectory:
                 new_traj.append(frame)
 
         return Trajectory(np.array(new_traj))
-    
+
     @classmethod
     def from_list_of_cc_results(cls, cc_results):
         tds = [TDStructure.from_cc_result(r) for r in cc_results]
@@ -114,9 +111,7 @@ class Trajectory:
 
     def copy(self):
         list_of_trajs = [td.copy() for td in self.traj]
-        copy_tr = Trajectory(
-            traj=list_of_trajs
-        )
+        copy_tr = Trajectory(traj=list_of_trajs)
         copy_tr.update_tc_parameters(self.traj[0])
         return copy_tr
 
@@ -134,7 +129,6 @@ class Trajectory:
         for frame in array[start_ind:end_ind]:
             self.traj.append(frame)
 
-
     def write_trajectory(self, file_path: Path):
         """
         writes a list of xyz coordinates to 'file_path'
@@ -144,11 +138,11 @@ class Trajectory:
         xyz_arr, symbs = self.as_xyz()
         write_xyz(filename=file_path, atoms=symbs, coords=xyz_arr)
 
-    def set_implicit_solvent(self,model='cosmo',epsilon='80'):
+    def set_implicit_solvent(self, model="cosmo", epsilon="80"):
         for td in self.traj:
-            td.tc_kwds['pcm'] = model
+            td.tc_kwds["pcm"] = model
             td.tc_kwds["epsilon"] = epsilon
-        
+
     @property
     def coords(self) -> np.array:
         return np.array([x.coords for x in self])
@@ -211,8 +205,7 @@ class Trajectory:
             mode=mode,
             columns=columns,
         )
-        
-        
+
     def update_tc_parameters(self, reference: TDStructure):
         for td in self:
             td.update_tc_parameters(reference)
@@ -220,15 +213,19 @@ class Trajectory:
     def run_geodesic(self, **kwargs):
         new_traj = self.copy()
         xyz_coords = run_geodesic_py(self, **kwargs)
-        tds = [TDStructure.from_coords_symbols(x, self.symbols, tot_charge=self.charge, tot_spinmult=self.spinmult) for x in xyz_coords]
-        
+        tds = [
+            TDStructure.from_coords_symbols(
+                x, self.symbols, tot_charge=self.charge, tot_spinmult=self.spinmult
+            )
+            for x in xyz_coords
+        ]
+
         # update terachem params
         for t in tds:
             t.update_tc_parameters(self[0])
-            
+
         new_traj.traj = tds
-        
-        
+
         return new_traj
 
     def get_conv_gi(
@@ -257,65 +254,58 @@ class Trajectory:
         array = np.array([x.energy_xtb() for x in self])
         array = array[array != None]
         return (array - array[0]) * HARTREE_TO_KCALM
-    
+
     def energies_tc(self):
         ene, grads = self.energies_and_gradients_tc()
         return ene
-    
-    
+
     def tc_geom_opt_all_geometries(self):
-        prog_inp = [td._prepare_input(method='optimization') for td in self]
-        future_results = self.traj[0].tc_client.compute('geometric',prog_inp)
+        prog_inp = [td._prepare_input(method="optimization") for td in self]
+        future_results = self.traj[0].tc_client.compute("geometric", prog_inp)
         outputs = future_results.get()
-        
-        results = [TDStructure.from_cc_result(out.results) for out in outputs if out.success]
-        out_tr =  Trajectory(results)
+
+        results = [
+            TDStructure.from_cc_result(out.results) for out in outputs if out.success
+        ]
+        out_tr = Trajectory(results)
         out_tr.update_tc_parameters(self.traj[0])
         return out_tr
 
     def energies_and_gradients_tc(self):
         client = CCClient()
-        prog_input = [td._prepare_input(method='gradient') for td in self.traj]            
-        
+        prog_input = [td._prepare_input(method="gradient") for td in self.traj]
+
         if len(prog_input) > 1:
-            future_result = client.compute(
-                ES_PROGRAM, prog_input
-            )
+            future_result = client.compute(ES_PROGRAM, prog_input)
             try:
                 # print(f"\n\nusing {ES_PROGRAM}\n{prog_input=}")
                 output_list = future_result.get()
-                    
+
                 for res in output_list:
                     if not res.success:
                         res.ptraceback
                         res.pstdout
                         raise ElectronicStructureError(message=f"{ES_PROGRAM} failed.")
-                    
-                    
+
                 grads = np.array([output.return_result for output in output_list])
                 ens = np.array([output.results.energy for output in output_list])
                 return ens, grads
-            except ElectronicStructureError as e: 
-                print(f"\n\n Electronic structure failed:\nerror:{e.message}\nusing {ES_PROGRAM}\n{prog_input=}\njsons:{[inp.model_dump_json() for inp in prog_input]}")
+            except ElectronicStructureError as e:
+                print(
+                    f"\n\n Electronic structure failed:\nerror:{e.message}\nusing {ES_PROGRAM}\n{prog_input=}\njsons:{[inp.model_dump_json() for inp in prog_input]}"
+                )
         else:
-            future_result = client.compute(
-                ES_PROGRAM, prog_input[0]
-            )
+            future_result = client.compute(ES_PROGRAM, prog_input[0])
             output = future_result.get()
-                
-            
+
             if not output.success:
                 output.ptraceback
                 print(f"{ES_PROGRAM} failed.")
                 return None
-            
+
             grads = np.array([output.return_result])
             ens = np.array([output.results.energy])
             return ens, grads
-        
-        
-    
-    
 
     @classmethod
     def from_xyz_string(cls, string):
@@ -326,13 +316,18 @@ class Trajectory:
     @classmethod
     def from_xyz(cls, fn: Path, tot_charge=0, tot_spinmult=1):
         tdss = []
-        
+
         # if 'OE_LICENSE' not in os.environ:
         if isinstance(fn, str):
             fn = Path(fn)
         file_path = fn
         symbols, coords = read_xyz(str(file_path.resolve()))
-        return cls.from_coords_symbols(coords=np.array(coords), symbs=symbols, tot_charge=tot_charge, tot_spinmult=tot_spinmult)
+        return cls.from_coords_symbols(
+            coords=np.array(coords),
+            symbs=symbols,
+            tot_charge=tot_charge,
+            tot_spinmult=tot_spinmult,
+        )
         # else:
         #     ifs = oechem.oemolistream()
         #     ifs.SetFormat(oechem.OEFormat_XYZ)
@@ -343,13 +338,16 @@ class Trajectory:
         #             )
         #             tdss.append(tds)
         # return cls(tdss)
-    
+
     def _obmol_to_coords(self, obmol):
         return [atom.coords for atom in pybel.Molecule(obmol).atoms]
-    
+
     def _obmol_to_symbs(self, obmol):
-        return [atomic_number_to_symbol(atom.atomicnum) for atom in pybel.Molecule(obmol).atoms]
-    
+        return [
+            atomic_number_to_symbol(atom.atomicnum)
+            for atom in pybel.Molecule(obmol).atoms
+        ]
+
     def as_xyz(self):
         """
         returns the trajectory array as a list of xyz coordinates and
@@ -362,4 +360,3 @@ class Trajectory:
 
         symbols = self._obmol_to_symbs(molecule.molecule_obmol)
         return xyz_arr, symbols
-

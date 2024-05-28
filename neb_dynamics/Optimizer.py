@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
+
 @dataclass
 class Optimizer(ABC):
     @abstractmethod

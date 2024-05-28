@@ -9,6 +9,7 @@ import networkx as nx
 from cairosvg import svg2png
 from IPython.core.display import HTML
 from IPython.display import SVG
+
 # from openeye import oechem, oedepict
 from neb_dynamics.isomorphism_tools import SubGraphMatcher
 from neb_dynamics.rdkit_draw import moldrawsvg
@@ -16,8 +17,7 @@ from neb_dynamics.rdkit_draw import moldrawsvg
 from neb_dynamics.d3_tools import draw_d3, molecule_to_d3json
 from neb_dynamics.helper_functions import graph_to_smiles
 
-from neb_dynamics.isomorphism_mapping import IsomorphismMappings 
-
+from neb_dynamics.isomorphism_mapping import IsomorphismMappings
 
 
 class Molecule(nx.Graph):
@@ -26,7 +26,7 @@ class Molecule(nx.Graph):
     Molecules are undirected graphs with node attribute 'element', being the atom type and sometimes a unique integer id.
     """
 
-    def __init__(self, name: str = '', smi: str = ''):
+    def __init__(self, name: str = "", smi: str = ""):
         """
         Constructs a molecule as a subclass of networkx Graph type
 
@@ -49,8 +49,6 @@ class Molecule(nx.Graph):
         edge_data = self.edges.data()
         return f"nodes = {self.nodes.data()}\nedges = {edge_data}\n"
 
-    
-
     def __repr__(self):
         rep = None
         if self.chemical_name != "":
@@ -61,22 +59,20 @@ class Molecule(nx.Graph):
             rep = self.__str__()
         return rep
 
-
     def indices_are_identical(self, b: Molecule):
         res = self.remove_Hs().get_subgraph_isomorphisms_of(b.remove_Hs())
-        if len(res) > 1: 
+        if len(res) > 1:
             # print("Warning! Multiple isomorphisms found.")
             return True
         elif len(res) == 0:
             # print("No isomorphisms found")
             return False
-        
-        for k,v in res[0].reverse_mapping.items():
-            if k!=v:
+
+        for k, v in res[0].reverse_mapping.items():
+            if k != v:
                 # print(f"{k} in predicted is different to {v}")
                 return False
         return True
-
 
     def copy(self, reindex=False, start=0) -> Molecule:
         """Overload the nx.Graph.copy() method to bring the non-networkx attributes across
@@ -98,8 +94,6 @@ class Molecule(nx.Graph):
 
         return new_mol
 
-
-
     def graph_difference(self, subtracted_molecule: Molecule) -> Molecule:
         """This will remove all subgraphs from self matching subtracted molecule
 
@@ -112,7 +106,9 @@ class Molecule(nx.Graph):
         target = self.copy()
         isomorphisms = subtracted_molecule.get_subgraph_isomorphisms_of(target)
 
-        assert len(isomorphisms) > 0, f"The graph difference between {self.force_smiles()} and {subtracted_molecule.force_smiles()} needs a second look."
+        assert (
+            len(isomorphisms) > 0
+        ), f"The graph difference between {self.force_smiles()} and {subtracted_molecule.force_smiles()} needs a second look."
 
         this_isomorphism = isomorphisms[0]
         this_iso_remaining_fragments = target.copy()
@@ -123,12 +119,14 @@ class Molecule(nx.Graph):
 
         return this_iso_remaining_fragments
 
-    def graph_difference_with_list_and_duplicates(self, mols: list[Molecule]) -> Molecule:
-        '''
+    def graph_difference_with_list_and_duplicates(
+        self, mols: list[Molecule]
+    ) -> Molecule:
+        """
         it is a graph difference between a graph and a list of molecules
         Every instance of each molecule in the list is removed from the self
         molecule.
-        '''
+        """
         new_mol = self.copy()
         for mol in mols:
             while mol.is_subgraph_isomorphic_to(new_mol):
@@ -204,19 +202,21 @@ class Molecule(nx.Graph):
             final += self
         return final
 
-    def draw(self,
-             mode="rdkit",
-             size=None,
-             string_mode=False,
-             node_index=True,
-             percentage=None,
-             force=None,
-             fixed_bond_length=None,
-             fixedScale=None,
-             fontSize=None,
-             lineWidth=None,
-             charges=True,
-             neighbors=False):
+    def draw(
+        self,
+        mode="rdkit",
+        size=None,
+        string_mode=False,
+        node_index=True,
+        percentage=None,
+        force=None,
+        fixed_bond_length=None,
+        fixedScale=None,
+        fontSize=None,
+        lineWidth=None,
+        charges=True,
+        neighbors=False,
+    ):
         """
         Draw the graph, mode can be 'd3' for interactive force directed graphs or 'rdkit' or 'oe' for chemdraw style images
         """
@@ -225,8 +225,17 @@ class Molecule(nx.Graph):
             size = size or (500, 500)
             G = self.copy()
             # G = nx.convert_node_labels_to_integers(G)
-            nodes, links = molecule_to_d3json(G, node_index, charges=charges, neighbors=neighbors)
-            return draw_d3(nodes, links, size=size, string_mode=string_mode, percentage=percentage, force_layout_charge=force)
+            nodes, links = molecule_to_d3json(
+                G, node_index, charges=charges, neighbors=neighbors
+            )
+            return draw_d3(
+                nodes,
+                links,
+                size=size,
+                string_mode=string_mode,
+                percentage=percentage,
+                force_layout_charge=force,
+            )
 
         elif mode == "rdkit":
             size = size or (300, 300)
@@ -255,54 +264,64 @@ class Molecule(nx.Graph):
                 "Cm": "R22",
             }
             smiles = self.force_smiles()
-            svg_str = moldrawsvg(smiles, d, molSize=size, fixed_bond_length=fixed_bond_length, fixedScale=fixedScale, fontSize=fontSize, lineWidth=lineWidth)
+            svg_str = moldrawsvg(
+                smiles,
+                d,
+                molSize=size,
+                fixed_bond_length=fixed_bond_length,
+                fixedScale=fixedScale,
+                fontSize=fontSize,
+                lineWidth=lineWidth,
+            )
             if string_mode:
                 return svg_str
             else:
                 return SVG(svg_str)
 
-        # elif mode == "oe":
-        #     width, height = 400, 400
+            # elif mode == "oe":
+            #     width, height = 400, 400
 
-        #     mol = oechem.OEGraphMol()
-        #     oechem.OESmilesToMol(mol, self.smiles)
-        #     oedepict.OEPrepareDepiction(mol)
+            #     mol = oechem.OEGraphMol()
+            #     oechem.OESmilesToMol(mol, self.smiles)
+            #     oedepict.OEPrepareDepiction(mol)
 
-        #     opts = oedepict.OE2DMolDisplayOptions(width, height, oedepict.OEScale_AutoScale)
-        #     opts.SetMargins(10)
-        #     disp = oedepict.OE2DMolDisplay(mol, opts)
+            #     opts = oedepict.OE2DMolDisplayOptions(width, height, oedepict.OEScale_AutoScale)
+            #     opts.SetMargins(10)
+            #     disp = oedepict.OE2DMolDisplay(mol, opts)
 
-        #     font = oedepict.OEFont(oedepict.OEFontFamily_Default, oedepict.OEFontStyle_Default, 12,
-        #                            oedepict.OEAlignment_Center, oechem.OEDarkRed)
+            #     font = oedepict.OEFont(oedepict.OEFontFamily_Default, oedepict.OEFontStyle_Default, 12,
+            #                            oedepict.OEAlignment_Center, oechem.OEDarkRed)
 
-        #     for adisp in disp.GetAtomDisplays():
-        #         atom = adisp.GetAtom()
-        #         toggletext = f"{atom.GetIdx()}"
-        #         oedepict.OEDrawSVGToggleText(disp, adisp, toggletext, font)
+            #     for adisp in disp.GetAtomDisplays():
+            #         atom = adisp.GetAtom()
+            #         toggletext = f"{atom.GetIdx()}"
+            #         oedepict.OEDrawSVGToggleText(disp, adisp, toggletext, font)
 
-        #     ofs = oechem.oeosstream()
-        #     oedepict.OERenderMolecule(ofs, "svg", disp)
-        #     string = ofs.str()
+            #     ofs = oechem.oeosstream()
+            #     oedepict.OERenderMolecule(ofs, "svg", disp)
+            #     string = ofs.str()
 
-        #     sss = f'<div style="width: {100}%; display: table;"> <div style="display: table-row;">'
-        #     sss += f'{string.decode()}</div></div>'
+            #     sss = f'<div style="width: {100}%; display: table;"> <div style="display: table-row;">'
+            #     sss += f'{string.decode()}</div></div>'
             if string_mode:
                 return sss
             else:
                 return HTML(sss)
         else:
-            raise ValueError(f'mode must be one of "oe", "d3" or "rdkit", received {mode}')
+            raise ValueError(
+                f'mode must be one of "oe", "d3" or "rdkit", received {mode}'
+            )
 
     def to_svg(self, folder=Path("."), file_name=None):
         if file_name is None:
-            file_name = f'{self.force_smiles()}.svg'
+            file_name = f"{self.force_smiles()}.svg"
         full_path = folder / file_name
         with open(full_path, "w") as f:
             f.write(self.draw(mode="rdkit", string_mode=True))
 
     def to_png(self, folder=Path("."), file_name=None):
         if file_name is None:
-            file_name = f'{self.force_smiles()}.png'
+            file_name = f"{self.force_smiles()}.png"
         full_path = folder / file_name
         full_path = str(full_path)
         svg_code = self.draw(mode="rdkit", string_mode=True)
@@ -314,20 +333,21 @@ class Molecule(nx.Graph):
         return Molecule.draw_list(mols, names=smis, **kwargs)
 
     @staticmethod
-    def draw_list(molecule_list,
-                  names=[],
-                  mode="rdkit",
-                  title="",
-                  charges=False,
-                  size=(650, 650),
-                  width=100,
-                  columns=5,
-                  string_mode=False,
-                  node_index=True,
-                  neighbors=False,
-                  arrows=False,
-                  borders=False,
-                  ):
+    def draw_list(
+        molecule_list,
+        names=[],
+        mode="rdkit",
+        title="",
+        charges=False,
+        size=(650, 650),
+        width=100,
+        columns=5,
+        string_mode=False,
+        node_index=True,
+        neighbors=False,
+        arrows=False,
+        borders=False,
+    ):
         """
         Draws a list of molecules
         """
@@ -348,7 +368,7 @@ class Molecule(nx.Graph):
 
         cell_width = 100.0 / how_many_columns
 
-        borders_string = 'border: 1px solid black;' if borders else ''
+        borders_string = "border: 1px solid black;" if borders else ""
 
         sstring = f'<h2>{title}</h2><div style="width: {width}%; display: table;"> <div style="display: table-row;">'
 
@@ -360,12 +380,12 @@ class Molecule(nx.Graph):
                 name = f'<p style="text-align: center;">{names[i]}</p>'
             except IndexError:
                 name = ""
-            this_border_string = borders_string if not mol.is_empty() else ''  # I do not want to draw border on empty molecules.
-            sstring += (
-                f'<div style="width: {cell_width}%; display: table-cell;{this_border_string}"> \
+            this_border_string = (
+                borders_string if not mol.is_empty() else ""
+            )  # I do not want to draw border on empty molecules.
+            sstring += f'<div style="width: {cell_width}%; display: table-cell;{this_border_string}"> \
                 {mol.draw(mode=mode, string_mode=True, size=size, charges=charges, neighbors=neighbors, node_index=node_index,percentage=0.8)} {name} </div>'
-            )
-            if arrows and i < true_mol_len-1:
+            if arrows and i < true_mol_len - 1:
                 sstring += '<div style="width: 0%; display: table-cell; vertical-align: middle;"><font size="+2">⟶</font></div>'
 
         sstring += "</div></div>"
@@ -375,10 +395,10 @@ class Molecule(nx.Graph):
             return HTML(sstring)
 
     def renumber_indexes(self, swaps):
-        '''
+        """
         Takes a molecule and a mapping {2:3, 3:2, 5:4, 4:6, 6:5}
         and returns the new molecule that has the VALUES of the mapping where the KEYS were
-        '''
+        """
         mol2 = nx.relabel_nodes(self, swaps)
         return mol2
 
@@ -395,19 +415,17 @@ class Molecule(nx.Graph):
         return mol2
 
     def get_bond_order(self, first_atom, second_atom):
-        '''get the bond orde between two indexes'''
+        """get the bond orde between two indexes"""
         return self.edges[first_atom, second_atom]["bond_order"]
 
     def get_element(self, index_atom):
-        '''returns the element at one index'''
+        """returns the element at one index"""
         return self.nodes[index_atom]["element"]
-
 
     def is_isomorphic_to(self, mol):
         GM = SubGraphMatcher(self)
         return GM.is_isomorphic(mol)
-    
-    
+
     def is_bond_isomorphic_to(self, mol):
         GM = SubGraphMatcher(self)
         return GM.is_bond_isomorphic(mol)
@@ -426,7 +444,9 @@ class Molecule(nx.Graph):
         boolean = GM.is_subgraph_isomorphic(self.remove_r_groups())
         return boolean
 
-    def get_subgraph_isomorphisms_of(self, target, verbosity=0) -> list[IsomorphismMappings]:
+    def get_subgraph_isomorphisms_of(
+        self, target, verbosity=0
+    ) -> list[IsomorphismMappings]:
         """
         a.get_subgraph_isomorphisms_of(b)
         gives the isomorphic map of A being a subgraph of B
@@ -436,8 +456,10 @@ class Molecule(nx.Graph):
         GM = SubGraphMatcher(target, verbosity=verbosity)
         isoms = GM.get_subgraph_isomorphisms(self.remove_r_groups())
         return [IsomorphismMappings(x) for x in isoms]
-    
-    def get_bond_subgraph_isomorphisms_of(self, target, verbosity=0) -> list[IsomorphismMappings]:
+
+    def get_bond_subgraph_isomorphisms_of(
+        self, target, verbosity=0
+    ) -> list[IsomorphismMappings]:
         """
         a.get_subgraph_isomorphisms_of(b)
         gives the isomorphic map of A being a subgraph of B
@@ -449,7 +471,9 @@ class Molecule(nx.Graph):
         return [IsomorphismMappings(x) for x in isoms]
 
     def create_smiles(self):
-        smiles = ".".join(sorted([graph_to_smiles(x) for x in self.separate_graph_in_pieces()]))
+        smiles = ".".join(
+            sorted([graph_to_smiles(x) for x in self.separate_graph_in_pieces()])
+        )
         return smiles
 
     def which_atoms_are_in(self):
@@ -470,7 +494,6 @@ class Molecule(nx.Graph):
         """
         return list((self.subgraph(x).copy() for x in nx.connected_components(self)))
 
-
     def remove_Hs(self):
         """
         Remove Hydrogens
@@ -490,15 +513,15 @@ class Molecule(nx.Graph):
         atoms_to_fix = []
         all_hs_to_add = []
         for node_ind in mol.nodes:
-            hs_to_add = mol.nodes[node_ind]['neighbors'] - len(mol.get_neighbors_of_node(node_ind))
-            if hs_to_add > 0 : 
+            hs_to_add = mol.nodes[node_ind]["neighbors"] - len(
+                mol.get_neighbors_of_node(node_ind)
+            )
+            if hs_to_add > 0:
                 atoms_to_fix.append(node_ind)
                 all_hs_to_add.append(hs_to_add)
 
         fixed_mol = mol.add_hydrogens(atoms_to_fix, all_hs_to_add)
         return fixed_mol
-
-
 
     def save_smiles(self, path=None):
         if path is None:
@@ -528,7 +551,6 @@ class Molecule(nx.Graph):
         """
         return list(nx.neighbors(self, ind))
 
-
     @property
     def atom_types(self):
         return nx.get_node_attributes(self, "element")
@@ -546,7 +568,6 @@ class Molecule(nx.Graph):
     def bond_order(self):
         return nx.get_edge_attributes(self, "bond_order")
 
-
     @property
     def smiles(self):
         """
@@ -561,8 +582,6 @@ class Molecule(nx.Graph):
                 self._smiles = ""
         return self._smiles
 
-
-
     def set_neighbors(self):
         """
         given a molecule, this function will set the neighbors attribute
@@ -571,10 +590,10 @@ class Molecule(nx.Graph):
             self.nodes[node]["neighbors"] = len(list(self.neighbors(node)))
         return self
 
-
     @property
     def charge(self):
         return sum(self.nodes[x]["charge"] for x in self.nodes)
+
 
 if __name__ == "__main__":
     pass

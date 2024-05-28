@@ -14,15 +14,18 @@ import numpy as np
 class GeodesicInput:
     trajectory: Trajectory
 
-
     @classmethod
     def from_endpoints(cls, initial, final):
-        traj = Trajectory([initial, final], tot_charge=initial.charge, tot_spinmult=initial.spinmult)
+        traj = Trajectory(
+            [initial, final], tot_charge=initial.charge, tot_spinmult=initial.spinmult
+        )
         return cls(trajectory=traj)
 
     @property
-    def coords(self): # Geodesic Interpolation works in ANGSTROMS so need to convert
-        computed_coords = np.array([struct.coords*BOHR_TO_ANGSTROMS for struct in self.trajectory])
+    def coords(self):  # Geodesic Interpolation works in ANGSTROMS so need to convert
+        computed_coords = np.array(
+            [struct.coords * BOHR_TO_ANGSTROMS for struct in self.trajectory]
+        )
         if np.array_equal(computed_coords[0], computed_coords[1]):
             raise ValueError("Input coordinates are identical")
         return computed_coords
@@ -30,7 +33,7 @@ class GeodesicInput:
     @property
     def charge(self):
         return self.trajectory[0].charge
-    
+
     @property
     def spinmult(self):
         return self.trajectory[0].spinmult
@@ -38,11 +41,13 @@ class GeodesicInput:
     @property
     def symbols(self):
         return self.trajectory[0].symbols
-        
-    def run(self, **kwargs):
-        
 
+    def run(self, **kwargs):
 
         xyz_coords = run_geodesic_py(self, **kwargs)
-        return Trajectory.from_coords_symbs(coords=xyz_coords*ANGSTROM_TO_BOHR, symbs=self.symbols, tot_charge=self.charge, tot_spinmult=self.spinmult)
-
+        return Trajectory.from_coords_symbs(
+            coords=xyz_coords * ANGSTROM_TO_BOHR,
+            symbs=self.symbols,
+            tot_charge=self.charge,
+            tot_spinmult=self.spinmult,
+        )

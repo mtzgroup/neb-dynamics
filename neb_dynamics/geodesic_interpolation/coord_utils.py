@@ -149,7 +149,7 @@ def get_bond_list(
     else:
         radius = np.array([ATOMIC_RADIUS.get(atom.capitalize(), 1.5) for atom in atoms])
         re = np.array([radius[i] + radius[j] for i, j in rijlist])
-    
+
     return rijlist, re
 
 

@@ -17,7 +17,7 @@ from neb_dynamics.trajectory import Trajectory
 class NEB_TCDLF:
     initial_chain: Chain
     parameters: NEBInputs
-    
+
     chain_trajectory: list[Chain] = field(default_factory=list)
     scf_maxit: int = 100
     converged: bool = False
@@ -78,30 +78,30 @@ class NEB_TCDLF:
             suffix=".out", mode="w+", delete=False
         ) as tmp_out:
             out = subprocess.run(
-                [f"terachem {tmp_inp.name} &> {tmp_inp.name}_output"], shell=True, capture_output=True
+                [f"terachem {tmp_inp.name} &> {tmp_inp.name}_output"],
+                shell=True,
+                capture_output=True,
             )
             tmp_out.write(out.stdout.decode())
 
         return tmp_out
-    
+
     @classmethod
     def get_ens_from_fp(cls, fp):
         lines = open(fp).read().splitlines()
         atomn = int(lines[0])
-        inds = list(range(1, len(lines), atomn+2))
+        inds = list(range(1, len(lines), atomn + 2))
         ens = np.array([float(line.split()[0]) for line in np.array(lines)[inds]])
         return ens
-    
-    
+
     @classmethod
     def upsample_images_and_ens(cls, nested_imgs_list, nested_ens_list):
         """
-        will take a list of lists that contain variable number of images, and will upsample them to tot_number 
-        if they are below the number. 
+        will take a list of lists that contain variable number of images, and will upsample them to tot_number
+        if they are below the number.
         """
         tot_number = cls.get_number_to_upsample_to(nested_imgs_list)
-        
-        
+
         output_list = []
         output_ens = []
         for l, l_ens in zip(nested_imgs_list, nested_ens_list):
@@ -109,20 +109,17 @@ class NEB_TCDLF:
                 n_to_add = tot_number - len(l)
                 new_list = l
                 new_list_ens = list(l_ens)
-                
-                new_list.extend([l[-1]]*n_to_add)
-                new_list_ens.extend([l_ens[-1]]*n_to_add)
-                
-                
-                
+
+                new_list.extend([l[-1]] * n_to_add)
+                new_list_ens.extend([l_ens[-1]] * n_to_add)
+
                 output_list.append(new_list)
                 output_ens.append(new_list_ens)
             else:
                 output_list.append(l)
                 output_ens.append(l_ens)
         return output_list, output_ens
-            
-    
+
     @classmethod
     def get_number_to_upsample_to(cls, nested_imgs_list):
         max_n = 0
@@ -130,48 +127,45 @@ class NEB_TCDLF:
             if len(l) > max_n:
                 max_n = len(l)
         return max_n
-    
 
     @classmethod
     def get_chain_trajectory(cls, data_dir, parameters):
-        
+
         all_paths = list(data_dir.glob("neb_*.xyz"))
         max_ind = len(all_paths)
-        
-        all_fps = [data_dir / f'neb_{ind}.xyz' for ind in range(1, max_ind+1)]
-        
+
+        all_fps = [data_dir / f"neb_{ind}.xyz" for ind in range(1, max_ind + 1)]
+
         # print(f"\n{all_paths=}\n{max_ind=}\n{all_fps=}")
-        
+
         img_trajs = [Trajectory.from_xyz(fp).traj for fp in all_fps]
         img_ens = [cls.get_ens_from_fp(fp) for fp in all_fps]
         img_trajs, img_ens = cls.upsample_images_and_ens(img_trajs, img_ens)
-        
-        
-        
+
         chains_imgs = list(zip(*img_trajs))
         chains_ens = list(zip(*img_ens))
-        
+
         start = img_trajs[0][0]
         start_en = img_ens[0][0]
         end = img_trajs[-1][0]
         end_en = img_ens[-1][0]
-        
-        
-        
+
         all_trajs = []
         for imgs in chains_imgs:
-            t = Trajectory([start]+list(imgs)+[end])
+            t = Trajectory([start] + list(imgs) + [end])
             t.update_tc_parameters(start)
             all_trajs.append(t)
-                    
+
         chain_trajectory = []
         for t, raw_ens in zip(all_trajs, chains_ens):
-            ens = [start_en]+list(raw_ens)+[end_en] # dlf gives only the middle image energies
+            ens = (
+                [start_en] + list(raw_ens) + [end_en]
+            )  # dlf gives only the middle image energies
             c = Chain.from_traj(t, parameters)
             for node, en in zip(c.nodes, ens):
                 node._cached_energy = en
-            chain_trajectory.append(c) 
-        
+            chain_trajectory.append(c)
+
         return chain_trajectory
 
     def neb_converged(self, out_path):
@@ -182,7 +176,7 @@ class NEB_TCDLF:
                 return True
             if line == " NOT CONVERGED":
                 return False
-        
+
         return False
 
     def optimize_chain(self, remove_all=True):
@@ -194,12 +188,14 @@ class NEB_TCDLF:
         out_tr.traj.insert(0, self.initial_chain[0].tdstructure)
         out_tr.traj.append(self.initial_chain[-1].tdstructure)
         out_tr.update_tc_parameters(self.initial_chain[0].tdstructure)
-        
+
         converged = self.neb_converged(tmp_out.name)
         out_chain = Chain.from_traj(out_tr, parameters=self.initial_chain.parameters)
         print(f"scr dir : {Path(tmp.name[:-4])}")
-        chain_traj = self.get_chain_trajectory(Path(tmp.name[:-4]), parameters=self.initial_chain.parameters)
-        
+        chain_traj = self.get_chain_trajectory(
+            Path(tmp.name[:-4]), parameters=self.initial_chain.parameters
+        )
+
         self.chain_trajectory.extend(chain_traj)
 
         # remove everything
@@ -214,60 +210,70 @@ class NEB_TCDLF:
 
         self.optimized = out_chain
         self.converged = converged
-        
+
     def plot_opt_history(self, do_3d=False, norm_path_len=True):
 
         s = 8
         fs = 18
-        
+
         if do_3d:
             all_chains = self.chain_trajectory
 
+            ens = np.array([c.energies - c.energies[0] for c in all_chains])
 
-            ens = np.array([c.energies-c.energies[0] for c in all_chains])
-            
             if norm_path_len:
-                all_integrated_path_lengths = np.array([c.integrated_path_length for c in all_chains])
+                all_integrated_path_lengths = np.array(
+                    [c.integrated_path_length for c in all_chains]
+                )
             else:
-                all_integrated_path_lengths = np.array([c.path_length for c in all_chains])
+                all_integrated_path_lengths = np.array(
+                    [c.path_length for c in all_chains]
+                )
             opt_step = np.array(list(range(len(all_chains))))
-            ax = plt.figure().add_subplot(projection='3d')
+            ax = plt.figure().add_subplot(projection="3d")
 
             # Plot a sin curve using the x and y axes.
             x = opt_step
             ys = all_integrated_path_lengths
             zs = ens
             for i, (xind, y) in enumerate(zip(x, ys)):
-                if i < len(ys) -1:
-                    ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='gray',markersize=3,alpha=.1)
+                if i < len(ys) - 1:
+                    ax.plot(
+                        [xind] * len(y),
+                        y,
+                        "o-",
+                        zs=zs[i],
+                        color="gray",
+                        markersize=3,
+                        alpha=0.1,
+                    )
                 else:
-                    ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='blue',markersize=3)
+                    ax.plot(
+                        [xind] * len(y), y, "o-", zs=zs[i], color="blue", markersize=3
+                    )
             ax.grid(False)
 
-            ax.set_xlabel('optimization step')
-            ax.set_ylabel('integrated path length')
-            ax.set_zlabel('energy (hartrees)')
+            ax.set_xlabel("optimization step")
+            ax.set_ylabel("integrated path length")
+            ax.set_zlabel("energy (hartrees)")
 
             # Customize the view angle so it's easier to see that the scatter points lie
             # on the plane y=0
-            ax.view_init(elev=20., azim=-45, roll=0)
+            ax.view_init(elev=20.0, azim=-45, roll=0)
             plt.tight_layout()
             plt.show()
-        
+
         else:
             f, ax = plt.subplots(figsize=(1.16 * s, s))
 
-            
             for i, chain in enumerate(self.chain_trajectory):
                 if norm_path_len:
                     path_len = chain.integrated_path_length
                 else:
                     path_len = chain.path_length
-                        
-                    
+
                 if i == len(self.chain_trajectory) - 1:
-                    
-                    
+
                     plt.plot(path_len, chain.energies, "o-", alpha=1)
                 else:
                     plt.plot(
@@ -294,16 +300,14 @@ class NEB_TCDLF:
 
             if out_folder.exists():
                 shutil.rmtree(out_folder)
-                
+
             if not out_folder.exists():
                 out_folder.mkdir()
 
             for i, chain in enumerate(self.chain_trajectory):
                 fp = out_folder / f"traj_{i}.xyz"
                 chain.write_to_disk(fp)
-                
-                
-                
+
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         """
         https://chemshell.org/static_files/py-chemshell/manual/build/html/opt.html?highlight=nudged
@@ -321,9 +325,13 @@ class NEB_TCDLF:
         converged_nodes_indices = np.intersect1d(converged_nodes_indices, grad_conv_ind)
 
         if chain_new.parameters.node_freezing:
-            self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices, prev_chain=chain_prev)
-            self._copy_node_information_to_converged(new_chain=chain_new, old_chain=chain_prev)
-            
+            self._update_node_convergence(
+                chain=chain_new, indices=converged_nodes_indices, prev_chain=chain_prev
+            )
+            self._copy_node_information_to_converged(
+                new_chain=chain_new, old_chain=chain_prev
+            )
+
         if self.parameters.v > 1:
             print("\n")
             [
@@ -334,27 +342,30 @@ class NEB_TCDLF:
             ]
         if self.parameters.v > 1:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
-            
-        barrier_height_converged = self._check_barrier_height_conv(chain_prev=chain_prev, chain_new=chain_new)
+
+        barrier_height_converged = self._check_barrier_height_conv(
+            chain_prev=chain_prev, chain_new=chain_new
+        )
         ind_ts_guess = np.argmax(chain_new.energies)
         ts_guess = chain_new[ind_ts_guess]
-        
+
         criteria_converged = [
             max(max_rms_grads) <= self.parameters.rms_grad_thre,
             # max(en_deltas) <= self.parameters.en_thre,
             # max(max_grad_components) <=self.parameters.grad_thre,
             np.amax(np.abs(ts_guess.gradient)) <= self.parameters.grad_thre,
-            barrier_height_converged]
+            barrier_height_converged,
+        ]
         # return len(converged_nodes_indices) == len(chain_new)
 
         # return sum(criteria_converged) >= 2
         return sum(criteria_converged) >= 3
-    
+
     @classmethod
     def read_from_disk(cls, fp: Path, neb_inputs: NEBInputs, chain_inputs: ChainInputs):
-        
+
         ct = cls.get_chain_trajectory(data_dir=fp, parameters=chain_inputs)
-        
+
         obj = cls(initial_chain=ct[0], parameters=neb_inputs)
         obj.chain_trajectory = ct
         obj.optimized = ct[-1]

@@ -17,7 +17,8 @@ from IPython.core.display import HTML
 from scipy.signal import argrelextrema
 import openbabel
 from pysmiles import write_smiles
-from openeye import oechem
+
+# from openeye import oechem
 import os
 from rdkit import Chem
 
@@ -26,7 +27,8 @@ import sys
 
 from neb_dynamics.elements import ElementData
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
+
 
 def pairwise(iterable):
     """
@@ -39,14 +41,15 @@ def pairwise(iterable):
         yield (a, b)
         a = b
 
+
 def get_mass(s: str):
     """
     return atomic mass from symbol
     """
     ed = ElementData()
     return ed.from_symbol(s).mass_amu
-    
-    
+
+
 def _get_ind_minima(chain):
     ind_minima = argrelextrema(chain.energies, np.less, order=1)[0]
     return ind_minima
@@ -63,6 +66,7 @@ def _get_ind_maxima(chain):
 
 def qRMSD_distance(structure, reference):
     return RMSD(structure, reference)[0]
+
 
 def RMSD(structure, reference):
     c1 = np.array(structure)
@@ -139,8 +143,10 @@ def RMSD(structure, reference):
 
     return rmsd, g_rmsd
 
+
 def linear_distance(coords1, coords2):
     return np.linalg.norm(coords2 - coords1)
+
 
 def create_friction_optimal_gi(traj, gi_inputs):
     print("GI: Scanning over friction parameter for geodesic interpolation.")
@@ -148,16 +154,17 @@ def create_friction_optimal_gi(traj, gi_inputs):
     frics = [0.0001, 0.001, 0.01, 0.1, 1]
     all_gis = [
         traj.run_geodesic(
-        nimages=gi_inputs.nimages,
-        friction=fric,
-        nudge=gi_inputs.nudge,
-        **gi_inputs.extra_kwds,
-    ) for fric in frics
+            nimages=gi_inputs.nimages,
+            friction=fric,
+            nudge=gi_inputs.nudge,
+            **gi_inputs.extra_kwds,
+        )
+        for fric in frics
     ]
     eAs = []
     for gi in all_gis:
         try:
-            eAs.append(max(gi.energies_xtb()) )
+            eAs.append(max(gi.energies_xtb()))
         except TypeError:
             eAs.append(10000000)
     ind_best = np.argmin(eAs)
@@ -166,11 +173,13 @@ def create_friction_optimal_gi(traj, gi_inputs):
     sys.stdout.flush()
     return gi
 
+
 def mass_weight_coords(labels, coords):
-   weights = np.array([np.sqrt(get_mass(s)) for s in labels])
-   weights = weights / sum(weights)
-   coords = coords * weights.reshape(-1,1)
-   return coords
+    weights = np.array([np.sqrt(get_mass(s)) for s in labels])
+    weights = weights / sum(weights)
+    coords = coords * weights.reshape(-1, 1)
+    return coords
+
 
 def get_nudged_pe_grad(unit_tangent, gradient):
     """
@@ -209,7 +218,7 @@ def load_obmol_from_fp(fp: Path) -> openbabel.OBMol:
     """
     if not isinstance(fp, Path):
         fp = Path(fp)
-        
+
     file_type = fp.suffix[1:]  # get what type of file this is
 
     obmol = openbabel.OBMol()
@@ -220,14 +229,16 @@ def load_obmol_from_fp(fp: Path) -> openbabel.OBMol:
 
     return make_copy(obmol)
 
-def write_xyz(atoms, X, name=''):
+
+def write_xyz(atoms, X, name=""):
     natoms = len(atoms)
-    string = ''
-    string += f'{natoms}\n{name}\n'
+    string = ""
+    string += f"{natoms}\n{name}\n"
     for i in range(natoms):
-        string += f'{atoms[i]} {X[i,0]} {X[i,1]} {X[i,2]} \n'
-    return(string)
-    
+        string += f"{atoms[i]} {X[i,0]} {X[i,1]} {X[i,2]} \n"
+    return string
+
+
 def bond_ord_number_to_string(i):
     bo2s = {1.0: "single", 1.5: "aromatic", 2.0: "double", 3.0: "triple"}
     try:
@@ -237,12 +248,15 @@ def bond_ord_number_to_string(i):
         raise e
     return st
 
+
 def from_number_to_element(i):
     return __ATOM_LIST__[i - 1].capitalize()
+
 
 def atomic_number_to_symbol(n):
     ed = ElementData()
     return ed.from_atomic_number(n).symbol
+
 
 def graph_to_smiles(mol):
 
@@ -261,19 +275,21 @@ def graph_to_smiles(mol):
                 i = 3
             mol.edges[e]["order"] = i
 
-        if 'OE_LICENSE' in os.environ:
-            # Keiran oechem (this needs the license)
-            smi = write_smiles(mol)
-            oemol = oechem.OEGraphMol()
-            oechem.OESmilesToMol(oemol, smi)
-            smi2 = oechem.OEMolToSmiles(oemol)
-        else:
-            try:
-                b = write_smiles(mol)
-                smi2 = Chem.CanonSmiles(b)
-            except Exception as e:
-                print('This run is without OECHEM license. A graph has failed to be converted in smiles. Take note of the exception.')
-                raise e
+        # if 'OE_LICENSE' in os.environ:
+        #     # Keiran oechem (this needs the license)
+        #     smi = write_smiles(mol)
+        #     oemol = oechem.OEGraphMol()
+        #     oechem.OESmilesToMol(oemol, smi)
+        #     smi2 = oechem.OEMolToSmiles(oemol)
+        # else:
+        try:
+            b = write_smiles(mol)
+            smi2 = Chem.CanonSmiles(b)
+        except Exception as e:
+            print(
+                "This run is without OECHEM license. A graph has failed to be converted in smiles. Take note of the exception."
+            )
+            raise e
     return smi2
 
 
@@ -378,17 +394,16 @@ __ATOM_LIST__ = [
 def run_tc_local_optimization(td, tmp, return_optim_traj):
     from neb_dynamics.tdstructure import TDStructure
     from neb_dynamics.trajectory import Trajectory
+
     optim_fp = Path(tmp.name[:-4]) / "optim.xyz"
-    tr = Trajectory.from_xyz(optim_fp,
-        tot_charge=td.charge,
-        tot_spinmult=td.spinmult)
+    tr = Trajectory.from_xyz(optim_fp, tot_charge=td.charge, tot_spinmult=td.spinmult)
     tr.update_tc_parameters(td)
-    
+
     if return_optim_traj:
         return tr
     else:
         return tr[-1]
-    
+
 
 def is_even(n):
     return not np.mod(n, 2)

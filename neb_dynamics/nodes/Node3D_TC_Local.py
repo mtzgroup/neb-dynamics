@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from functools import cached_property
 import subprocess
 import numpy as np
+
 # from retropaths.abinitio.tdstructure import TDStructure
 from neb_dynamics.tdstructure import TDStructure
 import multiprocessing as mp
@@ -15,6 +16,7 @@ from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.trajectory import Trajectory
 import qcop
+
 RMSD_CUTOFF = 0.5
 # KCAL_MOL_CUTOFF = 0.1
 KCAL_MOL_CUTOFF = 0.3
@@ -27,7 +29,6 @@ class Node3D_TC_Local(Node):
     do_climb: bool = False
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
-
 
     is_a_molecule = True
 
@@ -42,26 +43,26 @@ class Node3D_TC_Local(Node):
     @staticmethod
     def en_func(node: Node3D_TC_Local):
         return node.tdstructure.energy_tc_local()
-        
 
     @staticmethod
     def grad_func(node: Node3D_TC_Local):
-        return node.tdstructure.gradient_tc_local()*BOHR_TO_ANGSTROMS
-    
-    
-    def compute_ene_grad(self):
-        
-        prog_input = self.tdstructure._prepare_input(method='gradient')
+        return node.tdstructure.gradient_tc_local() * BOHR_TO_ANGSTROMS
 
-        output = qcop.compute('terachem', prog_input, propagate_wfn=True, collect_files=True)
+    def compute_ene_grad(self):
+
+        prog_input = self.tdstructure._prepare_input(method="gradient")
+
+        output = qcop.compute(
+            "terachem", prog_input, propagate_wfn=True, collect_files=True
+        )
         ene = output.results.energy
-        grad = output.results.gradient*BOHR_TO_ANGSTROMS
+        grad = output.results.gradient * BOHR_TO_ANGSTROMS
         self._cached_gradient = grad
         self._cached_energy = ene
 
     @property
     def energy(self):
-        if self._cached_energy is  None:
+        if self._cached_energy is None:
             self.compute_ene_grad()
         return self._cached_energy
 
@@ -70,16 +71,15 @@ class Node3D_TC_Local(Node):
         if self._cached_gradient is None:
             self.compute_ene_grad()
         return self._cached_gradient
-            
+
     @staticmethod
     def dot_function(first: np.array, second: np.array) -> float:
         return np.tensordot(first, second)
 
-
     def get_nudged_pe_grad(self, unit_tangent, gradient):
-        '''
+        """
         Alessio to Jan: comment your functions motherfucker.
-        '''
+        """
         pe_grad = gradient
         pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
@@ -98,8 +98,10 @@ class Node3D_TC_Local(Node):
 
         copy_tdstruct = copy_tdstruct.update_coords(coords=coords)
         copy_tdstruct.update_tc_parameters(td_ref=self.tdstructure)
-        
-        return Node3D_TC_Local(tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb)
+
+        return Node3D_TC_Local(
+            tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb
+        )
 
     def opt_func(self, v=True):
         return self.tdstructure.tc_local_geom_optimization()
@@ -136,15 +138,20 @@ class Node3D_TC_Local(Node):
         # raise AlessioError(f"{approx_hess.shape}")
 
         approx_hess_sym = 0.5 * (approx_hess + approx_hess.T)
-        assert self.check_symmetric(approx_hess_sym, rtol=1e-3, atol=1e-3), "Hessian not symmetric for some reason"
+        assert self.check_symmetric(
+            approx_hess_sym, rtol=1e-3, atol=1e-3
+        ), "Hessian not symmetric for some reason"
 
         return approx_hess_sym
-    
+
     @classmethod
-    def calc_ene_grad(cls, input_path: str):    
-        with tempfile.NamedTemporaryFile(suffix='.out',mode="w+", delete=False) as tmp_out:
-            out = subprocess.run([f"terachem {input_path}"], shell=True, 
-                                capture_output=True)
+    def calc_ene_grad(cls, input_path: str):
+        with tempfile.NamedTemporaryFile(
+            suffix=".out", mode="w+", delete=False
+        ) as tmp_out:
+            out = subprocess.run(
+                [f"terachem {input_path}"], shell=True, capture_output=True
+            )
             tmp_out.write(out.stdout.decode())
 
         if not out.stdout.decode():
@@ -152,21 +159,23 @@ class Node3D_TC_Local(Node):
 
         result_obj = parse(tmp_out.name)
         if result_obj.success:
-            ene, grad = result_obj.properties.return_energy, result_obj.properties.return_gradient
+            ene, grad = (
+                result_obj.properties.return_energy,
+                result_obj.properties.return_gradient,
+            )
 
         else:
             ene = None
             grad = None
 
-
         Path(tmp_out.name).unlink()
         return ene, grad
-    
-    
-    
+
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
-        raise NotImplementedError("Please do not run this object using this method. It will not work.")
+        raise NotImplementedError(
+            "Please do not run this object using this method. It will not work."
+        )
         all_geoms = []
         all_inps = []
         for n in chain.nodes:
@@ -174,54 +183,50 @@ class Node3D_TC_Local(Node):
             all_geoms.append(geo)
             all_inps.append(inp)
 
-
         iterator = all_inps
         with mp.Pool() as p:
             ene_gradients = p.map(cls.calc_ene_grad, iterator)
-
-
 
         [Path(g).unlink() for g in all_geoms]
         [shutil.rmtree(g[:-4]) for g in all_geoms]
         [Path(inp).unlink() for inp in all_inps]
         return ene_gradients
-    
+
     def do_geom_opt_trajectory(self) -> Trajectory:
         td_copy = self.tdstructure.copy()
-        td_opt_traj = td_copy.run_tc_local(calculation='minimize', return_object=True)
+        td_opt_traj = td_copy.run_tc_local(calculation="minimize", return_object=True)
         print(f"len opt traj: {len(td_opt_traj)}")
         td_opt_traj.update_tc_parameters(td_copy)
-        return  td_opt_traj
-    
+        return td_opt_traj
+
     def do_geometry_optimization(self) -> Node3D_TC_Local:
         td_opt = self.tdstructure.tc_local_geom_optimization()
         return Node3D_TC_Local(td_opt)
-    
+
     def _is_connectivity_identical(self, other) -> bool:
-        connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
+        connectivity_identical = self.tdstructure.molecule_rp.is_bond_isomorphic_to(
             other.tdstructure.molecule_rp
         )
         return connectivity_identical
-    
+
     # def _is_conformer_identical(self, other) -> bool:
     #     if self._is_connectivity_identical(other):
     #         aligned_self = self.tdstructure.align_to_td(other.tdstructure)
     #         dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
     #         en_delta = np.abs((self.energy - other.energy)*627.5)
-            
-            
+
     #         rmsd_identical = dist < RMSD_CUTOFF
     #         energies_identical = en_delta < KCAL_MOL_CUTOFF
     #         if rmsd_identical and energies_identical:
     #             conformer_identical = True
-            
+
     #         if not rmsd_identical and energies_identical:
     #             # going to assume this is a rotation issue. Need To address.
     #             conformer_identical = False
-            
+
     #         if not rmsd_identical and not energies_identical:
     #             conformer_identical = False
-            
+
     #         if rmsd_identical and not energies_identical:
     #             conformer_identical = False
     #         print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
@@ -231,17 +236,16 @@ class Node3D_TC_Local(Node):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
 
             traj = Trajectory([aligned_self, other.tdstructure]).run_geodesic(
-                nimages=10)
+                nimages=10
+            )
             barrier = max(
                 traj.energies_xtb()
             )  # energies are given relative to start struct
 
-            
-            barrier_accessible =  (barrier <= self.BARRIER_THRE)
-            en_delta = np.abs((self.energy - other.energy)*627.5)
+            barrier_accessible = barrier <= self.BARRIER_THRE
+            en_delta = np.abs((self.energy - other.energy) * 627.5)
             print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
 
-            
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
             if barrier_accessible and energies_identical:
                 return True
@@ -253,5 +257,9 @@ class Node3D_TC_Local(Node):
     def is_identical(self, other) -> bool:
 
         # return self._is_connectivity_identical(other)
-        return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
-        
+        return all(
+            [
+                self._is_connectivity_identical(other),
+                self._is_conformer_identical(other),
+            ]
+        )

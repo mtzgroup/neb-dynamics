@@ -13,19 +13,19 @@ def read_xyz(filename):
         coords: Cartesian coordinates for every frame.
     """
     coords = []
-    with open(filename, 'r') as f:
+    with open(filename, "r") as f:
         for line in f:
             try:
                 natm = int(line)  # Read number of atoms
-                next(f)	 # Skip over comments
+                next(f)  # Skip over comments
                 atom_names = []
                 geom = np.zeros((natm, 3), float)
                 for i in range(natm):
                     line = next(f).split()
                     atom_names.append(line[0])
-                    geom[i] = line[1:4]     # Numpy auto-converts str to float
+                    geom[i] = line[1:4]  # Numpy auto-converts str to float
             except (TypeError, IOError, IndexError, StopIteration):
-                raise ValueError('Incorrect XYZ file format')
+                raise ValueError("Incorrect XYZ file format")
             coords.append(geom)
     if not coords:
         raise ValueError("File is empty")
@@ -41,7 +41,7 @@ def write_xyz(filename, atoms, coords):
         coords:     Coordinates, must be of shape nimages*natoms*3
     """
     natoms = len(atoms)
-    with open(filename, 'w') as f:
+    with open(filename, "w") as f:
         for i, X in enumerate(np.atleast_3d(coords)):
             f.write("%d\n" % natoms)
             f.write("Frame %d\n" % i)

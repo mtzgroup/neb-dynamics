@@ -7,11 +7,14 @@ Will need another following geodesic smoothing to get final path.
 import numpy as np
 from scipy.optimize import least_squares, minimize
 
-from .coord_utils import (align_geom, align_path, compute_wij, get_bond_list,
-                          morse_scaler)
+from .coord_utils import (
+    align_geom,
+    align_path,
+    compute_wij,
+    get_bond_list,
+    morse_scaler,
+)
 from .geodesic import Geodesic
-
-
 
 
 def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
@@ -53,7 +56,9 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
     # contant, then rerun the minimization until the coordinate system is consistant with the
     # interpolated geometry
     while True:
-        rijlist, re = get_bond_list(geom_list, threshold=threshold + 1, enforce=add_pair)
+        rijlist, re = get_bond_list(
+            geom_list, threshold=threshold + 1, enforce=add_pair
+        )
         scaler = morse_scaler(alpha=0.7, re=re)
         w1, _ = compute_wij(geom1, rijlist, scaler)
         w2, _ = compute_wij(geom2, rijlist, scaler)
@@ -66,7 +71,9 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
             """Squared difference with reference w0"""
             wx, dwdR = compute_wij(X, rijlist, scaler)
             delta_w = wx - w
-            val, grad = 0.5 * np.dot(delta_w, delta_w), np.einsum('i,ij->j', delta_w, dwdR)
+            val, grad = 0.5 * np.dot(delta_w, delta_w), np.einsum(
+                "i,ij->j", delta_w, dwdR
+            )
 
             return val, grad
 
@@ -75,33 +82,47 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
             # print(f"COEF:{coef}")
             x0 = (geom1 * coef + (1 - coef) * geom2).ravel()
             x0 += nudge * np.random.random_sample(x0.shape)
-            
-            d = {'w':w,
+
+            d = {
+                "w": w,
             }
             # psave(d,'d.p')
-            result = least_squares(lambda x: np.concatenate([compute_wij(x, rijlist, scaler)[0] - w, (x-x0)*friction]), x0,
-                                   lambda x: np.vstack([compute_wij(x, rijlist, scaler)[1], np.identity(x.size) * friction]), ftol=tol, gtol=tol)
-            
-            x_mid = result['x'].reshape(-1, 3)
+            result = least_squares(
+                lambda x: np.concatenate(
+                    [compute_wij(x, rijlist, scaler)[0] - w, (x - x0) * friction]
+                ),
+                x0,
+                lambda x: np.vstack(
+                    [compute_wij(x, rijlist, scaler)[1], np.identity(x.size) * friction]
+                ),
+                ftol=tol,
+                gtol=tol,
+            )
+
+            x_mid = result["x"].reshape(-1, 3)
             # Take the interpolated geometry, construct new pair list and check for new contacts
             new_list = geom_list + [x_mid]
             new_rij, _ = get_bond_list(new_list, threshold=threshold, min_neighbors=0)
             extras = set(new_rij) - set(rijlist)
-            if extras: 
-                
+            if extras:
+
                 # Update pair list then go back to the minimization loop if new contacts are found
                 geom_list = new_list
                 add_pair |= extras
                 break
             # Perform local geodesic optimization for the new image.
-            smoother = Geodesic(atoms, [geom1, x_mid, geom2], 0.7, threshold=threshold, friction=1)
+            smoother = Geodesic(
+                atoms, [geom1, x_mid, geom2], 0.7, threshold=threshold, friction=1
+            )
             smoother.compute_disps()
-            width = max([np.sqrt(np.mean((g - smoother.path[1]) ** 2)) for g in [geom1, geom2]])
+            width = max(
+                [np.sqrt(np.mean((g - smoother.path[1]) ** 2)) for g in [geom1, geom2]]
+            )
             dist, x_mid = width + smoother.length, smoother.path[1]
-            
+
             if dist < d_min:
                 d_min, x_min = dist, x_mid
-        else:   # Both starting guesses finished without new atom pairs.  Minimization successful
+        else:  # Both starting guesses finished without new atom pairs.  Minimization successful
             break
     return x_min
 
@@ -127,7 +148,9 @@ def redistribute(atoms, geoms, nimages, tol=1e-2, nudge=0.1, ntries=1):
         dists = [np.sqrt(np.mean((g1 - g2) ** 2)) for g1, g2 in zip(geoms[1:], geoms)]
         max_i = np.argmax(dists)
 
-        insertion = mid_point(atoms, geoms[max_i], geoms[max_i + 1], tol, nudge=nudge, ntries=ntries)
+        insertion = mid_point(
+            atoms, geoms[max_i], geoms[max_i + 1], tol, nudge=nudge, ntries=ntries
+        )
         _, insertion = align_geom(geoms[max_i], insertion)
         geoms.insert(max_i + 1, insertion)
         geoms = list(align_path(geoms)[1])

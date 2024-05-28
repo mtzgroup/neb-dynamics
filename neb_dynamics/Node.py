@@ -10,7 +10,6 @@ class AlessioError(Exception):
 
 
 class Node(ABC):
-
     @property
     @abstractmethod
     def is_a_molecule(self):
@@ -63,9 +62,8 @@ class Node(ABC):
 
     @abstractmethod
     def do_geometry_optimization(self) -> Node:
-        ... 
-        
+        ...
+
     @abstractmethod
     def is_identical(self, other):
         ...
-        

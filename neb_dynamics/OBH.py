@@ -99,7 +99,9 @@ def obmol_to_coords(obmol):
 
 
 def obmol_to_symbs(obmol):
-    return [atomic_number_to_symbol(atom.atomicnum) for atom in pybel.Molecule(obmol).atoms]
+    return [
+        atomic_number_to_symbol(atom.atomicnum) for atom in pybel.Molecule(obmol).atoms
+    ]
 
 
 def add_charges(input_mol, charges_list):

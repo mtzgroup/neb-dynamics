@@ -3,7 +3,16 @@ from rdkit.Chem import rdDepictor
 from rdkit.Chem.Draw import rdMolDraw2D
 
 
-def moldrawsvg(smiles, mapping, molSize=(300, 300), kekulize=True, fixed_bond_length=None, fixedScale=None, fontSize=None, lineWidth=None):
+def moldrawsvg(
+    smiles,
+    mapping,
+    molSize=(300, 300),
+    kekulize=True,
+    fixed_bond_length=None,
+    fixedScale=None,
+    fontSize=None,
+    lineWidth=None,
+):
     """
     returns a chemdraw style svg image of mol (an rdkit molecule object)
     """

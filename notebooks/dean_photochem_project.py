@@ -80,7 +80,11 @@ from pathlib import Path
 
 xyz_dir = Path('/home/jdep/T3D_data/dean_photochem/CH2I2/wigner/0K/wigner_ICs/')
 
-all_xyz_paths = xyz_dir.glob("x*.xyz")
+all_xyz_paths = list(xyz_dir.glob("x*.xyz"))
+
+tr = Trajectory([TDStructure.from_xyz(fp) for fp in all_xyz_paths])
+
+tr
 
 # +
 # submit tddft energies and collect the excittaiton energies

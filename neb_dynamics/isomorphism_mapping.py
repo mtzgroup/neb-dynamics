@@ -27,20 +27,26 @@ class IsomorphismMappings:
 
     @staticmethod
     def is_bijective(dictionary: dict) -> bool:
-        return len(dictionary) == len(IsomorphismMappings.reverse_dictionary(dictionary))
+        return len(dictionary) == len(
+            IsomorphismMappings.reverse_dictionary(dictionary)
+        )
 
     @property
     def reverse_mapping(self):
         return self.reverse_dictionary(self.mapping)
 
-    def mapping_update(self, new_mapping: dict, reverse: bool = False) -> IsomorphismMappings:
+    def mapping_update(
+        self, new_mapping: dict, reverse: bool = False
+    ) -> IsomorphismMappings:
         if self.is_bijective(new_mapping):
             if reverse:
                 new_mapping = self.reverse_dictionary(new_mapping)
 
             final_mapping = self.mapping | new_mapping
 
-            assert len(final_mapping) == len(self.mapping) + len(new_mapping), "The code is trying to update an isomorphism matching overwriting some keys. Bad."
+            assert len(final_mapping) == len(self.mapping) + len(
+                new_mapping
+            ), "The code is trying to update an isomorphism matching overwriting some keys. Bad."
 
             if self.is_bijective(final_mapping):
                 return IsomorphismMappings(mapping=final_mapping)

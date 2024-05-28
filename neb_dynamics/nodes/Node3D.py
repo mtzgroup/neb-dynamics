@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property
 
 import numpy as np
-from ase import Atoms
-from ase.optimize import LBFGS
 from neb_dynamics.tdstructure import TDStructure
-from xtb.ase.calculator import XTB
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
@@ -17,8 +13,6 @@ from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.trajectory import Trajectory
 import multiprocessing as mp
-from pathlib import Path
-
 
 
 @dataclass
@@ -32,9 +26,10 @@ class Node3D(Node):
     is_a_molecule = True
     RMSD_CUTOFF: float = 0.5
     KCAL_MOL_CUTOFF: float = 0.1
-    BARRIER_THRE: float = 15  # kcal/mol
-    
-    
+    BARRIER_THRE: float = 5  # kcal/mol
+
+    def __eq__(self, other: Node3D) -> bool:
+        return self.is_identical(other)
 
     @property
     def coords(self):
@@ -62,29 +57,31 @@ class Node3D(Node):
             ene = Node3D.run_xtb_calc(self.tdstructure).get_energy()
             self._cached_energy = ene
             return ene
-    
+
     def do_geom_opt_trajectory(self) -> Trajectory:
         td_copy = self.tdstructure.copy()
-        td_copy.tc_model_method = 'gfn2xtb'
-        td_copy.tc_model_basis = 'gfn2xtb'
+        td_copy.tc_model_method = "gfn2xtb"
+        td_copy.tc_model_basis = "gfn2xtb"
         td_opt_traj = td_copy.xtb_geom_optimization(return_traj=True)
         td_opt_traj.update_tc_parameters(td_copy)
         # td_opt = self.tdstructure.xtb_geom_optimization()
-        return  td_opt_traj
+        return td_opt_traj
 
     def do_geometry_optimization(self) -> Node3D:
         td_copy = self.tdstructure.copy()
-        td_copy.tc_model_method = 'gfn2xtb'
-        td_copy.tc_model_basis = 'gfn2xtb'
+        td_copy.tc_model_method = "gfn2xtb"
+        td_copy.tc_model_basis = "gfn2xtb"
         # td_opt = td_copy.tc_local_geom_optimization()
         # td_opt.update_tc_parameters(td_copy)
         td_opt = self.tdstructure.xtb_geom_optimization()
-        return Node3D(tdstructure=td_opt,
-            converged=self.converged, 
+        return Node3D(
+            tdstructure=td_opt,
+            converged=self.converged,
             do_climb=self.do_climb,
             BARRIER_THRE=self.BARRIER_THRE,
             RMSD_CUTOFF=self.RMSD_CUTOFF,
-            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF)
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
+        )
         # max_steps=8000
         # ss=.05
         # tol=0.0001
@@ -120,23 +117,24 @@ class Node3D(Node):
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
 
-            traj = Trajectory([aligned_self, other.tdstructure]).run_geodesic(
-                nimages=10)
-            barrier = max(
-                traj.energies_xtb()
-            )  # energies are given relative to start struct
+            # traj = Trajectory([aligned_self, other.tdstructure]).run_geodesic(
+            #     nimages=10)
+            # barrier = max(
+            #     traj.energies_xtb()
+            # )  # energies are given relative to start struct
+            # barrier_accessible =  barrier <= self.BARRIER_THRE
+            # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
 
-            # dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
-            barrier_accessible =  barrier <= self.BARRIER_THRE
-            en_delta = np.abs((self.energy - other.energy)*627.5)
-            print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
+            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            en_delta = np.abs((self.energy - other.energy) * 627.5)
 
-            # rmsd_identical = dist < self.RMSD_CUTOFF
+            rmsd_identical = dist < self.RMSD_CUTOFF
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
-            # if rmsd_identical and energies_identical:
-            #     conformer_identical = True
-            if barrier_accessible and energies_identical:
+            if rmsd_identical and energies_identical:
                 return True
+            # if barrier_accessible and energies_identical:
+            #     return True
+
             else:
                 return False
 
@@ -216,7 +214,7 @@ class Node3D(Node):
             do_climb=self.do_climb,
             BARRIER_THRE=self.BARRIER_THRE,
             RMSD_CUTOFF=self.RMSD_CUTOFF,
-            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
         )
         # if copy_node.converged:
         copy_node._cached_energy = self._cached_energy
@@ -229,14 +227,14 @@ class Node3D(Node):
 
         copy_tdstruct = copy_tdstruct.update_coords(coords=coords)
         copy_tdstruct.update_tc_parameters(self.tdstructure)
-        
+
         return Node3D(
-            tdstructure=copy_tdstruct, 
-            converged=self.converged, 
+            tdstructure=copy_tdstruct,
+            converged=self.converged,
             do_climb=self.do_climb,
             BARRIER_THRE=self.BARRIER_THRE,
             RMSD_CUTOFF=self.RMSD_CUTOFF,
-            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
         )
 
     def check_symmetric(self, a, rtol=1e-05, atol=1e-08):

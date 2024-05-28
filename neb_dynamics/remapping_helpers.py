@@ -8,7 +8,7 @@ from neb_dynamics.Node3D import Node3D
 
 
 def get_atom_xyz(struct, atom_ind):
-    atom_r = struct.molecule_obmol.GetAtom(atom_ind+1)
+    atom_r = struct.molecule_obmol.GetAtom(atom_ind + 1)
     return np.array((atom_r.x(), atom_r.y(), atom_r.z()))
 
 
@@ -16,7 +16,7 @@ def get_neighs(struct, ind):
 
     neighs = []  # indices of the single bonds
     for neigh in struct.molecule_rp[ind]:
-        if struct.molecule_rp[ind][neigh]['bond_order'] == "double":
+        if struct.molecule_rp[ind][neigh]["bond_order"] == "double":
             continue
         else:
             neighs.append(neigh)
@@ -44,7 +44,9 @@ def get_all_product_isomorphisms(end_struct, timeout=100):
     isoms = sgmap.get_isomorphisms(mol)
 
     if len(isoms) > 100:
-        print(f"There are {len(isoms)} candidate structures. Too many. Returning only one struct")
+        print(
+            f"There are {len(isoms)} candidate structures. Too many. Returning only one struct"
+        )
         return np.array([end_struct])
 
     new_structs = []
@@ -60,7 +62,9 @@ def get_gi_info(new_structs, start_struct):
     trajs = []
     for i, end_point in enumerate(new_structs):
 
-        traj = Trajectory([start_struct, end_point])  # WARNING <--- this NEEDS to be changed if dealing with charged species
+        traj = Trajectory(
+            [start_struct, end_point]
+        )  # WARNING <--- this NEEDS to be changed if dealing with charged species
         traj = traj.run_geodesic(nimages=10, friction=0.001)
         trajs.append(traj)
 
@@ -95,7 +99,14 @@ def decide_with_neb(list_of_trajs: list):
         c = Chain.from_traj(traj, k=0.1, delta_k=0, step_size=2, node_class=Node3D)
 
         tol = 0.01
-        n = NEB(initial_chain=c, en_thre=tol/450, rms_grad_thre=tol*(2/3), grad_thre=tol, vv_force_thre=0, v=False)
+        n = NEB(
+            initial_chain=c,
+            en_thre=tol / 450,
+            rms_grad_thre=tol * (2 / 3),
+            grad_thre=tol,
+            vv_force_thre=0,
+            v=False,
+        )
         try:
             n.optimize_chain()
             neb_results.append(n)
@@ -112,7 +123,9 @@ def create_correct_interpolation(start_struct, end_struct, kcal_window=10):
 
     new_structs = get_all_product_isomorphisms(end_struct)
     gi_info = get_gi_info(new_structs=new_structs, start_struct=start_struct)
-    correct_end_struct, correct_gi_traj = get_correct_product_structure(new_structs=new_structs, gi_info=gi_info, kcal_window=kcal_window)
+    correct_end_struct, correct_gi_traj = get_correct_product_structure(
+        new_structs=new_structs, gi_info=gi_info, kcal_window=kcal_window
+    )
     correct_gi_traj = [Trajectory(t, charge=0, spinmult=1) for t in correct_gi_traj]
     # list_of_neb_trajs = decide_with_neb(correct_gi_traj)
     return correct_gi_traj
@@ -124,5 +137,7 @@ def create_correct_product(start_struct, end_struct, kcal_window=10):
     if len(new_structs) == 1:
         return [new_structs[0]]
     gi_info = get_gi_info(new_structs=new_structs, start_struct=start_struct)
-    correct_end_struct, _ = get_correct_product_structure(new_structs=new_structs, gi_info=gi_info, kcal_window=kcal_window)
+    correct_end_struct, _ = get_correct_product_structure(
+        new_structs=new_structs, gi_info=gi_info, kcal_window=kcal_window
+    )
     return correct_end_struct

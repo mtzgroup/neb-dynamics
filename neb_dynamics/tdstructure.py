@@ -25,6 +25,7 @@ import qcop
 from qcio import Molecule as TCMolecule
 from IPython.core.display import HTML
 from openbabel import openbabel, pybel
+
 # from openeye import oechem
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.elements import (
@@ -40,16 +41,14 @@ from neb_dynamics.helper_functions import (
     write_xyz,
     from_number_to_element,
     bond_ord_number_to_string,
-    
-    
 )
 
 from neb_dynamics.molecule import Molecule
+
 # from retropaths.molecules.smiles_tools import (
 #     bond_ord_number_to_string,
 #     from_number_to_element,
 # )
-
 
 
 from qcparse import parse
@@ -305,7 +304,7 @@ class TDStructure:
             atoms=atoms, charge=self.charge, spinmult=self.spinmult
         )
         return new_tds
-    
+
     def to_ASE_atoms(self):
         # XTB api is summing the initial charges from the ATOM object.
         # it returns a vector of charges (maybe Mulliken), but to initialize the calculation,
@@ -329,32 +328,34 @@ class TDStructure:
     def xtb_geom_optimization(self, return_traj=False):
         from ase.io.trajectory import Trajectory as ASETraj
         from neb_dynamics.trajectory import Trajectory
+
         tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
 
-        
-        
         atoms = self.to_ASE_atoms()
         # print(tmp.name)
 
         atoms.calc = XTB(method="GFN2-xTB", accuracy=0.001)
-        opt = LBFGSLineSearch(atoms, logfile=None, trajectory=tmp.name)
+        # opt = LBFGSLineSearch(atoms, logfile=None, trajectory=tmp.name)
+        opt = LBFGS(atoms, logfile=None, trajectory=tmp.name)
         # opt = LBFGS(atoms, logfile=None, trajectory='/tmp/log.traj')
         # opt = FIRE(atoms, logfile=None)
-        opt.run(fmax=0.001)
+        opt.run(fmax=0.1)
         # opt.run(fmax=0.5)
-        
-        
-        
+
         aT = ASETraj(tmp.name)
         traj_list = []
-        for i,_ in enumerate(aT):
-            traj_list.append(TDStructure.from_ase_Atoms(aT[i], charge=self.charge, spinmult=self.spinmult))
+        for i, _ in enumerate(aT):
+            traj_list.append(
+                TDStructure.from_ase_Atoms(
+                    aT[i], charge=self.charge, spinmult=self.spinmult
+                )
+            )
         traj = Trajectory(traj_list)
         traj.update_tc_parameters(self)
 
         Path(tmp.name).unlink()
         if return_traj:
-            print('len opt traj: ',len(traj))
+            print("len opt traj: ", len(traj))
             return traj
         else:
             return traj[-1]
@@ -377,7 +378,7 @@ class TDStructure:
         tc_kwds = self.tc_kwds.copy()
         tc_geom_opt_kwds = self.tc_geom_opt_kwds.copy()
         tc_c0 = self.tc_c0
-        
+
         tds = TDStructure(
             molecule_obmol=copy_obmol,
             tc_model_method=tc_model_method,
@@ -386,7 +387,7 @@ class TDStructure:
             tc_geom_opt_kwds=tc_geom_opt_kwds,
             tc_c0=tc_c0,
         )
-        
+
         tds._cached_freqs = self._cached_freqs
         tds._cached_nma = self._cached_nma
 
@@ -407,6 +408,10 @@ class TDStructure:
     def to_xyz(self, fn: Path):
         with open(fn, "w+") as f:
             f.write(self.xyz)
+
+    def to_pdb(self, fn: Path):
+        mol_pybel = pybel.Molecule(self.molecule_obmol)
+        mol_pybel.write(format="pdb", filename=str(fn), overwrite=True)
 
     def move_atom(self, atom_index, new_x, new_y, new_z):
         """
@@ -650,11 +655,11 @@ class TDStructure:
                 )
 
             else:
-                if method is not 'hessian':
+                if method is not "hessian":
                     inp_kwds = self.tc_kwds
                 else:
                     inp_kwds = {}
-                
+
                 opt_input = DualProgramInput(
                     calctype=method,
                     molecule=tc_mol,
@@ -719,7 +724,9 @@ class TDStructure:
             print(f"TeraChem {calctype} failed.")
             return None
 
-    def compute_tc_local(self, program: str, calctype: str, return_object: bool = False):
+    def compute_tc_local(
+        self, program: str, calctype: str, return_object: bool = False
+    ):
         prog_input = self._prepare_input(method=calctype)
 
         output = qcop.compute(
@@ -729,13 +736,15 @@ class TDStructure:
         if output.success:
             if "scr.geometry/c0" in output.files.keys():
                 self.tc_c0 = output.files["scr.geometry/c0"]
-            if return_object: return output
+            if return_object:
+                return output
             return output.return_result
 
         else:
             output.ptraceback
             print(f"TeraChem {calctype} failed.")
-            if return_object: return output
+            if return_object:
+                return output
             return None
 
     def tc_freq_calculation(self):
@@ -795,7 +804,7 @@ class TDStructure:
             raise ValueError(
                 f"Unrecognized method: {method}. Use either: 'minima', or 'ts'"
             )
-        pwfn_bool = ES_PROGRAM == 'terachem'
+        pwfn_bool = ES_PROGRAM == "terachem"
         future_result = self.tc_client.compute(
             "geometric",
             opt_input,
@@ -827,9 +836,7 @@ class TDStructure:
     def tc_local_geom_optimization(self, method="minima"):
         if method == "minima":
             # opt_input = self._prepare_input(method="optimization")
-            return self.run_tc_local(
-                calculation="minimize"
-            )
+            return self.run_tc_local(calculation="minimize")
         elif method == "ts":
             opt_input = self._prepare_input(method="transition_state")
         else:
@@ -873,17 +880,15 @@ class TDStructure:
             **kwargs,
         )
 
-    def run_tc_local(
-        self, calculation="energy", remove_all=True, return_object=False
-    ):
+    def run_tc_local(self, calculation="energy", remove_all=True, return_object=False):
         # make the geometry file
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w+", delete=False) as tmp:
             self.to_xyz(tmp.name)
 
         # make the tc input file
         inp = f"""run {calculation}\ncoordinates {tmp.name}\n"""
-        inp+= self._tcpb_input_string()
-        inp+=f"""scrdir {tmp.name[:-4]}\nmaxiter 500\n"""
+        inp += self._tcpb_input_string()
+        inp += f"""scrdir {tmp.name[:-4]}\nmaxiter 500\n"""
 
         if "wf_guess" in self.tc_kwds:
             guess_path = self.tc_kwds["wf_guess"]  # this must be a string
@@ -907,8 +912,10 @@ class TDStructure:
             tmp_out.write(out.stdout.decode())
 
         if calculation == "minimize":
-            result = run_tc_local_optimization(td=self, tmp=tmp, return_optim_traj=return_object)
-                
+            result = run_tc_local_optimization(
+                td=self, tmp=tmp, return_optim_traj=return_object
+            )
+
         else:
             result_obj = parse(tmp_out.name, program="terachem")
             if calculation == "energy":
