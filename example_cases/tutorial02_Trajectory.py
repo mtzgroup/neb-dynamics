@@ -8,6 +8,7 @@
 
 from neb_dynamics.tdstructure import TDStructure
 
+# +
 start = TDStructure.from_smiles("C=C")
 
 start.coords, start.symbols
@@ -17,6 +18,7 @@ end_coords = end.coords
 end_coords_swapped = end_coords[[0,1,3,2,4,5],:] # this is a pi-bond rotation
 # end_coords_swapped = end_coords[[0,1,4,3,2,5],:] # this is a crazy hydrogen swap
 end = end.update_coords(end_coords_swapped) 
+# -
 
 # Now let's create a trajectory object that contains only our endpoints
 

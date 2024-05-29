@@ -63,11 +63,38 @@ class NEBInputs:
 
 @dataclass
 class ChainInputs:
+    """
+    Object containing parameters relevant to chain.
+        k: maximum spring constant.
+        delta_k: parameter to use for calculating energy weighted spring constants
+                see: https://pubs.acs.org/doi/full/10.1021/acs.jctc.1c00462
+
+        node_class: type of node to use
+        do_parallel: whether to compute gradients and energies in parallel
+        use_geodesic_interpolation: whether to use GI in interpolations
+        use_maxima_recyling: whether to use maxima recyling in early stop checks
+        friction_optimal_gi: whether to optimize 'friction' parameter when running GI
+
+        skip_identical_graphs: whether to skip chains with identical graph endpoints when
+                            running NEB (***TODO: SHOULD PROBABLY BE A NEBInput***)
+
+        do_chain_biasing: whether to use chain biasing (Under Development, not ready for use)
+        cb: Chain biaser object (Under Development, not ready for use)
+
+        node_freezing: whether to freeze nodes in NEB convergence
+        node_conf_barrier_thre: threshold for pseudobarrier calculation (kcal/mol)
+                                for identifying identical conformers
+        node_conf_en_thre: float = threshold for energy difference (kcal/mol) of geometries
+                                for indentigying identical conformers
+
+        tc_model_method: 'method' parameter for electronic structure calculations
+        tc_model_basis: 'method' parameter for electronic structure calculations
+        tc_kwds: keyword arguments for electronic structure calculations
+    """
     k: float = 0.1
     delta_k: float = 0.0
 
     node_class: Node = Node3D
-    do_local_xtb: bool = True
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
     use_maxima_recyling: bool = False
