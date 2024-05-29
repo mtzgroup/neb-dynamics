@@ -28,6 +28,9 @@ import sys
 from neb_dynamics.elements import ElementData
 
 warnings.filterwarnings("ignore")
+with warnings.catch_warnings():
+    warnings.filterwarnings('ignore', r'RuntimeWarning: invalid value encountered in divide')
+
 
 
 def pairwise(iterable):
