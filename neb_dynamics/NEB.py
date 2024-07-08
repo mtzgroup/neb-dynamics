@@ -76,6 +76,7 @@ class NEB:
         # dictionary or some other object
 
         elem_step_results = chain.is_elem_step()
+
         is_elem_step, split_method, minimization_results, \
             n_geom_opt_grad_calls = elem_step_results
 
@@ -136,7 +137,6 @@ class NEB:
             stop_early, elem_step_results, geom_n_grad_calls = self._do_early_stop_check(chain)
             return stop_early, elem_step_results, geom_n_grad_calls
 
-
         else:
             return False, None, 0
 
@@ -150,17 +150,16 @@ class NEB:
         opt_xtb = VelocityProjectedOptimizer(timestep=1)
         n = NEB(initial_chain=xtb_chain, parameters=xtb_nbi, optimizer=opt_xtb)
         try:
-            elem_step_results = n.optimize_chain()
+            _ = n.optimize_chain()
             print(f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
-        except:
+        except Exception:
             print(f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
 
-
-        xtb_seed_tr =  n.chain_trajectory[-1].to_trajectory()
+        xtb_seed_tr = n.chain_trajectory[-1].to_trajectory()
         xtb_seed_tr.update_tc_parameters(chain[0].tdstructure)
 
         xtb_seed = Chain.from_traj(xtb_seed_tr, parameters=chain.parameters.copy())
-        xtb_seed.gradients # calling it to cache the values
+        xtb_seed.gradients  # calling it to cache the values
 
         return xtb_seed
 
@@ -168,14 +167,12 @@ class NEB:
         nsteps = 1
         nsteps_negative_grad_corr = 0
 
-
         if self.parameters.preopt_with_xtb:
             chain_previous = self._do_xtb_preopt(self.initial_chain)
             self.chain_trajectory.append(chain_previous)
 
-
             stop_early, elem_step_results, geom_n_grad_calls = self._do_early_stop_check(chain_previous)
-            self.geom_grad_calls_made+=geom_n_grad_calls
+            self.geom_grad_calls_made += geom_n_grad_calls
             if stop_early:
                 return elem_step_results
         else:
@@ -186,13 +183,13 @@ class NEB:
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:
                 stop_early, elem_step_results, geom_n_grad_calls = self._check_early_stop(chain_previous)
-                self.geom_grad_calls_made+=geom_n_grad_calls
+                self.geom_grad_calls_made += geom_n_grad_calls
                 if stop_early:
                     return elem_step_results
                 else:
                     if elem_step_results:
                         is_elem_step, split_method, minimization_results, geom_n_grad_calls = elem_step_results
-                        self.geom_grad_calls_made+=geom_n_grad_calls
+                        self.geom_grad_calls_made += geom_n_grad_calls
                         if isinstance(minimization_results, Chain):
                             chain_previous = minimization_results
 

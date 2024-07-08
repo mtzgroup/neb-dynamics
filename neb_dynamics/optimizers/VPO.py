@@ -29,8 +29,6 @@ class VelocityProjectedOptimizer(Optimizer):
 
     def optimize_step(self, chain, chain_gradients):
         prev_velocity = chain.velocity
-        atomn = chain[0].coords.shape[0]
-        max_disp = self.timestep * atomn * len(chain)
         new_force = -(chain_gradients)
         new_force_unit = new_force / np.linalg.norm(new_force)
         timestep = self.timestep  # self.step_size_per_atom*atomn*len(chain)
@@ -101,7 +99,7 @@ class VelocityProjectedOptimizer(Optimizer):
                 new_chain.gradients  # calling it to make sure gradients will converge
                 new_chain_gradients_fails = False
 
-            except:
+            except Exception:
                 print(
                     "VPO: Gradients failed with displacement. Resetting velocity, shrinking by 50%"
                 )

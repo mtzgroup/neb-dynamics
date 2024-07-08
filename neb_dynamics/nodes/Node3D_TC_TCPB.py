@@ -17,12 +17,6 @@ from neb_dynamics.helper_functions import RMSD
 import pytcpb as tc
 import time
 
-
-RMSD_CUTOFF = 0.5
-# KCAL_MOL_CUTOFF = 0.1
-KCAL_MOL_CUTOFF = 0.3
-
-
 # Get Port
 # port = 8888
 port = 12121
@@ -39,6 +33,14 @@ class Node3D_TC_TCPB(Node):
     _tc_server = False
 
     is_a_molecule = True
+    GLOBAL_RMSD_CUTOFF: float = 1.0
+    FRAGMENT_RMSD_CUTOFF: float = 0.5
+
+    KCAL_MOL_CUTOFF: float = 1.0
+    BARRIER_THRE: float = 5  # kcal/mol
+
+    def __repr__(self):
+        return 'node3d_tcpb'
 
     @property
     def coords(self):
@@ -102,6 +104,10 @@ class Node3D_TC_TCPB(Node):
             tdstructure=self.tdstructure.copy(),
             converged=self.converged,
             do_climb=self.do_climb,
+            BARRIER_THRE=self.BARRIER_THRE,
+            GLOBAL_RMSD_CUTOFF=self.GLOBAL_RMSD_CUTOFF,
+            FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
         )
         copy_node._tc_server = self._tc_server
 
@@ -118,7 +124,13 @@ class Node3D_TC_TCPB(Node):
         copy_tdstruct.update_tc_parameters(td_ref=self.tdstructure)
 
         return Node3D_TC_TCPB(
-            tdstructure=copy_tdstruct, converged=self.converged, do_climb=self.do_climb
+            tdstructure=copy_tdstruct,
+            converged=self.converged,
+            do_climb=self.do_climb,
+            BARRIER_THRE=self.BARRIER_THRE,
+            GLOBAL_RMSD_CUTOFF=self.GLOBAL_RMSD_CUTOFF,
+            FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
         )
 
     def opt_func(self, v=True):
@@ -202,7 +214,7 @@ class Node3D_TC_TCPB(Node):
         # print(ene_gradients)
         return ene_gradients
 
-    def do_geom_opt_trajectory(self) -> Trajectory:
+    def do_geom_opt_trajectory(self):
         td_copy = self.tdstructure.copy()
         td_opt_traj = td_copy.run_tc_local(calculation="minimize", return_object=True)
         print(f"len opt traj: {len(td_opt_traj)}")
@@ -212,7 +224,14 @@ class Node3D_TC_TCPB(Node):
     def do_geometry_optimization(self) -> Node3D_TC_TCPB:
         td_opt = self.tdstructure.tc_local_geom_optimization()
         time.sleep(0.3)  # sleep time so server can reset
-        return Node3D_TC_TCPB(td_opt)
+        return Node3D_TC_TCPB( tdstructure=td_opt,
+            converged=self.converged,
+            do_climb=self.do_climb,
+            BARRIER_THRE=self.BARRIER_THRE,
+            GLOBAL_RMSD_CUTOFF=self.GLOBAL_RMSD_CUTOFF,
+            FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
+        )
 
     def _is_connectivity_identical(self, other) -> bool:
         connectivity_identical = self.tdstructure.molecule_rp.is_bond_isomorphic_to(
@@ -223,25 +242,32 @@ class Node3D_TC_TCPB(Node):
     def _is_conformer_identical(self, other) -> bool:
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
-            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+
+            global_dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            per_frag_dists = []
+            self_frags = self.tdstructure.split_td_into_frags()
+            other_frags = other.tdstructure.split_td_into_frags()
+            for frag_self, frag_other in zip(self_frags, other_frags):
+                aligned_frag_self = frag_self.align_to_td(frag_other)
+                frag_dist = RMSD(aligned_frag_self.coords, frag_other.coords)[0]
+                per_frag_dists.append(frag_dist)
+            print(f"{per_frag_dists=}")
+            print(f"{global_dist=}")
+
             en_delta = np.abs((self.energy - other.energy) * 627.5)
 
-            rmsd_identical = dist < RMSD_CUTOFF
-            energies_identical = en_delta < KCAL_MOL_CUTOFF
-            if rmsd_identical and energies_identical:
-                conformer_identical = True
+            global_rmsd_identical = global_dist <= self.GLOBAL_RMSD_CUTOFF
+            fragment_rmsd_identical = max(per_frag_dists) <= self.FRAGMENT_RMSD_CUTOFF
+            rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
+            energies_identical = en_delta < self.KCAL_MOL_CUTOFF
+            # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
 
-            if not rmsd_identical and energies_identical:
-                # going to assume this is a rotation issue. Need To address.
-                conformer_identical = False
-
-            if not rmsd_identical and not energies_identical:
-                conformer_identical = False
-
-            if rmsd_identical and not energies_identical:
-                conformer_identical = False
-            print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
-            return conformer_identical
+            if rmsd_identical and energies_identical:  #and barrier_accessible:
+                return True
+            else:
+                return False
+        else:
+            return False
 
     def is_identical(self, other) -> bool:
 

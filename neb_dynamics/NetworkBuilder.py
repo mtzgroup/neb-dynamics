@@ -1,24 +1,21 @@
+import contextlib
+import itertools
+import os
+import subprocess
+from dataclasses import dataclass
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import tqdm
+from scipy.signal import argrelmin
+
+from neb_dynamics.Chain import Chain
+from neb_dynamics.helper_functions import RMSD
+from neb_dynamics.Inputs import ChainInputs
+from neb_dynamics.pot import Pot
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
-from neb_dynamics.helper_functions import RMSD
-from neb_dynamics.Chain import Chain
-from neb_dynamics.Inputs import ChainInputs
-
-from scipy.signal import argrelmin
-import tqdm
-
-# from retropaths.reactions.pot import Pot
-from neb_dynamics.pot import Pot
-
-import numpy as np
-import matplotlib.pyplot as plt
-import contextlib
-import os
-
-from pathlib import Path
-import subprocess
-import itertools
-from dataclasses import dataclass
 
 
 @dataclass
@@ -32,6 +29,8 @@ class NetworkBuilder:
     n_max_conformers: int = 10
     subsample_confs: bool = True
     conf_rmsd_cutoff: float = 0.5
+    network_nodes_are_conformers: bool = False
+    maximum_barrier_height: float = 1000  # kcal/mol
 
     use_slurm: bool = False
 
@@ -98,13 +97,9 @@ class NetworkBuilder:
         with self.remember_cwd():
             os.chdir(dd)
 
-            results_conf_fp = dd / "crest_conformers.xyz"
             fps_confomers = list(dd.glob("crest_conf*.xyz"))
             fps_rotamers = list(dd.glob("crest_rot*.xyz"))
 
-            # results_rots_fp = dd / 'crest_rotamers.xyz'
-
-            # if results_conf_fp.exists() and results_rots_fp.exists():
             if len(fps_confomers) >= 1 and len(fps_rotamers) >= 1:
                 if self.verbose:
                     print("\tConformers already computed.")
@@ -172,7 +167,7 @@ class NetworkBuilder:
         )
 
         if self.subsample_confs:
-            ### subselect to n conformers for each
+            # subselect to n conformers for each
             sub_start_confs = self.subselect_confomers(
                 conformer_pool=start_conformers,
                 n_max=self.n_max_conformers,
@@ -243,7 +238,10 @@ class NetworkBuilder:
             end.to_xyz(end_fp)
             out_fp = self.msmep_data_dir / f"results_{file_stem_name}{i}_msmep"
 
-            cmd = f"create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.001 -sig {int(self.chain_inputs.skip_identical_graphs)} -mr {int(self.chain_inputs.use_maxima_recyling)} -nc node3d -preopt 0 -climb 0 -nimg 12 -min_ends 1 -es_ft 0.5 -name {out_fp}"
+            cmd = f"create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.002 \
+                -sig {int(self.chain_inputs.skip_identical_graphs)} -mr {int(self.chain_inputs.use_maxima_recyling)} \
+                    -nc {self.chain_inputs.node_class.__repr__()} -preopt 0 -climb 0 -nimg 12 -min_ends 1 \
+                        -es_ft 0.03 -name {out_fp}"
 
             new_template = template.copy()
             new_template[-1] = cmd
@@ -254,7 +252,7 @@ class NetworkBuilder:
                 f.write("\n".join(new_template))
 
     def run_msmeps(self):
-        ## submit all jobs
+        # submit all jobs
         all_jobs = list(self.submissions_dir.glob("*.sh"))
 
         for job in all_jobs:
@@ -294,9 +292,14 @@ class NetworkBuilder:
         return inds[0]
 
     def _get_ind_td(self, ref_list, td):
-        inds = np.where(
-            [a.is_identical(b) for a, b in list(itertools.product([td], ref_list))]
-        )[0]
+        if self.network_nodes_are_conformers:
+            inds = np.where(
+                [a.is_identical(b) for a, b in list(itertools.product([td], ref_list))]
+            )[0]
+        else:
+            inds = np.where(
+                [a._is_connectivity_identical(b) for a, b in list(itertools.product([td], ref_list))]
+            )[0]
         assert len(inds) >= 1, "No matches found. Network cannot be constructed."
         return inds[0]
 
@@ -305,7 +308,7 @@ class NetworkBuilder:
         adj_mat = np.loadtxt(adj_mat_fp)
         if adj_mat.size == 1:
             return [
-                Chain.from_xyz(fp / "node_0.xyz", ChainInputs(k=0.1, delta_k=0.09))
+                Chain.from_xyz(fp / "node_0.xyz", self.chain_inputs)
             ]
         else:
 
@@ -314,7 +317,7 @@ class NetworkBuilder:
             chains = [
                 Chain.from_xyz(
                     fp / f"node_{ind}.xyz",
-                    ChainInputs(k=0.1, delta_k=0.09, use_maxima_recyling=True),
+                    self.chain_inputs,
                 )
                 for ind in inds_leaves
             ]
@@ -364,53 +367,50 @@ class NetworkBuilder:
         try:
             chain.gradients
             return False
-        except:
+        except Exception:
             return True
 
-    def create_rxn_network(self):
-        msmep_paths = list(self.msmep_data_dir.glob("results*_msmep"))
-
-        molecules = []
+    def _load_network_data(self, msmep_paths: list[Path]):
         structures = []  # list of Node3D
         edges = {}
         leaf_objects = {}
         for fp in tqdm.tqdm(msmep_paths):
             if self.verbose:
-                print(f"\tDoing: {fp}. Len: {len(molecules)}")
+                print(f"\tDoing: {fp}. Len: {len(structures)}")
 
             leaves = self._get_relevant_leaves(fp)
             for leaf in leaves:
-                # reactant = leaf[0].tdstructure.molecule_rp
-                # product = leaf[-1].tdstructure.molecule_rp
                 reactant = leaf[0]
                 product = leaf[-1]
                 out_leaf = leaf
                 out_leaf_rev = out_leaf.copy()
                 out_leaf_rev.nodes.reverse()
                 if self._energies_fail(out_leaf):
+                    if self.verbose:
+                        print(f"\t\t{fp} had a leaf with failed energies. Might result in disconnected nodes.")
                     continue
 
                 if self.tolerate_kinks:
-                    es = True
+                    elementary_step = True
                 else:
                     n_minima = len(argrelmin(out_leaf.energies)[0])
 
-                    es = n_minima == 0
-                # es = out_leaf.is_elem_step()[0]
-                # es = len(out_leaf) == 12
+                    elementary_step = n_minima == 0
+                if elementary_step:
 
-                if es:
-                    # if reactant not in molecules:
-                    #     molecules.append(reactant)
-                    # if product not in molecules:
-                    #     molecules.append(product)
-                    if reactant not in structures:
+                    if self.network_nodes_are_conformers:
+                        reactant_comparison = reactant not in structures
+                        product_comparison = product not in structures
+                    else:
+                        all_mols = [node.tdstructure.molecule_rp for node in structures]
+                        reactant_comparison = reactant.tdstructure.molecule_rp not in all_mols
+                        product_comparison = product.tdstructure.molecule_rp not in all_mols
+
+                    if reactant_comparison:
                         structures.append(reactant)
-                    if product not in structures:
+                    if product_comparison:
                         structures.append(product)
 
-                    # ind_r = self._get_ind_mol(molecules, reactant)
-                    # ind_p = self._get_ind_mol(molecules, product)
                     ind_r = self._get_ind_td(ref_list=structures, td=reactant)
                     ind_p = self._get_ind_td(ref_list=structures, td=product)
                     eA = leaf.get_eA_chain()
@@ -434,59 +434,93 @@ class NetworkBuilder:
                         leaf_objects[rev_edge_name] = [out_leaf_rev]
 
         self.leaf_objects = leaf_objects
+        return structures, edges
 
-        # ind_start = self._get_ind_mol(molecules, leaves[0][0].tdstructure.molecule_rp)
-        ind_start = self._get_ind_td(structures, leaves[0][0])
-
-        # reactant = molecules[0]
-        reactant = structures[0].tdstructure.molecule_rp
-
-        pot = Pot(root=reactant)
-
-        # for i, mol_to_add in enumerate(molecules):
+    def _add_all_nodes(self, pot: Pot, structures: list):
         for i, mol_to_add in enumerate(structures):
             node_ind = i
             if self.verbose:
                 print(f"Adding node {node_ind}")
-            relevant_keys = self._get_relevant_edges(edges, node_ind)
+
             relevant_conformers = self._get_relevant_conformers(node_ind)
             if self.verbose:
                 print(f"\tIt had {len(relevant_conformers)} conformers")
 
-            rel_edges = self._get_relevant_edges(edges, node_ind)
             pot.graph.add_node(
                 node_ind,
                 molecule=mol_to_add.tdstructure.molecule_rp,
                 converged=False,
                 td=mol_to_add.tdstructure,
                 node_energy=mol_to_add.energy,
-            )
-            # node_energies=[conformer.energy for conformer in relevant_conformers],
-            # conformers=relevant_conformers)
+                node_energies=[conformer.energy for conformer in relevant_conformers],
+                conformers=relevant_conformers)
 
-            # print(rel_edges)
+        return pot
+
+    def _get_lowest_barrier_height_pair(self, edges: dict, edgelabel: str):
+        all_barriers_fwd = edges[edgelabel]
+        label = edgelabel
+        vals = label.split("-")
+        label_rev = f"{vals[1]}-{vals[0]}"
+        all_barriers_rev = edges[label_rev]
+        assert len(all_barriers_fwd) == len(all_barriers_rev), f"Inconsistency in number of barriers.\
+              {len(all_barriers_fwd)=} {len(all_barriers_rev)=}"
+
+        sum_barrier_fwd_and_back = [fwd+rev for fwd, rev in zip(all_barriers_fwd, all_barriers_rev)]
+        lowest_barrier_ind = np.argmin(sum_barrier_fwd_and_back)
+        return all_barriers_fwd[lowest_barrier_ind], all_barriers_rev[lowest_barrier_ind]
+
+    def _add_all_edges(self, pot: Pot, structures: list, edges: dict):
+        for i, _ in enumerate(structures):
+            node_ind = i
+            rel_edges = self._get_relevant_edges(edges, node_ind)
             for edgelabel in rel_edges:
                 label = edgelabel
                 vals = label.split("-")
                 label_rev = f"{vals[1]}-{vals[0]}"
-                pot.graph.add_edge(
-                    int(vals[1]),
-                    node_ind,
-                    reaction=f"eA ({edgelabel}): {np.min(edges[edgelabel])}",
-                    list_of_nebs=leaf_objects[label],
-                    barrier=np.min(edges[edgelabel]),
-                    exp_neg_barrier=np.exp(-np.min(edges[edgelabel])),
-                )
-                pot.graph.add_edge(
-                    node_ind,
-                    int(vals[1]),
-                    reaction=f"eA ({label_rev}):{np.min(edges[label_rev])}",
-                    list_of_nebs=leaf_objects[label_rev],
-                    barrier=np.min(edges[label_rev]),
-                    exp_neg_barrier=np.exp(-np.min(edges[label_rev])),
-                )
+                lowest_barrier_height_fwd, \
+                    lowest_barrier_height_rev = self._get_lowest_barrier_height_pair(edges, edgelabel)
 
+                if int(vals[0]) == node_ind and int(vals[1]) == node_ind:
+                    # skip whenever you have an 'in place' transition
+                    continue
+                else:
+                    if lowest_barrier_height_fwd <= self.maximum_barrier_height:
+                        pot.graph.add_edge(
+                            int(vals[1]),
+                            node_ind,
+                            reaction=f"eA ({edgelabel}): {np.min(edges[edgelabel])}",
+                            list_of_nebs=self.leaf_objects[label],
+                            # barrier=np.min(edges[edgelabel]),
+                            barrier=lowest_barrier_height_fwd,
+                            exp_neg_barrier=np.exp(-np.min(edges[edgelabel])),
+                        )
+                    if lowest_barrier_height_rev <= self.maximum_barrier_height:
+                        pot.graph.add_edge(
+                            node_ind,
+                            int(vals[1]),
+                            reaction=f"eA ({label_rev}):{np.min(edges[label_rev])}",
+                            list_of_nebs=self.leaf_objects[label_rev],
+                            # barrier=np.min(edges[label_rev]),
+                            barrier=lowest_barrier_height_rev,
+                            exp_neg_barrier=np.exp(-np.min(edges[label_rev])),
+                        )
         return pot
+
+    def create_rxn_network(self):
+        msmep_paths = list(self.msmep_data_dir.glob("results*_msmep"))
+        structures, edges = self._load_network_data(msmep_paths=msmep_paths)
+        pot = Pot(root=self.start.molecule_rp)
+        pot = self._add_all_nodes(pot, structures=structures)
+        pot = self._add_all_edges(pot, structures=structures, edges=edges)
+        return pot
+
+    def get_lowest_barrier_chain(self, edge: str):
+        edge_data = self.leaf_objects[edge]
+        assert len(edge_data) >= 1, f"{edge} was not found in network."
+        eAs = [c.get_eA_chain() for c in edge_data]
+        best_ind = np.argmin(eAs)
+        return edge_data[best_ind]
 
     def run_and_return_network(self):
         print("1... Creating Conformers with CREST")

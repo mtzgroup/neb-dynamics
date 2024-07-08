@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from IPython.core.display import HTML
 from ipywidgets import IntSlider, interact
-from openeye import oechem
 
 from neb_dynamics.geodesic_interpolation.fileio import read_xyz
 from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py

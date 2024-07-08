@@ -38,6 +38,7 @@ class Janitor:
         elif isinstance(self.history_object, Chain):
             return self.history_object
 
+
     @cached_property
     def insertion_points(self):
         """
@@ -85,7 +86,7 @@ class Janitor:
 
             chain_pair = Chain(
                 nodes=[prev_end, curr_start],
-                parameters=self.starting_chain.parameters.copy(),
+                parameters=self.msmep_object.chain_inputs.copy(),
             )
             h, output_chain = self.msmep_object.find_mep_multistep(chain_pair)
 

@@ -86,7 +86,8 @@ class SubGraphMatcher:
                 result = GM.is_isomorphic()
         except TimeoutIsomorphism:
             print(
-                f"A SubGraphMatcher timeout error occurred in is_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}."
+                f"A SubGraphMatcher timeout error occurred in is_isomorphic {self.mol.force_smiles()} \
+                    -> {g.force_smiles()}."
             )
             result = False
         return result

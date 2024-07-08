@@ -19,6 +19,7 @@ class NEBInputs:
     ts_spring_thre: float = None
     barrier_thre: float = 0.1  # kcal/mol
 
+    early_stop_crude_checks: bool = False
     early_stop_force_thre: float = 0.0
     early_stop_chain_rms_thre: float = 0.0
     early_stop_corr_thre: float = 10.0

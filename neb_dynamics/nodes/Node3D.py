@@ -24,12 +24,19 @@ class Node3D(Node):
     _cached_gradient: np.array | None = None
 
     is_a_molecule = True
-    RMSD_CUTOFF: float = 0.5
-    KCAL_MOL_CUTOFF: float = 0.1
+    # GLOBAL_RMSD_CUTOFF: float = 1.0
+    # FRAGMENT_RMSD_CUTOFF: float = 0.5
+    GLOBAL_RMSD_CUTOFF: float = 20.0
+    FRAGMENT_RMSD_CUTOFF: float = 0.5
+
+    KCAL_MOL_CUTOFF: float = 1.0
     BARRIER_THRE: float = 5  # kcal/mol
 
     def __eq__(self, other: Node3D) -> bool:
         return self.is_identical(other)
+
+    def __repr__(self):
+        return 'node3d'
 
     @property
     def coords(self):
@@ -79,37 +86,15 @@ class Node3D(Node):
             converged=self.converged,
             do_climb=self.do_climb,
             BARRIER_THRE=self.BARRIER_THRE,
-            RMSD_CUTOFF=self.RMSD_CUTOFF,
+            GLOBAL_RMSD_CUTOFF=self.GLOBAL_RMSD_CUTOFF,
+            FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
             KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
         )
-        # max_steps=8000
-        # ss=.05
-        # tol=0.0001
-        # nsteps = 0
-        # traj = []
-
-        # node = self.copy()
-        # while nsteps < max_steps:
-        #     traj.append(node)
-        #     grad = node.tdstructure.gradient_xtb()
-        #     if np.linalg.norm(grad) / len(grad) < tol:
-        #         break
-        #     new_coords = node.coords - ss*grad
-        #     node = node.update_coords(new_coords)
-        #     # print(f"|grad|={np.linalg.norm(grad)}",end='\r')
-        #     nsteps+=1
-
-        # if np.linalg.norm(grad) / len(grad) < tol:
-        #     print(f"\nConverged in {nsteps} steps!\n")
-        # else:
-        #     print(f"\nDid not converge in {nsteps} steps. grad={np.linalg.norm(grad) / len(grad)}\n")
-
-        # return node
 
     def _is_connectivity_identical(self, other) -> bool:
         # print("different graphs")
-        connectivity_identical = self.tdstructure.molecule_rp.is_bond_isomorphic_to(
-            other.tdstructure.molecule_rp
+        connectivity_identical = self.tdstructure.molecule_rp.remove_Hs().is_bond_isomorphic_to(
+            other.tdstructure.molecule_rp.remove_Hs()
         )
         return connectivity_identical
 
@@ -117,38 +102,29 @@ class Node3D(Node):
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
 
-            # traj = Trajectory([aligned_self, other.tdstructure]).run_geodesic(
-            #     nimages=10)
-            # barrier = max(
-            #     traj.energies_xtb()
-            # )  # energies are given relative to start struct
-            # barrier_accessible =  barrier <= self.BARRIER_THRE
-            # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
+            global_dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            per_frag_dists = []
+            self_frags = self.tdstructure.split_td_into_frags()
+            other_frags = other.tdstructure.split_td_into_frags()
+            for frag_self, frag_other in zip(self_frags, other_frags):
+                aligned_frag_self = frag_self.align_to_td(frag_other)
+                frag_dist = RMSD(aligned_frag_self.coords, frag_other.coords)[0]
+                per_frag_dists.append(frag_dist)
+            print(f"{per_frag_dists=}")
+            print(f"{global_dist=}")
 
-            dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
             en_delta = np.abs((self.energy - other.energy) * 627.5)
 
-            rmsd_identical = dist < self.RMSD_CUTOFF
+            global_rmsd_identical = global_dist <= self.GLOBAL_RMSD_CUTOFF
+            fragment_rmsd_identical = max(per_frag_dists) <= self.FRAGMENT_RMSD_CUTOFF
+            rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
-            if rmsd_identical and energies_identical:
-                return True
-            # if barrier_accessible and energies_identical:
-            #     return True
+            # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
 
+            if rmsd_identical and energies_identical:  #and barrier_accessible:
+                return True
             else:
                 return False
-
-            # if not rmsd_identical and energies_identical:
-            #     # going to assume this is a rotation issue. Need To address.
-            #     conformer_identical = False
-
-            # if not rmsd_identical and not energies_identical:
-            #     conformer_identical = False
-
-            # if rmsd_identical and not energies_identical:
-            #     conformer_identical = False
-            # print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
-            # return conformer_identical
         else:
             return False
 
@@ -213,7 +189,8 @@ class Node3D(Node):
             converged=self.converged,
             do_climb=self.do_climb,
             BARRIER_THRE=self.BARRIER_THRE,
-            RMSD_CUTOFF=self.RMSD_CUTOFF,
+            GLOBAL_RMSD_CUTOFF=self.GLOBAL_RMSD_CUTOFF,
+            FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
             KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
         )
         # if copy_node.converged:
@@ -233,7 +210,8 @@ class Node3D(Node):
             converged=self.converged,
             do_climb=self.do_climb,
             BARRIER_THRE=self.BARRIER_THRE,
-            RMSD_CUTOFF=self.RMSD_CUTOFF,
+            GLOBAL_RMSD_CUTOFF=self.GLOBAL_RMSD_CUTOFF,
+            FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
             KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
         )
 

@@ -1,18 +1,14 @@
-[tool.poetry]
-name = "\\neb-dynamics"
-version = "0.1.0"
-description = "Package for running NEB optimizations using XTB and TeraChem"
-authors = ["Jan <janestrada7@gmail.com>"]
-readme = "README.md"
-
-[tool.poetry.dependencies]
-python = "^3.9"
+[build-system]
+requires = ["setuptools >= 61.0"]
+build-backend = "setuptools.build_meta"
 
 [project]
+name = "neb-dynamics"
+version = "2024.0.0"
 dependencies = [
   "ase>=3.22.1",
   "biopython>=1.83",
-  "chemcloud>=0.8.1",
+  "chemcloud",
   "jupyterlab==3.4.3",
   "matplotlib>=3.5.2",
   "networkx>=2.6.3",
@@ -21,14 +17,30 @@ dependencies = [
   "pip",
   "py3Dmol==2.1.0",
   "pysmiles==1.1.2",
-  "qcio>=0.8.2",
-  "qcop>=0.5.5",
-  "qcparse>=0.5.3",
+  "qcio",
+  "qcop",
+  "qcparse",
   "scikit-learn>=1.4.2",
   "tqdm>=4.64.0",
-  "xtb-python>=20.1"
+  "xtb>=20.1",
+  "ipywidgets",
+  "openbabel==2.4.1"
+]
+requires-python = ">=3.9"
+authors = [
+  {name = "Jan Estrada Pabón", email = "jdep@stanford.edu"},
 ]
 
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+description = "Package for running NEB minimizations using XTB and TeraChem"
+readme = "README.rst"
+license = {file = "LICENSE.txt"}
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python"
+]
+
+[tool.setuptools]
+py-modules = []
+
+[project.scripts]
+create_msmep_from_endpoints = "neb_dynamics.scripts.create_msmep_from_endpoints.py:main"

@@ -89,7 +89,7 @@ class Refiner:
         out_dft = Chain.from_traj(out_tr, parameters=self.cni)
 
         if self.resample_chain:
-            out_dft = out_dft.resample_chain(
+            out_dft, n_grad_calls = out_dft.resample_chain(
                 out_dft,
                 n=len(out_dft),
                 method=self.method,

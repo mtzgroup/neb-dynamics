@@ -33,6 +33,60 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import SmoothBivariateSpline
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+# -
+
+# # Foobar
+
+import chemcoord as cc
+
+c = Chain.from_xyz("/home/jdep/T3D_data/ugi_nosig_06102024.xyz", ChainInputs())
+
+sub_tds = c.to_trajectory()[12:24]
+# sub_tds = c.to_trajectory()[-12:]
+
+tr = Trajectory(sub_tds)
+
+c.to_trajectory()[0].to_xyz("/tmp/tmp0.xyz")
+
+c.to_trajectory()[-1].to_xyz("/tmp/tmp1.xyz")
+
+geom0 = cc.Cartesian.read_xyz('/tmp/tmp0.xyz', start_index=1)
+
+zmat0 = geom0.get_zmat()
+
+geom1 = cc.Cartesian.read_xyz('/tmp/tmp1.xyz', start_index=1)
+
+zmat0
+
+c_table = zmat0.loc[:, ['b', 'a', 'd']]
+zmat1 = geom1.get_zmat(c_table)
+
+STEPS=len(tr)
+with cc.TestOperators(False):
+    z_Deltas = [(zmat1 - zmat0).minimize_dihedrals() * i / STEPS for i in range(STEPS)]
+    # z_Deltas = [(zmat1 - zmat0) * i / STEPS for i in range(STEPS)]
+zmats = [zmat0 + Delta for Delta in z_Deltas]
+
+
+symbs = zmats[0].get_cartesian().iloc[:,0].values
+
+zmat_int = Trajectory.from_coords_symbols(coords=[x.get_cartesian().iloc[:, 1:].values for x in zmats], symbs=symbs)
+
+Trajectory([c.to_trajectory()[0], c.to_trajectory()[-1]]).run_geodesic(nimages=12).write_trajectory("/home/jdep/gi_int.xyz")
+
+zmat_int.write_trajectory("/home/jdep/zmat_interpolation.xyz")
+
+plt.plot(zmat_int.energies_xtb())
+
+from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+
+td = TDStructure.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Azaindole-Synthesis/start_opt.xyz")
+td.tc_model_method = 'wb97xd3'
+td.tc_model_basis = 'def2-svp'
+
+# %%time
+node = Node3D_TC_Local(td)
+node.gradient
 
 # +
 from scipy.spatial import ConvexHull
@@ -387,6 +441,8 @@ def compute_scaled_vdw_cavity(td: TDStructure, scale=1.2):
     return sum(s_vdwr)
 
 
+# # Network stuff
+
 # +
 from neb_dynamics.NetworkBuilder import NetworkBuilder, ReactionData
 from neb_dynamics.Inputs import ChainInputs
@@ -394,58 +450,524 @@ from pathlib import Path
 import os
 
 from neb_dynamics.molecule import Molecule
+from neb_dynamics.tdstructure import TDStructure
 # -
 
+from neb_dynamics.helper_functions import pairwise
+
+
+# +
+def path_to_keys(path_indices):
+    pairs = list(pairwise(path_indices))
+    labels = [f"{a}-{b}" for a,b in pairs]
+    return labels
+
+def get_best_chain(list_of_chains):
+    eAs = [c.get_eA_chain() for c in list_of_chains]
+    return list_of_chains[np.argmin(eAs)]
+
+def calculate_barrier(chain):
+    return (chain.energies.max() - chain[0].energy)*627.5
+
+def path_to_chain(path, leaf_objects):
+    labels = path_to_keys(path)
+    node_list = []
+    for l in labels:
+
+        node_list.extend(get_best_chain(leaf_objects[l]).nodes)
+    c = Chain(node_list, ChainInputs())
+    return c
+
+
+# -
+
+def get_mechanism_mols(chain, iter_dist=12):
+    out_mols = [chain[0].tdstructure.molecule_rp]
+    nsteps = int(len(chain)/iter_dist)
+    for ind in range(nsteps):
+        r = chain[ind*12].tdstructure.molecule_rp
+        if r != out_mols[-1]:
+            out_mols.append(r)
+        
+    p = chain[-1].tdstructure.molecule_rp
+    if p != out_mols[-1]:
+        out_mols.append(p)
+    return out_mols
+
+
+def path_to_list_of_chains(path, leaf_objects):
+    labels = path_to_keys(path)
+    c_list = []
+    for l in labels:
+
+        c = get_best_chain(leaf_objects[l])
+        c_list.append(c)
+    return c_list
+
+
+from neb_dynamics.Chain import Chain
+
+from neb_dynamics.Refiner import Refiner
+
+from neb_dynamics.Inputs import NEBInputs, GIInputs
+
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+
+from neb_dynamics.NEB import NEB
+
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+import numpy as np
+
+from neb_dynamics.Janitor import Janitor
+
+# +
+# start = TDStructure.from_xyz("/home/jdep/T3D_data/EnolateClaisen/start_confs/start.xyz")
+# end = TDStructure.from_xyz("/home/jdep/T3D_data/EnolateClaisen/end_confs/end.xyz")
+# -
+
+from retropaths.abinitio.solvator import Solvator
+
+solv = Solvator(n_solvent=1)
+
+start = solv.solvate_single_td(start)
+end = solv.solvate_single_td(end)
+
+from neb_dynamics.nodes.Node3D_Water import Node3D_Water
+from neb_dynamics.nodes.Node3D import Node3D
+
+# +
 ugi_fp = Path("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/")
+nosigugi_fp = Path("/home/jdep/T3D_data/Ugi_NOSIG/")
+yessigugi_fp = Path("/home/jdep/T3D_data/Ugi_YESSIG/")
+
 cr_fp = Path("/home/jdep/T3D_data/AutoMG_v0/")
+
 enolcr_fp = Path("/home/jdep/T3D_data/EnolateClaisen")
+
 debug_fp = Path("/home/jdep/T3D_data/debug_automg/")
+
 nosigCR = Path("/home/jdep/T3D_data/ClaisenNoSIG/")
+
+rgs_fp = Path("/home/jdep/T3D_data/RGS_Network")
+
+
+enol_solv_fp = Path("/home/jdep/T3D_data/EnolateClaisen_Water")
 bob = NetworkBuilder(
     start=None,
     end=None,
-    data_dir=nosigCR,
+    data_dir=debug_fp,
     subsample_confs=True, 
     n_max_conformers=20,
-    use_slurm=False,
+    use_slurm=True,
     verbose=False,
     tolerate_kinks=False,
-    chain_inputs=ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=False, use_maxima_recyling=True)
+    chain_inputs=ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=True, use_maxima_recyling=True, node_class=Node3D),
+    network_nodes_are_conformers=False,
+    maximum_barrier_height=50000
 )
-# bob = NetworkBuilder(
-#     start=start,
-#     end=end,
-#     data_dir = Path("/home/jdep/T3D_data/debug_automg/"),
-#     subsample_confs=True, 
-#     n_max_conformers=20,
-#     use_slurm=True,
-#     verbose=False,
-#     tolerate_kinks=False
-# )
 
 # +
-# r = bob.run_and_return_network()
-# -
-
-pot = bob.create_rxn_network()
+# all 400 runs submitted Tuesday Jul2 9:20 AM
+# 189 still remain by Wed Jul3 9:46 AM
+# by July5 it's done I did not come in July 4 
 
 # +
 # pot = bob.run_and_return_network()
 # -
+
+
+pot = bob.create_rxn_network()
+
+pot.draw()
+
+# +
+# pot.draw_shortest_to_node(4, mode='d3', weight='barrier')
+# -
+
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF
+
+import networkx as nx
+
+# +
+# %matplotlib ipympl
+from matplotlib import pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D 
+
+alpha=1
+plot_enes = True
+n = 100
+
+g = pot.graph
+positions = nx.spring_layout(g)
+# positions = nx.spring_layout(g_sub)
+
+s=1.5
+plt.rcParams["figure.figsize"] = [7.50*s, 3.50*s]
+plt.rcParams["figure.autolayout"] = True
+
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+# ax = Axes3D(fig)
+xs = []
+ys = []
+zs = []
+labels = []
+for node_ind, pos in positions.items():
+    if len(g.nodes[node_ind]['node_energies']) < 1: 
+        continue
+    ene = min(g.nodes[node_ind]['node_energies'])
+    
+    for neighbor in g.neighbors(node_ind):
+        if neighbor==node_ind:
+            continue
+         
+        eA = float(g.edges[(neighbor,node_ind)]['reaction'].split(":")[-1]) #kcal/mol
+        TS_ene = ene+(eA/627.5)
+        start_p = positions[node_ind]
+        end_p = positions[neighbor]
+        TS_p = (end_p + start_p) / 2
+        # ax.scatter(TS_p[0], TS_p[1], TS_ene, marker='x', color='red', s=80, depthshade=False)
+        xs.append(TS_p[0])
+        ys.append(TS_p[1])
+        if plot_enes:
+            zs.append(TS_ene)
+        else:
+            zs.append(-np.exp(TS_ene))
+        
+    xs.append(pos[0])
+    ys.append(pos[1])
+    if plot_enes:
+        zs.append(ene)
+    else:
+        zs.append(-np.exp(ene))
+        
+        
+kernel = RBF(1.0, (-20.0, 1e5))
+gpr = GaussianProcessRegressor(kernel=kernel)
+train_data = np.array([xs,ys]).T
+gpr.fit(train_data, zs)
+print(gpr.score(train_data, zs))
+
+        
+x_vals = np.linspace(min(xs), max(xs), num=n)
+y_vals = np.linspace(min(ys), max(ys), num=n)
+xx,yy = np.meshgrid(x_vals, y_vals)
+zz = np.array([[0.0]*len(xx)]*len(xx))
+
+for i, col_val in enumerate(xx):
+    for j, row_val in enumerate(col_val):
+        pred_val = gpr.predict(np.array([[xx[i,j], yy[i,j]]]))[0]
+        if pred_val > max(zs):
+            pred_val = max(zs)
+        elif pred_val < min(zs):
+            pred_val = min(zs)
+        zz[i, j] = pred_val
+        
+
+
+ax.plot_trisurf(xs, ys, zs,cmap='viridis', alpha=alpha)
+# ax.plot_surface(xx, yy, zz,cmap='viridis', alpha=alpha)
+
+
+
+for node_ind, pos in positions.items():
+    if len(g.nodes[node_ind]['node_energies']) < 1: 
+        continue
+    ene = min(g.nodes[node_ind]['node_energies'])
+    
+    for neighbor in g.neighbors(node_ind):
+        if neighbor==node_ind:
+            continue
+         
+        eA = float(g.edges[(neighbor,node_ind)]['reaction'].split(":")[-1]) #kcal/mol
+        TS_ene = ene+(eA/627.5)
+        # print(ene, TS_ene)
+        start_p = positions[node_ind]
+        end_p = positions[neighbor]
+        TS_p = (end_p + start_p) / 2
+        # print(start_p, end_p, TS_p)
+        if plot_enes:
+            ax.scatter(TS_p[0], TS_p[1], TS_ene, marker='x', color='red', s=80, depthshade=False)
+        else:
+            ax.scatter(TS_p[0], TS_p[1], -np.exp(TS_ene), marker='x', color='red', s=80, depthshade=False)
+        
+    if plot_enes:
+        ax.scatter(pos[0], pos[1], ene, s=50, color='black')
+        ax.text(pos[0]+.05, pos[1]+.05, ene-.001, s=f'node_{node_ind}')
+    else:
+        ax.scatter(pos[0], pos[1], -np.exp(ene), s=50, color='black')
+        ax.text(pos[0]+.05, pos[1]+.05, -np.exp(ene-.001), s=f'node_{node_ind}')
+    
+ax.set_xlabel("X axis")
+ax.set_ylabel("Y axis")
+
+
+
+
+
+
+# ax.axis('off')
+# plt.legend(loc=(1.1,0))
+# ax.view_init(azim=45, elev=90)
+ax.set_zlim3d(min(zs),max(zs))
+ax.view_init(azim=45, elev=40)
+# plt.legend()
+plt.show()
+
+# +
+# p = [0, 3, 4, 18, 6]
+# p = [0, 3, 4, 5, 6]
+# p = [0, 5, 4]
+
+# p = [0, 1, 2, 3, 4]
+p = [0, 1, 2, 22, 23, 24, 4]
+
+# -
+
+list_of_chains  = path_to_list_of_chains(p, bob.leaf_objects)
+
+c = path_to_chain(p, bob.leaf_objects)
+
+c[11].is_identical(c[12])
+
+c.to_trajectory()
+
+c.plot_chain()
+
+c_sig = Chain.from_xyz("/home/jdep/T3D_data/ugi_yessig_06102024.xyz", ChainInputs())
+
+Molecule.draw_list(get_mechanism_mols(c_sig),mode='d3')
+
+tsg = c_sig[30].tdstructure
+
+tsto_trajectorydel_method = 'ub3lyp'
+
+tsg.tc_model_basis = '6-31gss'
+
+ts_opt = tsg.tc_geom_optimization("ts")
+
+ts_opt
+
+c_sig.plot_chain()
+
+import matplotlib.pyplot as plt
+
+s=7
+fs=18
+f, ax = plt.subplots(figsize=(2.16*s, s))
+# plt.plot(c_nosig.integrated_path_length, c_nosig.energies_kcalmol,'o-')
+plt.plot(c_sig.integrated_path_length, c_sig.energies_kcalmol,'o-')
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.ylabel("Energies (kcal/mol)", fontsize=fs)
+plt.xlabel("Reaction progression", fontsize=fs)
+
+c_nosig = Chain.from_xyz("/home/jdep/T3D_data/ugi_nosig_06102024.xyz", ChainInputs())
+
+c_nosig.plot_chain()
+
+# +
+# p = [0, 3, 4, 18, 25, 6]
+# p.reverse()
+
+# +
+# pot.draw_shortest_to_node(6, mode='d3', weight='barrier')
+# -
+
+from neb_dynamics.TreeNode import TreeNode
+
+fake_neb_objects = [NEB(initial_chain=None, parameters=NEBInputs(), optimizer=VelocityProjectedOptimizer) for i in range(len(list_of_chains))]
+
+for n, chain in zip(fake_neb_objects, list_of_chains):
+    n.optimized = chain
+
+fake_leaves = [TreeNode(data=n, children=[], index=0) for n in fake_neb_objects]
+
+from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
+
+ref = Refiner(v=True, cni=ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=False, node_class=Node3D_TC_TCPB, do_parallel=False), nbi=NEBInputs(v=True, tol=0.002*BOHR_TO_ANGSTROMS), gii=GIInputs(nimages=12))
+
+from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.nodes.Node3D import Node3D
+
+m = MSMEP(neb_inputs=NEBInputs(v=True, tol=0.002*BOHR_TO_ANGSTROMS), chain_inputs=ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=False, node_class=Node3D, do_parallel=False), gi_inputs=GIInputs(nimages=12), optimizer=VelocityProjectedOptimizer(timestep=0.5))
+
+c.parameters = ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=False, node_class=Node3D, do_parallel=False)
+
+jj = Janitor(history_object=c, reaction_leaves=fake_neb_objects, 
+             msmep_object=m)
+
+clean_msmep = jj.create_clean_msmep()
+
+
+def merge_by_indices(
+    insertions_inds, insertions_vals, orig_inds, orig_values
+):
+
+    insertions_inds = insertions_inds.copy()
+    insertions_vals = insertions_vals.copy()
+    orig_inds = orig_inds.copy()
+    orig_values = orig_values.copy()
+    out = []
+    while len(insertions_inds) > 0:
+        if 0 <= insertions_inds[0] <= orig_inds[0]:
+            out.extend([leaf.data.optimized for leaf in insertions_vals[0].ordered_leaves])
+            insertions_inds.pop(0)
+            insertions_vals.pop(0)
+        elif insertions_inds[0] == -1 and len(orig_values) == 0:
+            out.extend([leaf.data.optimized for leaf in insertions_vals[0].ordered_leaves])
+            insertions_inds.pop(0)
+            insertions_vals.pop(0)
+        else:
+            out.append(orig_values[0].optimized)
+            orig_inds.pop(0)
+            orig_values.pop(0)
+
+    if len(orig_values) > 0:
+        out.extend([n.optimized for n in orig_values])
+
+    return out
+
+
+orig_leaves = jj.reaction_leaves
+new_leaves = merge_by_indices(
+            insertions_inds=jj.insertion_points,
+            insertions_vals=jj.cleanup_trees,
+            orig_inds=list(range(len(orig_leaves))),
+            orig_values=orig_leaves,
+        )
+print("after:", len(new_leaves))
+# new_chains = [leaf.data.optimized for leaf in new_leaves]
+clean_out_chain = Chain.from_list_of_chains(
+    new_leaves, parameters=jj.starting_chain.parameters
+)
+
+pot.gradph.
+
+sorted(list(enumerate([(pot.graph.degree[i], pot.graph.nodes[i].energy) for i in range(len(pot.graph.nodes))])),key=lambda x:x[1], reverse=True)
+
+pot.graph.nodes[4]['molecule'].draw(mode='d3')
+
+pot.draw()
+
+clean_out_chain.plot_chain()
+clean_out_chain.write_to_disk("/home/jdep/T3D_data/ugi_nosig_06102024.xyz")
+
+clean_out_chain[155].is_identical(clean_out_chain[156])
+
+# +
+
+c.plot_chain()
+c.write_to_disk("/home/jdep/T3D_data/ugi_yessig_06102024.xyz")
+# -
+
+clean_out_chain.write_to_disk("/home/jdep/T3D_data/hijan.xyz")
+
+len(list_of_cleanup_nebs)
+
+jj._merge_cleanups_and_leaves
+
+clean_out_chain.plot_chain()
+
+
+
+jj.cleanup_trees[1].output_chain.plot_chain()
+
+[leaf.data.optimized.plot_chain() for leaf in jj.cleanup_trees[0].ordered_leaves[1:]]
+
+
+
+frag1 = clean_out_chain.copy()
+frag1.nodes = clean_out_chain.nodes[:24]
+
+
+
+frag2 = clean_out_chain.copy()
+frag2.nodes = clean_out_chain.nodes[36:]
+
+joined = Chain.from_list_of_chains([frag1, frag2], ChainInputs())
+
+clean_out_chain.write_to_disk("/home/jdep/T3D_data/ugi_best.xyz")
+
+
+
+pot.draw_reaction_graph()
+
+fs = 18
+s = 8
+f, ax = plt.subplots(figsize=(1.16*s, s))
+plt.plot(clean_out_chain.integrated_path_length, clean_out_chain.energies_kcalmol, 'o-')
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xlabel("Reaction coordinate", fontsize=fs)
+plt.ylabel("Relative energies (kcal/mol)",fontsize=fs)
+plt.savefig("/home/jdep/T3D_data/msmep_draft/figures/UGI_path.svg")
+
+jj.cleanup_trees[0].data.optimized[0].is_identical(c[24])
+
+clean_msmep[35].is_identical(clean_msmep[36])
+
+output = ref.create_refined_leaves(fake_leaves)
+
+# +
+# r = bob.run_and_return_network()
+
+# +
+# pot.draw()
+# -
+
+import networkx as nx
+
+g = pot.graph
+path = nx.shortest_path(g, source=0, target=4, weight='barrier')
+
+from neb_dynamics.helper_functions import pairwise
+
+
+
+import numpy as np
+
+from neb_dynamics.Chain import Chain
+
+c = path_to_chain(path, leaf_objects=bob.leaf_objects)
+
+c.plot_chain()
+
+c[60].tdstructure.molecule_rp.draw(mode='d3')
+
+
+
+pot.draw_shortest_to_node(4, mode='d3', weight='barrier')
+
+pot.draw()
+
+all_mols = [pot.graph.nodes[i]['molecule'] for i,_ in enumerate(pot.graph.nodes)]
+
+# +
+# Molecule.draw_list(all_mols, mode='d3',names=[f"node {i}" for i in range(len(pot.graph.nodes))])
+# -
+
+pot.draw_reaction_graph()
+
+pot.draw_shortest_to_node(4, mode='d3', weight='work')
+
+# +
+
+# pot = bob.run_and_return_network()
+# -
+
+pot.draw_molecules_in_nodes()
 
 import networkx as nx
 import matplotlib.pyplot as plt
 
 pot.draw()
 
-# +
-# nodes = pot.graph.nodes
-# Molecule.draw_list([nodes[i]['molecule'] for i, _ in enumerate(nodes)], 
-#                    names=[f"{i} {nodes[i]['node_energy']}" for i, _ in enumerate(nodes)])
-# -
-
 bob.run_msmeps()
 
+# +
 from  dataclasses import dataclass
 from neb_dynamics.pot import Pot
 @dataclass
@@ -466,17 +988,17 @@ class KineticModel:
         inf_barrier = np.inf
         adjmat[adjmat==0] = inf_barrier
         np.fill_diagonal(adjmat,inf_barrier)
-        T= self.temperature
+        T = self.temperature
         beta=1. / ((0.008314)*T)
         
         trans_mat = np.exp(-beta*adjmat)*self.timestep
-        state_probabilities = [np.exp(-beta*g.nodes[i]['node_energy']) for i,_ in enumerate(g.nodes)]
-        state_probs = np.zeros_like(trans_mat)
-        for i, _ in enumerate(state_probs):
-            for j,_ in enumerate(state_probs):
-                state_probs[i,j] = state_probabilities[i]/state_probabilities[j]
+#         state_probabilities = [np.exp(-beta*g.nodes[i]['node_energy']) for i,_ in enumerate(g.nodes)]
+#         state_probs = np.zeros_like(trans_mat)
+#         for i, _ in enumerate(state_probs):
+#             for j,_ in enumerate(state_probs):
+#                 state_probs[i,j] = state_probabilities[i]/state_probabilities[j]
 
-        trans_mat = state_probs*trans_mat        
+#         trans_mat = state_probs*trans_mat        
 
         
         for i, _ in enumerate(trans_mat):
@@ -555,12 +1077,17 @@ class KineticModel:
         g = self.pot.graph
 
         return Molecule.draw_list(grouped_mols, names=[f'yield={round(y*100,2)} %' for y in [b for a,b in grouped_yields.items()]], mode='d3')
+# -
 
 kinx = KineticModel(pot=pot,temperature=25+273, nsteps=18000, timestep=.1) # 18000*.1 timesteps = 30min
 
 import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
+
+eigvals, eigvecs = np.linalg.eigh(kinx.transition_matrix)
+
+eigvals
 
 population=np.zeros(len(pot.graph.nodes))
 population.reshape(-1,1)
@@ -571,12 +1098,6 @@ population[0]=1.0
 # -
 
 traj, fin_pop = kinx.run_simulation(population=population)
-
-inds_nonzero = np.where(fin_pop>1/100)
-
-traj[:, 0]
-
-
 
 # f, ax = plt.subplots()
 # for ind in inds_nonzero[0]:
@@ -640,129 +1161,8 @@ print(len(sub_tsg))
 # bob.run_msmeps()
 # -
 
-g = pot.graph
-positions = nx.spring_layout(g)
-
-from sklearn.gaussian_process import GaussianProcessRegressor
-
-# +
-# %matplotlib widget
-from matplotlib import pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D 
-
-alpha=1
-plot_enes = True
-
-s=1.5
-plt.rcParams["figure.figsize"] = [7.50*s, 3.50*s]
-plt.rcParams["figure.autolayout"] = True
-
-fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-ax = Axes3D(fig)
-xs = []
-ys = []
-zs = []
-labels = []
-for node_ind, pos in positions.items():
-    ene = min(g.nodes[node_ind]['node_energies'])
-    
-    for neighbor in g.neighbors(node_ind):
-        if neighbor==node_ind:
-            continue
-         
-        eA = float(g.edges[(neighbor,node_ind)]['reaction'].split(":")[-1]) #kcal/mol
-        TS_ene = ene+(eA/627.5)
-        start_p = positions[node_ind]
-        end_p = positions[neighbor]
-        TS_p = (end_p + start_p) / 2
-        # ax.scatter(TS_p[0], TS_p[1], TS_ene, marker='x', color='red', s=80, depthshade=False)
-        xs.append(TS_p[0])
-        ys.append(TS_p[1])
-        if plot_enes:
-            zs.append(TS_ene)
-        else:
-            zs.append(-np.exp(TS_ene))
-        
-    xs.append(pos[0])
-    ys.append(pos[1])
-    if plot_enes:
-        zs.append(ene)
-    else:
-        zs.append(-np.exp(ene))
-        
-        
-kernel = None#RBF(1.0, (-20.0, 1e5))
-gpr = GaussianProcessRegressor(kernel=kernel)
-train_data = np.array([xs,ys]).T
-gpr.fit(train_data, zs)
-print(gpr.score(train_data, zs))
-
-        
-x_vals = np.linspace(min(xs), max(xs), num=1000)
-y_vals = np.linspace(min(ys), max(ys), num=1000)
-xx,yy = np.meshgrid(x_vals, y_vals)
-zz = np.array([[0.0]*len(xx)]*len(xx))
-
-for i, col_val in enumerate(xx):
-    for j, row_val in enumerate(col_val):
-        pred_val = gpr.predict(np.array([[xx[i,j], yy[i,j]]]))[0]
-        if pred_val > max(zs):
-            pred_val = max(zs)
-        elif pred_val < min(zs):
-            pred_val = min(zs)
-        zz[i, j] = pred_val
-        
 
 
-# ax.plot_trisurf(xs, ys, zs,cmap='viridis', alpha=alpha)
-ax.plot_surface(xx, yy, zz,cmap='viridis', alpha=alpha)
-
-
-
-for node_ind, pos in positions.items():
-    ene = min(g.nodes[node_ind]['node_energies'])
-    
-    for neighbor in g.neighbors(node_ind):
-        if neighbor==node_ind:
-            continue
-         
-        eA = float(g.edges[(neighbor,node_ind)]['reaction'].split(":")[-1]) #kcal/mol
-        TS_ene = ene+(eA/627.5)
-        # print(ene, TS_ene)
-        start_p = positions[node_ind]
-        end_p = positions[neighbor]
-        TS_p = (end_p + start_p) / 2
-        # print(start_p, end_p, TS_p)
-        if plot_enes:
-            ax.scatter(TS_p[0], TS_p[1], TS_ene, marker='x', color='red', s=80, depthshade=False)
-        else:
-            ax.scatter(TS_p[0], TS_p[1], -np.exp(TS_ene), marker='x', color='red', s=80, depthshade=False)
-        
-    if plot_enes:
-        ax.scatter(pos[0], pos[1], ene, s=50, color='black')
-        ax.text(pos[0]+.05, pos[1]+.05, ene-.001, s=f'node_{node_ind}')
-    else:
-        ax.scatter(pos[0], pos[1], -np.exp(ene), s=50, color='black')
-        ax.text(pos[0]+.05, pos[1]+.05, -np.exp(ene-.001), s=f'node_{node_ind}')
-    
-ax.set_xlabel("X axis")
-ax.set_ylabel("Y axis")
-
-
-
-
-
-
-# ax.axis('off')
-# plt.legend(loc=(1.1,0))
-# ax.view_init(azim=45, elev=90)
-ax.set_zlim3d(min(zs),max(zs))
-ax.view_init(azim=45, elev=40)
-# plt.legend()
-plt.show()
-
-# -
 x_points = np.linspace(min(xs), max(xs))
 y_points = np.linspace(min(ys), max(ys))
 
@@ -927,3 +1327,5 @@ pot.draw()
 
 def vis_nma(td, nma, dr=0.1):
     return Trajectory([td.displace_by_dr(-dr*nma), td, td.displace_by_dr(dr*nma)])
+
+

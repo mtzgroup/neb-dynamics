@@ -1,10 +1,10 @@
-#!/home/jdep/.conda/envs/neb/bin/python
+#!/home/jdep/.conda/envs/rp/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.tdstructure import TDStructure
-
-
+from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.Refiner import Refiner
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
@@ -35,7 +35,7 @@ def read_single_arguments():
 
     parser.add_argument(
         "-c", "--charge", dest="c", type=int, default=0,
-        help="total charge of system"
+        help="total charge of syrgsstem"
     )
 
     parser.add_argument(
@@ -47,6 +47,13 @@ def read_single_arguments():
         help="number of images in the chain",
     )
 
+    parser.add_argument(
+        "-fp",
+        "--filepath",
+        dest="fp",
+        type=str,
+        help="path to TreeNode data to use as reference",
+    )
     parser.add_argument(
         "-s",
         "--spinmult",
@@ -75,23 +82,6 @@ def read_single_arguments():
             node3d_tc, node3d_tc_local, node3d_tcpb",
     )
 
-    parser.add_argument(
-        "-st",
-        "--start",
-        dest="st",
-        required=True,
-        type=str,
-        help="path to the first xyz structure",
-    )
-
-    parser.add_argument(
-        "-en",
-        "--end",
-        dest="en",
-        required=True,
-        type=str,
-        help="path to the final xyz structure",
-    )
 
     parser.add_argument(
         "-tol",
@@ -113,15 +103,6 @@ def read_single_arguments():
         default=1,
     )
 
-    parser.add_argument(
-        "-min_ends",
-        "--minimize_endpoints",
-        dest="min_ends",
-        required=True,
-        type=int,
-        help="whether to minimize the endpoints before starting",
-        default=False,
-    )
 
     parser.add_argument(
         "-name",
@@ -226,10 +207,6 @@ def main():
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
 
-    start = TDStructure.from_xyz(args.st, tot_charge=args.c,
-                                 tot_spinmult=args.s)
-    end = TDStructure.from_xyz(args.en, tot_charge=args.c,
-                               tot_spinmult=args.s)
 
     if args.nc != "node3d":
         method = "uwb97xd3"  # terachem
@@ -264,25 +241,7 @@ def main():
 #         'purify': 'no'
 #        }
 
-        start.tc_model_method = method
-        end.tc_model_method = method
 
-        start.tc_model_basis = basis
-        end.tc_model_basis = basis
-
-        start.tc_kwds = kwds
-        end.tc_kwds = kwds
-
-        if int(args.min_ends):
-            start = start.tc_local_geom_optimization()
-            end = end.tc_local_geom_optimization()
-
-    else:
-        if int(args.min_ends):
-            start = start.xtb_geom_optimization()
-            end = end.xtb_geom_optimization()
-
-    traj = Trajectory([start, end]).run_geodesic(nimages=args.nimg)
 
     if args.nc == "node3d_tc_local":
         do_parallel = False
@@ -329,9 +288,7 @@ def main():
     sys.stdout.flush()
 
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
-    traj = create_friction_optimal_gi(traj, gii)
-    print(traj[0].spinmult)
-    chain = Chain.from_traj(traj=traj, parameters=cni)
+    h = TreeNode.read_from_disk(args.fp)
 
     if args.method == 'asneb':
         m = MSMEP(
@@ -341,19 +298,18 @@ def main():
             optimizer=optimizer,
         )
 
-        history, out_chain = m.find_mep_multistep(chain)
-
-        leaves_nebs = [
-            obj for obj in history.get_optimization_history() if obj
-        ]
-        tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
+        refiner = Refiner(cni=cni)
+        refined_leaves = refiner.create_refined_leaves(h.ordered_leaves)
+        out_chain = refiner.join_output_leaves(refined_leaves)
+        
+        tot_grad_calls = sum([obj.data.grad_calls_made for obj in refined_leaves])
         geom_grad_calls = sum([
-            obj.geom_grad_calls_made for obj in leaves_nebs]
+            obj.data.geom_grad_calls_made for obj in refined_leaves]
         )
         print(f">>> Made {tot_grad_calls} gradient calls total.")
         print(f"<<< Made {geom_grad_calls} gradient for geometry\
                optimizations.")
-        fp = Path(args.st)
+        fp = Path(args.fp)
         data_dir = fp.parent
 
         if args.name:
@@ -361,58 +317,36 @@ def main():
             filename = data_dir / (args.name + ".xyz")
 
         else:
-            foldername = data_dir / f"{fp.stem}_msmep"
-            filename = data_dir / f"{fp.stem}_msmep.xyz"
+            foldername = data_dir / f"{fp.stem}_refined"
+            filename = data_dir / f"{fp.stem}_refined.xyz"
 
         out_chain.write_to_disk(filename)
-        history.write_to_disk(foldername)
+        refiner.write_leaves_to_disk(foldername, refined_leaves)
 
-        if args.dc:
-            op = data_dir / f"{filename.stem}_cleanups"
-            cni.skip_identical_graphs = False
-            m = MSMEP(
-                neb_inputs=nbi,
-                chain_inputs=cni,
-                gi_inputs=gii,
-                optimizer=optimizer,
-            )
-
-            j = Janitor(history_object=history, out_path=op, msmep_object=m)
-
-            clean_msmep = j.create_clean_msmep()
-
-            if clean_msmep:
-                clean_msmep.write_to_disk(
-                    filename.parent / (str(filename.stem)+"_clean.xyz")
-                )
-                j.write_to_disk(op)
-
-            tot_grad_calls = j.get_n_grad_calls()
-            print(f">>> Made {tot_grad_calls} gradient calls in cleanup.")
 
     elif args.method == 'neb':
-        n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
-        fp = Path(args.st)
-        data_dir = fp.parent
-        if args.name:
-            filename = data_dir / (args.name + "_neb.xyz")
+        #n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+        #fp = Path(args.st)
+        #data_dir = fp.parent
+        #if args.name:
+        #    filename = data_dir / (args.name + "_neb.xyz")
 
-        else:
-            filename = data_dir / f"{fp.stem}_neb.xyz"
+       # else:
+        #    filename = data_dir / f"{fp.stem}_neb.xyz"
 
-        try:
-            n.optimize_chain()
+        #try:
+         #   n.optimize_chain()
 
-            n.write_to_disk(data_dir/f"{filename}", write_history=True)
-        except NoneConvergedException as e:
-            e.obj.write_to_disk(data_dir/f"{filename}", write_history=True)
+        #    n.write_to_disk(data_dir/f"{filename}", write_history=True)
+        #except NoneConvergedException as e:
+         #   e.obj.write_to_disk(data_dir/f"{filename}", write_history=True)
 
-        tot_grad_calls = n.grad_calls_made
-        print(f">>> Made {tot_grad_calls} gradient calls total.")
-
+        #tot_grad_calls = n.grad_calls_made
+        #print(f">>> Made {tot_grad_calls} gradient calls total.")
+        print("Unsupported for now")
     else:
         raise ValueError("Incorrect input method. Use 'asneb' or 'neb'")
 
 
 if __name__ == "__main__":
-    main()
+   main()

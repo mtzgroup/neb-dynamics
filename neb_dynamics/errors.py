@@ -1,12 +1,10 @@
 from dataclasses import dataclass
 from typing import Any
-from neb_dynamics.Chain import Chain
-
 
 @dataclass
 class NoneConvergedException(Exception):
 
-    trajectory: list[Chain]
+    trajectory: list
     msg: str
     obj: Any = None
 
@@ -14,6 +12,6 @@ class NoneConvergedException(Exception):
 @dataclass
 class ElectronicStructureError(Exception):
 
-    trajectory: list[Chain]
+    trajectory: list
     msg: str
     obj: Any = None

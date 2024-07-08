@@ -276,32 +276,6 @@ class Pot:
         """Are all leaves in the graph converged?"""
         return any([not self.is_node_converged(x) for x in self.leaves])
 
-    def free_index(self):
-        """It gives back the smallest index that is not used in graph"""
-        counter = give_me_free_index(naturals(0), self.graph)
-        return next(counter)
-
-    def add_node_to_graph(
-        self,
-        node_index: int,
-        name: str,
-        this_smiles: str,
-        mol_to_add: Molecule,
-        verbosity: int = 0,
-        list_of_nebs: list[NEB] = [],
-    ):
-        """
-        add a new node connected to leaf with the result molcule
-        also updates the encountered_species dictionary
-        """
-        if not node_index:
-            node_index = self.free_index()
-        self.graph.add_node(node_index, molecule=result, converged=False)
-        self.graph.add_edge(node_index, reaction=name, list_of_nebs=list_of_nebs)
-        self.encountered_species[this_smiles] = free_index
-        if verbosity > 0:
-            print(f"\nadding node {node_index}. \n\n\n")
-
     def check_for_number_of_nodes(self, maximum_number_of_nodes: int, t1: float):
         """checks for graph size"""
         if len(self.graph.nodes) > maximum_number_of_nodes:
@@ -536,6 +510,37 @@ class Pot:
             size=size,
             arrows=arrows,
         )
+
+    def draw_shortest_to_node(
+        self,
+        node,
+        just=None,
+        string_mode=False,
+        charges=False,
+        env=False,
+        mode="rdkit",
+        columns=5,
+        width=100,
+        size=(650, 650),
+        arrows=False,
+        weight=None
+    ):
+        """
+        This function draws shortest path to nodes as per networkx `shortest_path` function.
+        Specify the distance variable through `weight`
+        """
+        # A generator
+        g = self.graph
+        path = nx.shortest_path(g, source=0, target=node, weight=weight)
+        path.reverse()
+        return self.draw_from_single_path(path=path,
+                                          string_mode=string_mode,
+                                          charges=charges,
+                                          env=env,
+                                          mode=mode,
+                                          columns=columns,
+                                          width=width,
+                                          size=size)
 
     def draw_neighbors_of_node(self, n: int, string_mode=False, width=100):
         graph = self.graph
@@ -798,3 +803,4 @@ class Pot:
         pot.run_time = read["run_time"]
         pot.rxn_name = read["rxn_name"]
         return pot
+

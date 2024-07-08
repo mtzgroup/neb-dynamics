@@ -1,31 +1,30 @@
 """
 this module contains helper general functions
 """
-import scipy.sparse.linalg
 import cProfile
 import json
-import multiprocessing as mp
-import pickle
-import signal
-from itertools import repeat
-from pathlib import Path
-import warnings
 import math
-import numpy as np
-import pandas as pd
-from IPython.core.display import HTML
-from scipy.signal import argrelextrema
-from openbabel import openbabel
-from pysmiles import write_smiles
-
+import multiprocessing as mp
 # from openeye import oechem
 import os
-from rdkit import Chem
-
+import pickle
+import signal
 import sys
+import warnings
+from itertools import repeat
+from pathlib import Path
 
+import numpy as np
+import pandas as pd
+import scipy.sparse.linalg
+from IPython.core.display import HTML
+from openbabel import openbabel
+from pysmiles import write_smiles
+from rdkit import Chem
+from scipy.signal import argrelextrema
 
 from neb_dynamics.elements import ElementData
+from neb_dynamics.errors import ElectronicStructureError
 
 warnings.filterwarnings("ignore")
 with warnings.catch_warnings():
@@ -177,11 +176,7 @@ def create_friction_optimal_gi(traj, gi_inputs):
     return gi
 
 
-def mass_weight_coords(labels, coords):
-    weights = np.array([np.sqrt(get_mass(s)) for s in labels])
-    weights = weights / sum(weights)
-    coords = coords * weights.reshape(-1, 1)
-    return coords
+
 
 
 def get_nudged_pe_grad(unit_tangent, gradient):
@@ -410,3 +405,19 @@ def run_tc_local_optimization(td, tmp, return_optim_traj):
 
 def is_even(n):
     return not np.mod(n, 2)
+
+
+def steepest_descent(node, ss=1, max_steps=10):
+    tds = []
+    last_node = node.copy()
+    last_node.converged = False  # make sure the node isn't frozen so it returns a gradient
+    try:
+        for i in range(max_steps):
+            grad = last_node.gradient
+            new_coords = last_node.coords -1*ss*grad
+            node_new = last_node.update_coords(new_coords)
+            tds.append(node_new)
+            last_node = node_new.copy()
+    except Exception:
+        raise ElectronicStructureError(trajectory=[],msg='Error while minimizing in early stop check.')
+    return tds

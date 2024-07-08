@@ -128,7 +128,7 @@ def read_single_arguments():
         help="force threshold for early stopping",
         default=0.03
     )
-    
+
     parser.add_argument(
         "-preopt",
         "--preopt_with_xtb",
@@ -138,7 +138,7 @@ def read_single_arguments():
         help="whether to preconverge chains using xtb",
         default=1
     )
- 
+
 
     return parser.parse_args()
 
@@ -150,7 +150,7 @@ def main():
     nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
-    
+
     method = "wb97xd3" #terachem
     basis = "def2-svp"
     kwds = {}
@@ -175,25 +175,25 @@ def main():
         tc_model_basis=basis,
         tc_kwds = kwds
     )
-    
+
     optimizer = VelocityProjectedOptimizer(timestep=.5, activation_tol=0.1)
-    
+
     nbi = NEBInputs(
         tol=tol * BOHR_TO_ANGSTROMS,
         barrier_thre=0.1, #kcalmol,
         climb=bool(args.climb),
-        
+
         rms_grad_thre=tol * BOHR_TO_ANGSTROMS*2,
         max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS*5,
         ts_grad_thre=tol * BOHR_TO_ANGSTROMS*5,
-        
+
         v=1,
         max_steps=500,
-        
+
         early_stop_chain_rms_thre=1,
         early_stop_force_thre=args.es_ft,
         early_stop_still_steps_thre=100,
-        
+
         _use_dlf_conv=False,
         preopt_with_xtb=bool(int(args.preopt))
     )
@@ -202,7 +202,7 @@ def main():
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
     sys.stdout.flush()
     tree = TreeNode.read_from_disk(fp, chain_parameters=cni, neb_parameters=nbi, gi_parameters=gii, optimizer=optimizer)
-    
+
     m = MSMEP(
     neb_inputs=nbi,
     chain_inputs=cni,
@@ -217,13 +217,12 @@ def main():
     else:
         foldername = data_dir / f"{fp.stem}_cleanups"
         filename = data_dir / f"{fp.stem}_cleanups.xyz"
-    
+
     op = foldername
     j = Janitor(history_object=tree, out_path=op, msmep_object=m)
 
     clean_msmep = j.create_clean_msmep()
     j.write_to_disk(op)
-    
 
     if clean_msmep:
         clean_msmep.write_to_disk(data_dir / filename)
@@ -232,7 +231,7 @@ def main():
         print(f">>> Made {tot_num_steps} optimization steps.")
     else:
         print(f">>> Made 0 optimization steps.")
-    
+
 
 
 

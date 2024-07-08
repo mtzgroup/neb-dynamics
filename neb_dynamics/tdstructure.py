@@ -11,7 +11,8 @@ import numpy as np
 import py3Dmol
 import qcop
 from ase import Atoms
-from ase.optimize import LBFGS, LBFGSLineSearch
+# from ase.optimize import LBFGS, LBFGSLineSearch
+from ase.optimize.sciopt import SciPyFminCG
 from chemcloud import CCClient
 from IPython.core.display import HTML
 from openbabel import openbabel, pybel
@@ -32,6 +33,7 @@ from neb_dynamics.helper_functions import (atomic_number_to_symbol,
                                            from_number_to_element,
                                            load_obmol_from_fp,
                                            run_tc_local_optimization,
+                                           get_mass,
                                            write_xyz)
 from neb_dynamics.molecule import Molecule
 
@@ -79,6 +81,26 @@ class TDStructure:
                 for atom in openbabel.OBMolAtomIter(self.molecule_obmol)
             ]
         )
+
+    @property
+    def n_fragments(self) -> int:
+        """computes the number of separate molecules in TDStructure
+
+        Returns:
+            int: number of molecules in TDStructure
+        """
+
+        n_frags = self.molecule_rp.separate_graph_in_pieces()
+        return len(n_frags)
+
+    @property
+    def mass_weight_coords(self):
+        labels = self.symbols
+        coords = self.coords
+        weights = np.array([np.sqrt(get_mass(s)) for s in labels])
+        weights = weights / sum(weights)
+        coords = coords * weights.reshape(-1, 1)
+        return coords
 
     @property
     def coords_bohr(self) -> np.array:
@@ -249,34 +271,6 @@ class TDStructure:
         new_mol.set_neighbors()
         return new_mol
 
-    def gfn1xtb_geom_optimization(self):
-        # XTB api is summing the initial charges from the ATOM object.
-        # it returns a vector of charges (maybe Mulliken), but to initialize the calculation,
-        # it literally sums this vector up. So we create a zero vector (natoms long) and we
-        # modify the charge of the first atom to be total charge.
-        charges = np.zeros(self.atomn)
-        charges[0] = self.charge
-
-        # JAN IS GONNA EXPLAIN THIS
-        spins = np.zeros(self.atomn)
-        spins[0] = self.spinmult - 1
-
-        atoms = Atoms(
-            symbols=self.symbols.tolist(),
-            positions=self.coords,
-            charges=charges,
-            magmoms=spins,
-        )
-
-        atoms.calc = XTB(method="GFN1-xTB", accuracy=0.1)
-        opt = LBFGSLineSearch(atoms, logfile=None)
-        # opt = BFGS(atoms, logfile=None)
-        opt.run(fmax=0.001)
-        new_tds = TDStructure.from_ase_Atoms(
-            atoms=atoms, charge=self.charge, spinmult=self.spinmult
-        )
-        return new_tds
-
     def to_ASE_atoms(self):
         # XTB api is summing the initial charges from the ATOM object.
         # it returns a vector of charges (maybe Mulliken), but to initialize the calculation,
@@ -309,10 +303,10 @@ class TDStructure:
 
         atoms.calc = XTB(method="GFN2-xTB", accuracy=0.001)
         # opt = LBFGSLineSearch(atoms, logfile=None, trajectory=tmp.name)
-        opt = LBFGS(atoms, logfile=None, trajectory=tmp.name)
+        opt = SciPyFminCG(atoms, logfile=None, trajectory=tmp.name)
         # opt = LBFGS(atoms, logfile=None, trajectory='/tmp/log.traj')
         # opt = FIRE(atoms, logfile=None)
-        opt.run(fmax=0.1)
+        opt.run(fmax=0.01)
         # opt.run(fmax=0.5)
 
         aT = ASETraj(tmp.name)
@@ -942,3 +936,19 @@ class TDStructure:
         ts_displaced = self.copy()
         ts_displaced_by_dr = ts_displaced.update_coords(ts_displaced.coords + dr)
         return ts_displaced_by_dr
+
+    def split_td_into_frags(self):
+        root_mol = self.molecule_rp
+        mols = root_mol.separate_graph_in_pieces()
+
+        td_list = []
+        for mol in mols:
+            td = TDStructure.from_coords_symbols(
+                coords=self.coords[mol.nodes],
+                symbols=self.symbols[mol.nodes],
+                tot_charge=mol.charge,
+            )
+            td.update_tc_parameters(td_ref=self)
+            td_list.append(td)
+
+        return td_list

@@ -6,6 +6,9 @@ from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.animation
+from IPython.display import HTML
+
 
 # from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.trajectory import Trajectory
@@ -21,6 +24,7 @@ from neb_dynamics.helper_functions import (
     qRMSD_distance,
     get_nudged_pe_grad,
     is_even,
+    steepest_descent
 )
 
 from xtb.interface import Calculator
@@ -175,7 +179,9 @@ class Chain:
                 continue
             next_frame = coords[i + 1]
             distance = self._path_len_dist_func(frame_coords, next_frame)
+            # distance = self._path_len_dist_func(frame_coords, coords[0])
             cum_sums.append(cum_sums[-1] + distance)
+            # cum_sums.append(distance)
 
         cum_sums = np.array(cum_sums)
         int_path_len = cum_sums / cum_sums[-1]
@@ -190,7 +196,9 @@ class Chain:
                 continue
             next_frame = coords[i + 1]
             distance = self._path_len_dist_func(frame_coords, next_frame)
+            # distance = self._path_len_dist_func(frame_coords, coords[0])
             cum_sums.append(cum_sums[-1] + distance)
+            # cum_sums.append(distance)
 
         cum_sums = np.array(cum_sums)
         path_len = cum_sums
@@ -631,6 +639,10 @@ class Chain:
         if not is_concave and isinstance(concavity_results, list):
             return False, "minima", concavity_results, n_geom_opt_grad_calls
 
+        crude_irc_passed = self.do_crude_irc_check()
+        if crude_irc_passed:
+            return True, "maxima", self.copy(), n_geom_opt_grad_calls
+
         r, p, resampled_chain, n_grad_calls = self._approx_irc()
         n_geom_opt_grad_calls += n_grad_calls
 
@@ -872,6 +884,11 @@ class Chain:
         #  print(f"Resampled chain energies: {out_chain.energies}")
         return out_chain, n_grad_calls
 
+    @property
+    def _chain_is_monotonic(self):
+        arg_max = self.energies.argmax()
+        return arg_max == len(self) - 1 or arg_max == 0
+
     def _approx_irc(self, index=None):
         n_grad_calls = 0
         chain = self.copy()
@@ -969,3 +986,79 @@ class Chain:
     def get_eA_chain(self):
         eA = max(self.energies_kcalmol)
         return eA
+
+    def do_crude_irc_check(self: Chain, nsteps=5, slope_thresh=0.1):
+        if self._chain_is_monotonic:
+            return True
+        chain = self.copy()
+        arg_max = np.argmax(chain.energies)
+
+        r_passes_opt, r_traj = self.converges_to_an_endpoints(chain=chain, node_index=(arg_max - 1), direction=-1, slope_thresh=slope_thresh)
+        p_passes_opt, p_traj = self.converges_to_an_endpoints(chain=chain, node_index=(arg_max + 1), direction=+1, slope_thresh=slope_thresh)
+
+        r_passes = r_passes_opt and r_traj[-1]._is_connectivity_identical(self[0])
+        p_passes = p_passes_opt and p_traj[-1]._is_connectivity_identical(self[-1])
+        if r_passes and p_passes:
+            return True
+        else:
+            return False
+
+    def distances_to_refs(self, ref1: Node, ref2: Node, raw_node: Node):
+        dist_to_ref1 = np.linalg.norm(raw_node.coords - ref1.coords)
+        dist_to_ref2 = np.linalg.norm(raw_node.coords - ref2.coords)
+        return dist_to_ref1, dist_to_ref2
+
+    def converges_to_an_endpoints(self, chain, node_index, slope_thresh=0.01, direction=-1, max_grad_calls=50):
+        done = False
+        total_traj = [chain[node_index]]
+        while not done:
+            traj = steepest_descent(node=total_traj[-1], max_steps=5)
+            total_traj.extend(traj)
+
+            distances = [self.distances_to_refs(ref1=chain[0], ref2=chain[-1],
+                                                raw_node=n) for n in total_traj]
+
+            slopes_to_ref1 = distances[-1][0] - distances[0][0]
+            slopes_to_ref2 = distances[-1][1] - distances[0][1]
+
+            slope1_conv = abs(slopes_to_ref1) / slope_thresh > 1
+            slope2_conv = abs(slopes_to_ref2) / slope_thresh > 1
+
+            slopes_to_ref1, slopes_to_ref2
+
+            done = slope1_conv and slope2_conv
+            if len(total_traj)-1 >= max_grad_calls:
+                done = True
+        print(slopes_to_ref1, slopes_to_ref2)
+        print(f"did {len(total_traj)-1} geom calls")
+        if direction == -1:
+            return slopes_to_ref1 < 0 and slopes_to_ref2 > 0, total_traj
+        elif direction == 1:
+            return slopes_to_ref1 > 0 and slopes_to_ref2 < 0, total_traj
+
+    def animate_chain_trajectory(
+                                chain_traj, min_y=-100, max_y=100,
+                                max_x=1.1, min_x=-0.1, norm_path_len=True
+                                ):
+
+        figsize = 5
+        fig, ax = plt.subplots(figsize=(1.618 * figsize, figsize))
+
+        ax.set_xlim(min_x, max_x)
+        ax.set_ylim(min_y, max_y)
+
+        (line,) = ax.plot([], [], "o--", lw=3)
+
+        def animate(chain):
+            if norm_path_len:
+                x = chain.integrated_path_length
+            else:
+                x = chain.path_length
+
+            y = chain.energies_kcalmol
+            line.set_data(x, y)
+            line.set_color("skyblue")
+            return
+
+        ani = matplotlib.animation.FuncAnimation(fig, animate, frames=chain_traj)
+        return HTML(ani.to_jshtml())
