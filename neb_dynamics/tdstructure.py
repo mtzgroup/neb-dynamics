@@ -36,6 +36,9 @@ from neb_dynamics.helper_functions import (atomic_number_to_symbol,
                                            get_mass,
                                            write_xyz)
 from neb_dynamics.molecule import Molecule
+from scipy.spatial import ConvexHull
+import matplotlib.pyplot as plt
+
 
 # JDEP: 05282024: Have commented out all features using tc_c0 until it stabilized.
 
@@ -267,7 +270,8 @@ class TDStructure:
                 k_prime = 1.5
             else:
                 k_prime = k
-            new_mol.add_edge(i, j, bond_order=bond_ord_number_to_string(k_prime))
+            new_mol.add_edge(
+                i, j, bond_order=bond_ord_number_to_string(k_prime))
         new_mol.set_neighbors()
         return new_mol
 
@@ -296,7 +300,8 @@ class TDStructure:
 
         from neb_dynamics.trajectory import Trajectory
 
-        tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".traj", mode="w+", delete=False)
 
         atoms = self.to_ASE_atoms()
         # print(tmp.name)
@@ -544,7 +549,8 @@ class TDStructure:
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w", delete=False) as tmp:
             tmp.write(string)
 
-        td = cls.from_xyz(tmp.name, tot_charge=tot_charge, tot_spinmult=tot_spinmult)
+        td = cls.from_xyz(tmp.name, tot_charge=tot_charge,
+                          tot_spinmult=tot_spinmult)
         os.remove(tmp.name)
         return td
 
@@ -732,7 +738,8 @@ class TDStructure:
     def tc_freq_nma_calculation(self):
         if self._cached_nma is None or self._cached_freqs is None:
             prog_input = self._prepare_input(method="hessian")
-            future_result = self.tc_client.compute("bigchem", prog_input, queue=q)
+            future_result = self.tc_client.compute(
+                "bigchem", prog_input, queue=q)
             output = future_result.get()
 
             if output.success:
@@ -776,7 +783,8 @@ class TDStructure:
             "geometric",
             opt_input,
             queue=q,
-            propagate_wfn=pwfn_bool,  # this cannot be true is using psi4 for some reason...
+            # this cannot be true is using psi4 for some reason...
+            propagate_wfn=pwfn_bool,
         )
         output = future_result.get()
         result = output.results
@@ -815,7 +823,8 @@ class TDStructure:
             "geometric",
             opt_input,
             queue=q,
-            propagate_wfn=True,  # this cannot be true is using psi4 for some reason...
+            # this cannot be true is using psi4 for some reason...
+            propagate_wfn=True,
         )
 
         result = output.results
@@ -934,7 +943,8 @@ class TDStructure:
 
     def displace_by_dr(self, dr):
         ts_displaced = self.copy()
-        ts_displaced_by_dr = ts_displaced.update_coords(ts_displaced.coords + dr)
+        ts_displaced_by_dr = ts_displaced.update_coords(
+            ts_displaced.coords + dr)
         return ts_displaced_by_dr
 
     def split_td_into_frags(self):
@@ -952,3 +962,259 @@ class TDStructure:
             td_list.append(td)
 
         return td_list
+
+    def _get_points_in_cavity(self, step=.5):
+        """
+        returns a set of points that are inside the solvent cavity formed by
+        the structure. points are generated from a 3D grid with step size 'step'
+        """
+        xmin, xmax, ymin, ymax, zmin, zmax = self.get_xyz_lims()
+
+        x_ = np.arange(xmin, xmax, step)
+        y_ = np.arange(ymin, ymax, step)
+        z_ = np.arange(zmin, zmax, step)
+
+        x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
+
+        @np.vectorize
+        def is_in_cavity(x, y, z):
+            for atom in openbabel.OBMolAtomIter(self.molecule_obmol):
+                vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
+                atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
+                dist_to_atom = np.linalg.norm(
+                    np.array([x, y, z]) - atom_coords)
+                if dist_to_atom <= vdw:
+                    return x, y, z
+            return None
+
+        out = is_in_cavity(x, y, z).flatten()
+
+        p_in_cav = out[out != None]  # does not work if logic is changed to 'is not None'
+
+        arr = []
+        for p in p_in_cav:
+            arr.append(p)
+
+        p_in_cav = np.array(arr)
+        return p_in_cav
+
+    def _get_vdwr_lim(td, col_ind, sign=1):
+        """
+        td: TDStructure
+        atom_ind: the index of the atom at the corner
+        col_ind: either 0, 1, or 2 correspoding to X, Y, Z. Assuming td.coords is shaped (Natom, 3)
+        sign: either +1 or -1 corresponding to whether the Vanderwals radius should be added or subtracted.
+                E.g. if atom is the xmin, sign should be -1.
+        """
+        if sign == -1:
+            atom_ind = int(td.coords[:, col_ind].argmin())
+        elif sign == 1:
+            atom_ind = int(td.coords[:, col_ind].argmax())
+
+        atom = td.molecule_obmol.GetAtomById(atom_ind)
+        vdw_r = openbabel.GetVdwRad(atom.GetAtomicNum())
+        xlim = td.coords[:, col_ind][atom_ind] + (sign*vdw_r)
+        return xlim
+
+    def get_xyz_lims(self):
+        xmin = self._get_vdwr_lim(col_ind=0, sign=-1)
+        xmax = self._get_vdwr_lim(col_ind=0, sign=1)
+
+        ymax = self._get_vdwr_lim(col_ind=1, sign=1)
+        ymin = self._get_vdwr_lim(col_ind=1, sign=-1)
+
+        zmin = self._get_vdwr_lim(col_ind=2, sign=-1)
+        zmax = self._get_vdwr_lim(col_ind=2, sign=1)
+
+        return xmin, xmax, ymin, ymax, zmin, zmax
+
+    def _get_points_in_both_cavities(self, other_td, step=1):
+
+        xmin1, xmax1, ymin1, ymax1, zmin1, zmax1 = self.get_xyz_lims()
+        xmin2, xmax2, ymin2, ymax2, zmin2, zmax2 = other_td.get_xyz_lims()
+
+        xmin = min([xmin1, xmin2])
+        ymin = min([ymin1, ymin2])
+        zmin = min([zmin1, zmin2])
+
+        xmax = max([xmax1, xmax2])
+        ymax = max([ymax1, ymax2])
+        zmax = max([zmax1, zmax2])
+
+        # print(f"{xmin=}, {xmax=},{ymin=}, {ymax=}, {zmin=}, {zmax=}")
+        x_ = np.arange(xmin, xmax, step)
+        y_ = np.arange(ymin, ymax, step)
+        z_ = np.arange(zmin, zmax, step)
+
+        x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
+
+        @np.vectorize
+        def is_in_cavity(x, y, z):
+            flag1 = False
+            for atom in openbabel.OBMolAtomIter(self.molecule_obmol):
+                vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
+                atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
+                dist_to_atom = np.linalg.norm(
+                    np.array([x, y, z]) - atom_coords)
+                if dist_to_atom <= vdw:
+                    flag1 = True
+
+            for atom in openbabel.OBMolAtomIter(other_td.molecule_obmol):
+                vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
+                atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
+                dist_to_atom = np.linalg.norm(
+                    np.array([x, y, z]) - atom_coords)
+                if dist_to_atom <= vdw:
+                    if flag1:
+                        return x, y, z
+
+            return None
+
+        out = is_in_cavity(x, y, z).flatten()
+        # print(out)
+        p_in_cav = out[out != None]  # does not work if written as 'is not None'
+
+        arr = []
+        for p in p_in_cav:
+            arr.append(p)
+
+        p_in_cav = np.array(arr)
+        return p_in_cav
+
+    def compute_volume(self, step=1):
+        p_in_cav = self._get_points_in_cavity(step=step)
+        hull = ConvexHull(p_in_cav)
+        return hull.volume
+
+    def get_optimal_volume_step(self, initial_step=1, threshold=1, shrink_factor=0.5):
+        step = initial_step
+        prev_volume = self.compute_volume(step=step)
+        step_found = False
+        while not step_found:
+            step *= shrink_factor
+            vol = self.compute_volume(step=step)
+
+            delta = abs(vol - prev_volume)
+            print(f"{step=} {vol=} {delta=}")
+
+            if delta <= threshold:
+                step_found = True
+
+            prev_volume = vol
+
+        return step
+
+    def plot_overlap_hulls(self, other_td, step=None, just_overlap=True,
+                           initial_step=1, threshold=1, shrink_factor=0.8):
+        if step is None:
+            step1 = self.get_optimal_volume_step(
+                initial_step=initial_step,
+                threshold=threshold,
+                shrink_factor=shrink_factor)
+
+            step2 = other_td.get_optimal_volume_step(
+                initial_step=initial_step,
+                threshold=threshold,
+                shrink_factor=shrink_factor)
+
+            step = min([step1, step2])
+
+        xmin1, xmax1, ymin1, ymax1, zmin1, zmax1 = self.get_xyz_lims()
+        xmin2, xmax2, ymin2, ymax2, zmin2, zmax2 = other_td.get_xyz_lims()
+
+        xmin = min([xmin1, xmin2])
+        ymin = min([ymin1, ymin2])
+        zmin = min([zmin1, zmin2])
+
+        xmax = max([xmax1, xmax2])
+        ymax = max([ymax1, ymax2])
+        zmax = max([zmax1, zmax2])
+
+        if just_overlap:
+            p_in_cav = self._get_points_in_both_cavities(other_td=other_td,
+                                                         step=step)
+
+            hull = ConvexHull(p_in_cav)
+
+        else:
+            p_in_cav1 = self._get_points_in_cavity(step=step)
+            p_in_cav2 = other_td._get_points_in_cavity(step=step)
+
+            hull1 = ConvexHull(p_in_cav1)
+            hull2 = ConvexHull(p_in_cav2)
+
+        s = 5
+        fig = plt.figure(figsize=(1.6*s, s))
+        ax = fig.add_subplot(111, projection='3d')
+
+        if just_overlap:
+
+            for simplex in hull.simplices:
+                plt.plot(p_in_cav[simplex, 0], p_in_cav[simplex,
+                         1], p_in_cav[simplex, 2], 'k--')
+        else:
+            for simplex in hull1.simplices:
+                plt.plot(p_in_cav1[simplex, 0], p_in_cav1[simplex, 1],
+                         p_in_cav1[simplex, 2], 'k--', color='blue')
+
+            for simplex in hull2.simplices:
+                plt.plot(p_in_cav2[simplex, 0], p_in_cav2[simplex, 1],
+                         p_in_cav2[simplex, 2], 'k--', color='red')
+
+        ax.set_xlabel('X Label')
+        ax.set_ylabel('Y Label')
+        ax.set_zlabel('Z Label')
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.set_zlim(zmin, zmax)
+        if just_overlap:
+            plt.title(f'Volume: {hull.volume}')
+        else:
+            plt.title(f'Volumes: {hull1.volume}, {hull2.volume}')
+
+        plt.show()
+
+    def compute_overlap_volume(self, other_td, step):
+        p_in_cav = self._get_points_in_both_cavities(
+            other_td=other_td, step=step)
+        hull = ConvexHull(p_in_cav)
+        return hull.volume
+
+    def plot_convex_hull(self, step=None, plot_grid=False, plot_hull=True,
+                         initial_step=1, threshold=1, shrink_factor=0.8):
+        if step is None:
+            step = self.get_optimal_volume_step(
+                initial_step=initial_step, threshold=threshold, shrink_factor=shrink_factor)
+
+        xmin, xmax, ymin, ymax, zmin, zmax = self.get_xyz_lims()
+        p_in_cav = self._get_points_in_cavity(step=step)
+        hull = ConvexHull(p_in_cav)
+
+        s = 5
+        fig = plt.figure(figsize=(1.6*s, s))
+        ax = fig.add_subplot(projection='3d')
+
+        x_ = np.arange(xmin, xmax, step)
+        y_ = np.arange(ymin, ymax, step)
+        z_ = np.arange(zmin, zmax, step)
+
+        x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
+
+        if plot_grid:
+            for x, y, z in p_in_cav:
+                ax.scatter3D(xs=x, ys=y, zs=z, color='gray', alpha=.3)
+        # ax.scatter3D(xs=x,ys=y, zs=z, color='gray', alpha=.3)
+        if plot_hull:
+            for simplex in hull.simplices:
+                plt.plot(p_in_cav[simplex, 0], p_in_cav[simplex,
+                         1], p_in_cav[simplex, 2], 'k--')
+
+        ax.set_xlabel('X Label')
+        ax.set_ylabel('Y Label')
+        ax.set_zlabel('Z Label')
+        ax.set_xlim(xmin, xmax)
+        ax.set_ylim(ymin, ymax)
+        ax.set_zlim(zmin, zmax)
+        plt.title(f'Volume: {round(hull.volume,3)}')
+
+        return fig
