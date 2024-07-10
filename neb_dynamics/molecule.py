@@ -689,7 +689,8 @@ class Molecule(nx.Graph):
         m = cls.get_smi_mapping(smi, new_mol)
         atomn = len(new_mol.atom_types.values())
         assert len(
-            m) == atomn, f'some atoms do not have a new index. Inds: {len(m)}. Atoms: {atomn}'
+            m) == atomn, f'some atoms do not have a new index. Inds: {len(m)}. Atoms: {atomn}. \
+                Make sure your endpoints have the same number of atomns.'
         new_mol = new_mol.renumber_indexes(m)
         new_mol = new_mol.add_Hs()
         new_mol.set_neighbors()
