@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
+import contextlib
 
 import numpy as np
 import py3Dmol
@@ -26,8 +27,9 @@ from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from neb_dynamics.elements import ElementData
+from neb_dynamics.elements import ElementData, symbol_to_atomic_number
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+from neb_dynamics.geodesic_interpolation.fileio import read_xyz
 from neb_dynamics.helper_functions import (atomic_number_to_symbol,
                                            bond_ord_number_to_string,
                                            from_number_to_element,
@@ -35,9 +37,12 @@ from neb_dynamics.helper_functions import (atomic_number_to_symbol,
                                            run_tc_local_optimization,
                                            get_mass,
                                            write_xyz)
+
 from neb_dynamics.molecule import Molecule
 from scipy.spatial import ConvexHull
 import matplotlib.pyplot as plt
+from Bio.PDB import PDBParser
+from Bio.PDB.SASA import ShrakeRupley
 
 
 # JDEP: 05282024: Have commented out all features using tc_c0 until it stabilized.
@@ -85,6 +90,64 @@ class TDStructure:
             ]
         )
 
+    @classmethod
+    def from_molecule(cls, rp_mol: Molecule, charge=0, spinmult=1):
+
+        d = {"single": 1, "double": 2, "triple": 3, "aromatic": 1.5}
+
+        obmol = openbabel.OBMol()
+
+        for i, _ in enumerate(rp_mol.nodes):
+
+            node = rp_mol.nodes[i]
+
+            atom_symbol = node["element"]
+
+            atom_number = symbol_to_atomic_number(atom_symbol)
+            atom = openbabel.OBAtom()
+            atom.SetVector(0, 0, 0)
+            atom.SetAtomicNum(atom_number)
+            atom.SetFormalCharge(node["charge"])
+            atom.SetId(i + 1)
+            obmol.AddAtom(atom)
+
+        for rp_atom1_id, rp_atom2_id in rp_mol.edges:
+            atom1_id = rp_atom1_id
+            atom2_id = rp_atom2_id
+            if type(atom1_id) is np.int64:
+                atom1_id = int(atom1_id)
+            if type(atom2_id) is np.int64:
+                atom2_id = int(atom2_id)
+
+            atom1 = obmol.GetAtom(atom1_id + 1)
+            atom2 = obmol.GetAtom(atom2_id + 1)
+
+            bond = openbabel.OBBond()
+            bond.SetBegin(atom1)
+            bond.SetEnd(atom2)
+
+            bond_order = rp_mol.edges[(rp_atom1_id, rp_atom2_id)]["bond_order"]
+            if d[bond_order] == 1.5:  # i.e., if an aromatic bond
+                bond.SetAromatic(True)
+                bond.SetBondOrder(4)
+            else:
+                bond.SetBondOrder(d[bond_order])
+
+            obmol.AddBond(bond)
+
+        arg = pybel.Molecule(obmol)
+        arg.make3D()
+        arg.localopt("uff", steps=2000)
+        arg.localopt("gaff", steps=2000)
+        arg.localopt("mmff94", steps=2000)
+
+        obmol3D = arg.OBMol
+        obmol3D.SetTotalCharge(charge)
+        obmol3D.SetTotalSpinMultiplicity(spinmult)
+
+        return cls(obmol3D)
+
+
     @property
     def n_fragments(self) -> int:
         """computes the number of separate molecules in TDStructure
@@ -120,6 +183,14 @@ class TDStructure:
         )
         os.remove(tmp.name)
         return td
+
+    @contextlib.contextmanager
+    def remember_cwd(self):
+        curdir = os.getcwd()
+        try:
+            yield
+        finally:
+            os.chdir(curdir)
 
     def remove_Hs_3d(self):
 
@@ -989,7 +1060,8 @@ class TDStructure:
 
         out = is_in_cavity(x, y, z).flatten()
 
-        p_in_cav = out[out != None]  # does not work if logic is changed to 'is not None'
+        # does not work if logic is changed to 'is not None'
+        p_in_cav = out[out != None]
 
         arr = []
         for p in p_in_cav:
@@ -1071,8 +1143,8 @@ class TDStructure:
             return None
 
         out = is_in_cavity(x, y, z).flatten()
-        # print(out)
-        p_in_cav = out[out != None]  # does not work if written as 'is not None'
+        # does not work if written as 'is not None'
+        p_in_cav = out[out != None]
 
         arr = []
         for p in p_in_cav:
@@ -1218,3 +1290,75 @@ class TDStructure:
         plt.title(f'Volume: {round(hull.volume,3)}')
 
         return fig
+
+    def compute_SASA(td: TDStructure):
+        with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as tmp:
+            td.to_pdb(tmp.name)
+            p = PDBParser(QUIET=0)
+
+            struct = p.get_structure(tmp.name, tmp.name)
+            sr = ShrakeRupley()
+            sr.compute(struct, level="S")
+
+        os.remove(tmp.name)
+
+        return round(struct.sasa)
+
+    def sample_all_conformers(self, dd: Path, fn: str = None, verbose=True,
+                              CREST_ewin=6.0, CREST_temp=298.15):
+
+        if fn is None:
+            fn = 'tdstructure.xyz'
+
+        confs_fp = dd / fn
+        self.to_xyz(confs_fp)
+        with self.remember_cwd():
+            os.chdir(dd)
+
+            fps_confomers = list(dd.glob("crest_conf*.xyz"))
+            fps_rotamers = list(dd.glob("crest_rot*.xyz"))
+            conformers_already_sampled = len(fps_confomers) >= 1 and len(fps_rotamers) >= 1
+
+            if conformers_already_sampled:
+                if verbose:
+                    print("\tConformers already computed.")
+            else:
+                if verbose:
+                    print("\tRunning conformer sampling...")
+
+                output = subprocess.run(
+                    [
+                        "crest",
+                        f"{str(confs_fp.resolve())}",
+                        f"-ewin {CREST_ewin}",
+                        f"-temp {CREST_temp}",
+                        "--gfn2",
+                    ],
+                    capture_output=True,
+                )
+                if verbose:
+                    print(
+                        f"\tWriting CREST output stream to {str((dd / 'crest_output.txt').resolve())}..."
+                    )
+                with open(dd / "crest_output.txt", "w+") as fout:
+                    fout.write(output.stdout.decode("utf-8"))
+                if verbose:
+                    print("\tDone!")
+
+                fps_confomers = list(dd.glob("crest_conf*.xyz"))
+                fps_rotamers = list(dd.glob("crest_rot*.xyz"))
+
+            conformers_trajs = []
+            for conf_fp in fps_confomers:
+                symbols, coords = read_xyz(conf_fp)
+                td_list = [self.copy().update_coords(c) for c in coords]
+                print(f"\t\tCREST found {len(td_list)} conformers")
+                conformers_trajs.extend(td_list)
+
+            for rot_fp in fps_rotamers:
+                symbols, coords = read_xyz(rot_fp)
+                td_list = [self.copy().update_coords(c) for c in coords]
+                print(f"\t\tCREST found {len(td_list)} conformers")
+                conformers_trajs.extend(td_list)
+
+        return conformers_trajs

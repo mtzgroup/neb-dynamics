@@ -15,9 +15,11 @@ from neb_dynamics.isomorphism_tools import SubGraphMatcher
 from neb_dynamics.rdkit_draw import moldrawsvg
 
 from neb_dynamics.d3_tools import draw_d3, molecule_to_d3json
-from neb_dynamics.helper_functions import graph_to_smiles
-
+from neb_dynamics.helper_functions import (
+    graph_to_smiles, from_number_to_element, bond_ord_number_to_string, give_me_free_index, naturals)
 from neb_dynamics.isomorphism_mapping import IsomorphismMappings
+
+from rdkit import Chem
 
 
 class Molecule(nx.Graph):
@@ -86,7 +88,8 @@ class Molecule(nx.Graph):
         """
         if reindex:
             # if reindex is true, convert the node labels to integers starting with start
-            new_mol = nx.convert_node_labels_to_integers(self, first_label=start)
+            new_mol = nx.convert_node_labels_to_integers(
+                self, first_label=start)
         else:
             new_mol = super().copy()
         new_mol._smiles = self._smiles
@@ -327,6 +330,43 @@ class Molecule(nx.Graph):
         svg_code = self.draw(mode="rdkit", string_mode=True)
         svg2png(bytestring=svg_code, write_to=full_path)
 
+    @classmethod
+    def from_rdmol(cls, rdmol, smi, name=None):
+        new_mol = cls(name=name, smi=smi)
+        assert isinstance(
+            rdmol, Chem.rdchem.Mol), "rdmol must be Rdkit molecule"
+
+        # atom_list = [(x.GetTotalNumHs(), x.GetAtomicNum()) for x in rdmol.GetAtoms()]
+        atom_list = [(atom.GetAtomicNum(), atom.GetFormalCharge(),
+                      atom.GetTotalNumHs()) for atom in rdmol.GetAtoms()]
+        edge_list = [(x.GetEndAtomIdx(), x.GetBeginAtomIdx(),
+                      x.GetBondTypeAsDouble()) for x in rdmol.GetBonds()]
+        [new_mol.add_node(i, neighbors=0, element=from_number_to_element(
+            x), charge=y) for i, (x, y, _) in enumerate(atom_list)]
+        [new_mol.add_edge(i, j, bond_order=bond_ord_number_to_string(k))
+         for i, j, k in edge_list]
+
+        # # now adding the hydrogens
+        non_hydrogen_atoms = len(new_mol)
+        indexes_of_hydrogens = non_hydrogen_atoms
+
+        for i in range(non_hydrogen_atoms):
+            _, _, n_hs = atom_list[i]
+            j = 0
+            while j < n_hs:
+                new_mol.add_node(indexes_of_hydrogens,
+                                 neighbors=0, element='H', charge=0)
+                new_mol.add_edge(indexes_of_hydrogens, i, bond_order='single')
+                indexes_of_hydrogens += 1
+                j += 1
+        # the neighbors is a number set to have a better isomorphism.
+        new_mol.set_neighbors()
+
+        # Need to create smiles to canonicalize
+        new_mol._smiles = new_mol.create_smiles()
+
+        return new_mol
+
     @staticmethod
     def draw_list_smiles(smis, **kwargs):
         mols = [Molecule.from_smiles(smi) for smi in smis]
@@ -472,7 +512,8 @@ class Molecule(nx.Graph):
 
     def create_smiles(self):
         smiles = ".".join(
-            sorted([graph_to_smiles(x) for x in self.separate_graph_in_pieces()])
+            sorted([graph_to_smiles(x)
+                   for x in self.separate_graph_in_pieces()])
         )
         return smiles
 
@@ -536,7 +577,8 @@ class Molecule(nx.Graph):
         even when the graph contains multiple molecules.
         It is used in the pot to have uniqueness.
         """
-        list_smiles = [x.force_smiles() for x in mol.separate_graph_in_pieces()]
+        list_smiles = [x.force_smiles()
+                       for x in mol.separate_graph_in_pieces()]
         return ".".join(sorted(list_smiles))
 
     def force_smiles(self):
@@ -593,6 +635,66 @@ class Molecule(nx.Graph):
     @property
     def charge(self):
         return sum(self.nodes[x]["charge"] for x in self.nodes)
+
+    def add_hydrogen(self, index):
+        new_mol = self.copy()
+        counter = new_mol.give_me_free_index()
+        new_index = next(counter)
+        new_mol.add_node(new_index, neighbors=0, element="H", charge=0)
+        new_mol.add_edge(index, new_index, bond_order="single")
+        return new_mol
+
+    def add_hydrogens(self, indexes, how_many):
+        new_mol = self.copy()
+        for index, num in zip(indexes, how_many):
+            for _ in range(num):
+                new_mol = new_mol.add_hydrogen(index)
+        return new_mol
+
+    def give_me_free_index(self):
+        return give_me_free_index(naturals(0), self)
+
+    @classmethod
+    def get_ind_mapped_smi(cls, smi: str):
+        """
+        mapped smiles are 1-indexed, but RP is 0-indexed, so
+        the value (i.e. 'v') for the indices needs to be 1 less
+        than what the string says
+        """
+        raw = smi.split("]")[:-1]
+        if len(raw) == 1:
+            raw = smi
+        inds = [int(r.split(":")[-1])-1 for r in raw]
+        return inds
+
+    @classmethod
+    def get_smi_mapping(cls, smi, mol):
+
+        inds = cls.get_ind_mapped_smi(smi)
+        m = {}
+        mol_inds = [n for n in mol.nodes]
+        mapping_list = zip(mol_inds, inds)
+        for k, v in mapping_list:
+            m[k] = v
+        return m
+
+    @classmethod
+    def from_mapped_smiles(cls, smi, name=None):
+        """
+        creates a molecule object from a smiles string, X, or if X is a path, the smiles string it points to
+        """
+        rdmol = Chem.MolFromSmiles(smi)
+        new_mol = Molecule.from_rdmol(rdmol, smi, name)
+        new_mol = new_mol.remove_Hs()
+        m = cls.get_smi_mapping(smi, new_mol)
+        atomn = len(new_mol.atom_types.values())
+        assert len(
+            m) == atomn, f'some atoms do not have a new index. Inds: {len(m)}. Atoms: {atomn}'
+        new_mol = new_mol.renumber_indexes(m)
+        new_mol = new_mol.add_Hs()
+        new_mol.set_neighbors()
+
+        return new_mol
 
 
 if __name__ == "__main__":
