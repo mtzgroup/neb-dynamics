@@ -5,7 +5,7 @@ from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.tdstructure import TDStructure
 
 
-from neb_dynamics.NEB import NEB, NoneConvergedException@
+from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 
@@ -221,7 +221,7 @@ def main():
 
     nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC,
              'node3d_tc_local': Node3D_TC_Local,
-             'node3d_tcpb': Node3D_TC_TCPB,
+                                                    # 'node3d_tcpb': Node3D_TC_TCPB,
              'node3d_water': Node3D_Water}
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
