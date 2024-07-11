@@ -284,10 +284,13 @@ class Trajectory:
                     if not res.success:
                         res.ptraceback
                         res.pstdout
-                        raise ElectronicStructureError(message=f"{ES_PROGRAM} failed.")
+                        raise ElectronicStructureError(
+                            message=f"{ES_PROGRAM} failed.")
 
-                grads = np.array([output.return_result for output in output_list])
-                ens = np.array([output.results.energy for output in output_list])
+                grads = np.array(
+                    [output.return_result for output in output_list])
+                ens = np.array(
+                    [output.results.energy for output in output_list])
                 return ens, grads
             except ElectronicStructureError as e:
                 print(
@@ -314,8 +317,6 @@ class Trajectory:
 
     @classmethod
     def from_xyz(cls, fn: Path, tot_charge=0, tot_spinmult=1):
-        tdss = []
-
         # if 'OE_LICENSE' not in os.environ:
         if isinstance(fn, str):
             fn = Path(fn)

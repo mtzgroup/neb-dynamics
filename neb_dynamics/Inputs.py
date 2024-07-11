@@ -123,10 +123,37 @@ class ChainInputs:
     def copy(self):
         return ChainInputs(**self.__dict__)
 
-
 @dataclass
 class GIInputs:
     nimages: int = 15
     friction: float = 0.01
     nudge: float = 0.001
     extra_kwds: dict = field(default_factory=dict)
+
+@dataclass
+class NetworkInputs:
+    n_max_conformers: int = 10  # maximum number of conformers to keep of each endpoint
+    subsample_confs: bool = True
+
+    conf_rmsd_cutoff: float = 0.5
+    # minimum distance to be considered new conformer
+    # given that the graphs are identical
+
+    network_nodes_are_conformers: bool = False
+    # whether each conformer should be a separate node in the network
+
+    maximum_barrier_height: float = 1000  # kcal/mol
+    # will only populate edges with a barrier lower than this input
+
+    use_slurm: bool = False
+    # whether to submit minimization jobs to slurm queue
+
+    verbose: bool = True
+
+    tolerate_kinks: bool = True
+    # whether to include chains with a minimum apparently present in the
+    # network construction
+
+    CREST_temp: float = 298.15  # Kelvin
+    CREST_ewin: float = 6.0  # kcal/mol
+    # crest inputs for conformer generation. Incomplete list.

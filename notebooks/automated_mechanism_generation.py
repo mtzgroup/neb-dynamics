@@ -31,415 +31,8 @@ from sklearn.gaussian_process.kernels import DotProduct, WhiteKernel, RBF, Const
 
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import SmoothBivariateSpline
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
-
-# # Foobar
-
-import chemcoord as cc
-
-c = Chain.from_xyz("/home/jdep/T3D_data/ugi_nosig_06102024.xyz", ChainInputs())
-
-sub_tds = c.to_trajectory()[12:24]
-# sub_tds = c.to_trajectory()[-12:]
-
-tr = Trajectory(sub_tds)
-
-c.to_trajectory()[0].to_xyz("/tmp/tmp0.xyz")
-
-c.to_trajectory()[-1].to_xyz("/tmp/tmp1.xyz")
-
-geom0 = cc.Cartesian.read_xyz('/tmp/tmp0.xyz', start_index=1)
-
-zmat0 = geom0.get_zmat()
-
-geom1 = cc.Cartesian.read_xyz('/tmp/tmp1.xyz', start_index=1)
-
-zmat0
-
-c_table = zmat0.loc[:, ['b', 'a', 'd']]
-zmat1 = geom1.get_zmat(c_table)
-
-STEPS=len(tr)
-with cc.TestOperators(False):
-    z_Deltas = [(zmat1 - zmat0).minimize_dihedrals() * i / STEPS for i in range(STEPS)]
-    # z_Deltas = [(zmat1 - zmat0) * i / STEPS for i in range(STEPS)]
-zmats = [zmat0 + Delta for Delta in z_Deltas]
-
-
-symbs = zmats[0].get_cartesian().iloc[:,0].values
-
-zmat_int = Trajectory.from_coords_symbols(coords=[x.get_cartesian().iloc[:, 1:].values for x in zmats], symbs=symbs)
-
-Trajectory([c.to_trajectory()[0], c.to_trajectory()[-1]]).run_geodesic(nimages=12).write_trajectory("/home/jdep/gi_int.xyz")
-
-zmat_int.write_trajectory("/home/jdep/zmat_interpolation.xyz")
-
-plt.plot(zmat_int.energies_xtb())
-
-from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
-
-td = TDStructure.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Azaindole-Synthesis/start_opt.xyz")
-td.tc_model_method = 'wb97xd3'
-td.tc_model_basis = 'def2-svp'
-
-# %%time
-node = Node3D_TC_Local(td)
-node.gradient
-
-# +
-from scipy.spatial import ConvexHull
-from openbabel import openbabel
-
-def _get_points_in_cavity(tdstruct, step=.5):
-    xmin,xmax,ymin,ymax, zmin,zmax = get_xyz_lims(tdstruct)
-
-    x_ = np.arange(xmin, xmax, step)
-    y_ = np.arange(ymin, ymax, step)
-    z_ = np.arange(zmin, zmax, step)
-
-
-
-    x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
-    
-    @np.vectorize
-    def is_in_cavity(x,y,z):
-        for atom in openbabel.OBMolAtomIter(tdstruct.molecule_obmol):
-            vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
-            atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
-            dist_to_atom = np.linalg.norm(np.array([x,y,z]) - atom_coords)
-            if dist_to_atom <= vdw:
-                return x,y,z
-        return None
-    
-    
-    out = is_in_cavity(x,y,z).flatten()
-
-    p_in_cav = out[out!=None]
-
-    arr = []
-    for p in p_in_cav:
-        arr.append(p)
-
-    p_in_cav = np.array(arr)
-    return p_in_cav
-
-
-def plot_convex_hull(tdstruct, step=None, plot_grid=False, plot_hull=True,
-                     initial_step=1, threshold=1, shrink_factor=0.8):
-    if step is None:
-        step = get_optimal_volume_step(tdstruct, initial_step=initial_step, threshold=threshold,shrink_factor=shrink_factor)
-    
-    xmin, xmax, ymin, ymax, zmin, zmax = get_xyz_lims(tdstruct) 
-    p_in_cav = _get_points_in_cavity(tdstruct=tdstruct, step=step)
-    hull = ConvexHull(p_in_cav)
-    
-
-    s=5
-    fig = plt.figure(figsize=(1.6*s, s))
-    # ax = fig.add_subplot(projection='3d')
-    ax = Axes3D(fig)
-
-    n = 100
-    x_ = np.arange(xmin, xmax, step)
-    y_ = np.arange(ymin, ymax, step)
-    z_ = np.arange(zmin, zmax, step)
-
-    x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
-    
-    if plot_grid:
-        for x,y,z in p_in_cav:
-            ax.scatter3D(xs=x,ys=y, zs=z, color='gray', alpha=.3)
-    # ax.scatter3D(xs=x,ys=y, zs=z, color='gray', alpha=.3)
-    if plot_hull:
-        for simplex in hull.simplices:
-            plt.plot(p_in_cav[simplex, 0], p_in_cav[simplex, 1], p_in_cav[simplex, 2], 'k--')
-        
-   
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
-    ax.set_xlim(xmin,xmax)
-    ax.set_ylim(ymin,ymax)
-    ax.set_zlim(zmin,zmax)
-    plt.title(f'Volume: {round(hull.volume,3)}')
-    
-    return fig
-
-    
-def compute_optimal_volume(tdstruct, initial_step=1, threshold=1, shrink_factor=0.8):
-    step = get_optimal_volume_step(tdstruct, initial_step=initial_step, threshold=threshold,shrink_factor=shrink_factor)
-    return compute_volume(tdstruct, step)
-
-def compute_volume(tdstruct, step=1):
-    p_in_cav = _get_points_in_cavity(tdstruct=tdstruct,step=step)
-    hull = ConvexHull(p_in_cav)
-    return hull.volume
-
-
-# -
-
-
-def get_optimal_volume_step(tdstruct, initial_step=1, threshold=1,shrink_factor=0.5):
-    step=initial_step
-    prev_volume = compute_volume(tdstruct=tdstruct, step=step)
-    step_found = False
-    while not step_found:
-        step*=shrink_factor
-        vol = compute_volume(tdstruct, step=step)
-        
-        delta = abs(vol - prev_volume)
-        print(f"{step=} {vol=} {delta=}")
-        
-        if delta<=threshold:
-            step_found=True
-        
-        prev_volume=vol
-        
-        
-        
-    return step
-
-# +
-from scipy.spatial import ConvexHull
-from openbabel import openbabel
-
-def _get_vdwr_lim(td, col_ind, sign=1):
-    """
-    td: TDStructure
-    atom_ind: the index of the atom at the corner
-    col_ind: either 0, 1, or 2 correspoding to X, Y, Z. Assuming td.coords is shaped (Natom, 3)
-    sign: either +1 or -1 corresponding to whether the Vanderwals radius should be added or subtracted. 
-            E.g. if atom is the xmin, sign should be -1. 
-    """
-    if sign==-1:
-        atom_ind = int(td.coords[:, col_ind].argmin())
-    elif sign==1:
-        atom_ind = int(td.coords[:, col_ind].argmax())
-        
-    atom = td.molecule_obmol.GetAtomById(atom_ind)
-    vdw_r = openbabel.GetVdwRad(atom.GetAtomicNum())
-    xlim = td.coords[:,col_ind][atom_ind] + (sign*vdw_r)
-    return xlim
-
-
-def get_xyz_lims(td):
-    xmin = _get_vdwr_lim(td=td, col_ind=0, sign=-1)
-    xmax = _get_vdwr_lim(td=td, col_ind=0, sign=1)
-    
-    
-
-    ymin = _get_vdwr_lim(td=td, col_ind=1, sign=-1)
-    ymax = _get_vdwr_lim(td=td, col_ind=1, sign=1)
-    
-
-    zmin  = _get_vdwr_lim(td=td, col_ind=2, sign=-1)
-    zmax  = _get_vdwr_lim(td=td, col_ind=2, sign=1)
-
-    return xmin, xmax, ymin, ymax, zmin, zmax
-   
-
-
-def _get_points_in_both_cavities(tdstruct1, tdstruct2, step=1):
-    
-    xmin1, xmax1, ymin1, ymax1, zmin1, zmax1 = get_xyz_lims(tdstruct1)
-    xmin2, xmax2, ymin2, ymax2, zmin2, zmax2 = get_xyz_lims(tdstruct2)
-    
-    xmin = min([xmin1,xmin2])
-    ymin = min([ymin1,ymin2])
-    zmin = min([zmin1,zmin2])
-    
-    xmax = max([xmax1,xmax2])
-    ymax = max([ymax1,ymax2])
-    zmax = max([zmax1,zmax2])
-    
-    
-    # print(f"{xmin=}, {xmax=},{ymin=}, {ymax=}, {zmin=}, {zmax=}")
-    x_ = np.arange(xmin, xmax, step)
-    y_ = np.arange(ymin, ymax, step)
-    z_ = np.arange(zmin, zmax, step)
-
-
-
-    x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
-    
-    @np.vectorize
-    def is_in_cavity(x,y,z):
-        flag1 = False
-        for atom in openbabel.OBMolAtomIter(tdstruct1.molecule_obmol):
-            vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
-            atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
-            dist_to_atom = np.linalg.norm(np.array([x,y,z]) - atom_coords)
-            if dist_to_atom <= vdw:
-                flag1 = True
-            
-        for atom in openbabel.OBMolAtomIter(tdstruct2.molecule_obmol):
-            vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
-            atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
-            dist_to_atom = np.linalg.norm(np.array([x,y,z]) - atom_coords)
-            if dist_to_atom <= vdw:
-                if flag1:
-                    return x, y, z
-                
-        
-        return None
-    
-    
-    out = is_in_cavity(x,y,z).flatten()
-    # print(out)
-    p_in_cav = out[out!=None]
-
-    arr = []
-    for p in p_in_cav:
-        arr.append(p)
-
-    p_in_cav = np.array(arr)
-    return p_in_cav
-
-
-def plot_overlap_hulls(tdstruct1,tdstruct2, step=None, just_overlap=True, 
-                      initial_step=1, threshold=1, shrink_factor=0.8):
-    if step is None:
-        step1 = get_optimal_volume_step(tdstruct1, 
-                                        initial_step=initial_step, 
-                                        threshold=threshold,
-                                        shrink_factor=shrink_factor)
-        
-        step2 = get_optimal_volume_step(tdstruct1, 
-                                        initial_step=initial_step,
-                                        threshold=threshold,
-                                        shrink_factor=shrink_factor)
-        
-        step = min([step1,step2])
-        
-    xmin1, xmax1, ymin1, ymax1, zmin1, zmax1 = get_xyz_lims(tdstruct1)
-    xmin2, xmax2, ymin2, ymax2, zmin2, zmax2 = get_xyz_lims(tdstruct2)
-    
-    xmin = min([xmin1,xmin2])
-    ymin = min([ymin1,ymin2])
-    zmin = min([zmin1,zmin2])
-    
-    xmax = max([xmax1,xmax2])
-    ymax = max([ymax1,ymax2])
-    zmax = max([zmax1,zmax2])
-    
-    if just_overlap:
-        p_in_cav = _get_points_in_both_cavities(tdstruct1=tdstruct1,
-                                                tdstruct2=tdstruct2,
-                                                step=step)
-        
-        hull = ConvexHull(p_in_cav)
-    
-    else:
-        p_in_cav1 = _get_points_in_cavity(tdstruct=tdstruct1,
-                                        step=step)
-        p_in_cav2 = _get_points_in_cavity(tdstruct=tdstruct2,
-                                        step=step)
-        
-        hull1 = ConvexHull(p_in_cav1)    
-        hull2 = ConvexHull(p_in_cav2)
-        
-
-    
-    
-    s=5
-    fig = plt.figure(figsize=(1.6*s, s))
-    ax = Axes3D(fig)
-    
-
-    n = 100
-    
-    if just_overlap:
-
-        for simplex in hull.simplices:
-            plt.plot(p_in_cav[simplex, 0], p_in_cav[simplex, 1], p_in_cav[simplex, 2], 'k--')
-    else:
-        for simplex in hull1.simplices:
-            plt.plot(p_in_cav1[simplex, 0], p_in_cav1[simplex, 1], p_in_cav1[simplex, 2], 'k--', color='blue')
-            
-        for simplex in hull2.simplices:
-            plt.plot(p_in_cav2[simplex, 0], p_in_cav2[simplex, 1], p_in_cav2[simplex, 2], 'k--', color='red')
-        
-   
-    ax.set_xlabel('X Label')
-    ax.set_ylabel('Y Label')
-    ax.set_zlabel('Z Label')
-    ax.set_xlim(xmin,xmax)
-    ax.set_ylim(ymin,ymax)
-    ax.set_zlim(zmin,zmax)
-    if just_overlap:
-        plt.title(f'Volume: {hull.volume}')
-    else:
-        plt.title(f'Volumes: {hull1.volume}, {hull2.volume}')
-
-    plt.show()
-    
-    
-def compute_overlap_volume(tdstruct1,tdstruct2, step, extra_space=3):
-    p_in_cav = _get_points_in_both_cavities(tdstruct1=tdstruct1,tdstruct2=tdstruct2, npoints=npoints, extra_space=extra_space)
-    hull = ConvexHull(p_in_cav)
-    return hull.volume
-
-
-# -
-
-a = TDStructure.from_smiles('C')
-
-# +
-b = a.copy()
-
-dr = np.zeros_like(a.coords)
-dr[0] = [3,0,0]
-b = b.displace_by_dr(dr) 
-# -
-
-c = TDStructure.from_smiles("CC")
-
-# +
-# # %matplotlib widget 
-# f = plot_overlap_hulls(a,b, just_overlap=False)
-# -
-
-# # from Bio.PDB import PDBParser
-# from Bio.PDB.SASA import ShrakeRupley
-
-import tempfile
-
-
-
-def compute_SASA(td: TDStructure):
-    with tempfile.NamedTemporaryFile(suffix=".pdb", mode="w", delete=False) as tmp:
-        td.to_pdb(tmp.name)
-        # print(Path(tmp.name).exists())
-        p = PDBParser(QUIET=0)
-
-        struct = p.get_structure(tmp.name,tmp.name)
-        sr = ShrakeRupley()
-        sr.compute(struct, level="S")
-
-    os.remove(tmp.name)
-    # print(Path(tmp.name).exists())
-    
-    return round(struct.sasa, 2)
-
-
-### Input: reactant and product geometry, output_directory
-# tr = Trajectory.from_xyz(Path('/home/jdep/T3D_data/geometry_spawning/claisen_results/claisen_ts_profile.xyz'))
-# tr = Trajectory.from_xyz("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/ugi_apr132024_msmep.xyz")
-# tr = Trajectory.from_xyz("/home/jdep/T3D_data/geometry_spawning/click_chem_results/click_chem_nm_spawned_geometries_xtb.xyz")
-h = TreeNode.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons/structures/Enolate-Claisen-Rearrangement/ASNEB_005_noSIG/')
-# start = tr[0]
-# end = tr[1]
-start = h.output_chain[0].tdstructure
-end = h.output_chain[-1].tdstructure
-
-
-def compute_scaled_vdw_cavity(td: TDStructure, scale=1.2):
-    vdwr = [openbabel.GetVdwRad(atom.GetAtomicNum()) for atom in openbabel.OBMolAtomIter(td.molecule_obmol)]
-    s_vdwr = [scale*s for s in vdwr]
-    return sum(s_vdwr)
-
 
 # # Network stuff
 
@@ -453,87 +46,26 @@ from neb_dynamics.molecule import Molecule
 from neb_dynamics.tdstructure import TDStructure
 # -
 
-from neb_dynamics.helper_functions import pairwise
-
-
-# +
-def path_to_keys(path_indices):
-    pairs = list(pairwise(path_indices))
-    labels = [f"{a}-{b}" for a,b in pairs]
-    return labels
-
-def get_best_chain(list_of_chains):
-    eAs = [c.get_eA_chain() for c in list_of_chains]
-    return list_of_chains[np.argmin(eAs)]
-
-def calculate_barrier(chain):
-    return (chain.energies.max() - chain[0].energy)*627.5
-
-def path_to_chain(path, leaf_objects):
-    labels = path_to_keys(path)
-    node_list = []
-    for l in labels:
-
-        node_list.extend(get_best_chain(leaf_objects[l]).nodes)
-    c = Chain(node_list, ChainInputs())
-    return c
-
-
-# -
-
-def get_mechanism_mols(chain, iter_dist=12):
-    out_mols = [chain[0].tdstructure.molecule_rp]
-    nsteps = int(len(chain)/iter_dist)
-    for ind in range(nsteps):
-        r = chain[ind*12].tdstructure.molecule_rp
-        if r != out_mols[-1]:
-            out_mols.append(r)
-        
-    p = chain[-1].tdstructure.molecule_rp
-    if p != out_mols[-1]:
-        out_mols.append(p)
-    return out_mols
-
-
-def path_to_list_of_chains(path, leaf_objects):
-    labels = path_to_keys(path)
-    c_list = []
-    for l in labels:
-
-        c = get_best_chain(leaf_objects[l])
-        c_list.append(c)
-    return c_list
-
-
-from neb_dynamics.Chain import Chain
-
-from neb_dynamics.Refiner import Refiner
-
-from neb_dynamics.Inputs import NEBInputs, GIInputs
-
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS
-
-from neb_dynamics.NEB import NEB
-
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
-import numpy as np
-
-from neb_dynamics.Janitor import Janitor
+start = TDStructure.from_xyz("/home/jdep/T3D_data/ClaisenNoSIG/start_confs/start.xyz")
+end = TDStructure.from_xyz("/home/jdep/T3D_data/ClaisenNoSIG/end_confs/end.xyz")
 
 # +
-# start = TDStructure.from_xyz("/home/jdep/T3D_data/EnolateClaisen/start_confs/start.xyz")
-# end = TDStructure.from_xyz("/home/jdep/T3D_data/EnolateClaisen/end_confs/end.xyz")
+# from neb_dynamics.solvator import Solvator
+
+# solv = Solvator(n_solvent=8)
+
+# start = solv.solvate_single_td(start)
+# end = solv.solvate_single_td(end)
 # -
-
-from retropaths.abinitio.solvator import Solvator
-
-solv = Solvator(n_solvent=1)
-
-start = solv.solvate_single_td(start)
-end = solv.solvate_single_td(end)
 
 from neb_dynamics.nodes.Node3D_Water import Node3D_Water
 from neb_dynamics.nodes.Node3D import Node3D
+
+smi1 = start.molecule_rp.smiles
+
+smi2 = end.molecule_rp.smiles
+
+from neb_dynamics.Inputs import NetworkInputs
 
 # +
 ugi_fp = Path("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/")
@@ -550,35 +82,68 @@ nosigCR = Path("/home/jdep/T3D_data/ClaisenNoSIG/")
 
 rgs_fp = Path("/home/jdep/T3D_data/RGS_Network")
 
+enol_solv_fp = Path("/home/jdep/T3D_data/EnolateClaisen_8Water")
 
-enol_solv_fp = Path("/home/jdep/T3D_data/EnolateClaisen_Water")
-bob = NetworkBuilder(
-    start=None,
-    end=None,
-    data_dir=debug_fp,
+cr_rxnmapper = Path("/home/jdep/T3D_data/ClaisenRxnMapper")
+
+
+network_inps = NetworkInputs(
+    
     subsample_confs=True, 
     n_max_conformers=20,
     use_slurm=True,
-    verbose=False,
+    verbose=0,
     tolerate_kinks=False,
-    chain_inputs=ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=True, use_maxima_recyling=True, node_class=Node3D),
     network_nodes_are_conformers=False,
     maximum_barrier_height=50000
-)
+) 
 
-# +
-# all 400 runs submitted Tuesday Jul2 9:20 AM
-# 189 still remain by Wed Jul3 9:46 AM
-# by July5 it's done I did not come in July 4 
+bob = NetworkBuilder(
+    data_dir=cr_rxnmapper,
+    start=smi1,
+    end=smi2,   
+    chain_inputs=ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=True, use_maxima_recyling=True, node_class=Node3D),
+    network_inputs=network_inps
+    
+)
+# -
+
+pot = bob.create_rxn_network()
 
 # +
 # pot = bob.run_and_return_network()
 # -
 
 
-pot = bob.create_rxn_network()
-
 pot.draw()
+
+# +
+ind = 19
+
+fp = f'/home/jdep/T3D_data/ClaisenRxnMapper/msmep_results/results_pair{ind}_msmep'
+h = TreeNode.read_from_disk(fp)
+h.data.optimized.plot_chain()
+h.data.optimized.to_trajectory().draw();
+# -
+
+ind = 1
+all_cs[ind].plot_chain()
+all_cs[ind].to_trajectory()
+
+c = bob.get_lowest_barrier_chain('0-1')
+c.plot_chain()
+c.to_trajectory()
+
+from neb_dynamics.NetworkBuilder import ReactionData
+
+rd = ReactionData(data=bob.leaf_objects)
+
+out = rd.get_all_TS('0-1')
+
+out
+
+c.plot_chain()
+c.to_trajectory()#.write_trajectory("/home/jdep/T3D_data/hi_martin.xyz")
 
 # +
 # pot.draw_shortest_to_node(4, mode='d3', weight='barrier')
@@ -1080,6 +645,8 @@ class KineticModel:
 # -
 
 kinx = KineticModel(pot=pot,temperature=25+273, nsteps=18000, timestep=.1) # 18000*.1 timesteps = 30min
+
+kinx.run_and_plot_populated_species(population)
 
 import matplotlib.pyplot as plt
 import numpy as np

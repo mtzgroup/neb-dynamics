@@ -28,8 +28,8 @@ from neb_dynamics.errors import ElectronicStructureError
 
 warnings.filterwarnings("ignore")
 with warnings.catch_warnings():
-    warnings.filterwarnings('ignore', r'RuntimeWarning: invalid value encountered in divide')
-
+    warnings.filterwarnings(
+        'ignore', r'RuntimeWarning: invalid value encountered in divide')
 
 
 def pairwise(iterable):
@@ -174,9 +174,6 @@ def create_friction_optimal_gi(traj, gi_inputs):
     print(f"GI: Used friction val: {frics[ind_best]}")
     sys.stdout.flush()
     return gi
-
-
-
 
 
 def get_nudged_pe_grad(unit_tangent, gradient):
@@ -394,7 +391,8 @@ def run_tc_local_optimization(td, tmp, return_optim_traj):
     from neb_dynamics.trajectory import Trajectory
 
     optim_fp = Path(tmp.name[:-4]) / "optim.xyz"
-    tr = Trajectory.from_xyz(optim_fp, tot_charge=td.charge, tot_spinmult=td.spinmult)
+    tr = Trajectory.from_xyz(
+        optim_fp, tot_charge=td.charge, tot_spinmult=td.spinmult)
     tr.update_tc_parameters(td)
 
     if return_optim_traj:
@@ -410,14 +408,34 @@ def is_even(n):
 def steepest_descent(node, ss=1, max_steps=10):
     tds = []
     last_node = node.copy()
-    last_node.converged = False  # make sure the node isn't frozen so it returns a gradient
+    # make sure the node isn't frozen so it returns a gradient
+    last_node.converged = False
     try:
         for i in range(max_steps):
             grad = last_node.gradient
-            new_coords = last_node.coords -1*ss*grad
+            new_coords = last_node.coords - 1*ss*grad
             node_new = last_node.update_coords(new_coords)
             tds.append(node_new)
             last_node = node_new.copy()
     except Exception:
-        raise ElectronicStructureError(trajectory=[],msg='Error while minimizing in early stop check.')
+        raise ElectronicStructureError(
+            trajectory=[], msg='Error while minimizing in early stop check.')
     return tds
+
+
+def give_me_free_index(natural, graph):
+    """
+    Natural numbers that are not index in graph
+    """
+    for i in natural:
+        if i not in graph.nodes:
+            yield i
+
+
+def naturals(n):
+    """
+    Natural numbers
+    """
+    yield n
+    yield from naturals(n + 1)
+

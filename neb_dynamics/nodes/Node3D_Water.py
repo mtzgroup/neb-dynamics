@@ -121,7 +121,7 @@ class Node3D_Water(Node):
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
             # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
 
-            if rmsd_identical and energies_identical:  #and barrier_accessible:
+            if rmsd_identical and energies_identical:  # and barrier_accessible:
                 return True
             else:
                 return False
@@ -298,11 +298,3 @@ class Node3D_Water(Node):
         with mp.Pool() as p:
             ene_gradients = p.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator)
         return ene_gradients
-
-
-
-
-
-
-
-

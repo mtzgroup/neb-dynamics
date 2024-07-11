@@ -11,11 +11,16 @@ import tqdm
 from scipy.signal import argrelmin
 
 from neb_dynamics.Chain import Chain
-from neb_dynamics.helper_functions import RMSD
-from neb_dynamics.Inputs import ChainInputs
+from neb_dynamics.helper_functions import RMSD, pairwise
+from neb_dynamics.Inputs import ChainInputs, NetworkInputs
 from neb_dynamics.pot import Pot
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.molecule import Molecule
+
+from typing import Union
+
+from rxnmapper import RXNMapper
 
 
 @dataclass
@@ -23,27 +28,37 @@ class NetworkBuilder:
 
     data_dir: Path
 
-    start: TDStructure = None
-    end: TDStructure = None
+    start: Union[TDStructure, str] = None
+    end: Union[TDStructure, str] = None
 
-    n_max_conformers: int = 10
-    subsample_confs: bool = True
-    conf_rmsd_cutoff: float = 0.5
-    network_nodes_are_conformers: bool = False
-    maximum_barrier_height: float = 1000  # kcal/mol
-
-    use_slurm: bool = False
-
-    verbose: bool = True
-
-    tolerate_kinks: bool = True
-
-    CREST_temp: float = 298.15  # Kelvin
-    CREST_ewin: float = 6.0  # kcal/mol
-
+    network_inputs: NetworkInputs = NetworkInputs()
     chain_inputs: ChainInputs = ChainInputs()
 
     def __post_init__(self):
+        both_are_smi = isinstance(
+            self.start, str) and isinstance(self.end, str)
+        both_are_tds = isinstance(
+            self.start, TDStructure) and isinstance(self.end, TDStructure)
+
+        assert both_are_smi or both_are_tds, 'Both inputs needs to be the same data type.'
+
+        if both_are_smi:
+            start_smi = self.start
+            end_smi = self.end
+            mapped_start, mapped_end = self.create_pairs_from_smiles(
+                smi1=start_smi, smi2=end_smi)
+            self.start = mapped_start
+            self.end = mapped_end
+
+            new_start_changed = mapped_start.molecule_rp.smiles != start_smi
+            new_end_changed = mapped_end.molecule_rp.smiles != end_smi
+            if new_start_changed or new_end_changed:
+                print("Warning! Mapping endpoints indices changed smiles string.")
+                print(
+                    f"Input start: {start_smi}. Output start: {mapped_start.molecule_rp.smiles}")
+                print(
+                    f"Input end: {end_smi}. Output end: {mapped_end.molecule_rp.smiles}")
+
         self.data_dir.mkdir(exist_ok=True)
 
         self.start_confs_dd = self.data_dir / "start_confs"
@@ -91,58 +106,6 @@ class NetworkBuilder:
         finally:
             os.chdir(curdir)
 
-    def sample_all_conformers(self, td: TDStructure, dd: Path, fn: str):
-        confs_fp = dd / fn
-        td.to_xyz(confs_fp)
-        with self.remember_cwd():
-            os.chdir(dd)
-
-            fps_confomers = list(dd.glob("crest_conf*.xyz"))
-            fps_rotamers = list(dd.glob("crest_rot*.xyz"))
-
-            if len(fps_confomers) >= 1 and len(fps_rotamers) >= 1:
-                if self.verbose:
-                    print("\tConformers already computed.")
-            else:
-                if self.verbose:
-                    print("\tRunning conformer sampling...")
-                output = subprocess.run(
-                    [
-                        "crest",
-                        f"{str(confs_fp.resolve())}",
-                        f"-ewin {self.CREST_ewin}",
-                        f"-temp {self.CREST_temp}",
-                        "--gfn2",
-                    ],
-                    capture_output=True,
-                )
-                if self.verbose:
-                    print(
-                        f"\tWriting CREST output stream to {str((dd / 'crest_output.txt').resolve())}..."
-                    )
-                with open(dd / "crest_output.txt", "w+") as fout:
-                    fout.write(output.stdout.decode("utf-8"))
-                if self.verbose:
-                    print("\tDone!")
-
-                fps_confomers = list(dd.glob("crest_conf*.xyz"))
-                fps_rotamers = list(dd.glob("crest_rot*.xyz"))
-
-            conformers_trajs = []
-            for conf_fp in fps_confomers:
-                tr = Trajectory.from_xyz(conf_fp)
-                print(f"\t\tCREST found {len(tr)} conformers")
-                conformers_trajs.extend(tr.traj)
-            for rot_fp in fps_rotamers:
-                tr = Trajectory.from_xyz(rot_fp)
-                if self.verbose:
-                    print(f"\t\tCREST found {len(tr)} rotamers")
-                conformers_trajs.extend(tr.traj)
-
-            all_confs = Trajectory(traj=conformers_trajs)
-
-        return all_confs
-
     @staticmethod
     def subselect_confomers(conformer_pool, n_max=20, rmsd_cutoff=0.5):
 
@@ -159,28 +122,52 @@ class NetworkBuilder:
 
     def create_endpoint_conformers(self):
 
-        start_conformers = self.sample_all_conformers(
-            td=self.start, dd=self.start_confs_dd, fn="start.xyz"
+        start_conformers = self.start.sample_all_conformers(
+            dd=self.start_confs_dd,
+            fn="start.xyz",
+            verbose=self.network_inputs.verbose,
+            CREST_ewin=self.network_inputs.CREST_ewin,
+            CREST_temp=self.network_inputs.CREST_temp
         )
-        end_conformers = self.sample_all_conformers(
-            td=self.end, dd=self.end_confs_dd, fn="end.xyz"
+        end_conformers = self.end.sample_all_conformers(
+            dd=self.end_confs_dd,
+            fn="end.xyz",
+            verbose=self.network_inputs.verbose,
+            CREST_ewin=self.network_inputs.CREST_ewin,
+            CREST_temp=self.network_inputs.CREST_temp
         )
 
-        if self.subsample_confs:
+        if self.network_inputs.subsample_confs:
             # subselect to n conformers for each
             sub_start_confs = self.subselect_confomers(
                 conformer_pool=start_conformers,
-                n_max=self.n_max_conformers,
-                rmsd_cutoff=self.conf_rmsd_cutoff,
+                n_max=self.network_inputs.n_max_conformers,
+                rmsd_cutoff=self.network_inputs.conf_rmsd_cutoff,
             )
             sub_end_confs = self.subselect_confomers(
                 conformer_pool=end_conformers,
-                n_max=self.n_max_conformers,
-                rmsd_cutoff=self.conf_rmsd_cutoff,
+                n_max=self.network_inputs.n_max_conformers,
+                rmsd_cutoff=self.network_inputs.conf_rmsd_cutoff,
             )
             start_conformers = sub_start_confs
             end_conformers = sub_end_confs
         return start_conformers, end_conformers
+
+    def create_pairs_from_smiles(self, smi1: str, smi2: str, charge=0, spinmult=1):
+        rxnsmi = f"{smi1}>>{smi2}"
+        rxn_mapper = RXNMapper()
+        rxn = [rxnsmi]
+        result = rxn_mapper.get_attention_guided_atom_maps(rxn)[0]
+        mapped_smi = result['mapped_rxn']
+        r_smi, p_smi = mapped_smi.split(">>")
+        r = Molecule.from_mapped_smiles(r_smi)
+        p = Molecule.from_mapped_smiles(p_smi)
+
+        td_r, td_p = (
+            TDStructure.from_molecule(r, charge=charge, spinmult=spinmult),
+            TDStructure.from_molecule(p, charge=charge, spinmult=spinmult)
+        )
+        return td_r, td_p
 
     def create_pairs_of_structures(self, start_confs, end_confs):
         # generate all pairs of structures
@@ -230,7 +217,7 @@ class NetworkBuilder:
 
         for i, (start, end) in enumerate(pairs_to_do):
 
-            if self.verbose:
+            if self.network_inputs.verbose:
                 print(f"\t***Creating pair {i} submission")
             start_fp = self.pairs_data_dir / f"start_{file_stem_name}_{i}.xyz"
             end_fp = self.pairs_data_dir / f"end_{file_stem_name}_{i}.xyz"
@@ -240,7 +227,7 @@ class NetworkBuilder:
 
             cmd = f"create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.002 \
                 -sig {int(self.chain_inputs.skip_identical_graphs)} -mr {int(self.chain_inputs.use_maxima_recyling)} \
-                    -nc {self.chain_inputs.node_class.__repr__()} -preopt 0 -climb 0 -nimg 12 -min_ends 1 \
+                    -nc {self.chain_inputs.node_class.__repr__(self.chain_inputs.node_class)} -preopt 0 -climb 0 -nimg 12 -min_ends 1 \
                         -es_ft 0.03 -name {out_fp}"
 
             new_template = template.copy()
@@ -256,49 +243,54 @@ class NetworkBuilder:
         all_jobs = list(self.submissions_dir.glob("*.sh"))
 
         for job in all_jobs:
-            if self.verbose:
+            if self.network_inputs.verbose:
                 print("\t", job)
 
             command = open(job).read().splitlines()[-1]
             out_fp = Path(command.split()[-1])
             if not out_fp.exists():
-                if self.use_slurm:
+                if self.network_inputs.use_slurm:
                     with self.remember_cwd():
                         os.chdir(self.submissions_dir)
-                        if self.verbose:
+                        if self.network_inputs.verbose:
                             print(f"\t\tsubmitting {job}")
-                        _ = subprocess.run(["sbatch", f"{job}"], capture_output=True)
+                        _ = subprocess.run(
+                            ["sbatch", f"{job}"], capture_output=True)
 
                 else:
-                    if self.verbose:
+                    if self.network_inputs.verbose:
                         print(f"\t\trunning {job}")
                     out = subprocess.run(command.split(), capture_output=True)
-                    if self.verbose:
-                        print(f"\t\t\twriting stdout in {out_fp.parent.resolve()}")
+                    if self.network_inputs.verbose:
+                        print(
+                            f"\t\t\twriting stdout in {out_fp.parent.resolve()}")
                     with open(out_fp.parent / f"out_{out_fp.name}", "w+") as fout:
                         fout.write(out.stdout.decode("utf-8"))
                         fout.write(out.stderr.decode("utf-8"))
                     with open(out_fp.parent / f"stderr_{out_fp.name}", "w+") as fout:
                         fout.write(out.stderr.decode("utf-8"))
             else:
-                if self.verbose:
+                if self.network_inputs.verbose:
                     print("\t\t\talready done")
 
     def _get_ind_mol(self, ref_list, mol):
         inds = np.where(
-            [a.is_isomorphic_to(b) for a, b in list(itertools.product([mol], ref_list))]
+            [a.is_isomorphic_to(b) for a, b in list(
+                itertools.product([mol], ref_list))]
         )[0]
         assert len(inds) >= 1, "No matches found. Network cannot be constructed."
         return inds[0]
 
     def _get_ind_td(self, ref_list, td):
-        if self.network_nodes_are_conformers:
+        if self.network_inputs.network_nodes_are_conformers:
             inds = np.where(
-                [a.is_identical(b) for a, b in list(itertools.product([td], ref_list))]
+                [a.is_identical(b) for a, b in list(
+                    itertools.product([td], ref_list))]
             )[0]
         else:
             inds = np.where(
-                [a._is_connectivity_identical(b) for a, b in list(itertools.product([td], ref_list))]
+                [a._is_connectivity_identical(b) for a, b in list(
+                    itertools.product([td], ref_list))]
             )[0]
         assert len(inds) >= 1, "No matches found. Network cannot be constructed."
         return inds[0]
@@ -375,7 +367,7 @@ class NetworkBuilder:
         edges = {}
         leaf_objects = {}
         for fp in tqdm.tqdm(msmep_paths):
-            if self.verbose:
+            if self.network_inputs.verbose:
                 print(f"\tDoing: {fp}. Len: {len(structures)}")
 
             leaves = self._get_relevant_leaves(fp)
@@ -386,11 +378,12 @@ class NetworkBuilder:
                 out_leaf_rev = out_leaf.copy()
                 out_leaf_rev.nodes.reverse()
                 if self._energies_fail(out_leaf):
-                    if self.verbose:
-                        print(f"\t\t{fp} had a leaf with failed energies. Might result in disconnected nodes.")
+                    if self.network_inputs.verbose:
+                        print(
+                            f"\t\t{fp} had a leaf with failed energies. Might result in disconnected nodes.")
                     continue
 
-                if self.tolerate_kinks:
+                if self.network_inputs.tolerate_kinks:
                     elementary_step = True
                 else:
                     n_minima = len(argrelmin(out_leaf.energies)[0])
@@ -398,11 +391,12 @@ class NetworkBuilder:
                     elementary_step = n_minima == 0
                 if elementary_step:
 
-                    if self.network_nodes_are_conformers:
+                    if self.network_inputs.network_nodes_are_conformers:
                         reactant_comparison = reactant not in structures
                         product_comparison = product not in structures
                     else:
-                        all_mols = [node.tdstructure.molecule_rp for node in structures]
+                        all_mols = [
+                            node.tdstructure.molecule_rp for node in structures]
                         reactant_comparison = reactant.tdstructure.molecule_rp not in all_mols
                         product_comparison = product.tdstructure.molecule_rp not in all_mols
 
@@ -439,11 +433,11 @@ class NetworkBuilder:
     def _add_all_nodes(self, pot: Pot, structures: list):
         for i, mol_to_add in enumerate(structures):
             node_ind = i
-            if self.verbose:
+            if self.network_inputs.verbose:
                 print(f"Adding node {node_ind}")
 
             relevant_conformers = self._get_relevant_conformers(node_ind)
-            if self.verbose:
+            if self.network_inputs.verbose:
                 print(f"\tIt had {len(relevant_conformers)} conformers")
 
             pot.graph.add_node(
@@ -452,7 +446,8 @@ class NetworkBuilder:
                 converged=False,
                 td=mol_to_add.tdstructure,
                 node_energy=mol_to_add.energy,
-                node_energies=[conformer.energy for conformer in relevant_conformers],
+                node_energies=[
+                    conformer.energy for conformer in relevant_conformers],
                 conformers=relevant_conformers)
 
         return pot
@@ -466,7 +461,8 @@ class NetworkBuilder:
         assert len(all_barriers_fwd) == len(all_barriers_rev), f"Inconsistency in number of barriers.\
               {len(all_barriers_fwd)=} {len(all_barriers_rev)=}"
 
-        sum_barrier_fwd_and_back = [fwd+rev for fwd, rev in zip(all_barriers_fwd, all_barriers_rev)]
+        sum_barrier_fwd_and_back = [
+            fwd+rev for fwd, rev in zip(all_barriers_fwd, all_barriers_rev)]
         lowest_barrier_ind = np.argmin(sum_barrier_fwd_and_back)
         return all_barriers_fwd[lowest_barrier_ind], all_barriers_rev[lowest_barrier_ind]
 
@@ -479,13 +475,14 @@ class NetworkBuilder:
                 vals = label.split("-")
                 label_rev = f"{vals[1]}-{vals[0]}"
                 lowest_barrier_height_fwd, \
-                    lowest_barrier_height_rev = self._get_lowest_barrier_height_pair(edges, edgelabel)
+                    lowest_barrier_height_rev = self._get_lowest_barrier_height_pair(
+                        edges, edgelabel)
 
                 if int(vals[0]) == node_ind and int(vals[1]) == node_ind:
                     # skip whenever you have an 'in place' transition
                     continue
                 else:
-                    if lowest_barrier_height_fwd <= self.maximum_barrier_height:
+                    if lowest_barrier_height_fwd <= self.network_inputs.maximum_barrier_height:
                         pot.graph.add_edge(
                             int(vals[1]),
                             node_ind,
@@ -495,7 +492,7 @@ class NetworkBuilder:
                             barrier=lowest_barrier_height_fwd,
                             exp_neg_barrier=np.exp(-np.min(edges[edgelabel])),
                         )
-                    if lowest_barrier_height_rev <= self.maximum_barrier_height:
+                    if lowest_barrier_height_rev <= self.network_inputs.maximum_barrier_height:
                         pot.graph.add_edge(
                             node_ind,
                             int(vals[1]),
@@ -515,12 +512,54 @@ class NetworkBuilder:
         pot = self._add_all_edges(pot, structures=structures, edges=edges)
         return pot
 
+    def path_to_keys(self, path_indices):
+        pairs = list(pairwise(path_indices))
+        labels = [f"{a}-{b}" for a, b in pairs]
+        return labels
+
+    def get_best_chain(self, list_of_chains):
+        eAs = [c.get_eA_chain() for c in list_of_chains]
+        return list_of_chains[np.argmin(eAs)]
+
+    def calculate_barrier(self, chain):
+        return (chain.energies.max() - chain[0].energy)*627.5
+
+    def path_to_chain(self, path, leaf_objects):
+        labels = self.path_to_keys(path)
+        node_list = []
+        for label in labels:
+            node_list.extend(self.get_best_chain(leaf_objects[label]).nodes)
+        c = Chain(node_list, ChainInputs())
+        return c
+
+    def path_to_list_of_chains(self, path, leaf_objects):
+        labels = self.path_to_keys(path)
+        c_list = []
+        for label in labels:
+
+            c = self.get_best_chain(leaf_objects[label])
+            c_list.append(c)
+        return c_list
+
     def get_lowest_barrier_chain(self, edge: str):
         edge_data = self.leaf_objects[edge]
         assert len(edge_data) >= 1, f"{edge} was not found in network."
         eAs = [c.get_eA_chain() for c in edge_data]
         best_ind = np.argmin(eAs)
         return edge_data[best_ind]
+
+    def get_mechanism_mols(self, chain, elem_step_len=12):
+        out_mols = [chain[0].tdstructure.molecule_rp]
+        nsteps = int(len(chain)/elem_step_len)
+        for ind in range(nsteps):
+            r = chain[ind*elem_step_len].tdstructure.molecule_rp
+            if r != out_mols[-1]:
+                out_mols.append(r)
+
+        p = chain[-1].tdstructure.molecule_rp
+        if p != out_mols[-1]:
+            out_mols.append(p)
+        return out_mols
 
     def run_and_return_network(self):
         print("1... Creating Conformers with CREST")

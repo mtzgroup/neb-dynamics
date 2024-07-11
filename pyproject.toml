@@ -3,8 +3,8 @@ requires = ["setuptools >= 61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "neb-dynamics"
-version = "2024.0.0"
+name = "neb_dynamics"
+version = "0.1.0"
 dependencies = [
   "ase>=3.22.1",
   "biopython>=1.83",

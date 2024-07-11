@@ -60,14 +60,25 @@ df_jan = df_jan.dropna()
 df_jan['reaction name'] = df_jan.apply(sanitize, axis=1)
 df_gi = pd.read_csv("/home/jdep/T3D_data/msmep_draft/comparisons_dft/dataset_results_gi.csv")
 
+# nosig_nomrs_dfs = [pd.read_csv(f"/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_{label}_nosig_nomr.csv").dropna() for label in ['5','1','05','03','01','005','0']]
+# nosig_nomrs_dfs = [subset_to_elem_step_rns(pd.read_csv(f"/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_{label}_nosig_nomr.csv").dropna()) for label in ['5','1','05','03','01','005','0']]
+nosig_nomrs_dfs = [subset_to_multi_step_rns(pd.read_csv(f"/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_{label}_nosig_nomr.csv").dropna()) for label in ['5','1','05','03','01','005','0']]
+for df in nosig_nomrs_dfs:
+    df['TOTAL_GRAD_CALLS'] = df['n_grad_calls']+df['n_grad_calls_geoms']
+
+true_ms = []
+for fp in nosig_nomrs_dfs[-1][nosig_nomrs_dfs[-1]['n_rxn_steps']>1]['file_path']:
+    p = Path(fp)/'ASNEB_003_yesSIG'
+    h = TreeNode.read_from_disk(p)
+    if len(h.ordered_leaves) > 1:
+        true_ms.append(fp)
+
+true_ms_names = [st.split("/")[-1] for st in true_ms]
+
 nosig_nomrs_dfs = [subset_to_multi_step_rns(pd.read_csv(f"/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_{label}_nosig_nomr.csv").dropna(),
                                            by_list=true_ms_names ) for label in ['5','1','05','03','01','005','0']]
 
 df_sub = df_jan[df_jan['reaction name'].isin(nosig_nomrs_dfs[3]['reaction_name'])]
-
-len(df_jan)
-
-nosig_nomrs_dfs
 
 len(df_sub)
 
@@ -85,24 +96,9 @@ def subset_to_elem_step_rns(df, by_list=False, inp_list=None):
 
 import pandas as pd
 
-# nosig_nomrs_dfs = [pd.read_csv(f"/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_{label}_nosig_nomr.csv").dropna() for label in ['5','1','05','03','01','005','0']]
-# nosig_nomrs_dfs = [subset_to_elem_step_rns(pd.read_csv(f"/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_{label}_nosig_nomr.csv").dropna()) for label in ['5','1','05','03','01','005','0']]
-nosig_nomrs_dfs = [subset_to_multi_step_rns(pd.read_csv(f"/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_{label}_nosig_nomr.csv").dropna()) for label in ['5','1','05','03','01','005','0']]
-for df in nosig_nomrs_dfs:
-    df['TOTAL_GRAD_CALLS'] = df['n_grad_calls']+df['n_grad_calls_geoms']
-
 df['n_rxn_steps'].argmax()
 
-true_ms = []
-for fp in nosig_nomrs_dfs[-1][nosig_nomrs_dfs[-1]['n_rxn_steps']>1]['file_path']:
-    p = Path(fp)/'ASNEB_003_yesSIG'
-    h = TreeNode.read_from_disk(p)
-    if len(h.ordered_leaves) > 1:
-        true_ms.append(fp)
-
 len(true_ms)
-
-true_ms_names = [st.split("/")[-1] for st in true_ms]
 
 # +
 df_neb = pd.read_csv("/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_NEBS.csv")
@@ -1154,15 +1150,11 @@ nbi = NEBInputs(
         max_steps=500,
 
 )
-# -
-
-
-
 # +
 # rn = 'Wittig'
 # rn = 'Robinson-Gabriel-Synthesis'
-rn = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
-# rn = 'Bamford-Stevens-Reaction'
+# rn = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
+rn = 'Bamford-Stevens-Reaction'
 # rn = 'Rupe-Rearrangement'
 
 ref_p = Path(f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/ASNEB_01_NOSIG_NOMR_v2/")
@@ -1190,11 +1182,14 @@ ngc_neb_long = sum([int(line.split()[2]) for line in ngc_neb_long if '>>>' in li
 # ngc_neb_long2 = sum([int(line.split()[2]) for line in ngc_neb_long2 if '>>>' in line])
 # -
 
+hdb = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Claisen-Rearrangement-Aromatic/ASNEB_03_NOSIG_NOMR_GI/")
+
+hdb.output_chain.plot_chain()
+hdb.output_chain.to_trajectory()
+
 ref = Refiner()
 leaves = ref.read_leaves_from_disk(Path(f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/ASNEB_03_NOSIG_NOMR_v2_refined/"))
 joined = ref.join_output_leaves(leaves)
-
-joined.plot_chain()
 
 # +
 s=5
@@ -1355,6 +1350,7 @@ if normalize_pl:
     pl_h = h.output_chain.integrated_path_length
     pl_neb = neb.optimized.integrated_path_length
     pl_neb_long = neb_long.optimized.integrated_path_length
+    pl_dft = joined.integrated_path_length
     # pl_neb_long2 = neb_long2.optimized.integrated_path_length
     xl = "Reaction progression"
 else:
@@ -1364,10 +1360,11 @@ else:
     # pl_neb_long2 = neb_long2.optimized.path_length
     xl = "Path length"
 
-plt.plot(pl_h, h.output_chain.energies_kcalmol, 'o-', color='black',label='ASNEB', linewidth=3.3)
-plt.plot(pl_neb, neb.optimized.energies_kcalmol, '^-', color='blue',label='NEB(12)', alpha=.3)
-plt.plot(pl_neb_long, neb_long.optimized.energies_kcalmol, 'x-', color='red',label=f'NEB({len(neb_long.optimized)})', alpha=.3)
-# plt.plot(pl_neb_long2, neb_long2.optimized.energies_kcalmol, '*-', color='green',label=f'NEB({len(neb_long2.optimized)})')
+plt.plot(pl_h, h.output_chain.energies_kcalmol, 'o-', color='black',label='ASNEB')#, linewidth=3.3)
+plt.plot(pl_neb, neb.optimized.energies_kcalmol, '^-', color='blue',label='NEB(12)')#, alpha=.3)
+plt.plot(pl_neb_long, neb_long.optimized.energies_kcalmol, 'x-', color='red',label=f'NEB({len(neb_long.optimized)})')#, alpha=.3)
+
+# plt.plot(pl_dft, joined.energies_kcalmol, 'o-',label='ASNEB_DFT')#, linewidth=3.3)
 
 plt.legend(fontsize=fs)
 
@@ -1513,9 +1510,11 @@ ind = 0
 
 from IPython.core.display import display
 
-df_sub[['yes' in  val for val in df_sub['agrees?'].values]]
+df_sub[['no' in  val for val in df_sub['agrees?'].values]]
 
-rn = 'Oxazole-Synthesis'
+df_sub.loc[38]['experimental link']
+
+rn = 'Madelung-Indole-Synthesis'
 a, b = build_report(rn)
 a
 
@@ -1540,9 +1539,7 @@ plt.show()
 Molecule.draw_list(get_mechanism_mols(c))
 # -
 
-c[0].tdstructure.energy_tc()
-
-c.to_trajectory()
+c.to_trajectory().draw();
 
 ref = Refiner()
 leaves = ref.read_leaves_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Azaindole-Synthesis/ASNEB_03_NOSIG_NOMR_v2_refined/"))

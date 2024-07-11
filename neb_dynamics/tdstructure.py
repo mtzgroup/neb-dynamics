@@ -147,7 +147,6 @@ class TDStructure:
 
         return cls(obmol3D)
 
-
     @property
     def n_fragments(self) -> int:
         """computes the number of separate molecules in TDStructure
@@ -507,6 +506,12 @@ class TDStructure:
         td = cls.from_xyz(tmp.name, tot_charge=charge, tot_spinmult=spinmult)
         os.remove(tmp.name)
         return td
+
+    @classmethod
+    def from_mapped_smiles(cls, smi, spinmult=1, charge=0):
+        mol = Molecule.from_mapped_smiles(smi)
+        obj = cls.from_molecule(mol, charge=charge, spinmult=spinmult)
+        return obj
 
     @classmethod
     def from_smiles(cls, smi, tot_spinmult=1):
