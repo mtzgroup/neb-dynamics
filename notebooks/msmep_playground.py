@@ -23,6 +23,7 @@ from IPython.core.display import HTML
 import networkx as nx
 
 from mpl_toolkits.mplot3d import Axes3D 
+
 import matplotlib.patches as mpatches
 
 
@@ -35,6 +36,10 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import SmoothBivariateSpline
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
+
+td = TDStructure.from_smiles("COCO")
+
+from neb_dynamics.tdstructure import TDStructure
 
 # # Database
 
