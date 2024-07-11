@@ -439,3 +439,34 @@ def naturals(n):
     yield n
     yield from naturals(n + 1)
 
+
+def _load_info_from_tcin(file_path):
+    method = None
+    basis = None
+
+    charge = None
+    spinmult = None
+
+    inp_kwds = {}
+    tcin = open(file_path).read().splitlines()
+    assert len(
+        tcin) > 2, "File path given needs to have at least method and basis specified."
+    for line in tcin:
+        key, val = line.split()
+        if key == 'run':
+            continue
+        elif key == 'method':
+            method = val
+        elif key == 'basis':
+            basis = val
+        elif key == 'coordinates':
+            continue
+        elif key == 'charge':
+            charge = int(val)
+        elif key == 'spinmult':
+            spinmult = int(val)
+
+        else:
+            inp_kwds[key] = val
+
+    return method, basis, charge, spinmult, inp_kwds

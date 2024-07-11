@@ -36,6 +36,7 @@ from neb_dynamics.helper_functions import (atomic_number_to_symbol,
                                            load_obmol_from_fp,
                                            run_tc_local_optimization,
                                            get_mass,
+                                           _load_info_from_tcin,
                                            write_xyz)
 
 from neb_dynamics.molecule import Molecule
@@ -647,6 +648,27 @@ class TDStructure:
         self.tc_model_basis = tc_model_basis
         self.tc_kwds = tc_kwds
         self.tc_geom_opt_kwds = tc_geom_opt_kwds
+
+    def update_tc_parameters_from_inpfile(self, file_path: str, replace_charges_spinmult: bool = False):
+        td_copy = self.copy()
+
+        method, basis, charge, spinmult, inp_kwds = _load_info_from_tcin(file_path)
+        if charge and replace_charges_spinmult:
+            print(f"Warning!: Setting charge to what is specified in {file_path}")
+            td_copy.set_charge(charge)
+
+        if spinmult and replace_charges_spinmult:
+            print(f"Warning!: Setting multiplicity to what is specified in {file_path}")
+            td_copy.set_spinmult(spinmult)
+
+        td_copy.tc_model_method = method
+        td_copy.tc_model_basis = basis
+        td_copy.tc_kwds = inp_kwds
+
+        return td_copy
+
+
+
 
     @property
     def tc_client(self):
