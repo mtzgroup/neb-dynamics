@@ -59,4 +59,4 @@ _ = n.optimize_chain()
 
 n.plot_opt_history(1)
 
-
+print(n.optimized.get_ts_guess().coords)

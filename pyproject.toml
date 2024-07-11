@@ -1,46 +1,34 @@
-[build-system]
-requires = ["setuptools >= 61.0"]
-build-backend = "setuptools.build_meta"
-
-[project]
-name = "neb_dynamics"
+[tool.poetry]
+name = "neb-dynamics"
 version = "0.1.0"
-dependencies = [
-  "ase>=3.22.1",
-  "biopython>=1.83",
-  "chemcloud",
-  "jupyterlab==3.4.3",
-  "matplotlib>=3.5.2",
-  "networkx>=2.6.3",
-  "numpy>=1.23.0",
-  "pandas>=1.4.3",
-  "pip",
-  "py3Dmol==2.1.0",
-  "pysmiles==1.1.2",
-  "qcio",
-  "qcop",
-  "qcparse",
-  "scikit-learn>=1.4.2",
-  "tqdm>=4.64.0",
-  "xtb>=20.1",
-  "ipywidgets",
-  "openbabel==2.4.1"
-]
-requires-python = ">=3.9"
-authors = [
-  {name = "Jan Estrada Pabón", email = "jdep@stanford.edu"},
-]
+description = "Package for minimization of MEPs and reaction path exploration"
+authors = ["Jan <janestrada7@gmail.com>"]
+license = "MIT"
+readme = "README.md"
 
-description = "Package for running NEB minimizations using XTB and TeraChem"
-readme = "README.rst"
-license = {file = "LICENSE.txt"}
-classifiers = [
-  "Development Status :: 4 - Beta",
-  "Programming Language :: Python"
-]
+[tool.poetry.dependencies]
+python = "^3.9"
+jupyter = "^1.0.0"
+matplotlib = "^3.9.1"
+scipy = "<1.14"
+openbabel-wheel = "^3.1.1.19"
+pandas = "^2.2.2"
+pysmiles = "^1.1.2"
+rdkit = "^2024.3.3"
+py3dmol = "^2.2.0"
+qcop = "^0.7.1"
+ase = "^3.23.0"
+chemcloud = "^0.10.0"
+xtb = "^22.1"
+cairosvg = "^2.7.1"
+timeout-timer = "^0.2.0"
+biopython = "^1.84"
 
-[tool.setuptools]
-py-modules = []
 
-[project.scripts]
-create_msmep_from_endpoints = "neb_dynamics.scripts.create_msmep_from_endpoints.py:main"
+[tool.poetry.group.dev.dependencies]
+black = "^24.4.2"
+autopep8 = "^2.3.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

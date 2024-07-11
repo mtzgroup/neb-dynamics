@@ -8,7 +8,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from kneed import KneeLocator
+
 from openbabel import pybel
 
 from neb_dynamics.Chain import Chain
@@ -601,12 +601,10 @@ class NEB:
 
         fs = 18
         s = 8
-        kn = KneeLocator(x=list(range(len(distances)))[1:], y=distances[1:], curve='convex', direction='decreasing')
+
 
 
         f,ax = plt.subplots(figsize=(1.16*s, s))
-
-        plt.text(.65,.9, s=f"elbow: {kn.elbow}\nelbow_yval: {round(kn.elbow_y,4)}", transform=ax.transAxes,fontsize=fs)
 
         plt.plot(distances,'o-')
         plt.yticks(fontsize=fs)
