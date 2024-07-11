@@ -1,4 +1,4 @@
-#!/home/jdep/.conda/envs/rp/bin/python
+#!/home/jdep/.conda/envs/neb/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
 from neb_dynamics.trajectory import Trajectory
@@ -301,7 +301,7 @@ def main():
         refiner = Refiner(cni=cni)
         refined_leaves = refiner.create_refined_leaves(h.ordered_leaves)
         out_chain = refiner.join_output_leaves(refined_leaves)
-        
+
         tot_grad_calls = sum([obj.data.grad_calls_made for obj in refined_leaves])
         geom_grad_calls = sum([
             obj.data.geom_grad_calls_made for obj in refined_leaves]

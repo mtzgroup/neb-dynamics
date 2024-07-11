@@ -1,4 +1,4 @@
-#!/home/jdep/.conda/envs/rp/bin/python
+#!/home/jdep/.conda/envs/neb/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
 from neb_dynamics.trajectory import Trajectory

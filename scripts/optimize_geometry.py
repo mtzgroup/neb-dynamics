@@ -1,4 +1,4 @@
-#!/home/jdep/.conda/envs/rp/bin/python
+#!/home/jdep/.conda/envs/neb/bin/python
 from pathlib import Path
 from argparse import ArgumentParser
 from retropaths.abinitio.trajectory import Trajectory
@@ -26,7 +26,7 @@ def read_single_arguments():
     """
     description_string = "will take path to an xyz file of geodesic trajectory and relax it using XTB neb"
     parser = ArgumentParser(description=description_string)
- 
+
 
     parser.add_argument(
         "-c",
@@ -46,9 +46,9 @@ def read_single_arguments():
         help='total spinmultiplicity of system'
 
     )
-    
-    
-    
+
+
+
     parser.add_argument(
         '-nc',
         '--node_class',
@@ -56,9 +56,9 @@ def read_single_arguments():
         type=str,
         default="node3d",
         help='what node type to use. options are: node3d, node3d_tc, node3d_tc_local, node3d_tcpb'
-        
+
     )
-    
+
     parser.add_argument(
         '-fp',
         '--file_path',
@@ -66,22 +66,22 @@ def read_single_arguments():
         required=True,
         type=str,
         help='path to the xyz structure'
-        
+
     )
-    
+
     return parser.parse_args()
 
 
 def main():
     args = read_single_arguments()
-    
+
     nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC, 'node3d_tc_local': Node3D_TC_Local, 'node3d_tcpb': Node3D_TC_TCPB}
     nc = nodes[args.nc]
-    
+
     fp = Path(args.fp)
-    
+
     td = TDStructure.from_xyz(args.fp, tot_charge=args.c, tot_spinmult=args.s)
-    
+
     if args.nc != "node3d":
         method = 'wb97xd3'
         basis = 'def2-svp'
@@ -90,13 +90,13 @@ def main():
         td.tc_model_method = method
         td.tc_model_basis = basis
         td.tc_kwds = kwds
-            
+
     node = nodes[args.nc](td)
     node_opt = node.do_geometry_optimization()
     node_opt.tdstructure.to_xyz(fp.parent / (fp.stem+"_opt.xyz"))
-    
-    
-	    
+
+
+
 
 if __name__ == "__main__":
     main()
