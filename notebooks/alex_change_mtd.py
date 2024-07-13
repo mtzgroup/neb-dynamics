@@ -35,7 +35,7 @@ c3d_double = [Changes3D(start=s, end=e, bond_order=2) for s, e in double]
 c3d_delete = [Changes3D(start=s, end=e, bond_order=1) for s, e in delete]
 # -
 
-d = {'charges': [], 
+d = {'charges': [],
  'delete':delete,
 'double':double,
  'single':single}
@@ -43,7 +43,7 @@ d = {'charges': [],
 conds = Conditions()
 rules = Rules()
 temp = ReactionTemplate.from_components(name='alex', reactants=mol, changes_react_to_prod_dict=d,
-           conditions=conds, rules=rules)                             
+           conditions=conds, rules=rules)
 
 temp.reactants.draw()
 
@@ -69,20 +69,20 @@ from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 
 from neb_dynamics.Chain import Chain
 # -
 
 tr = Trajectory([root, target]).run_geodesic(nimages=12)
 
-nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS,early_stop_force_thre=0.01, 
+nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS,early_stop_force_thre=0.01,
                 early_stop_chain_rms_thre=1, v=True)
 # cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D_TC,node_freezing=True)
 cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D,node_freezing=True)
 gii = GIInputs(nimages=12)
-optimizer = BFGS(bfgs_flush_steps=20, bfgs_flush_thre=0.80, use_linesearch=False, 
-                 step_size=3, 
+optimizer = BFGS(bfgs_flush_steps=20, bfgs_flush_thre=0.80, use_linesearch=False,
+                 step_size=3,
                  min_step_size= 0.5,
                  activation_tol=0.1
             )
@@ -179,19 +179,19 @@ import multiprocessing as mp
 class Node3D_MTD(Node):
     tdstructure: TDStructure
     reference_trajs: list
-    strength: float 
-    alpha: float 
+    strength: float
+    alpha: float
     converged: bool = False
     do_climb: bool = False
 
 
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
-    
+
     RMSD_CUTOFF = 0.5
     KCAL_MOL_CUTOFF = 1
-    
-    
+
+
     # reference_trajs = REFERENCE_OPT_TRAJ
     # reference_trajs = [n_orig.optimized.to_trajectory()]
     # reference_trajs = [out_chain.to_trajectory()]
@@ -216,12 +216,12 @@ class Node3D_MTD(Node):
         res = Node3D_MTD.run_xtb_calc(node.tdstructure)
         gradient =  res.get_gradient() * BOHR_TO_ANGSTROMS
         gradient_mtd, energy_mtd = node.mtd_grad_energy(node.tdstructure.coords)
-        
-        
+
+
         return gradient + gradient_mtd
-        
+
     def mtd_grad_energy(self, structure: np.array):
-    
+
         n_atoms = structure.shape[0]
         gradient = np.zeros((n_atoms,3))
         energy = 0
@@ -237,10 +237,10 @@ class Node3D_MTD(Node):
 
                 gradient += biasgrad_i
                 energy += biaspot_i
-        weights = np.array([np.sqrt(get_mass(s)) for s in self.tdstructure.symbols]) 
+        weights = np.array([np.sqrt(get_mass(s)) for s in self.tdstructure.symbols])
         weights = weights  / sum(weights)
         gradient = gradient * weights.reshape(-1,1)
-                
+
         return gradient, energy
 
     @cached_property
@@ -251,13 +251,13 @@ class Node3D_MTD(Node):
             return Node3D_MTD.en_func(self)
 
     def do_geometry_optimization(self) -> Node3D_MTD:
-        
+
         max_steps=2500
         ss=1
         tol=0.001
         nsteps = 0
         traj = []
-        
+
         node = self.copy()
         while nsteps < max_steps:
             traj.append(node)
@@ -315,7 +315,7 @@ class Node3D_MTD(Node):
         Returns the component of the gradient that acts perpendicular to the path tangent
         """
         pe_grad = gradient
-        
+
         pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
         return pe_grad_nudged
@@ -362,7 +362,7 @@ class Node3D_MTD(Node):
         )  # ASE works in agnstroms
 
         return opt_struct
-    
+
     def is_a_molecule(self):
         return True
 
@@ -412,8 +412,8 @@ class Node3D_MTD(Node):
             self.tdstructure.charge,
             self.tdstructure.spinmult,
         )
-    
-    
+
+
     @staticmethod
     def calc_xtb_ene_grad_from_input_tuple(tuple):
         atomic_numbers, coords_bohr, charge, spinmult = tuple
@@ -429,20 +429,20 @@ class Node3D_MTD(Node):
         res = calc.singlepoint()
 
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
-    
-    
+
+
     @staticmethod
     def calc_mtd_ene_grad_from_input_tuple(inp):
-    
+
         structure, reference_opt_traj, strength, alpha = inp
         n_atoms = structure.shape[0]
         gradient = np.zeros((n_atoms,3))
         energy = 0
-        
+
         for reference_chain in reference_opt_traj:
             for reference in reference_chain:
-                
-                
+
+
 
                 c1 = np.array(structure)
                 c2 = np.array(reference)
@@ -477,40 +477,40 @@ class Node3D_MTD(Node):
                 biasgrad_i =  -2*alpha*g_rmsd*biaspot_i * rmsd
 
                 gradient += biasgrad_i
-                energy += biaspot_i 
+                energy += biaspot_i
 
 
-                
+
         return energy, gradient * BOHR_TO_ANGSTROMS
-    
+
     def is_identical(self, other) -> bool:
         return all([self._is_connectivity_identical(other), self._is_conformer_identical(other)])
-    
+
     def _is_connectivity_identical(self, other) -> bool:
         connectivity_identical =  self.tdstructure.molecule_rp.is_bond_isomorphic_to(
             other.tdstructure.molecule_rp
         )
         return connectivity_identical
-    
+
     def _is_conformer_identical(self, other) -> bool:
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
             dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
             en_delta = np.abs((self.energy - other.energy)*627.5)
-            
-            
+
+
             rmsd_identical = dist < self.RMSD_CUTOFF
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
             if rmsd_identical and energies_identical:
                 conformer_identical = True
-            
+
             if not rmsd_identical and energies_identical:
                 # going to assume this is a rotation issue. Need To address.
                 conformer_identical = False
-            
+
             if not rmsd_identical and not energies_identical:
                 conformer_identical = False
-            
+
             if rmsd_identical and not energies_identical:
                 conformer_identical = False
             print(f"\nRMSD : {dist} // |∆en| : {en_delta}\n")
@@ -519,10 +519,10 @@ class Node3D_MTD(Node):
             return conformer_identical
         else:
             return False
-        
-    
-        
-    
+
+
+
+
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
         iterator = (
@@ -534,11 +534,11 @@ class Node3D_MTD(Node):
             )
             for n in chain.nodes
         )
-        
+
         with mp.Pool() as p:
             ene_gradients = p.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator)
-        
-        
+
+
         iterator2 = (
             (
                 n.tdstructure.coords_bohr,
@@ -548,11 +548,11 @@ class Node3D_MTD(Node):
             )
             for n in chain.nodes
         )
-        
+
         with mp.Pool() as p2:
             ene_gradients_mtd = p2.map(cls.calc_mtd_ene_grad_from_input_tuple, iterator2)
-        
-        
+
+
         out_ene_gradients = []
         for i, (ene_bias, grad_bias) in enumerate(ene_gradients_mtd):
             orig_ene, orig_grad = ene_gradients[i]
@@ -591,17 +591,17 @@ import multiprocessing as mp
 class Node3D_MTD_NoEne(Node):
     tdstructure: TDStructure
     reference_trajs: list
-    strength: float 
-    alpha: float 
-    
+    strength: float
+    alpha: float
+
     converged: bool = False
     do_climb: bool = False
-    
+
 
     _cached_energy: float | None = None
     _cached_gradient: np.array | None = None
-    
-    
+
+
     # reference_trajs = REFERENCE_OPT_TRAJ
     # reference_trajs = [n_orig.optimized.to_trajectory()]
     # reference_trajs = [out_chain.to_trajectory()]
@@ -627,9 +627,9 @@ class Node3D_MTD_NoEne(Node):
         # gradient =  res.get_gradient() * BOHR_TO_ANGSTROMS
         gradient_mtd, energy_mtd = node.mtd_grad_energy(node.tdstructure.coords)
         return gradient_mtd
-        
+
     def mtd_grad_energy(self, structure: np.array):
-    
+
         n_atoms = structure.shape[0]
         gradient = np.zeros((n_atoms,3))
         energy = 0
@@ -646,8 +646,8 @@ class Node3D_MTD_NoEne(Node):
                 gradient += biasgrad_i
                 energy += biaspot_i
 
-                
-        weights = np.array([np.sqrt(get_mass(s)) for s in self.tdstructure.symbols]) 
+
+        weights = np.array([np.sqrt(get_mass(s)) for s in self.tdstructure.symbols])
         weights = weights  / sum(weights)
         gradient = gradient * weights.reshape(-1,1)
         return gradient, energy
@@ -685,7 +685,7 @@ class Node3D_MTD_NoEne(Node):
         Returns the component of the gradient that acts perpendicular to the path tangent
         """
         pe_grad = gradient
-        
+
         pe_grad_nudged_const = self.dot_function(pe_grad, unit_tangent)
         pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
         return pe_grad_nudged
@@ -742,22 +742,22 @@ class Node3D_MTD_NoEne(Node):
             self.tdstructure.charge,
             self.tdstructure.spinmult,
         )
-    
-    
-    
+
+
+
     @staticmethod
     def calc_mtd_ene_grad_from_input_tuple(inp):
-    
+
         structure, reference_opt_traj, strength, alpha = inp
         n_atoms = structure.shape[0]
         gradient = np.zeros((n_atoms,3))
         energy = 0
-        
-        
+
+
         for reference_chain in reference_opt_traj:
             for reference in reference_chain:
-                
-                
+
+
 
                 c1 = np.array(structure)
                 c2 = np.array(reference)
@@ -792,15 +792,15 @@ class Node3D_MTD_NoEne(Node):
                 biasgrad_i =  -2*alpha*g_rmsd*biaspot_i * rmsd
 
                 gradient += biasgrad_i
-                energy += biaspot_i 
+                energy += biaspot_i
 
 
         return energy, gradient * BOHR_TO_ANGSTROMS
-    
+
     @classmethod
     def calculate_energy_and_gradients_parallel(cls, chain):
-        
-        
+
+
         iterator2 = (
             (
                 n.tdstructure.coords_bohr,
@@ -810,11 +810,11 @@ class Node3D_MTD_NoEne(Node):
             )
             for n in chain.nodes
         )
-        
+
         with mp.Pool() as p2:
             ene_gradients_mtd = p2.map(cls.calc_mtd_ene_grad_from_input_tuple, iterator2)
-        
-        
+
+
         out_ene_gradients = []
         for i, (ene_bias, grad_bias) in enumerate(ene_gradients_mtd):
             out_ene = ene_bias
@@ -829,12 +829,12 @@ class Node3D_MTD_NoEne(Node):
 # # Playground (Geomopt)
 
 def chang2(structure: np.array,
-          reference: np.array, 
-          strength=1, 
+          reference: np.array,
+          strength=1,
           alpha=1, # basically defines the fwhm - alex chang 2023
 
          ):
-    
+
     n_atoms = structure.shape[0]
     gradient = np.zeros((n_atoms,3))
     # for ref_chain in REFERENCE_OPT_TRAJ:
@@ -846,10 +846,10 @@ def chang2(structure: np.array,
             biasgrad_i =  -2*alpha*g_rmsd*biaspot_i * rmsd
             # print(biaspot_i)
             # print(biasgrad_i)
-            
+
 
             gradient = gradient + biasgrad_i
-    
+
     return gradient
 
 
@@ -861,7 +861,7 @@ def geom_opt_mtd(node, max_steps=1000, ss=1, tol=0.001):
         grad = node.gradient
         grad_energy = node.tdstructure.gradient_xtb()
         grad+=grad_energy
-        
+
         if np.linalg.norm(grad) < tol:
             break
         new_coords = node.coords - ss*grad
@@ -873,7 +873,7 @@ def geom_opt_mtd(node, max_steps=1000, ss=1, tol=0.001):
         print(f"\nConverged in {nsteps} steps!")
     else:
         print(f"\nDid not converge in {nsteps} steps.")
-        
+
     return node
 
 
@@ -900,10 +900,10 @@ chain_orig = Chain.from_traj(gi,parameters=cni_orig)
 h, out = m.find_mep_multistep(chain_orig)
 
 
-def prepare_biased_neb(chain_inputs, 
-                   collective_variable_list, 
+def prepare_biased_neb(chain_inputs,
+                   collective_variable_list,
                    initial_chain,
-                   neb_inputs=NEBInputs(v=1, 
+                   neb_inputs=NEBInputs(v=1,
                                         vv_force_thre=0, tol=0.1, max_steps=500)
                   ):
     cni = chain_inputs
@@ -915,10 +915,10 @@ def prepare_biased_neb(chain_inputs,
 
 
     guess_to_use = initial_chain.nodes
-    guess_chain = Chain(nodes=[nc(node.tdstructure, 
+    guess_chain = Chain(nodes=[nc(node.tdstructure,
                                       reference_trajs=rfs,
                                          strength=cni.mtd_strength,
-                                         alpha=cni.mtd_alpha) 
+                                         alpha=cni.mtd_alpha)
                                 for node in guess_to_use],parameters=cni)
 
     nbi = neb_inputs
@@ -928,12 +928,12 @@ def prepare_biased_neb(chain_inputs,
 
 def prepare_clean_neb(chain_inputs,
                    initial_chain,
-                   neb_inputs=NEBInputs(v=1, 
+                   neb_inputs=NEBInputs(v=1,
                                         vv_force_thre=0, tol=0.1, max_steps=500)
                   ):
     cni = chain_inputs
     nc = cni.node_class
-   
+
     guess_to_use = initial_chain.nodes
     guess_chain = Chain(nodes=[nc(node.tdstructure) for node in guess_to_use],parameters=cni)
 
@@ -956,10 +956,10 @@ cni = ChainInputs(k=0.1, delta_k=0.09, step_size=3, node_class=Node3D,do_paralle
 cni.mtd_strength = .005
 cni.mtd_alpha = 5
 guess_to_use = n_orig.initial_chain.nodes
-guess_chain = Chain(nodes=[nc(node.tdstructure, 
+guess_chain = Chain(nodes=[nc(node.tdstructure,
                                   reference_trajs=rfs,
                                      strength=cni.mtd_strength,
-                                     alpha=cni.mtd_alpha) 
+                                     alpha=cni.mtd_alpha)
                             for node in guess_to_use],parameters=cni)
 
 
@@ -982,7 +982,7 @@ mtd_guess_gi = Trajectory([r.tdstructure, p.tdstructure]).run_geodesic(nimages=1
 
 mtd_guess = Chain(nodes=[nc(td, reference_trajs=rfs,
                                      strength=cni.mtd_strength,
-                                     alpha=cni.mtd_alpha) 
+                                     alpha=cni.mtd_alpha)
                             for td in mtd_guess_gi],parameters=cni)
 
 neb = NEB(initial_chain=mtd_guess, parameters=nbi)
@@ -998,10 +998,10 @@ neb.optimized.to_trajectory()
 #         n_orig.optimized.coordinates[1:-1]
 #       ]
 # guess_to_use = n_orig.initial_chain.nodes
-# guess_chain = Chain(nodes=[Node3D_MTD(node.tdstructure, 
+# guess_chain = Chain(nodes=[Node3D_MTD(node.tdstructure,
 #                               reference_trajs=rfs,
 #                                  strength=cni.mtd_strength,
-#                                  alpha=cni.mtd_alpha) 
+#                                  alpha=cni.mtd_alpha)
 #                                 for node in guess_to_use],parameters=cni)
 
 

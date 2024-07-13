@@ -7,9 +7,9 @@ from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 from neb_dynamics.optimizers.LBFGS import LBFGS
-from itertools import product 
+from itertools import product
 import matplotlib.pyplot as plt
 
 from neb_dynamics.optimizers.BFGS import BFGS
@@ -19,7 +19,7 @@ from neb_dynamics.optimizers.BFGS import BFGS
 def func(x):
     x, y = x
     return (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
-        
+
 def grad_func(x):
     x, y = x
     dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
@@ -229,7 +229,7 @@ n.optimized.to_trajectory()
 # +
 from TS.TS_PRFO import TS_PRFO
 from neb_dynamics.nodes.Node2d import Node2D
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 from neb_dynamics.Chain import Chain
 from retropaths.abinitio.tdstructure import TDStructure
 from pathlib import Path
@@ -262,7 +262,7 @@ print(tsopt.ts.coords), tsopt.plot_path()
 # grad_n = []
 # for coord_ind, coord_name in enumerate(['dx', 'dy']):
 #     print(f"doing atom #{n} | {coord_name}")
-    
+
 #     coords = np.array(node_att.coords, dtype='float64')
 #     print(coords, coord_ind, coords[coord_ind])
 #     coords[coord_ind] = coords[coord_ind] + 1
@@ -271,7 +271,7 @@ print(tsopt.ts.coords), tsopt.plot_path()
 #     node2 = node_att.copy()
 #     node2  = node2.update_coords(coords)
 
-#     delta_grad = node2.gradient - node_att.gradient 
+#     delta_grad = node2.gradient - node_att.gradient
 #     print(delta_grad)
 #     grad_n.extend(delta_grad)
 # approx_hess.append(grad_n)

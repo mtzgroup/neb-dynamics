@@ -17,7 +17,7 @@ from neb_dynamics.errors import (ElectronicStructureError,
 from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.Node import Node
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers import ALS
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
@@ -31,6 +31,14 @@ ACTIVATION_TOL = 100
 
 @dataclass
 class NEB:
+    """
+    Class for running, storing, and visualizing nudged elastic band minimizations.
+    Main functions to use are:
+    - self.optimize_chain()
+    - self.plot_opt_history()
+
+
+    """
     initial_chain: Chain
     parameters: NEBInputs
     optimizer: Optimizer
@@ -163,7 +171,7 @@ class NEB:
 
         return xtb_seed
 
-    def optimize_chain(self):
+    def optimize_chain(self) -> :
         nsteps = 1
         nsteps_negative_grad_corr = 0
 
@@ -197,10 +205,8 @@ class NEB:
             # max_grad_val = np.amax(np.abs(new_chain.gradients))
             max_rms_grad_val = np.amax(new_chain.rms_gperps)
             ind_ts_guess = np.argmax(new_chain.energies)
-            ts_guess = new_chain[ind_ts_guess]
             ts_guess_grad = np.amax(np.abs(new_chain.get_g_perps()[ind_ts_guess]))
             chain_converged = self._chain_converged(chain_prev=chain_previous, chain_new=new_chain)
-
 
             # print([node._cached_energy for node in new_chain])
             # print([node.converged for node in new_chain])
@@ -208,7 +214,7 @@ class NEB:
             n_nodes_frozen = 0
             for node in new_chain:
                 if node.converged:
-                    n_nodes_frozen+=1
+                    n_nodes_frozen += 1
 
             grad_calls_made = len(new_chain) - n_nodes_frozen
             self.grad_calls_made += grad_calls_made

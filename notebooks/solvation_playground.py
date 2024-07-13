@@ -1,6 +1,6 @@
 # +
-from neb_dynamics.Chain import Chain     
-from neb_dynamics.nodes.Node3D import Node3D
+from neb_dynamics.Chain import Chain
+from nodes.node3d import Node3D
 from neb_dynamics.NEB import NEB
 import retropaths.helper_functions as hf
 from retropaths.abinitio.trajectory import Trajectory
@@ -60,7 +60,7 @@ chain = Chain.from_traj(tr, ChainInputs(k=0.1, delta_k=0.09, node_freezing=True)
 
 opt = VelocityProjectedOptimizer()
 
-m = MSMEP(neb_inputs=NEBInputs(v=1,early_stop_force_thre=0.03, max_steps=500), 
+m = MSMEP(neb_inputs=NEBInputs(v=1,early_stop_force_thre=0.03, max_steps=500),
           chain_inputs=ChainInputs(k=0.1, delta_k=0.09, node_freezing=True),gi_inputs=GIInputs(nimages=12), optimizer=opt)
 
 h_solv, out_solv = m.find_mep_multistep(chain)

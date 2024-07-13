@@ -16,7 +16,7 @@ from neb_dynamics.NEB import NEB
 from neb_dynamics.NEB_TCDLF import NEB_TCDLF
 from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D, Node2D_LEPS
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 
 from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
@@ -33,7 +33,7 @@ from neb_dynamics.CompetitorAnalyzer import CompetitorAnalyzer
 import warnings
 warnings.filterwarnings('ignore')
 from rdkit import RDLogger
-RDLogger.DisableLog('rdApp.*') 
+RDLogger.DisableLog('rdApp.*')
 # import os
 # del os.environ['OE_LICENSE']
 
@@ -131,7 +131,7 @@ chain = Chain.from_traj(tr, parameters=cni)
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 opt = VelocityProjectedOptimizer(timestep=.5, activation_tol=0.01)
-# opt2 = BFGS(step_size=10, min_step_size=.5, use_linion_tol=.1esearch=False, bfgs_flush_thre=0.80, 
+# opt2 = BFGS(step_size=10, min_step_size=.5, use_linion_tol=.1esearch=False, bfgs_flush_thre=0.80,
 #                  activation_tol=0.1, bfgs_flush_steps=200)
 
 m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=12), optimizer=opt)
@@ -368,7 +368,7 @@ tsg.tc_model_basis = 'def2-svp'
 # %%time
 opt = tsg.run_tc_local('ub3lyp', 'def2-svp',calculation='minimize')
 
-# %%time 
+# %%time
 opt2 = tsg.tc_geom_optimization()
 
 tsg.tc_kwds = {'new_minimzer': 'yes'}
@@ -400,7 +400,7 @@ huh = Node3D_TC_TCPB(TDStructure.from_smiles("COCO"))
 n_dlf.plot_opt_history(0, 0)
 
 
-def animate_chain_trajectory(chain_traj, min_y=-100, max_y=100, 
+def animate_chain_trajectory(chain_traj, min_y=-100, max_y=100,
                              max_x=1.1, min_x=-0.1, norm_path_len=True):
     # %matplotlib notebook
     import matplotlib.pyplot as plt
@@ -424,7 +424,7 @@ def animate_chain_trajectory(chain_traj, min_y=-100, max_y=100,
                 x = chain.integrated_path_length
             else:
                 x = chain.path_length
-                
+
             y = chain.energies_kcalmol
 
 
@@ -437,7 +437,7 @@ def animate_chain_trajectory(chain_traj, min_y=-100, max_y=100,
 
 
 
-            return 
+            return
 
     ani = matplotlib.animation.FuncAnimation(fig, animate, frames=chain_traj)
 
@@ -466,7 +466,7 @@ h = TreeNode.read_from_disk(finished_rxns[ind])
 
 # 6, Chan Rearrangement's second leaf did not converge
 # 24 mumm rearr did not converge
-# 25 Semi pinacol has 
+# 25 Semi pinacol has
 
 # -
 
@@ -512,7 +512,7 @@ nbi = NEBInputs(
         early_stop_chain_rms_thre=1,  # not really caring about chain distances
         early_stop_force_thre=0.01,
         early_stop_still_steps_thre=100,
-        vv_force_thre=0.0,                                                                                                                                                                                         
+        vv_force_thre=0.0,
         _use_dlf_conv=True,
         preopt_with_xtb=True)
 
@@ -610,9 +610,9 @@ def animate_this_mf(neb_obj, potential_func,
 
             x = chain.coordinates[:, 0]
             y = chain.coordinates[:, 1]
-            
-            
-            
+
+
+
             color = 'lightblue'
 
             for arrow, (x_i, y_i), (dx_i, dy_i) in zip(
@@ -623,24 +623,24 @@ def animate_this_mf(neb_obj, potential_func,
             hess = chain.bfgs_hess
             if np.all(hess == np.eye(hess.shape[0])):
                 # line.set_color='red'
-                
+
                 line.set_data(x, y)
                 line.set_color("red")
             else:
                 line.set_data(x, y)
                 line.set_color("skyblue")
-            
-            
-            
-                
+
+
+
+
             return (x for x in arrows)
 
     ani = matplotlib.animation.FuncAnimation(fig, animate, frames=chain_traj)
 
     if saveasgif:
         ani.save(fn)
-    
-    
+
+
     from IPython.display import HTML
     return HTML(ani.to_jshtml())
 
@@ -656,7 +656,7 @@ def plot_chain(chain,linestyle='--',ax=None, marker='o',**kwds):
     else:
         plt.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
 
-        
+
 def plot_neb(neb,linestyle='--',marker='o',ax=None,**kwds):
     plot_chain(chain=neb.chain_trajectory[-1],linestyle='-',marker=marker,ax=ax,**kwds)
     plot_chain(chain=neb.initial_chain,linestyle='--',marker=marker,ax=ax,**kwds)
@@ -669,7 +669,7 @@ def plot_chain2d(chain,linestyle='--',ax=None, marker='o',**kwds):
     else:
         plt.plot(chain.integrated_path_length,chain.energies,linestyle=linestyle,marker=marker,**kwds)
 
-        
+
 def plot_neb2d(neb,linestyle='--',marker='o',ax=None,**kwds):
     plot_chain2d(chain=neb.chain_trajectory[-1],linestyle='-',marker=marker,ax=ax,**kwds)
     plot_chain2d(chain=neb.initial_chain,linestyle='--',marker=marker,ax=ax,**kwds)
@@ -710,7 +710,7 @@ end_points = [
 tols = [
     0.1,
     0.05,
-    0.01, 
+    0.01,
 
 ]
 
@@ -759,7 +759,7 @@ coords = np.linspace(start_point, end_point, NIMAGES)
 if do_noise:
     coords[1:-1] += the_noise # i.e. good initial guess
 
-    
+
 # cni_ref = ChainInputs(
 #     k=ks,
 #     node_class=node_to_use,
@@ -795,11 +795,11 @@ chain_ref.parameters.hess_prev = np.eye(chain_ref.gradients.flatten().shape[0])
 optimizer = Linesearch(step_size=ss, min_step_size=.001, als_max_steps=3)
 
 # +
-# optimizer2 = BFGS(step_size=ss, min_step_size=.001, als_max_steps=3, 
+# optimizer2 = BFGS(step_size=ss, min_step_size=.001, als_max_steps=3,
 #                   bfgs_flush_steps=20, bfgs_flush_thre=0.90, update_using_gperp=False)
 
 # +
-# optimizer_BFGS = BFGS(step_size=ss, min_step_size=.01, als_max_steps=3, 
+# optimizer_BFGS = BFGS(step_size=ss, min_step_size=.01, als_max_steps=3,
 #                   bfgs_flush_steps=1000, bfgs_flush_thre=-2, update_using_gperp=False)
 # -
 
@@ -968,7 +968,7 @@ plt.show()
 
 # +
 n_steps_orig_neb = len(n_ref.chain_trajectory)-1
-n_steps_msmep = sum([len(obj.chain_trajectory) for obj in history.get_optimization_history() if obj])-1 
+n_steps_msmep = sum([len(obj.chain_trajectory) for obj in history.get_optimization_history() if obj])-1
 n_steps_long_neb = len(n_ref_long.chain_trajectory)-1
 
 n_grad_orig_neb = n_steps_orig_neb*(NIMAGES-2)
@@ -1051,7 +1051,7 @@ for nimg in nimgs:
             results_nebs.append(n)
         except NoneConvergedException as e:
             results_nebs.append(e.obj)
-    
+
     ALL_RESULTS.append(results_nebs)
 
 # +
@@ -1122,7 +1122,7 @@ gi.update_tc_parameters(r)
 # +
 print(f"doing xtb")
 cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D, node_freezing=True)
-optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn, 
+optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn,
                  bfgs_flush_steps=10000, bfgs_flush_thre=0.40)
 
 chain = Chain.from_traj(gi, cni)
@@ -1141,7 +1141,7 @@ xtb_seed_tr.update_tc_parameters(r)
 # +
 print(f"doing xtb-seed results")
 cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D_TC, node_freezing=True)
-optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn, 
+optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn,
                  bfgs_flush_steps=10000, bfgs_flush_thre=0.40)
 
 chain = Chain.from_traj(xtb_seed_tr, cni)
@@ -1193,8 +1193,8 @@ all_df = pd.read_csv("/home/jdep/T3D_data/bfgs_results/ALL_DF.csv")
 def get_rows_with_percent_improvement(percent, dataframe):
     ref = dataframe[dataframe['f_steps']==1]
     ref_steps = ref['n_steps'].values
-    
-    
+
+
     better_than_ref =  dataframe[((-1*(dataframe['n_steps'] - ref_steps) / ref_steps) >= percent)]
     print(better_than_ref)
 
@@ -1254,13 +1254,13 @@ def get_all_tsg_in_opt_history(opt_history):
 class MSMEPAnalyzer:
     parent_dir: Path
     msmep_root_name: str
-    
+
 
     def get_relevant_chain(self, folder_name):
         data_dir = self.parent_dir / folder_name
         clean_chain = data_dir / f'{self.msmep_root_name}_msmep_clean.xyz'
         msmep_chain = data_dir / f'{self.msmep_root_name}_msmep.xyz'
-        
+
         if clean_chain.exists():
             chain_to_use = Chain.from_xyz(clean_chain, ChainInputs())
         elif not clean_chain.exists() and msmep_chain.exists():
@@ -1270,25 +1270,25 @@ class MSMEPAnalyzer:
             chain_to_use = None
 
         return chain_to_use
-    
+
     def get_relevant_saddle_point(self, folder_name):
         data_dir = self.parent_dir / folder_name
         sp_fp = data_dir / 'sp.xyz'
         sp = TDStructure.from_xyz(str(sp_fp))
         return sp
-    
+
     def _distance_to_sp(self, chain: Chain, sp):
         ts_guess = chain.get_ts_guess()
         ts_guess = ts_guess.align_to_td(sp)
-        
-        
+
+
         return qRMSD_distance(ts_guess.coords, sp.coords)
-    
+
     def _distance_to_sp_tsg(self, ts_guess, sp):
         ts_guess = ts_guess.align_to_td(sp)
         return qRMSD_distance(ts_guess.coords, sp.coords)
-    
-    
+
+
     def get_relevant_leaves(self, folder_name):
         data_dir = self.parent_dir / folder_name
         fp = data_dir / f'{self.msmep_root_name}_msmep'
@@ -1299,10 +1299,10 @@ class MSMEPAnalyzer:
         else:
 
             a = np.sum(adj_mat,axis=1)
-            inds_leaves = np.where(a == 1)[0] 
+            inds_leaves = np.where(a == 1)[0]
             chains = [Chain.from_xyz(fp / f'node_{ind}.xyz',ChainInputs(k=0.1, delta_k=0.09)) for ind in inds_leaves]
             return chains
-        
+
     def get_optimization_history(self, folder_name):
         data_dir = self.parent_dir / folder_name
         fp = data_dir / f'{self.msmep_root_name}_msmep'
@@ -1314,8 +1314,8 @@ class MSMEPAnalyzer:
 
             h = TreeNode.read_from_disk(fp)
             return h.get_optimization_history()
-        
-    
+
+
     def get_relevant_leaves_nebs(self, folder_name):
         data_dir = self.parent_dir / folder_name
         fp = data_dir / f'{self.msmep_root_name}_msmep'
@@ -1326,10 +1326,10 @@ class MSMEPAnalyzer:
         else:
 
             a = np.sum(adj_mat,axis=1)
-            inds_leaves = np.where(a == 1)[0] 
+            inds_leaves = np.where(a == 1)[0]
             nebs = [NEB.read_from_disk(fp / f'node_{ind}.xyz') for ind in inds_leaves]
             return nebs
-        
+
     def get_relevant_tree(self, folder_name):
         data_dir = self.parent_dir / folder_name
         fp = data_dir / f'{self.msmep_root_name}_msmep'
@@ -1377,20 +1377,20 @@ for sys_fp in all_sys:
     try:
         out = msma_obj.get_relevant_chain(name)
         sp = msma_obj.get_relevant_saddle_point(name)
-        dists.append(msma_obj._distance_to_sp(out, sp)) 
+        dists.append(msma_obj._distance_to_sp(out, sp))
         if out:
 
 
             out_xtb = msma.get_relevant_chain(name)
-            dists_xtb.append(msma._distance_to_sp(out_xtb, sp)) 
+            dists_xtb.append(msma._distance_to_sp(out_xtb, sp))
 
             out_xtbES = msma_ES.get_relevant_chain(name)
-            dists_xtbES.append(msma_ES._distance_to_sp(out_xtbES, sp)) 
+            dists_xtbES.append(msma_ES._distance_to_sp(out_xtbES, sp))
 
 
             n = NEB.read_from_disk(msma_obj.parent_dir / name /  (str(msma_obj.msmep_root_name)+"_msmep") / 'node_0.xyz')
-            out_gi = n.initial_chain 
-            dists_gi.append(msma._distance_to_sp(out_gi, sp)) 
+            out_gi = n.initial_chain
+            dists_gi.append(msma._distance_to_sp(out_gi, sp))
 
 #             opt_history = msma.get_optimization_history(name)
 #             all_tsg_nodes = get_all_tsg_in_opt_history(opt_history)
@@ -1451,14 +1451,14 @@ ref.tc_kwds = {'reference':'uks'}
 # for name in names:
 #     out_xtb = msma.get_relevant_chain(name)
 #     out_dft = msma_dft.get_relevant_chain(name)
-    
+
 #     tsg_xtb = out_xtb.get_ts_guess()
 #     tsg_dft = out_dft.get_ts_guess()
-    
-    
+
+
 #     tsg_xtb.update_tc_parameters(ref)
 #     tsg_dft.update_tc_parameters(ref)
-    
+
 #     freqs_xtb.append(tsg_xtb.tc_freq_calculation())
 #     freqs_dft.append(tsg_dft.tc_freq_calculation())
 
@@ -1571,7 +1571,7 @@ def calc_results_for_lists_names(input_names, msma_obj):
 
         # mult_chain_ES = Chain.from_list_of_chains([get_chain_at_cutoff(obj.chain_trajectory) for obj in nebs], ChainInputs())
 
-        
+
         # print(f"MultiChain TSguess, dist to truth: {msma._distance_to_sp(out, sp)}")
         mult_chain_ts_guess_dist = msma_obj._distance_to_sp(out, sp)
         mult_chain_dists.append(mult_chain_ts_guess_dist)
@@ -1720,7 +1720,7 @@ plt.ylabel("distance to true TS",fontsize=fs)
 
 gi_chain_dists_dft[-2]
 
-arr = np.array(mult_chain_dists) - np.array(early_stop_dists) 
+arr = np.array(mult_chain_dists) - np.array(early_stop_dists)
 
 interesting_names = np.array(names)[arr > 0]
 interesting_ens = arr[arr > 0]
@@ -1946,15 +1946,15 @@ for i, rn in enumerate(succ):
         tsg.tc_model_basis='def2-svp'
         # tsg.tc_model_method='gfn2xtb'
         # tsg.tc_model_basis='gfn2xtb'
-        
-        
+
+
     all_ts_guesses.extend(ts_guesses)
-    
-    
+
+
     c = Chain.from_list_of_chains(cs, ChainInputs())
     max_delta_en = (max(c.energies) - c.energies[0])*627.5
-    
-    
+
+
     maximum_barrier = max(eAs)
     peak_barrier = max_delta_en
     n_steps = len(eAs)
@@ -1964,12 +1964,12 @@ for i, rn in enumerate(succ):
     peak_barriers.append((i, peak_barrier))
     all_n_steps.append((i, n_steps))
     all_n_atoms.append((i, n_atoms))
-    
+
         # succ.append(rn)
     # else:
     #     print(f"{rn} has not converged")
         # failed.append(rn)
-            
+
     # except:
         # failed.append(rn)
 # -
@@ -2054,23 +2054,23 @@ c.plot_chain()
 
 
 def do_pseudo_irc(ts_structure: TDStructure):
-    
+
     freqs = ts_structure.tc_freq_calculation()
     nma = ts_structure.tc_nma_calculation()
     assert sum(np.array(freqs) < 0) == 1, "Not a first order saddle point."
-    
+
     direction = np.array(nma[0]).reshape(ts_structure.coords.shape)
     dr = .1
-    
+
     td_disp_plus = ts_structure.update_coords(ts_structure.coords + dr*direction)
     td_disp_minus = ts_structure.update_coords(ts_structure.coords - dr*direction)
-    
+
     inps = [td_disp_plus._prepare_input("opt"), td_disp_minus._prepare_input("opt")]
     out = ts_structure.tc_client.compute_procedure(inps, 'geometric')
     results = out.get()
     td_plus = TDStructure.from_cc_result(results[0])
     td_minus = TDStructure.from_cc_result(results[1])
-    
+
     return Trajectory([td_minus, ts_structure, td_plus])
 
 
@@ -2079,20 +2079,20 @@ def create_dft_rxn_profile_inputs(chain):
     client = CCClient()
     method = 'wb97xd3'
     basis = 'def2-svp'
-    
+
     r = chain[0].tdstructure
     ts_guess = get_ts_guess(chain)
     p = chain[-1].tdstructure
-    
+
     for td in [r, ts_guess, p]:
         td.tc_model_basis = basis
         td.tc_model_method = method
-    
+
     inp_objs = [r._prepare_input(method='opt'), ts_guess._prepare_input(method='ts'), p._prepare_input(method='opt')]
     inp_opts = client.compute_procedure(inp_objs, procedure='geometric')
     return inp_objs
 #     inp_results = inp_opts.get()
-    
+
 #     if all([r.success for r in inp_results]):
 #         return Trajectory([td_from_cc_result(r) for r in inp_results])
 #     else:
@@ -2108,9 +2108,9 @@ all_failures = []
 for rn in succ:
     cs = get_relevant_leaves(rn)
     data_dir = ca.out_folder / rn
-    
+
     if len(list(data_dir.glob("dft_*"))) == 0:
-    
+
         print(f"Doing {rn}")
         inps = []
         for x in cs:
@@ -2139,12 +2139,12 @@ for rn in succ:
             except:
                 print(f"---{rn} had a failure")
                 all_failures.append(rn)
-                
-                
+
+
     elif len(list(data_dir.glob("dft_*"))) < len(cs):
         print(f"Completing {rn}")
         inps = []
-        
+
         inps.extend(create_dft_rxn_profile_inputs(cs[-1]))
 
 
@@ -2152,7 +2152,7 @@ for rn in succ:
         inp_opts = client.compute_procedure(inps, procedure='geometric')
 
         results = inp_opts.get()
-    
+
         start_ind = 0
         if len(results) > 3:
             for end in range(3, len(results), 3):
@@ -2176,7 +2176,7 @@ all_failures
 # ## Stats
 
 # +
-# N.B.: The -1 comes from the fact that Wittig_DFT is still included in the dataset for whatever reason. It should not be. 
+# N.B.: The -1 comes from the fact that Wittig_DFT is still included in the dataset for whatever reason. It should not be.
 
 
 print(f"Tot N reactions: {len(rns)-1}")

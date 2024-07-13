@@ -4,7 +4,7 @@ from retropaths.molecules.isomorphism_tools import SubGraphMatcherApplyPermute
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Node3D import Node3D
+from nodes.node3d import Node3D
 
 
 def get_atom_xyz(struct, atom_ind):

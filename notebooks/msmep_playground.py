@@ -37,7 +37,59 @@ from scipy.interpolate import SmoothBivariateSpline
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
+from qcio import ProgramInput
+
 td = TDStructure.from_smiles("COCO")
+
+tr = Trajectory([td]*10)
+
+tcmol = td._as_tc_molecule()
+
+from qcop import compute
+
+# +
+"""Must run script like this: python -m examples.xtb"""
+
+from qcio import CalcType, ProgramInput, Structure
+
+from qcop import compute
+
+# Create the structure
+# Can also open a structure from a file
+# structure = Structure.open("path/to/h2o.xyz")
+structure = Structure(
+    symbols=["O", "H", "H"],
+    geometry=[  # type: ignore
+        [0.0, 0.0, 0.0],
+        [0.52421003, 1.68733646, 0.48074633],
+        [1.14668581, -0.45032174, -1.35474466],
+    ],
+)
+
+# Define the program input
+prog_input = ProgramInput(
+    structure=structure,
+    calctype=CalcType.gradient,
+    model={"method": "GFN2xTB"},  # type: ignore
+    keywords={"max_iterations": 150},
+)
+
+
+# output = compute("xtb", inp_obj=prog_input, print_stdout=False)
+# print(output)
+# -
+
+import pstats
+from pstats import SortKey
+p = pstats.Stats('/home/jdep/debugging_throwaway_results/fast_asneb/hi.txt')
+p.strip_dirs().sort_stats(SortKey.TIME).print_stats()
+
+# !python -m pip show qcop
+
+import pstats
+from pstats import SortKey
+p = pstats.Stats('/home/jdep/debugging_throwaway_results/fast_asneb/hi_colton.txt')
+p.strip_dirs().sort_stats(SortKey.TIME).print_stats()
 
 from neb_dynamics.tdstructure import TDStructure
 

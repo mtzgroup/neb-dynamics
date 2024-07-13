@@ -451,6 +451,7 @@ class TDStructure:
     def to_xyz(self, fn: Path):
         with open(fn, "w+") as f:
             f.write(self.xyz)
+        f.close()
 
     def to_pdb(self, fn: Path):
         mol_pybel = pybel.Molecule(self.molecule_obmol)
@@ -633,6 +634,8 @@ class TDStructure:
 
     @classmethod
     def from_coords_symbols(cls, coords, symbols, tot_charge=0, tot_spinmult=1):
+        if not isinstance(coords, type(np.array)):
+            coords = np.array(coords)
         string = write_xyz(symbols, coords)
         return cls.from_xyz_string(
             string, tot_charge=tot_charge, tot_spinmult=tot_spinmult
@@ -649,15 +652,15 @@ class TDStructure:
         self.tc_kwds = tc_kwds
         self.tc_geom_opt_kwds = tc_geom_opt_kwds
 
-    def update_tc_parameters_from_inpfile(self, file_path: str, replace_charges_spinmult: bool = False):
+    def update_tc_parameters_from_inpfile(self, file_path: str, read_in_charges_spinmult: bool = False):
         td_copy = self.copy()
 
         method, basis, charge, spinmult, inp_kwds = _load_info_from_tcin(file_path)
-        if charge and replace_charges_spinmult:
+        if charge and read_in_charges_spinmult:
             print(f"Warning!: Setting charge to what is specified in {file_path}")
             td_copy.set_charge(charge)
 
-        if spinmult and replace_charges_spinmult:
+        if spinmult and read_in_charges_spinmult:
             print(f"Warning!: Setting multiplicity to what is specified in {file_path}")
             td_copy.set_spinmult(spinmult)
 
@@ -1369,6 +1372,7 @@ class TDStructure:
                     )
                 with open(dd / "crest_output.txt", "w+") as fout:
                     fout.write(output.stdout.decode("utf-8"))
+                fout.close()
                 if verbose:
                     print("\tDone!")
 

@@ -8,7 +8,7 @@ from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 
 from neb_dynamics.MSMEP import MSMEP
 import matplotlib.pyplot as plt
@@ -62,7 +62,7 @@ settings = [
             (me1, p_ind, 'Me'),
             (me2, p_ind, 'Me'),
             (me3, p_ind, 'Me'),
-  
+
         ],
         [Changes3D(start=s, end=e, bond_order=1) for s, e in [(co_ind, o_ind), (cp_ind, p_ind)]],
         [Changes3D(start=s, end=e, bond_order=2) for s, e in [(o_ind, p_ind), (cp_ind, co_ind)]]
@@ -556,8 +556,8 @@ from neb_dynamics.NEB import NEB
 class TreeNode:
     data: NEB
     children: list = field(default_factory=list)
-    
-    
+
+
     def add_child(self, child: TreeNode):
         self.children.append(child)
 @dataclass

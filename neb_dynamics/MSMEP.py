@@ -176,11 +176,12 @@ class MSMEP:
                 out_chain = n.chain_trajectory[-1]
                 elem_step_results = out_chain.is_elem_step()
 
-            except ElectronicStructureError:
+            except ElectronicStructureError as e:
                 print(
                     "\nWarning! A chain has electronic structure errors. \
                         Returning an unoptimized chain..."
                 )
+                print(e)
                 out_chain = n.chain_trajectory[-1]
                 elem_step_results = True, None, out_chain, 0
                 # elem_step_results = out_chain.is_elem_step()

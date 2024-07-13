@@ -15,7 +15,7 @@ tr.energies_and_gradients_tc()
 # +
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Chain import Chain
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
 from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
@@ -117,20 +117,20 @@ template = open("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/new_template.sh"
 data_dir = Path("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement/pairs_to_do/")
 submissions_dir = Path("/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement/submissions/")
 for i, (start, end) in enumerate(pairs_to_do):
-    
+
     print(f'***Doing pair {i}')
     start_fp = data_dir / f'start_pair_{i}.xyz'
     end_fp = data_dir / f'end_pair_{i}.xyz'
     start.to_xyz(start_fp)
     end.to_xyz(end_fp)
     out_fp = Path(f'/home/jdep/T3D_data/template_rxns/Claisen-Rearrangement/conformer_sampling/results_pair{i}_msmep')
-    
-    
+
+
     cmd = f"create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.001 -sig 0 -mr 0 -nc node3d -preopt 0 -climb 0 -nimg 12 -name {out_fp} -min_ends 1"
-    
+
     new_template = template.copy()
     new_template[-1] = cmd
-    
+
     with open(submissions_dir / f'submission_{i}.sh', 'w+') as f:
         f.write("\n".join(new_template))
 # -
@@ -163,12 +163,12 @@ for i, rn in enumerate(all_rns):
     # p = Path(rn) / 'production_maxima_recycling_msmep'
     p = Path(rn) / 'ASNEB_5_noSIG'
     print(p.parent)
-    
+
     try:
         with open("/home/jdep/T3D_data/msmep_draft/comparisons/status_refinement.txt","w+") as f:
             f.write(f"doing {p}")
         h = TreeNode.read_from_disk(p)
-        
+
         # refine reactions
         refined_fp = Path(rn) / 'refined_ASNEB_5_noSIG'
         print('Refinement done: ', refined_fp.exists())
@@ -177,40 +177,40 @@ for i, rn in enumerate(all_rns):
             #     shutil.rmtree(refined_results)
             print("Refining...")
 
-            refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09, 
+            refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09,
                                               node_class=Node3D_TC,
-                                              use_maxima_recyling=False, 
+                                              use_maxima_recyling=False,
                                               do_parallel=True,
                                               node_freezing=True))
             refined_leaves = refiner.create_refined_leaves(h.ordered_leaves)
             refiner.write_leaves_to_disk(refined_fp, refined_leaves)
-            
-            
+
+
             tot_grad_calls = sum([leaf.get_num_grad_calls() for leaf in refined_leaves if leaf])
             print(f"Refinement took: {tot_grad_calls} calls")
             with open(refined_fp.parent/'refined_ASNEB_5_noSIG_grad_calls.txt','w+') as f:
                 f.write(f"Refinement took: {tot_grad_calls} gradient calls")
-        
-        
+
+
         es = len(h.output_chain)==12
         print('elem_step: ', es)
         print([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
         n_splits = len(h.get_optimization_history())
         print(sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()]))
         tot_steps = sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
-        
+
         n_opt_steps.append(tot_steps)
         n_opt_splits.append(n_splits)
-        
-        
-        
-        
+
+
+
+
         if es:
             elem.append(p)
         else:
             multi.append(p)
-            
-            
+
+
         n = len(h.output_chain) / 12
         n_steps.append((i,n))
         success_names.append(rn)
@@ -219,10 +219,10 @@ for i, rn in enumerate(all_rns):
         print(e)
         print(f"{rn} had an error")
         continue
-            
-        
-        
-        
+
+
+
+
         es = len(neb_obj.optimized)==12
         print('elem_step: ', es)
         print(len(neb_obj.chain_trajectory))
@@ -232,23 +232,23 @@ for i, rn in enumerate(all_rns):
         else:
             multi.append(p)
         n = len(neb_obj.optimized) / 12
-        n_steps.append((i,n)) 
+        n_steps.append((i,n))
         tot_steps = len(neb_obj.chain_trajectory)
         n_opt_steps.append(tot_steps)
         n_opt_splits.append(0)
-        
+
         success_names.append(rn)
-        
-    
+
+
     except FileNotFoundError:
         failed.append(p)
-        
+
     except TypeError:
         failed.append(p)
-        
+
     except KeyboardInterrupt:
         skipped.append(p)
-        
+
 
     print("")
 
@@ -374,7 +374,7 @@ nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, v=1, _use_dlf_conv=F
 gii = GIInputs(nimages=12)
 # chain = Chain.from_traj(tr, parameters=cni)
 chain = Chain.from_traj(t_solv, parameters=cni)
-# neb = NEB_TCDLF(initial_chain=chain, parameters=nbi) 
+# neb = NEB_TCDLF(initial_chain=chain, parameters=nbi)
 
 # optimizer = Linesearch(step_size=0.33*len(chain), min_step_size=.01*len(chain), activation_tol=0.1)
 # optimizer = SteepestDescent(step_size_per_atom=0.01)
@@ -441,11 +441,11 @@ nma = ts.tc_nma_calculation()
 ind = 1
 Trajectory([ts.displace_by_dr(nma[ind]), ts, ts.displace_by_dr(-1*nma[ind])] )
 
-m = MSMEP(neb_inputs=nbi, 
-          chain_inputs=cni, gi_inputs=GIInputs(nimages=15), 
+m = MSMEP(neb_inputs=nbi,
+          chain_inputs=cni, gi_inputs=GIInputs(nimages=15),
           optimizer=optimizer)
 
-neb2 = NEB_TCDLF(initial_chain=chain, parameters=nbi) 
+neb2 = NEB_TCDLF(initial_chain=chain, parameters=nbi)
 
 # %%time
 try:
@@ -659,7 +659,7 @@ nbi = NEBInputs(v=True,tol=0.001*BOHR_TO_ANGSTROMS, max_steps=500, climb=True,
 print(f"doing reference")
 cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D_TC, node_freezing=True)
 # cni = ChainInputs(k=0.01, delta_k=0.0, node_class=Node3D, node_freezing=True)
-optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn, 
+optimizer = BFGS(step_size=0.33*gi[0].atomn, min_step_size=.01*gi[0].atomn,
                  bfgs_flush_steps=10000, bfgs_flush_thre=0.10)
 chain = Chain.from_traj(gi, cni)
 
@@ -776,12 +776,12 @@ for i, chain in enumerate(n_bfgs.chain_trajectory):
 # for i, chain in enumerate(n_ref.chain_trajectory):
     gperp, _ = chain.pe_grads_spring_forces_nudged()
     tol = 0.001*BOHR_TO_ANGSTROMS
-    
-    
-    
+
+
+
     grad_conv = np.linalg.norm(gperp) / np.sqrt(11*3 + 3) <= tol
     rms_grad_conv = np.sqrt(sum(np.square(gperp.flatten())) / len(gperp.flatten())) <= (tol / (1.5))
-    
+
     if grad_conv and rms_grad_conv:
         conv_chain = chain
         conv_step = i
@@ -913,7 +913,7 @@ msma = MSMEPAnalyzer(parent_dir=p, msmep_root_name='ASNEB_03_NOSIGNOMR')
 msma_dft = MSMEPAnalyzer(parent_dir=p, msmep_root_name='dft_early_stop')
 
 # +
-# list of problems: 17, 
+# list of problems: 17,
 
 # sys14 is interesting. SP is a second order at b3lyp/6-31g but a 1st order with wb97xd3/def2svp
 # -

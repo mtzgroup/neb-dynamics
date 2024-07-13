@@ -9,7 +9,7 @@ from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D, Node2D_Zero, Node2D_2
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 
 from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
@@ -33,16 +33,16 @@ def plot_chain(chain,linestyle='--',ax=None, marker='o',**kwds):
         ax.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
     else:
         plt.plot(chain.coordinates[:,0],chain.coordinates[:,1],linestyle=linestyle,marker=marker,**kwds)
-        
-        
-        
+
+
+
 
 def plot_coordinates(coords,linestyle='--',ax=None, marker='o',**kwds):
     if ax:
         ax.plot(coords[:,0],coords[:,1],linestyle=linestyle,marker=marker,**kwds)
     else:
         plt.plot(coords[:,0],coords[:,1],linestyle=linestyle,marker=marker,**kwds)
-        
+
 
 
 # -
@@ -120,7 +120,7 @@ coords = np.linspace(start_point, end_point, nimages)
 if do_noise:
     coords[1:-1] += the_noise # i.e. good initial guess
 
-    
+
 cni_ref = ChainInputs(
     k=ks,
     node_class=node_to_use,
@@ -132,7 +132,7 @@ cni_ref = ChainInputs(
     min_step_size=.001
 )
 gii = GIInputs(nimages=nimages)
-nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=0, node_freezing=False, 
+nbi = NEBInputs(tol=tol, v=1, max_steps=4000, climb=False, early_stop_force_thre=0, node_freezing=False,
                vv_force_thre=0)
 chain_ref = Chain.from_list_of_coords(list_of_coords=coords, parameters=cni_ref)
 n_ref = NEB(initial_chain=chain_ref,parameters=nbi)
@@ -143,10 +143,10 @@ n_ref.optimize_chain()
 
 def path_work(chain_obj):
     grads = np.array([np.abs(n.gradient) for n in chain_obj[1:-1]])
-    
+
     # tangents = np.array(chain_obj.unit_tangents)
-    tangents = chain_obj.coordinates[1:-1] - chain_obj.coordinates[:-2] 
-    
+    tangents = chain_obj.coordinates[1:-1] - chain_obj.coordinates[:-2]
+
     work = sum(
         np.linalg.norm(g)*np.linalg.norm(t) for g,t in zip(grads, tangents)
     )
@@ -159,10 +159,10 @@ def path_work(chain_obj):
 
 def path_work2(chain_obj):
     grads = np.array([np.abs(n.gradient) for n in chain_obj[1:-1]])
-    
+
     # tangents = np.array(chain_obj.unit_tangents)
-    tangents = chain_obj.coordinates[2:] - chain_obj.coordinates[1:-1] 
-    
+    tangents = chain_obj.coordinates[2:] - chain_obj.coordinates[1:-1]
+
     work = sum(
         np.linalg.norm(g)*np.linalg.norm(t) for g,t in zip(grads, tangents)
     )
@@ -253,9 +253,9 @@ sig = .1
 distance_func = 'simp_frechet'
 
 cb = ChainBiaser(reference_chains=bias_chains, amplitude=amp, sigma=sig, distance_func=distance_func)
-cni = ChainInputs(step_size=.1,min_step_size=0.001, node_class=node_to_use, k=5, delta_k=0, do_parallel=False, 
+cni = ChainInputs(step_size=.1,min_step_size=0.001, node_class=node_to_use, k=5, delta_k=0, do_parallel=False,
                  do_chain_biasing=True, cb=cb)
- 
+
 
 
 init_chain = Chain(n_ref.chain_trajectory[0].nodes, parameters=cni)
@@ -294,16 +294,16 @@ def run_biased_asneb(bias_chains: list):
     distance_func = 'simp_frechet'
 
     cb = ChainBiaser(reference_chains=bias_chains, amplitude=amp, sigma=sig, distance_func=distance_func)
-    
-    
-    
+
+
+
     #### asneb
     gii = GIInputs(nimages=nimages)
     nbi_msmep = NEBInputs(tol=tol, v=1, max_steps=1000, climb=False, early_stop_chain_rms_thre=0.0002, early_stop_force_thre=1, node_freezing=False, early_stop_still_steps_thre=100)
 
     cni = ChainInputs(step_size=.1,min_step_size=0.0001, node_class=node_to_use, k=1, delta_k=0, do_parallel=False, use_geodesic_interpolation=False )
     cni.do_chain_biasing = True
-    cni.cb = cb 
+    cni.cb = cb
 
     init_chain = Chain(n_ref.chain_trajectory[0].nodes, parameters=cni)
 
@@ -331,13 +331,13 @@ history, out_chain = run_biased_asneb(bias_chains)
 
 # cni = ChainInputs(step_size=.1,min_step_size=0.001, node_class=node_to_use, k=5, delta_k=0, do_parallel=False, use_geodesic_interpolation=False )
 # cni.do_chain_biasing = True
-# cni.cb = cb 
+# cni.cb = cb
 
 # init_chain = Chain(n_ref.chain_trajectory[0].nodes, parameters=cni)
 
 # for i, node in enumerate(init_chain):
 #     init_chain.nodes[i] = node_to_use(pair_of_coordinates=node.coords)
-    
+
 
 
 # m = MSMEP(neb_inputs=nbi_msmep,chain_inputs=cni, gi_inputs=gii)
@@ -364,7 +364,7 @@ def relax_out_chain(history_obj):
 #     biased_out_chain = biased_out_leaf.data.optimized
 #     init_copy = biased_out_chain.copy()
 #     init_copy.parameters = cni_ref
-    
+
 #     n_relax = NEB(initial_chain=init_copy, parameters=nbi)
 #     n_relax.optimize_chain()
 #     relaxed_chains.append(n_relax.optimized)
@@ -452,7 +452,7 @@ plt.legend(loc='upper right')
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Inputs import NEBInputs
 
@@ -481,13 +481,13 @@ cb = ChainBiaser(reference_chains=[bias_neb], amplitude=amp, sigma=sig, distance
 
 #### asneb
 gii = GIInputs(nimages=7)
-nbi_msmep = NEBInputs(tol=0.01, v=2, max_steps=1000, climb=False, 
-                      early_stop_chain_rms_thre=0.0002, early_stop_force_thre=1, 
+nbi_msmep = NEBInputs(tol=0.01, v=2, max_steps=1000, climb=False,
+                      early_stop_chain_rms_thre=0.0002, early_stop_force_thre=1,
                       node_freezing=False, early_stop_still_steps_thre=100)
 
 cni = ChainInputs(step_size=3,min_step_size=0.33, node_class=Node3D, k=0.1, delta_k=0.09, als_max_steps=3)
 cni.do_chain_biasing = True
-cni.cb = cb 
+cni.cb = cb
 
 init_chain = Chain(nodes=leaves[0].data.initial_chain.nodes, parameters=cni)
 
@@ -514,28 +514,28 @@ def grad_chain_bias(chain):
 
 def grad_node_bias(chain, node, ind_node, dr=.1):
         grads = []
-        
+
         if node.is_a_molecule:
             directions = ['x','y','z']
             n_atoms = len(node.coords)
         else:
             directions = ['x','y']
             n_atoms = 1
-        
+
         for i in range(n_atoms):
             for j, _ in enumerate(directions):
                 disp_vector = np.zeros(len(directions)*n_atoms)
                 disp_vector[i+j] += dr
-            
+
                 displaced_coord_flat = node.coords.flatten()+disp_vector
                 displaced_coord = displaced_coord_flat.reshape(n_atoms, len(directions))
                 node_disp_direction = node.update_coords(displaced_coord)
                 fake_chain = chain.copy()
-                fake_chain.nodes[ind_node] = node_disp_direction 
+                fake_chain.nodes[ind_node] = node_disp_direction
 
                 grad_direction = cb.chain_bias(fake_chain) - cb.chain_bias(chain)
                 grads.append(grad_direction)
-                
+
         grad_node = np.array(grads).reshape(n_atoms, len(directions)) / dr
         return grad_node
 

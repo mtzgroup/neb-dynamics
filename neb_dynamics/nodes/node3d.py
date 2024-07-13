@@ -12,7 +12,12 @@ from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.Node import Node
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.elements import symbol_to_atomic_number, atomic_number_to_symbol
+
 import multiprocessing as mp
+import concurrent.futures
+import os
+
 
 
 @dataclass
@@ -102,13 +107,15 @@ class Node3D(Node):
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
 
-            global_dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            global_dist = RMSD(aligned_self.coords,
+                               other.tdstructure.coords)[0]
             per_frag_dists = []
             self_frags = self.tdstructure.split_td_into_frags()
             other_frags = other.tdstructure.split_td_into_frags()
             for frag_self, frag_other in zip(self_frags, other_frags):
                 aligned_frag_self = frag_self.align_to_td(frag_other)
-                frag_dist = RMSD(aligned_frag_self.coords, frag_other.coords)[0]
+                frag_dist = RMSD(aligned_frag_self.coords,
+                                 frag_other.coords)[0]
                 per_frag_dists.append(frag_dist)
             print(f"{per_frag_dists=}")
             print(f"{global_dist=}")
@@ -116,12 +123,13 @@ class Node3D(Node):
             en_delta = np.abs((self.energy - other.energy) * 627.5)
 
             global_rmsd_identical = global_dist <= self.GLOBAL_RMSD_CUTOFF
-            fragment_rmsd_identical = max(per_frag_dists) <= self.FRAGMENT_RMSD_CUTOFF
+            fragment_rmsd_identical = max(
+                per_frag_dists) <= self.FRAGMENT_RMSD_CUTOFF
             rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
             # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
 
-            if rmsd_identical and energies_identical:  #and barrier_accessible:
+            if rmsd_identical and energies_identical:  # and barrier_accessible:
                 return True
             else:
                 return False
@@ -267,6 +275,7 @@ class Node3D(Node):
         atomic_numbers, coords_bohr, charge, spinmult, converged, prev_en = tuple
         if converged:
             return prev_en, np.zeros_like(coords_bohr)
+
         calc = Calculator(
             get_method("GFN2-xTB"),
             numbers=np.array(atomic_numbers),
@@ -279,8 +288,27 @@ class Node3D(Node):
 
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
+        # from qcio import CalcType, ProgramInput, Structure
+        # from qcop import compute
+        # structure = Structure(
+        #     symbols=[atomic_number_to_symbol(int(numb)) for numb in atomic_numbers],
+        #     geometry=coords_bohr,
+        # )
+
+        # # Define the program input
+        # prog_input = ProgramInput(
+        #     structure=structure,
+        #     calctype=CalcType.energy,
+        #     model={"method": "GFN2xTB"},  # type: ignore
+        #     keywords={"max_iterations": 500},
+        # )
+
+        # output = compute("xtb", prog_input, print_stdout=False)
+        # return output.results.energy, output.results.gradient*BOHR_TO_ANGSTROMS
+
     @classmethod
-    def calculate_energy_and_gradients_parallel(cls, chain):
+    def calculate_energy_and_gradients_parallel(cls, chain) -> list[tuple[float, np.ndarray]]:
+        """"""
         iterator = (
             (
                 n.tdstructure.atomic_numbers,
@@ -293,6 +321,10 @@ class Node3D(Node):
             for n in chain.nodes
         )
 
-        with mp.Pool() as p:
-            ene_gradients = p.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator)
-        return ene_gradients
+        # with mp.Pool() as p:
+        #     ene_gradients = p.map(
+        #         cls.calc_xtb_ene_grad_from_input_tuple, iterator)
+        # return ene_gradients
+        # NOTE: Using CPU count since these calls are CPU bound calls to xtb library
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+            return list(executor.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator))

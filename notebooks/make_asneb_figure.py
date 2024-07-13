@@ -5,7 +5,7 @@ from neb_dynamics.NEB import NEB
 from neb_dynamics.Chain import Chain
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
@@ -48,7 +48,7 @@ def read_single_arguments():
         help='total spinmultiplicity of system'
 
     )
-    
+
     parser.add_argument(
         '-dc',
         '--do_cleanup',
@@ -56,9 +56,9 @@ def read_single_arguments():
         type=bool,
         default=True,
         help='whether to do conformer-conformer NEBs at the end'
-        
+
     )
-    
+
     return parser.parse_args()
 
 
@@ -85,20 +85,20 @@ def main():
     #                 grad_thre=0.001*BOHR_TO_ANGSTROMS,
     #                 rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
     #                 en_thre=0.001*BOHR_TO_ANGSTROMS,
-    #                 v=True, 
+    #                 v=True,
     #                 max_steps=2000,
     #                 # early_stop_chain_rms_thre=0.0014,
-    #                 # early_stop_force_thre=0.003, 
+    #                 # early_stop_force_thre=0.003,
     #                 # early_stop_still_steps_thre=200,
     #                 node_freezing=False,
     nbi = NEBInputs(grad_thre=0.001*BOHR_TO_ANGSTROMS,
                 rms_grad_thre=0.0005*BOHR_TO_ANGSTROMS,
                 en_thre=0.0001*BOHR_TO_ANGSTROMS,
-                v=1, 
+                v=1,
                 max_steps=2000,
-                early_stop_chain_rms_thre=0.002, 
-                early_stop_force_thre=0.01, 
-            
+                early_stop_chain_rms_thre=0.002,
+                early_stop_force_thre=0.01,
+
                 early_stop_still_steps_thre=500,
                 vv_force_thre=0.0,
                 node_freezing=False)
@@ -106,11 +106,11 @@ def main():
     m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=GIInputs(nimages=15,extra_kwds={"sweep":False}))
     history, out_chain = m.find_mep_multistep(chain)
     data_dir = fp.parent
-    
+
     out_chain.to_trajectory().write_trajectory(data_dir/f"{fp.stem}_msmep.xyz")
     history.write_to_disk(data_dir/f"{fp.stem}_msmep")
-    
-    
+
+
     if args.dc:
         op = data_dir/f"{fp.stem}_cleanups"
         j = Janitor(
@@ -118,9 +118,9 @@ def main():
             out_path=op,
             msmep_object=m
         )
-        
+
         clean_msmep = j.create_clean_msmep()
-        
+
         if clean_msmep:
             clean_msmep.to_trajectory().write_trajectory(data_dir/f"{fp.stem}_msmep_clean.xyz")
 

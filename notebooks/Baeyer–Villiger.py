@@ -7,7 +7,7 @@ from neb_dynamics.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 
 from neb_dynamics.MSMEP import MSMEP
 import matplotlib.pyplot as plt
@@ -41,7 +41,7 @@ temp1.draw(mode='d3',size=(400,400))
 
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS 
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 root = TDStructure.from_RP(temp1.reactants, charge=temp1.reactants.charge)
 
@@ -81,7 +81,7 @@ from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 
 from neb_dynamics.MSMEP import MSMEP
 import matplotlib.pyplot as plt
@@ -94,7 +94,7 @@ from retropaths.helper_functions import pairwise
 import retropaths.helper_functions as hf
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS 
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer

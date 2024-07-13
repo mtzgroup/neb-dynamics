@@ -7,7 +7,7 @@ from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Chain import Chain
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 
 from neb_dynamics.MSMEP import MSMEP
 import matplotlib.pyplot as plt
@@ -76,7 +76,7 @@ c_changes = [(6,+1), (22,+1), (17,-1),(18,-1)]
 
 # +
 d1 = {'charges': c_changes,
-      'delete':deleting, 
+      'delete':deleting,
       'single':forming_s,
      'double':forming_d}
 conds = Conditions()
@@ -91,7 +91,7 @@ temp1.draw(mode='d3',size=(500,500), charges=True, node_index=True)
 
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS 
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 root = TDStructure.from_RP(temp1.reactants, charge=temp1.reactants.charge)
 
@@ -215,7 +215,7 @@ bob_frag = NetworkBuilder(start=None,end=None,
                     data_dir=dd_frag_p,
                      subsample_confs=True,
                      use_slurm=True,
-                    n_max_conformers=20, tolerate_kinks=False, 
+                    n_max_conformers=20, tolerate_kinks=False,
                     verbose=False)
 
 # +
@@ -316,7 +316,7 @@ pot_cesium = bob_cesium.create_rxn_network()
 bob_sodium = NetworkBuilder(start=None,end=None,data_dir=Path("/home/jdep/T3D_data/DavidDumas_ortho"),
                      subsample_confs=False,
                      use_slurm=True,
-                    n_max_conformers=20, tolerate_kinks=False, 
+                    n_max_conformers=20, tolerate_kinks=False,
                     verbose=False)
 
 pot.draw_from_single_path()
@@ -382,7 +382,7 @@ c[24].tdstructure
 bob2 = NetworkBuilder(start=root,end=target,data_dir=Path("/home/jdep/T3D_data/DavidDumas_ortho/"),
                      subsample_confs=False,
                      use_slurm=True,
-                    n_max_conformers=20, tolerate_kinks=True, 
+                    n_max_conformers=20, tolerate_kinks=True,
                     verbose=False)
 
 pot2 = bob2.create_rxn_network()

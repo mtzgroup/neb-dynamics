@@ -2,7 +2,7 @@
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Inputs import ChainInputs, GIInputs
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-from neb_dynamics.nodes.Node3D import Node3D
+from nodes.node3d import Node3D
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
 from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 
@@ -28,7 +28,7 @@ from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 # -
 
-def animate_chain_trajectory(chain_traj, min_y=-100, max_y=100, 
+def animate_chain_trajectory(chain_traj, min_y=-100, max_y=100,
                              max_x=1.1, min_x=-0.1, norm_path_len=True):
     # %matplotlib notebook
     import matplotlib.pyplot as plt
@@ -52,7 +52,7 @@ def animate_chain_trajectory(chain_traj, min_y=-100, max_y=100,
                 x = chain.integrated_path_length
             else:
                 x = chain.path_length
-                
+
             y = chain.energies_kcalmol
 
 
@@ -65,7 +65,7 @@ def animate_chain_trajectory(chain_traj, min_y=-100, max_y=100,
 
 
 
-            return 
+            return
 
     ani = matplotlib.animation.FuncAnimation(fig, animate, frames=chain_traj)
 
@@ -92,7 +92,7 @@ for obj in h2.get_optimization_history():
 
 animate_chain_trajectory(ct)
 
-plt.plot(h2.output_chain.path_length, h2.output_chain.energies,'o-', label='GI-seeds') 
+plt.plot(h2.output_chain.path_length, h2.output_chain.energies,'o-', label='GI-seeds')
 plt.plot(h.output_chain.path_length, h.output_chain.energies,'o-', label='xtb-seeds')
 plt.legend()
 
@@ -105,8 +105,8 @@ nbi = NEBInputs(tol=0.001*BOHR_TO_ANGSTROMS, early_stop_force_thre=0.01*BOHR_TO_
 # cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D_TC,node_freezing=True)
 cni = ChainInputs(k=0.1, delta_k=0.09,node_class=Node3D,node_freezing=True)
 gii = GIInputs(nimages=12)
-optimizer = BFGS(bfgs_flush_steps=50, bfgs_flush_thre=0.80, use_linesearch=False, 
-                 step_size=3, 
+optimizer = BFGS(bfgs_flush_steps=50, bfgs_flush_thre=0.80, use_linesearch=False,
+                 step_size=3,
                  min_step_size= 0.1,
                  activation_tol=.1
             )
@@ -120,8 +120,8 @@ def sort_td(td):
     sorted_inds = np.argsort(symbols)
     coords_sorted = coords[sorted_inds]
     symbols_sorted = symbols[sorted_inds]
-    
-    td_sorted = TDStructure.from_coords_symbols(coords_sorted, symbols_sorted, tot_charge=td.charge, 
+
+    td_sorted = TDStructure.from_coords_symbols(coords_sorted, symbols_sorted, tot_charge=td.charge,
                                             tot_spinmult=td.spinmult)
     td_sorted.update_tc_parameters(td)
     return td_sorted
@@ -146,7 +146,7 @@ def shuffle_element_td(td, elem, n_to_shuffle=10000000000):
     inds_permuted = inds_original.copy()
     inds_permuted[inds_element] = permutation_element
     coords_permuted = td.coords[inds_permuted]
-    td_shuffled = TDStructure.from_coords_symbols(coords_permuted, td.symbols, tot_charge=td.charge, 
+    td_shuffled = TDStructure.from_coords_symbols(coords_permuted, td.symbols, tot_charge=td.charge,
                                             tot_spinmult=td.spinmult)
     td_shuffled.update_tc_parameters(td)
     return td_shuffled
