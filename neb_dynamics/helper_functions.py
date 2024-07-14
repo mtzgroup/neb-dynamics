@@ -116,7 +116,7 @@ def RMSD(structure, reference):
     )  # find max eigenvalue and eigenvector
     lmax = float(eigen[0][0])
     qmax = np.array(eigen[1][0:4])
-    qmax = np.float_(qmax)
+    qmax = np.float64(qmax)
     qmax = np.ndarray.flatten(qmax)
     rmsd = math.sqrt(
         abs((np.sum(np.square(c1)) + np.sum(np.square(c2)) - 2 * lmax) / N)

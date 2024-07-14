@@ -33,15 +33,9 @@ class NEBInputs:
 
     preopt_with_xtb: bool = False
 
-    # im sorry god
-    _use_dlf_conv: bool = False
-
     def __post_init__(self):
         if self.en_thre is None:
-            if self._use_dlf_conv:
-                self.en_thre = self.tol
-            else:
-                self.en_thre = self.tol / 450
+            self.en_thre = self.tol / 450
 
         if self.rms_grad_thre is None:
             self.rms_grad_thre = self.tol * 2

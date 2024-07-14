@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -625,7 +625,7 @@ class Chain:
         t = Trajectory([n.tdstructure for n in self.nodes])
         return t
 
-    def is_elem_step(self):
+    def is_elem_step(self) -> Tuple(bool, str, Union[list, Chain], int):
         n_geom_opt_grad_calls = 0
         chain = self.copy()
         if len(self) <= 1:

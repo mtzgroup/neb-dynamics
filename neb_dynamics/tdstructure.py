@@ -12,8 +12,10 @@ import numpy as np
 import py3Dmol
 import qcop
 from ase import Atoms
+
 # from ase.optimize import LBFGS, LBFGSLineSearch
 from ase.optimize.sciopt import SciPyFminCG
+from sella import Sella
 from chemcloud import CCClient
 from IPython.core.display import HTML
 from openbabel import openbabel, pybel
@@ -380,10 +382,45 @@ class TDStructure:
         atoms.calc = XTB(method="GFN2-xTB", accuracy=0.001)
         # opt = LBFGSLineSearch(atoms, logfile=None, trajectory=tmp.name)
         opt = SciPyFminCG(atoms, logfile=None, trajectory=tmp.name)
+        # opt = Sella(atoms, logfile=None, trajectory=tmp.name)
         # opt = LBFGS(atoms, logfile=None, trajectory='/tmp/log.traj')
         # opt = FIRE(atoms, logfile=None)
         opt.run(fmax=0.01)
         # opt.run(fmax=0.5)
+
+        aT = ASETraj(tmp.name)
+        traj_list = []
+        for i, _ in enumerate(aT):
+            traj_list.append(
+                TDStructure.from_ase_Atoms(
+                    aT[i], charge=self.charge, spinmult=self.spinmult
+                )
+            )
+        traj = Trajectory(traj_list)
+        traj.update_tc_parameters(self)
+
+        Path(tmp.name).unlink()
+        if return_traj:
+            print("len opt traj: ", len(traj))
+            return traj
+        else:
+            return traj[-1]
+
+
+    def xtb_sella_geom_optimization(self, return_traj=False):
+        from ase.io.trajectory import Trajectory as ASETraj
+
+        from neb_dynamics.trajectory import Trajectory
+
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".traj", mode="w+", delete=False)
+
+        atoms = self.to_ASE_atoms()
+        # print(tmp.name)
+
+        atoms.calc = XTB(method="GFN2-xTB", accuracy=0.001)
+        opt = Sella(atoms, logfile=None, trajectory=tmp.name)
+        opt.run(fmax=0.01)
 
         aT = ASETraj(tmp.name)
         traj_list = []

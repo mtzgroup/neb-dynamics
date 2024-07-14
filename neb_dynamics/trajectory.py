@@ -71,9 +71,6 @@ class Trajectory:
     def __len__(self):
         return len(self.traj)
 
-    @property
-    def energies(self):
-        return [t.energy_xtb() for t in self.traj]
 
     @classmethod
     def extend(cls, first, other):

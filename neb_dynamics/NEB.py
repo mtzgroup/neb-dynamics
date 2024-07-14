@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import sys
 from dataclasses import dataclass, field
+from typing import Union, Tuple, List
 # from hashlib import new
 from pathlib import Path
 
@@ -52,11 +53,11 @@ class NEB:
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
 
-    def _reset_node_convergence(self, chain):
+    def _reset_node_convergence(self, chain) -> None:
         for node in chain:
             node.converged = False
 
-    def set_climbing_nodes(self, chain: Chain):
+    def set_climbing_nodes(self, chain: Chain) -> None:
         if self.parameters.climb:
             inds_maxima = [chain.energies.argmax()]
 
@@ -118,60 +119,90 @@ class NEB:
 
         correlation = self.chain_trajectory[-2]._gradient_correlation(chain)
         conditions = [
-                      ts_guess_grad <= self.parameters.early_stop_force_thre,
-                      dist_to_prev_chain <= self.parameters.early_stop_chain_rms_thre,
-                      correlation >= self.parameters.early_stop_corr_thre,
-                      self.n_steps_still_chain >= self.parameters.early_stop_still_steps_thre
+            ts_guess_grad <= self.parameters.early_stop_force_thre,
+            dist_to_prev_chain <= self.parameters.early_stop_chain_rms_thre,
+            correlation >= self.parameters.early_stop_corr_thre,
+            self.n_steps_still_chain >= self.parameters.early_stop_still_steps_thre
         ]
         # if any(conditions):
-        if (conditions[0] and conditions[1]) or conditions[3]: # if we've dipped below the force thre and chain rms is low
-                                                                # or chain has stayed still for a long time
-            if (conditions[0] and conditions[1]): # dont reset them if you stopped due to stillness
-                    new_params = self.parameters.copy()
+        # if we've dipped below the force thre and chain rms is low
+        if (conditions[0] and conditions[1]) or conditions[3]:
+            # or chain has stayed still for a long time
+            # dont reset them if you stopped due to stillness
+            if (conditions[0] and conditions[1]):
+                new_params = self.parameters.copy()
 
-                    # reset early stop checks
-                    new_params.early_stop_force_thre = 0.0
-                    new_params.early_stop_chain_rms_thre = 0.0
-                    new_params.early_stop_corr_thre = 10.
-                    new_params.early_stop_still_steps_thre = 100000
+                # reset early stop checks
+                new_params.early_stop_force_thre = 0.0
+                new_params.early_stop_chain_rms_thre = 0.0
+                new_params.early_stop_corr_thre = 10.
+                new_params.early_stop_still_steps_thre = 100000
 
-                    self.parameters = new_params
+                self.parameters = new_params
 
             # going to set climbing nodes when checking early stop
             if self.parameters.climb:
-                    self.set_climbing_nodes(chain=chain)
-                    self.parameters.climb = False  # no need to set climbing nodes again
+                self.set_climbing_nodes(chain=chain)
+                self.parameters.climb = False  # no need to set climbing nodes again
 
-            stop_early, elem_step_results, geom_n_grad_calls = self._do_early_stop_check(chain)
+            stop_early, elem_step_results, geom_n_grad_calls = self._do_early_stop_check(
+                chain)
             return stop_early, elem_step_results, geom_n_grad_calls
 
         else:
             return False, None, 0
 
-    def _do_xtb_preopt(self, chain):
+    # @Jan: This should be a more general function so that the
+    # lower level of theory can be whatever the user wants.
+    def _do_xtb_preopt(self, chain) -> Chain:  #
+        """
+        This function will loosely minimize an input chain using the GFN2-XTB method,
+        then return a new chain which can be used as an initial guess for a higher
+        level of theory calculation
+        """
+
         xtb_params = chain.parameters.copy()
         xtb_params.node_class = Node3D
         chain_traj = chain.to_trajectory()
         xtb_chain = Chain.from_traj(chain_traj, parameters=xtb_params)
-        xtb_nbi = NEBInputs(tol=self.parameters.tol*10, v=True, preopt_with_xtb=False, max_steps=1000)
+        xtb_nbi = NEBInputs(tol=self.parameters.tol*10,
+                            v=True, preopt_with_xtb=False, max_steps=1000)
 
         opt_xtb = VelocityProjectedOptimizer(timestep=1)
         n = NEB(initial_chain=xtb_chain, parameters=xtb_nbi, optimizer=opt_xtb)
         try:
             _ = n.optimize_chain()
-            print(f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
+            print(
+                f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
         except Exception:
-            print(f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
+            print(
+                f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
 
         xtb_seed_tr = n.chain_trajectory[-1].to_trajectory()
         xtb_seed_tr.update_tc_parameters(chain[0].tdstructure)
 
-        xtb_seed = Chain.from_traj(xtb_seed_tr, parameters=chain.parameters.copy())
+        xtb_seed = Chain.from_traj(
+            xtb_seed_tr, parameters=chain.parameters.copy())
         xtb_seed.gradients  # calling it to cache the values
 
         return xtb_seed
 
-    def optimize_chain(self) -> :
+    # this craziness output is an elem step results. @Jan: Refactor ASAP.
+    def optimize_chain(self) -> Tuple(bool, str, Union[list, Chain], int):
+        """
+        Main function. After an NEB object has been created, running this function will
+        minimize the chain and return the elementary step results from the final minimized chain.
+
+        Running this function will populate the `.chain_trajectory` object variable, which
+        contains the history of the chains minimized. Once it is completed, you can use
+        `.plot_opt_history()` to view the optimization over time.
+
+        Args:
+            self: initialized NEB object
+        Raises:
+            NoneConvergedException: If chain did not converge in alloted steps.
+        """
+
         nsteps = 1
         nsteps_negative_grad_corr = 0
 
@@ -179,7 +210,8 @@ class NEB:
             chain_previous = self._do_xtb_preopt(self.initial_chain)
             self.chain_trajectory.append(chain_previous)
 
-            stop_early, elem_step_results, geom_n_grad_calls = self._do_early_stop_check(chain_previous)
+            stop_early, elem_step_results, geom_n_grad_calls = self._do_early_stop_check(
+                chain_previous)
             self.geom_grad_calls_made += geom_n_grad_calls
             if stop_early:
                 return elem_step_results
@@ -190,7 +222,8 @@ class NEB:
 
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:
-                stop_early, elem_step_results, geom_n_grad_calls = self._check_early_stop(chain_previous)
+                stop_early, elem_step_results, geom_n_grad_calls = self._check_early_stop(
+                    chain_previous)
                 self.geom_grad_calls_made += geom_n_grad_calls
                 if stop_early:
                     return elem_step_results
@@ -205,8 +238,10 @@ class NEB:
             # max_grad_val = np.amax(np.abs(new_chain.gradients))
             max_rms_grad_val = np.amax(new_chain.rms_gperps)
             ind_ts_guess = np.argmax(new_chain.energies)
-            ts_guess_grad = np.amax(np.abs(new_chain.get_g_perps()[ind_ts_guess]))
-            chain_converged = self._chain_converged(chain_prev=chain_previous, chain_new=new_chain)
+            ts_guess_grad = np.amax(
+                np.abs(new_chain.get_g_perps()[ind_ts_guess]))
+            chain_converged = self._chain_converged(
+                chain_prev=chain_previous, chain_new=new_chain)
 
             # print([node._cached_energy for node in new_chain])
             # print([node.converged for node in new_chain])
@@ -221,7 +256,7 @@ class NEB:
 
             grad_corr = new_chain._gradient_correlation(chain_previous)
             if grad_corr < 0:
-                nsteps_negative_grad_corr +=1
+                nsteps_negative_grad_corr += 1
             else:
                 nsteps_negative_grad_corr = 0
 
@@ -244,23 +279,23 @@ class NEB:
                 if self.parameters.v:
                     print("\nChain converged!")
 
-                elem_step_results = new_chain.is_elem_step() # N.B. One could skip this if you don't want to do minimization on converged chain.
+                # N.B. One could skip this if you don't want to do minimization on converged chain.
+                elem_step_results = new_chain.is_elem_step()
                 is_elem_step, split_method, minimization_results, grad_calls_geom = elem_step_results
                 self.geom_grad_calls_made += grad_calls_geom
                 # self.optimized = new_chain
                 if is_elem_step:
                     # print(f"\nUsing resampled chain as output. \n\tEns: {minimization_results.energies}\n\t Grads:{minimization_results.gradients}")
 
-                    minimization_results.gradients # making sure they're cached for writeup
-                    self.optimized = minimization_results # Controversial! Now the optimized chain is the 'resampled' chain from IRC check
+                    minimization_results.gradients  # making sure they're cached for writeup
+                    # Controversial! Now the optimized chain is the 'resampled' chain from IRC check
+                    self.optimized = minimization_results
                     self.chain_trajectory.append(minimization_results)
                 else:
                     self.optimized = new_chain
                 return elem_step_results
 
-
-
-            chain_previous = new_chain # previous
+            chain_previous = new_chain  # previous
 
             nsteps += 1
 
@@ -272,101 +307,17 @@ class NEB:
                 obj=self,
             )
 
-    def get_chain_velocity(self, chain: Chain) -> np.array:
-
-        prev_velocity = chain.velocity
-        als_max_steps = chain.parameters.als_max_steps
-
-        beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
-        step = ALS.ArmijoLineSearch(
-                chain=chain,
-                t=chain.parameters.step_size,
-                alpha=0.01,
-                beta=beta,
-                grad=chain.gradients,
-                max_steps=als_max_steps
-        )
-
-        # step = chain.parameters.step_size
-        # new_force = -(chain.gradients) * step
-        # directions = np.dot(prev_velocity.flatten(),new_force.flatten())
-
-        # if directions < 0:
-        #     total_force = new_force
-        #     new_vel = np.zeros_like(chain.gradients)
-        # else:
-
-        #     new_velocity = directions*new_force # keep the velocity component in direcition of force
-        #     total_force = new_velocity + new_force
-        #     new_vel = total_force
-        #     # print(f"\n\n keeping part of velocity! {np.linalg.norm(new_vel)}\n\n")
-
-        # prev_velocity = chain.velocity
-        # step = chain.parameters.step_size / 100
-
-        new_force = -(chain.gradients) * step
-        new_vels_proj = []
-        for vel_i, f_i in zip(prev_velocity, new_force):
-            proj = np.dot(vel_i.flatten(), f_i.flatten()) / np.dot(f_i.flatten(), f_i.flatten())
-            if proj > 0:
-                vel_proj_flat = proj*f_i.flatten()
-                vel_proj = vel_proj_flat.reshape(f_i.shape)
-                new_vels_proj.append(vel_proj)
-            else:
-                new_vels_proj.append(0*f_i)
-
-        new_vels_proj = np.array(new_vels_proj) + new_force
-        # new_vel = new_vels_proj  + new_force
-        # total_force = new_force + new_vel
-        new_vel = new_vels_proj
-        total_force = new_vel #+ new_force
-
-        return new_vel, total_force
+    def update_chain(self, chain: Chain) -> Chain:
+        grad_step = chain.gradients
+        new_chain = self.optimizer.optimize_step(
+            chain=chain, chain_gradients=grad_step)
+        return new_chain
 
     def _copy_node_information_to_converged(self, new_chain, old_chain):
         for new_node, old_node in zip(new_chain.nodes, old_chain.nodes):
             if old_node.converged:
                 new_node._cached_energy = old_node._cached_energy
                 new_node._cached_gradient = old_node._cached_gradient
-
-    def update_chain(self, chain: Chain) -> Chain:
-        try:
-            grad_step = chain.gradients
-            new_chain = self.optimizer.optimize_step(chain=chain, chain_gradients=grad_step)
-            return new_chain
-        except:
-            raise ElectronicStructureError(msg='chain update failed.',obj=None, trajectory=None)
-
-    # def update_chain(self, chain: Chain) -> Chain:
-
-    #     do_vv = self.do_velvel(chain=chain)
-
-    #     if do_vv:
-    #         new_vel, force = self.get_chain_velocity(chain=chain)
-    #         new_chain_coordinates = chain.coordinates + force
-    #         chain.velocity = new_vel
-
-    #     else:
-    #         als_max_steps = chain.parameters.als_max_steps
-    #         beta = (chain.parameters.min_step_size / chain.parameters.step_size)**(1/als_max_steps)
-
-    #         disp = ALS.ArmijoLineSearch(
-    #             chain=chain,
-    #             t=chain.parameters.step_size,
-    #             alpha=0.01,
-    #             beta=beta,
-    #             grad=chain.gradients,
-    #             max_steps=als_max_steps
-    #         )
-    #         new_chain_coordinates = chain.coordinates - chain.gradients * disp
-
-    #     new_nodes = []
-    #     for node, new_coords in zip(chain.nodes, new_chain_coordinates):
-
-    #         new_nodes.append(node.update_coords(new_coords))
-
-    #     new_chain = Chain(new_nodes, parameters=chain.parameters)
-    #     return new_chain
 
     def _update_node_convergence(self, chain: Chain, indices: np.array, prev_chain: Chain) -> None:
         for i, (node, prev_node) in enumerate(zip(chain, prev_chain)):
@@ -381,40 +332,18 @@ class NEB:
     def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
         differences = np.abs(chain_new.energies - chain_prev.energies)
         indices_converged = np.where(differences <= self.parameters.en_thre)
-
         return indices_converged[0], differences
 
     def _check_grad_converged(self, chain: Chain) -> bool:
         bools = []
-        if not self.parameters._use_dlf_conv:
-            max_grad_components = []
-            gradients = chain.gradients
-            for grad in gradients:
-                max_grad = np.amax(np.abs(grad))
-                max_grad_components.append(max_grad)
-                bools.append(max_grad < self.parameters.grad_thre)
+        max_grad_components = []
+        gradients = chain.gradients
+        for grad in gradients:
+            max_grad = np.amax(np.abs(grad))
+            max_grad_components.append(max_grad)
+            bools.append(max_grad < self.parameters.grad_thre)
 
-            return np.where(bools), max_grad_components
-        else:
-            gperp, gparr = chain.pe_grads_spring_forces_nudged()
-            natom, ndim = gperp[0].shape
-
-            n_free_vars_per_image = (natom-3)*ndim + 3 # this is because 6 atoms are frozen to remove trans and rot
-            # gps = np.array([np.linalg.norm(gp) / np.sqrt(n_free_vars_per_image) for gp in gperp])
-            # gps = np.insert(gps, 0, np.zeros_like(gps[0]))
-            # gps = np.append(gps, np.zeros_like(gps[0]))
-            # gps_conv = gps <= self.parameters.tol
-            max_grad_components = []
-            gradients = chain.gradients
-            for grad in gradients:
-                val = np.linalg.norm(grad) / np.sqrt(n_free_vars_per_image)
-                bools.append(val < self.parameters.grad_thre)
-
-            return np.where(bools), max_grad_components
-
-
-
-            # return np.where(gps_conv), gps
+        return np.where(bools), max_grad_components
 
     def _check_barrier_height_conv(self, chain_prev: Chain, chain_new: Chain):
         prev_eA = chain_prev.get_eA_chain()
@@ -427,48 +356,43 @@ class NEB:
 
         bools = []
         rms_gperps = []
-        if not self.parameters._use_dlf_conv:
-            for rms_gp, rms_gradient in zip(chain.rms_gperps, chain.rms_gradients):
-                rms_gperps.append(rms_gp)
 
-                # the boolens are used exclusively for deciding to freeze nodes or not
-                # I want the spring forces to affect whether a node is frozen, but not
-                # to affect the total chain's convergence.
-                rms_grad_converged = rms_gradient <= self.parameters.rms_grad_thre
-                bools.append(rms_grad_converged)
+        for rms_gp, rms_gradient in zip(chain.rms_gperps, chain.rms_gradients):
+            rms_gperps.append(rms_gp)
 
-            return np.where(bools), rms_gperps
-        else:
-            gperp, gparr = chain.pe_grads_spring_forces_nudged()
-            natom, ndim = gperp[0].shape
-            # n_free_vars_per_image = (natom-3)*ndim + 3 # this is because 6 atoms are frozen to remove trans and rot
-            rms_gps = np.array([np.sqrt(sum(np.square(gp.flatten())) / len(gp.flatten()))  for gp in gperp])
-            rms_gps = np.insert(rms_gps, 0, np.zeros_like(rms_gps[0]))
-            rms_gps = np.append(rms_gps, np.zeros_like(rms_gps[0]))
+            # the boolens are used exclusively for deciding to freeze nodes or not
+            # I want the spring forces to affect whether a node is frozen, but not
+            # to affect the total chain's convergence.
+            rms_grad_converged = rms_gradient <= self.parameters.rms_grad_thre
+            bools.append(rms_grad_converged)
 
-            rms_gps_conv = rms_gps <= (self.parameters.tol / (1.5))
-            return np.where(rms_gps_conv), rms_gps
+        return np.where(bools), rms_gperps
 
     def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
 
-        rms_grad_conv_ind, rms_gperps = self._check_rms_grad_converged(chain_new)
+        rms_grad_conv_ind, rms_gperps = self._check_rms_grad_converged(
+            chain_new)
         ts_triplet_gspring = chain_new.ts_triplet_gspring_infnorm
         en_converged_indices, en_deltas = self._check_en_converged(
             chain_prev=chain_prev, chain_new=chain_new
         )
 
-        grad_conv_ind, max_grad_components = self._check_grad_converged(chain=chain_new)
+        grad_conv_ind, max_grad_components = self._check_grad_converged(
+            chain=chain_new)
 
         converged_nodes_indices = np.intersect1d(
             en_converged_indices, rms_grad_conv_ind
         )
         # converged_nodes_indices = np.intersect1d(converged_nodes_indices, grad_conv_ind)
         ind_ts_node = chain_new.energies.argmax()
-        converged_nodes_indices = converged_nodes_indices[converged_nodes_indices!=ind_ts_node] # never freeze TS node
+        # never freeze TS node
+        converged_nodes_indices = converged_nodes_indices[converged_nodes_indices != ind_ts_node]
 
         if chain_new.parameters.node_freezing:
-            self._update_node_convergence(chain=chain_new, indices=converged_nodes_indices, prev_chain=chain_prev)
-            self._copy_node_information_to_converged(new_chain=chain_new, old_chain=chain_prev)
+            self._update_node_convergence(
+                chain=chain_new, indices=converged_nodes_indices, prev_chain=chain_prev)
+            self._copy_node_information_to_converged(
+                new_chain=chain_new, old_chain=chain_prev)
 
         if self.parameters.v > 1:
             print("\n")
@@ -481,12 +405,11 @@ class NEB:
         if self.parameters.v > 1:
             print(f"\t{len(converged_nodes_indices)} nodes have converged")
 
-        barrier_height_converged = self._check_barrier_height_conv(chain_prev=chain_prev, chain_new=chain_new)
+        barrier_height_converged = self._check_barrier_height_conv(
+            chain_prev=chain_prev, chain_new=chain_new)
         ind_ts_guess = np.argmax(chain_new.energies)
         ts_guess = chain_new[ind_ts_guess]
         ts_guess_grad = np.amax(np.abs(chain_new.get_g_perps()[ind_ts_guess]))
-
-
 
         criteria_converged = [
             max(rms_gperps) <= self.parameters.max_rms_grad_thre,
@@ -495,20 +418,17 @@ class NEB:
             ts_guess_grad <= self.parameters.ts_grad_thre,
             ts_triplet_gspring <= self.parameters.ts_spring_thre,
             barrier_height_converged]
-            # max(en_deltas) <= self.parameters.en_thre,
+        # max(en_deltas) <= self.parameters.en_thre,
         # return len(converged_nodes_indices) == len(chain_new)
-        criteria_names = ['Max(RMS_GPERP)','AVG_RMS_GPERP','TS_GRAD',
-                          'TS_SPRINGS', 'BARRIER_THRE']#, 'ENE_DELTAS']
+        criteria_names = ['Max(RMS_GPERP)', 'AVG_RMS_GPERP', 'TS_GRAD',
+                          'TS_SPRINGS', 'BARRIER_THRE']  # , 'ENE_DELTAS']
 
         converged = sum(criteria_converged) >= 5
         if converged and self.parameters.v:
-            print(f"\nConverged on conditions: {[criteria_names[ind] for ind, b in enumerate(criteria_converged) if b]}")
-
+            print(
+                f"\nConverged on conditions: {[criteria_names[ind] for ind, b in enumerate(criteria_converged) if b]}")
 
         return converged
-
-
-
 
     def _check_dot_product_converged(self, chain: Chain) -> bool:
         dps = []
@@ -518,59 +438,6 @@ class NEB:
             dps.append(current_node.dot_function(vec1, vec2) > 0)
 
         return all(dps)
-
-    def redistribute_chain(self, chain: Chain, requested_length_of_chain: int) -> Chain:
-        # if len(chain) < requested_length_of_chain:
-        #     fixed_chain = chain.copy()
-        #     [
-        #         fixed_chain.nodes.insert(1, fixed_chain[1])
-        #         for _ in range(requested_length_of_chain - len(chain))
-        #     ]
-        #     chain = fixed_chain
-
-        direction = np.array(
-            [
-                next_node.coords - current_node.coords
-                for current_node, next_node in pairwise(chain)
-            ]
-        )
-        distances = np.linalg.norm(direction, axis=1)
-        tot_dist = np.sum(distances)
-        cumsum = np.cumsum(distances)  # cumulative sum
-        cumsum = np.insert(cumsum, 0, 0)
-
-        distributed_chain = []
-        for num in np.linspace(0, tot_dist, len(chain)):
-            new_node = self.redistribution_helper(num=num, cum=cumsum, chain=chain)
-
-            distributed_chain.append(new_node)
-
-        distributed_chain[0] = chain[0]
-        distributed_chain[-1] = chain[-1]
-
-        return Chain(distributed_chain, parameters=chain)
-
-    def redistribution_helper(self, num, cum, chain: Chain) -> Node:
-        """
-        num: the distance from first node to return output point to
-        cum: cumulative sums
-        new_chain: chain that we are considering
-
-        """
-
-        for ii, ((cum_sum_init, node_start), (cum_sum_end, node_end)) in enumerate(
-            pairwise(zip(cum, chain))
-        ):
-
-            if cum_sum_init <= num < cum_sum_end:
-                direction = node_end.coords - node_start.coords
-                percentage = (num - cum_sum_init) / (cum_sum_end - cum_sum_init)
-
-                new_node = node_start.copy()
-                new_coords = node_start.coords + (direction * percentage)
-                new_node = new_node.update_coords(new_coords)
-
-                return new_node
 
     def write_to_disk(self, fp: Path, write_history=True):
         # write output chain
@@ -589,12 +456,11 @@ class NEB:
                 fp = out_folder / f"traj_{i}.xyz"
                 chain.write_to_disk(fp)
 
-
     def _calculate_chain_distances(self):
         chain_traj = self.chain_trajectory
-        distances = [None] # None for the first chain
-        for i,chain in enumerate(chain_traj):
-            if i == 0 :
+        distances = [None]  # None for the first chain
+        for i, chain in enumerate(chain_traj):
+            if i == 0:
                 continue
 
             prev_chain = chain_traj[i-1]
@@ -608,15 +474,13 @@ class NEB:
         fs = 18
         s = 8
 
+        f, ax = plt.subplots(figsize=(1.16*s, s))
 
-
-        f,ax = plt.subplots(figsize=(1.16*s, s))
-
-        plt.plot(distances,'o-')
+        plt.plot(distances, 'o-')
         plt.yticks(fontsize=fs)
         plt.xticks(fontsize=fs)
-        plt.ylabel("Distance to previous chain",fontsize=fs)
-        plt.xlabel("Chain id",fontsize=fs)
+        plt.ylabel("Distance to previous chain", fontsize=fs)
+        plt.xlabel("Chain id", fontsize=fs)
 
         plt.show()
 
@@ -627,18 +491,18 @@ class NEB:
         projs = []
 
         for i, chain in enumerate(self.chain_trajectory):
-            if i == 0: continue
+            if i == 0:
+                continue
             prev_chain = self.chain_trajectory[i-1]
             projs.append(prev_chain._gradient_delta_mags(chain))
 
         plt.plot(projs)
-        plt.ylabel("NEB |∆gradient|",fontsize=fs)
+        plt.ylabel("NEB |∆gradient|", fontsize=fs)
         plt.yticks(fontsize=fs)
         plt.xticks(fontsize=fs)
         # plt.ylim(0,1.1)
-        plt.xlabel("Optimization step",fontsize=fs)
+        plt.xlabel("Optimization step", fontsize=fs)
         plt.show()
-
 
     def plot_projector_history(self, var='gradients'):
         s = 8
@@ -647,7 +511,8 @@ class NEB:
         projs = []
 
         for i, chain in enumerate(self.chain_trajectory):
-            if i == 0: continue
+            if i == 0:
+                continue
             prev_chain = self.chain_trajectory[i-1]
             if var == 'gradients':
                 projs.append(prev_chain._gradient_correlation(chain))
@@ -656,13 +521,12 @@ class NEB:
             else:
                 raise ValueError(f"Unrecognized var: {var}")
         plt.plot(projs)
-        plt.ylabel(f"NEB {var} correlation",fontsize=fs)
+        plt.ylabel(f"NEB {var} correlation", fontsize=fs)
         plt.yticks(fontsize=fs)
         plt.xticks(fontsize=fs)
-        plt.ylim(-1.1,1.1)
-        plt.xlabel("Optimization step",fontsize=fs)
+        plt.ylim(-1.1, 1.1)
+        plt.xlabel("Optimization step", fontsize=fs)
         plt.show()
-
 
     def plot_opt_history(self, do_3d=False):
 
@@ -672,12 +536,12 @@ class NEB:
         if do_3d:
             all_chains = self.chain_trajectory
 
-
             ens = np.array([c.energies-c.energies[0] for c in all_chains])
-            all_integrated_path_lengths = np.array([c.integrated_path_length for c in all_chains])
+            all_integrated_path_lengths = np.array(
+                [c.integrated_path_length for c in all_chains])
             opt_step = np.array(list(range(len(all_chains))))
-            s=7
-            fs=18
+            s = 7
+            fs = 18
             ax = plt.figure(figsize=(1.16*s, s)).add_subplot(projection='3d')
 
             # Plot a sin curve using the x and y axes.
@@ -685,10 +549,12 @@ class NEB:
             ys = all_integrated_path_lengths
             zs = ens
             for i, (xind, y) in enumerate(zip(x, ys)):
-                if i < len(ys) -1:
-                    ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='gray',markersize=3,alpha=.1)
+                if i < len(ys) - 1:
+                    ax.plot([xind]*len(y), y, 'o-', zs=zs[i],
+                            color='gray', markersize=3, alpha=.1)
                 else:
-                    ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='blue',markersize=3)
+                    ax.plot([xind]*len(y), y, 'o-', zs=zs[i],
+                            color='blue', markersize=3)
             ax.grid(False)
 
             ax.set_xlabel('optimization step', fontsize=fs)
@@ -704,10 +570,10 @@ class NEB:
         else:
             f, ax = plt.subplots(figsize=(1.16 * s, s))
 
-
             for i, chain in enumerate(self.chain_trajectory):
                 if i == len(self.chain_trajectory) - 1:
-                    plt.plot(chain.integrated_path_length, chain.energies, "o-", alpha=1)
+                    plt.plot(chain.integrated_path_length,
+                             chain.energies, "o-", alpha=1)
                 else:
                     plt.plot(
                         chain.integrated_path_length,
@@ -735,94 +601,95 @@ class NEB:
         inf_norm_g = []
         inf_norm_gperp = []
 
-
-
         for ind in range(1, len(ct)):
-            avg_rms_g.append(sum(ct[ind].rms_gradients[1:-1]) / (len(ct[ind])-2))
-            avg_rms_gperp.append(sum(ct[ind].rms_gperps[1:-1]) / (len(ct[ind])-2))
+            avg_rms_g.append(
+                sum(ct[ind].rms_gradients[1:-1]) / (len(ct[ind])-2))
+            avg_rms_gperp.append(
+                sum(ct[ind].rms_gperps[1:-1]) / (len(ct[ind])-2))
             max_rms_gperp.append(max(ct[ind].rms_gperps))
-            barr_height.append(abs(ct[ind].get_eA_chain() - ct[ind-1].get_eA_chain()))
+            barr_height.append(
+                abs(ct[ind].get_eA_chain() - ct[ind-1].get_eA_chain()))
             ts_node_ind = ct[ind].energies.argmax()
             ts_node_gperp = np.max(ct[ind].get_g_perps()[ts_node_ind])
             ts_gperp.append(ts_node_gperp)
             inf_norm_val_g = inf_norm_g.append(np.max(ct[ind].gradients))
-            inf_norm_val_gperp = inf_norm_gperp.append(np.max(ct[ind].get_g_perps()))
+            inf_norm_val_gperp = inf_norm_gperp.append(
+                np.max(ct[ind].get_g_perps()))
 
         if do_indiv:
-            f,ax = plt.subplots()
+            f, ax = plt.subplots()
             plt.plot(avg_rms_gperp, label='RMS Grad$_{\perp}$')
             plt.ylabel("Gradient data")
-            xmin= ax.get_xlim()[0]
-            xmax= ax.get_xlim()[1]
-            ax.hlines(y=self.parameters.rms_grad_thre, xmin=xmin, xmax=xmax, label='rms_grad_thre', linestyle='--', color='blue')
+            xmin = ax.get_xlim()[0]
+            xmax = ax.get_xlim()[1]
+            ax.hlines(y=self.parameters.rms_grad_thre, xmin=xmin, xmax=xmax,
+                      label='rms_grad_thre', linestyle='--', color='blue')
             f.legend()
             plt.show()
 
-            f,ax = plt.subplots()
+            f, ax = plt.subplots()
             plt.plot(max_rms_gperp, label='Max RMS Grad$_{\perp}$')
             plt.ylabel("Gradient data")
-            xmin= ax.get_xlim()[0]
-            xmax= ax.get_xlim()[1]
-            ax.hlines(y=self.parameters.max_rms_grad_thre, xmin=xmin, xmax=xmax, label='max_rms_grad_thre', linestyle='--', color='orange')
+            xmin = ax.get_xlim()[0]
+            xmax = ax.get_xlim()[1]
+            ax.hlines(y=self.parameters.max_rms_grad_thre, xmin=xmin, xmax=xmax,
+                      label='max_rms_grad_thre', linestyle='--', color='orange')
             f.legend()
             plt.show()
 
-            f,ax = plt.subplots()
+            f, ax = plt.subplots()
             plt.ylabel("Gradient data")
-            plt.plot(ts_gperp,label='TS gperp')
-            xmin= ax.get_xlim()[0]
-            xmax= ax.get_xlim()[1]
-            ax.hlines(y=self.parameters.ts_grad_thre, xmin=xmin, xmax=xmax, label='ts_grad_thre', linestyle='--', color='green')
+            plt.plot(ts_gperp, label='TS gperp')
+            xmin = ax.get_xlim()[0]
+            xmax = ax.get_xlim()[1]
+            ax.hlines(y=self.parameters.ts_grad_thre, xmin=xmin, xmax=xmax,
+                      label='ts_grad_thre', linestyle='--', color='green')
             f.legend()
             plt.show()
 
-
-
-            f,ax = plt.subplots()
-            plt.plot(barr_height, 'o--',label='barr_height_delta', color='purple')
+            f, ax = plt.subplots()
+            plt.plot(barr_height, 'o--',
+                     label='barr_height_delta', color='purple')
             plt.ylabel("Barrier height data")
-            ax.hlines(y=self.parameters.barrier_thre, xmin=xmin, xmax=xmax, label='barrier_thre', linestyle='--', color='purple')
-            xmin= ax.get_xlim()[0]
-            xmax= ax.get_xlim()[1]
+            ax.hlines(y=self.parameters.barrier_thre, xmin=xmin, xmax=xmax,
+                      label='barrier_thre', linestyle='--', color='purple')
+            xmin = ax.get_xlim()[0]
+            xmax = ax.get_xlim()[1]
             f.legend()
             plt.show()
 
-
-
-
-
             plt.show()
-
 
         else:
 
-            f,ax = plt.subplots()
+            f, ax = plt.subplots()
             plt.plot(avg_rms_gperp, label='RMS Grad$_{\perp}$')
             plt.plot(max_rms_gperp, label='Max RMS Grad$_{\perp}$')
             # plt.plot(avg_rms_g, label='RMS Grad')
-            plt.plot(ts_gperp,label='TS gperp')
+            plt.plot(ts_gperp, label='TS gperp')
             # plt.plot(inf_norm_g,label='Inf norm G')
             # plt.plot(inf_norm_gperp,label='Inf norm Gperp')
             plt.ylabel("Gradient data")
 
-            xmin= ax.get_xlim()[0]
-            xmax= ax.get_xlim()[1]
-            ax.hlines(y=self.parameters.rms_grad_thre, xmin=xmin, xmax=xmax, label='rms_grad_thre', linestyle='--', color='blue')
-            ax.hlines(y=self.parameters.max_rms_grad_thre, xmin=xmin, xmax=xmax, label='max_rms_grad_thre', linestyle='--', color='orange')
-            ax.hlines(y=self.parameters.ts_grad_thre, xmin=xmin, xmax=xmax, label='ts_grad_thre', linestyle='--', color='green')
+            xmin = ax.get_xlim()[0]
+            xmax = ax.get_xlim()[1]
+            ax.hlines(y=self.parameters.rms_grad_thre, xmin=xmin, xmax=xmax,
+                      label='rms_grad_thre', linestyle='--', color='blue')
+            ax.hlines(y=self.parameters.max_rms_grad_thre, xmin=xmin, xmax=xmax,
+                      label='max_rms_grad_thre', linestyle='--', color='orange')
+            ax.hlines(y=self.parameters.ts_grad_thre, xmin=xmin, xmax=xmax,
+                      label='ts_grad_thre', linestyle='--', color='green')
 
             ax2 = plt.twinx()
-            plt.plot(barr_height, 'o--',label='barr_height_delta', color='purple')
+            plt.plot(barr_height, 'o--',
+                     label='barr_height_delta', color='purple')
             plt.ylabel("Barrier height data")
 
-
-
-
-            ax2.hlines(y=self.parameters.barrier_thre, xmin=xmin, xmax=xmax, label='barrier_thre', linestyle='--', color='purple')
+            ax2.hlines(y=self.parameters.barrier_thre, xmin=xmin, xmax=xmax,
+                       label='barrier_thre', linestyle='--', color='purple')
 
             f.legend()
             plt.show()
-
 
     def read_from_disk(fp: Path, history_folder: Path = None,
                        chain_parameters=ChainInputs(),

@@ -51,7 +51,6 @@ class Refiner:
                 early_stop_chain_rms_thre=0.1,
                 early_stop_force_thre=0.0001,
                 early_stop_still_steps_thre=100,
-                _use_dlf_conv=False,
                 preopt_with_xtb=0,
             )
 
