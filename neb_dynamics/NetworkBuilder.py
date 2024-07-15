@@ -28,8 +28,8 @@ class NetworkBuilder:
 
     data_dir: Path
 
-    start: Union[TDStructure, str] = None
-    end: Union[TDStructure, str] = None
+    start: Union[TDStructure, str, None] = None
+    end: Union[TDStructure, str, None] = None
 
     network_inputs: NetworkInputs = NetworkInputs()
     chain_inputs: ChainInputs = ChainInputs()
@@ -39,8 +39,9 @@ class NetworkBuilder:
             self.start, str) and isinstance(self.end, str)
         both_are_tds = isinstance(
             self.start, TDStructure) and isinstance(self.end, TDStructure)
+        both_are_none = self.start is None and self.end is None
 
-        assert both_are_smi or both_are_tds, 'Both inputs needs to be the same data type.'
+        assert both_are_smi or both_are_tds or both_are_none, 'Both inputs needs to be the same data type.'
 
         if both_are_smi:
             start_smi = self.start
@@ -227,8 +228,8 @@ class NetworkBuilder:
 
             cmd = f"create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.002 \
                 -sig {int(self.chain_inputs.skip_identical_graphs)} -mr {int(self.chain_inputs.use_maxima_recyling)} \
-                    -nc {self.chain_inputs.node_class.__repr__(self.chain_inputs.node_class)} -preopt 0 -climb 0 -nimg 12 -min_ends 1 \
-                        -es_ft 0.03 -name {out_fp}"
+                    -nc {self.chain_inputs.node_class.__repr__(self.chain_inputs.node_class)} -preopt 0 -climb 0 \
+                        -nimg 12 -min_ends 1 -es_ft 0.03 -name {out_fp}"
 
             new_template = template.copy()
             new_template[-1] = cmd

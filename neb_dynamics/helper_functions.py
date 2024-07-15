@@ -1,23 +1,14 @@
 """
 this module contains helper general functions
 """
-import cProfile
-import json
 import math
-import multiprocessing as mp
 # from openeye import oechem
-import os
-import pickle
-import signal
 import sys
 import warnings
-from itertools import repeat
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import scipy.sparse.linalg
-from IPython.core.display import HTML
 from openbabel import openbabel
 from pysmiles import write_smiles
 from rdkit import Chem
@@ -282,7 +273,8 @@ def graph_to_smiles(mol):
             smi2 = Chem.CanonSmiles(b)
         except Exception as e:
             print(
-                "This run is without OECHEM license. A graph has failed to be converted in smiles. Take note of the exception."
+                "This run is without OECHEM license. A graph has failed to be converted in smiles.\
+                      Take note of the exception."
             )
             raise e
     return smi2
@@ -387,7 +379,6 @@ __ATOM_LIST__ = [
 
 
 def run_tc_local_optimization(td, tmp, return_optim_traj):
-    from neb_dynamics.tdstructure import TDStructure
     from neb_dynamics.trajectory import Trajectory
 
     optim_fp = Path(tmp.name[:-4]) / "optim.xyz"
@@ -470,3 +461,15 @@ def _load_info_from_tcin(file_path):
             inp_kwds[key] = val
 
     return method, basis, charge, spinmult, inp_kwds
+
+
+def _calculate_chain_distances(chain_traj):
+    distances = [None]  # None for the first chain
+    for i, chain in enumerate(chain_traj):
+        if i == 0:
+            continue
+
+        prev_chain = chain_traj[i-1]
+        dist = prev_chain._distance_to_chain(chain)
+        distances.append(dist)
+    return np.array(distances)

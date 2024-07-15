@@ -19,6 +19,7 @@ from nodes.node3d import Node3D
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.convergence_helpers import chain_converged
+from neb_dynamics.helper_functions import _calculate_chain_distances
 from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
 
 ob_log_handler = pybel.ob.OBMessageHandler()
@@ -183,7 +184,6 @@ class NEB:
 
         return xtb_seed
 
-    # this craziness output is an elem step results. @Jan: Refactor ASAP.
     def optimize_chain(self) -> ElemStepResults:
         """
         Main function. After an NEB object has been created, running this function will
@@ -271,7 +271,6 @@ class NEB:
                 if self.parameters.v:
                     print("\nChain converged!")
 
-                # N.B. One could skip this if you don't want to do minimization on converged chain.
                 elem_step_results = check_if_elem_step(new_chain)
                 self.geom_grad_calls_made += elem_step_results.number_grad_calls
                 self.optimized = new_chain
@@ -311,20 +310,8 @@ class NEB:
                 fp = out_folder / f"traj_{i}.xyz"
                 chain.write_to_disk(fp)
 
-    def _calculate_chain_distances(self):
-        chain_traj = self.chain_trajectory
-        distances = [None]  # None for the first chain
-        for i, chain in enumerate(chain_traj):
-            if i == 0:
-                continue
-
-            prev_chain = chain_traj[i-1]
-            dist = prev_chain._distance_to_chain(chain)
-            distances.append(dist)
-        return np.array(distances)
-
     def plot_chain_distances(self):
-        distances = self._calculate_chain_distances()
+        distances = _calculate_chain_distances(self.chain_trajectory)
 
         fs = 18
         s = 8
@@ -467,78 +454,74 @@ class NEB:
             ts_gperp.append(ts_node_gperp)
 
         if do_indiv:
-            f, ax = plt.subplots()
-            plt.plot(avg_rms_gperp, label='RMS Grad$_{\perp}$')
-            plt.ylabel("Gradient data")
-            xmin = ax.get_xlim()[0]
-            xmax = ax.get_xlim()[1]
-            ax.hlines(y=self.parameters.rms_grad_thre, xmin=xmin, xmax=xmax,
-                      label='rms_grad_thre', linestyle='--', color='blue')
-            f.legend()
-            plt.show()
+            def plot_with_hline(data, label, y_hline, hline_label, hline_color, ylabel):
+                f, ax = plt.subplots()
+                plt.plot(data, label=label)
+                plt.ylabel(ylabel)
+                xmin, xmax = ax.get_xlim()
+                ax.hlines(y=y_hline, xmin=xmin, xmax=xmax,
+                          label=hline_label, linestyle='--', color=hline_color)
+                f.legend()
+                plt.show()
 
-            f, ax = plt.subplots()
-            plt.plot(max_rms_gperp, label='Max RMS Grad$_{\perp}$')
-            plt.ylabel("Gradient data")
-            xmin = ax.get_xlim()[0]
-            xmax = ax.get_xlim()[1]
-            ax.hlines(y=self.parameters.max_rms_grad_thre, xmin=xmin, xmax=xmax,
-                      label='max_rms_grad_thre', linestyle='--', color='orange')
-            f.legend()
-            plt.show()
+            # Plot RMS Grad$_{\perp}$
+            plot_with_hline(avg_rms_gperp, label='RMS Grad$_{\perp}$',
+                            y_hline=self.parameters.rms_grad_thre,
+                            hline_label='rms_grad_thre', hline_color='blue',
+                            ylabel="Gradient data")
 
-            f, ax = plt.subplots()
-            plt.ylabel("Gradient data")
-            plt.plot(ts_gperp, label='TS gperp')
-            xmin = ax.get_xlim()[0]
-            xmax = ax.get_xlim()[1]
-            ax.hlines(y=self.parameters.ts_grad_thre, xmin=xmin, xmax=xmax,
-                      label='ts_grad_thre', linestyle='--', color='green')
-            f.legend()
-            plt.show()
+            # Plot Max RMS Grad$_{\perp}$
+            plot_with_hline(max_rms_gperp, label='Max RMS Grad$_{\perp}$',
+                            y_hline=self.parameters.max_rms_grad_thre,
+                            hline_label='max_rms_grad_thre', hline_color='orange',
+                            ylabel="Gradient data")
 
-            f, ax = plt.subplots()
-            plt.plot(barr_height, 'o--',
-                     label='barr_height_delta', color='purple')
-            plt.ylabel("Barrier height data")
-            ax.hlines(y=self.parameters.barrier_thre, xmin=xmin, xmax=xmax,
-                      label='barrier_thre', linestyle='--', color='purple')
-            xmin = ax.get_xlim()[0]
-            xmax = ax.get_xlim()[1]
-            f.legend()
-            plt.show()
+            # Plot TS gperp
+            plot_with_hline(ts_gperp, label='TS gperp',
+                            y_hline=self.parameters.ts_grad_thre,
+                            hline_label='ts_grad_thre', hline_color='green',
+                            ylabel="Gradient data")
 
-            plt.show()
+            # Plot barrier height
+            plot_with_hline(barr_height, label='barr_height_delta',
+                            y_hline=self.parameters.barrier_thre,
+                            hline_label='barrier_thre', hline_color='purple',
+                            ylabel="Barrier height data")
 
         else:
+            # Define the data and parameters
+            data_list = [
+                (avg_rms_gperp, 'RMS Grad$_{\perp}$',
+                 self.parameters.rms_grad_thre, 'rms_grad_thre', 'blue'),
+                (max_rms_gperp, 'Max RMS Grad$_{\perp}$',
+                 self.parameters.max_rms_grad_thre, 'max_rms_grad_thre', 'orange'),
+                (ts_gperp, 'TS gperp', self.parameters.ts_grad_thre,
+                 'ts_grad_thre', 'green')
+            ]
 
+            # Create subplots
             f, ax = plt.subplots()
-            plt.plot(avg_rms_gperp, label='RMS Grad$_{\perp}$')
-            plt.plot(max_rms_gperp, label='Max RMS Grad$_{\perp}$')
-            # plt.plot(avg_rms_g, label='RMS Grad')
-            plt.plot(ts_gperp, label='TS gperp')
-            # plt.plot(inf_norm_g,label='Inf norm G')
-            # plt.plot(inf_norm_gperp,label='Inf norm Gperp')
-            plt.ylabel("Gradient data")
 
-            xmin = ax.get_xlim()[0]
-            xmax = ax.get_xlim()[1]
-            ax.hlines(y=self.parameters.rms_grad_thre, xmin=xmin, xmax=xmax,
-                      label='rms_grad_thre', linestyle='--', color='blue')
-            ax.hlines(y=self.parameters.max_rms_grad_thre, xmin=xmin, xmax=xmax,
-                      label='max_rms_grad_thre', linestyle='--', color='orange')
-            ax.hlines(y=self.parameters.ts_grad_thre, xmin=xmin, xmax=xmax,
-                      label='ts_grad_thre', linestyle='--', color='green')
+            # Plot the gradient data
+            for data, label, hline, hline_label, color in data_list:
+                ax.plot(data, label=label)
+                xmin, xmax = ax.get_xlim()
+                ax.hlines(y=hline, xmin=xmin, xmax=xmax,
+                          label=hline_label, linestyle='--', color=color)
 
-            ax2 = plt.twinx()
-            plt.plot(barr_height, 'o--',
+            # Set y-axis label for gradient data
+            ax.set_ylabel("Gradient data")
+
+            # Create a second y-axis for barrier height data
+            ax2 = ax.twinx()
+            ax2.plot(barr_height, 'o--',
                      label='barr_height_delta', color='purple')
-            plt.ylabel("Barrier height data")
-
+            ax2.set_ylabel("Barrier height data")
             ax2.hlines(y=self.parameters.barrier_thre, xmin=xmin, xmax=xmax,
                        label='barrier_thre', linestyle='--', color='purple')
 
-            f.legend()
+            # Show legends and plot
+            f.legend(loc='upper left')
             plt.show()
 
     def read_from_disk(fp: Path, history_folder: Path = None,

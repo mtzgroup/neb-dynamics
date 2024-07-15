@@ -231,7 +231,7 @@ def main():
 
     nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC,
              'node3d_tc_local': Node3D_TC_Local,
-                                                    # 'node3d_tcpb': Node3D_TC_TCPB,
+             # 'node3d_tcpb': Node3D_TC_TCPB,
              'node3d_water': Node3D_Water}
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
@@ -241,7 +241,7 @@ def main():
     end = TDStructure.from_xyz(args.en, tot_charge=args.c,
                                tot_spinmult=args.s)
 
-    if args.nc != "node3d":
+    if args.nc != "node3d" and args.nc != "node3d_water":
         if args.tcin:
             start.update_tc_parameters_from_inpfile(args.tcin)
             end.update_tc_parameters_from_inpfile(args.tcin)
