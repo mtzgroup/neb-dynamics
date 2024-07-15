@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 from scipy.optimize import minimize
 
 

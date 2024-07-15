@@ -171,7 +171,7 @@ from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 import multiprocessing as mp
 
 
@@ -583,7 +583,7 @@ from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 import multiprocessing as mp
 
 

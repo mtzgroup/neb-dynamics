@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 import sys
 from dataclasses import dataclass, field
-from typing import Union, Tuple
+from typing import Tuple
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -19,6 +19,7 @@ from nodes.node3d import Node3D
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.convergence_helpers import chain_converged
+from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
@@ -64,7 +65,7 @@ class NEB:
             for ind in inds_maxima:
                 chain[ind].do_climb = True
 
-    def _do_early_stop_check(self, chain: Chain):
+    def _do_early_stop_check(self, chain: Chain) -> Tuple[bool, ElemStepResults]:
         """
         this function calls geometry minimizations to verify if
         chain is an elementary step
@@ -73,28 +74,22 @@ class NEB:
             chain (Chain): chain to check
 
         Returns:
-            tuple(boolean, tuple(), int) : boolean of whether
-                    to stop early, a tuple containing minimization
-                    results, and an integer number of gradient
-                    calls used in getting the minimization results
+            tuple(boolean, ElemStepResults) : boolean of whether
+                    to stop early, and an ElemStepResults objects
         """
-        # TODO: change the output of is_elem_step to a \
-        # dictionary or some other object
 
-        elem_step_results = chain.is_elem_step()
+        elem_step_results = check_if_elem_step(chain)
 
-        is_elem_step, split_method, minimization_results, \
-            n_geom_opt_grad_calls = elem_step_results
-
-        if not is_elem_step:
+        if not elem_step_results.is_elem_step:
             print("\nStopped early because chain is not an elementary step.")
-            print(f"Split chain based on: {split_method}")
+            print(
+                f"Split chain based on: {elem_step_results.splitting_criterion}")
             self.optimized = chain
-            return True, elem_step_results, n_geom_opt_grad_calls
+            return True, elem_step_results
 
         else:
             self.n_steps_still_chain = 0
-            return False, elem_step_results, n_geom_opt_grad_calls
+            return False, elem_step_results
 
     def _check_early_stop(self, chain: Chain):
         """
@@ -142,12 +137,16 @@ class NEB:
                 self.set_climbing_nodes(chain=chain)
                 self.parameters.climb = False  # no need to set climbing nodes again
 
-            stop_early, elem_step_results, geom_n_grad_calls = self._do_early_stop_check(
+            stop_early, elem_step_results = self._do_early_stop_check(
                 chain)
-            return stop_early, elem_step_results, geom_n_grad_calls
+            return stop_early, elem_step_results
 
         else:
-            return False, None, 0
+            return False, ElemStepResults(is_elem_step=None,
+                                          is_concave=None,
+                                          splitting_criterion=None,
+                                          minimization_results=[],
+                                          number_grad_calls=0)
 
     # @Jan: This should be a more general function so that the
     # lower level of theory can be whatever the user wants.
@@ -185,7 +184,7 @@ class NEB:
         return xtb_seed
 
     # this craziness output is an elem step results. @Jan: Refactor ASAP.
-    def optimize_chain(self) -> Tuple(bool, str, Union[list, Chain], int):
+    def optimize_chain(self) -> ElemStepResults:
         """
         Main function. After an NEB object has been created, running this function will
         minimize the chain and return the elementary step results from the final minimized chain.
@@ -207,9 +206,9 @@ class NEB:
             chain_previous = self._do_xtb_preopt(self.initial_chain)
             self.chain_trajectory.append(chain_previous)
 
-            stop_early, elem_step_results, geom_n_grad_calls = self._do_early_stop_check(
+            stop_early, elem_step_results = self._do_early_stop_check(
                 chain_previous)
-            self.geom_grad_calls_made += geom_n_grad_calls
+            self.geom_grad_calls_made += elem_step_results.number_grad_calls
             if stop_early:
                 return elem_step_results
         else:
@@ -219,20 +218,13 @@ class NEB:
 
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:
-                stop_early, elem_step_results, geom_n_grad_calls = self._check_early_stop(
+                stop_early, elem_step_results = self._check_early_stop(
                     chain_previous)
-                self.geom_grad_calls_made += geom_n_grad_calls
+                self.geom_grad_calls_made += elem_step_results.number_grad_calls
                 if stop_early:
                     return elem_step_results
-                else:
-                    if elem_step_results:
-                        is_elem_step, split_method, minimization_results, geom_n_grad_calls = elem_step_results
-                        self.geom_grad_calls_made += geom_n_grad_calls
-                        if isinstance(minimization_results, Chain):
-                            chain_previous = minimization_results
 
             new_chain = self.update_chain(chain=chain_previous)
-            # max_grad_val = np.amax(np.abs(new_chain.gradients))
             max_rms_grad_val = np.amax(new_chain.rms_gperps)
             ind_ts_guess = np.argmax(new_chain.energies)
             ts_guess_grad = np.amax(
@@ -242,8 +234,6 @@ class NEB:
                 parameters=self.parameters)
             if converged and self.parameters.v:
                 print("\nConverged!")
-            # print([node._cached_energy for node in new_chain])
-            # print([node.converged for node in new_chain])
 
             n_nodes_frozen = 0
             for node in new_chain:
@@ -267,7 +257,10 @@ class NEB:
             if self.parameters.v:
 
                 print(
-                    f"step {nsteps} // argmax(|TS gperp|) {np.amax(np.abs(ts_guess_grad))} // max rms grad {max_rms_grad_val} // armax(|TS_triplet_gsprings|) {new_chain.ts_triplet_gspring_infnorm} // nodes_frozen {n_nodes_frozen} // {grad_corr}{' '*20}", end="\r"
+                    f"step {nsteps} // argmax(|TS gperp|) {np.amax(np.abs(ts_guess_grad))} // \
+                        max rms grad {max_rms_grad_val} // armax(|TS_triplet_gsprings|) \
+                            {new_chain.ts_triplet_gspring_infnorm} // nodes_frozen\
+                                  {n_nodes_frozen} // {grad_corr}{' '*20}", end="\r"
                 )
                 sys.stdout.flush()
 
@@ -279,27 +272,16 @@ class NEB:
                     print("\nChain converged!")
 
                 # N.B. One could skip this if you don't want to do minimization on converged chain.
-                elem_step_results = new_chain.is_elem_step()
-                is_elem_step, split_method, minimization_results, grad_calls_geom = elem_step_results
-                self.geom_grad_calls_made += grad_calls_geom
-                # self.optimized = new_chain
-                if is_elem_step:
-                    # print(f"\nUsing resampled chain as output. \n\tEns: {minimization_results.energies}\n\t Grads:{minimization_results.gradients}")
-
-                    minimization_results.gradients  # making sure they're cached for writeup
-                    # Controversial! Now the optimized chain is the 'resampled' chain from IRC check
-                    self.optimized = minimization_results
-                    self.chain_trajectory.append(minimization_results)
-                else:
-                    self.optimized = new_chain
+                elem_step_results = check_if_elem_step(new_chain)
+                self.geom_grad_calls_made += elem_step_results.number_grad_calls
+                self.optimized = new_chain
                 return elem_step_results
 
-            chain_previous = new_chain  # previous
-
+            chain_previous = new_chain
             nsteps += 1
 
         new_chain = self.update_chain(chain=chain_previous)
-        if not self._chain_converged(chain_prev=chain_previous, chain_new=new_chain):
+        if not chain_converged(chain_prev=chain_previous, chain_new=new_chain, parameters=self.parameters):
             raise NoneConvergedException(
                 trajectory=self.chain_trajectory,
                 msg=f"\nChain did not converge at step {nsteps}",

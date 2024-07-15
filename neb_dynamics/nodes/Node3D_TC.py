@@ -13,7 +13,7 @@ from neb_dynamics.trajectory import Trajectory
 
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 from neb_dynamics.helper_functions import RMSD
 
 

@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from neb_dynamics.NEB import NoneConvergedException
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 
 
 @dataclass
@@ -16,9 +16,9 @@ class TS_PRFO:
     max_nsteps: int = 2000
     dr: float = 0.1
     grad_thre: float = 1e-6
-    
+
     max_step_size: float = 1.0
-    
+
     traj = []
 
     @property
@@ -71,13 +71,13 @@ class TS_PRFO:
         hrest = sum([(-1 * F_vec[i] * H_evecs[:, i]) / (H_evals[i] - lambda_n) for i in range(1, len(F_vec))])
         step = h0 + hrest
         step_reshaped = step.reshape(orig_dim)
-        
+
         length_step = np.linalg.norm(step_reshaped)
-        
+
         if length_step  > self.max_step_size:
             step_rescaled = step_reshaped / length_step
             step_reshaped = step_rescaled*self.max_step_size
-        
+
         return step_reshaped
 
     def find_ts(self):

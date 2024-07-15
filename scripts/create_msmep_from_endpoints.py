@@ -14,7 +14,7 @@ from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 from nodes.node3d import Node3D
-from neb_dynamics.nodes.Node3D_Water import Node3D_Water
+from neb_dynamics.nodes.node3d_water import Node3D_Water
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.MSMEP import MSMEP
@@ -306,8 +306,6 @@ def main():
         early_stop_chain_rms_thre=args.es_rms,
         early_stop_force_thre=args.es_ft * BOHR_TO_ANGSTROMS,
         early_stop_still_steps_thre=args.es_ss,
-
-        _use_dlf_conv=False,
         preopt_with_xtb=bool(int(args.preopt))
     )
     print(f"{args.preopt=}")

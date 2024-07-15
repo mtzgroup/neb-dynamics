@@ -5,7 +5,7 @@ from chemcloud.client import CCClient
 
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 from neb_dynamics.Node3D_TC import Node3D_TC
 from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory

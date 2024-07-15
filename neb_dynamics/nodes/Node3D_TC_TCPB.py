@@ -12,7 +12,7 @@ import shutil
 from qcparse import parse
 from pathlib import Path
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 from neb_dynamics.helper_functions import RMSD
 import pytcpb as tc
 import time

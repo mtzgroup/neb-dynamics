@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from IPython.core.display import HTML
 import networkx as nx
 
-from mpl_toolkits.mplot3d import Axes3D 
+from mpl_toolkits.mplot3d import Axes3D
 
 import matplotlib.patches as mpatches
 
@@ -37,61 +37,20 @@ from scipy.interpolate import SmoothBivariateSpline
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
-from qcio import ProgramInput
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/start_opt_msmep/")
 
-td = TDStructure.from_smiles("COCO")
+h.output_chain.plot_chain()
+h.output_chain.to_trajectory().draw();
 
-tr = Trajectory([td]*10)
+tsg = h.output_chain.get_ts_guess()
 
-tcmol = td._as_tc_molecule()
+tsg
 
-from qcop import compute
+tsg_opt = tsg.xtb_sella_geom_optimization()
 
-# +
-"""Must run script like this: python -m examples.xtb"""
+tsg.energy_xtb()
 
-from qcio import CalcType, ProgramInput, Structure
-
-from qcop import compute
-
-# Create the structure
-# Can also open a structure from a file
-# structure = Structure.open("path/to/h2o.xyz")
-structure = Structure(
-    symbols=["O", "H", "H"],
-    geometry=[  # type: ignore
-        [0.0, 0.0, 0.0],
-        [0.52421003, 1.68733646, 0.48074633],
-        [1.14668581, -0.45032174, -1.35474466],
-    ],
-)
-
-# Define the program input
-prog_input = ProgramInput(
-    structure=structure,
-    calctype=CalcType.gradient,
-    model={"method": "GFN2xTB"},  # type: ignore
-    keywords={"max_iterations": 150},
-)
-
-
-# output = compute("xtb", inp_obj=prog_input, print_stdout=False)
-# print(output)
-# -
-
-import pstats
-from pstats import SortKey
-p = pstats.Stats('/home/jdep/debugging_throwaway_results/fast_asneb/hi.txt')
-p.strip_dirs().sort_stats(SortKey.TIME).print_stats()
-
-# !python -m pip show qcop
-
-import pstats
-from pstats import SortKey
-p = pstats.Stats('/home/jdep/debugging_throwaway_results/fast_asneb/hi_colton.txt')
-p.strip_dirs().sort_stats(SortKey.TIME).print_stats()
-
-from neb_dynamics.tdstructure import TDStructure
+tsg_opt.energy_xtb()
 
 # # Database
 
@@ -226,8 +185,8 @@ plt.xlabel("Early stop gradient threshold",fontsize=fs)
 
 xmin, xmax = ax.get_xlim()
 plt.yticks(fontsize=fs)
-# plt.hlines(xmin=xmin,xmax=xmax, y=df_neb[colname].median(), 
-#            linestyles='-', color='red',linewidth=lw, 
+# plt.hlines(xmin=xmin,xmax=xmax, y=df_neb[colname].median(),
+#            linestyles='-', color='red',linewidth=lw,
 #            label='NEB median value')
 # plt.legend(fontsize=fs)
 
@@ -411,7 +370,7 @@ def _is_conformer_identical(self, other) -> bool:
 
         rmsd_identical = dist < self.RMSD_CUTOFF
         energies_identical = en_delta < self.KCAL_MOL_CUTOFF
-        
+
         print(dist)
 
         if rmsd_identical and energies_identical: #and barrier_accessible:
@@ -419,7 +378,7 @@ def _is_conformer_identical(self, other) -> bool:
         else:
             return False
 
-        
+
     else:
         return False
 
@@ -523,12 +482,12 @@ boxesnosig = plt.boxplot(x=[df[colname].dropna() for df in nosig_dfs]+[np.nan],
            positions=x-offset, widths=offset-.1,
            medianprops={'linewidth':lw, 'color':'black'},
            boxprops={'linewidth':lw},
-           capprops={'linewidth':lw-1}, 
+           capprops={'linewidth':lw-1},
            patch_artist=True)
 # fill with colors
 for patch in boxesnosig['boxes']:
     patch.set_facecolor('#E2DADB')
-    
+
 
 
 
@@ -555,8 +514,8 @@ ax.set_xticklabels(es_labels,fontsize=fs)
 plt.xlabel("Early stop gradient threshold",fontsize=fs)
 xmin, xmax = ax.get_xlim()
 plt.yticks(fontsize=fs)
-plt.hlines(xmin=xmin,xmax=xmax, y=df_neb[colname].median(), 
-           linestyles='-', color='red',linewidth=lw, 
+plt.hlines(xmin=xmin,xmax=xmax, y=df_neb[colname].median(),
+           linestyles='-', color='red',linewidth=lw,
            label='NEB median value')
 plt.legend(fontsize=fs)
 
@@ -600,10 +559,10 @@ def get_tptn(df, reference_elem, reference_multi):
     tp = sum(elems.isin(reference_elem))
     fp = sum(~elems.isin(reference_elem))
     print(elems[~elems.isin(reference_elem)])
-    
+
     tn = sum(multis.isin(reference_multi))
     fn = sum(~multis.isin(reference_multi))
-    
+
     return np.array([[tp, fp], [fn, tn]])
 
 
@@ -659,7 +618,7 @@ for ind, compared in enumerate(es_labels):
     f, ax = plt.subplots()
     # compared = es_labels[ind]
 
-    
+
     tptn = get_tptn(df_list[ind], elem_rxns, multi_rxns)
 
     im = ax.imshow(tptn,alpha=.4)
@@ -708,7 +667,7 @@ bottom+=elem_step_heights
 
 boxesnosig = plt.bar(x=xs-offset, height=multi_step_heights,
                      bottom=bottom, color='#52FFEE',
-                     label='Multi step rxn (no SIG)', 
+                     label='Multi step rxn (no SIG)',
                     width=offset-.1)
 
 
@@ -766,12 +725,12 @@ def get_n_grad_calls(fp, xtb=False):
     else:
         output  = open(fp.parent / 'out_production_maxima_recycling').read().splitlines()
         # output  = open(fp.parent / 'out_mr_gi').read().splitlines()
-    
-    
-    
-    
-    
-    
+
+
+
+
+
+
     try:
         return int(output[-1].split()[2])
     except:
@@ -830,7 +789,7 @@ def create_df(msmep_filename, v=True, refinement_results=False):
     sys_size = []
     xtb = True
     for i, rn in enumerate(all_rns):
-        
+
         p = Path(rn) / msmep_filename
         if v: print(p)
 
@@ -840,20 +799,20 @@ def create_df(msmep_filename, v=True, refinement_results=False):
             #     raise TypeError('failure')
             if 'Warning! A chain has electronic structure errors.                         Returning an unoptimized chain...' in out:
                 raise FileNotFoundError('failure')
-            
+
             if refinement_results:
                 clean_fp = Path(str(p.resolve())+".xyz")
                 ref = Refiner()
                 ref_results = ref.read_leaves_from_disk(p)
-            
+
             else:
                 h = TreeNode.read_from_disk(p)
                 clean_fp = p.parent / (str(p.stem)+'_clean.xyz')
-                
+
             if clean_fp.exists():
                 try:
                     out_chain = Chain.from_xyz(clean_fp, ChainInputs())
-                
+
                 except:
                     if v: print("\t\terror in energies. recomputing")
                     tr = Trajectory.from_xyz(clean_fp)
@@ -881,14 +840,14 @@ def create_df(msmep_filename, v=True, refinement_results=False):
                 n_splits = sum([len(leaf.get_optimization_history()) for leaf in ref_results])
                 tot_steps = sum([len(leaf.data.chain_trajectory) for leaf in ref_results])
                 act_en = max([leaf.data.chain_trajectory[-1].get_eA_chain() for leaf in ref_results])
-                
+
             else:
                 if v: print([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
                 n_splits = len(h.get_optimization_history())
                 if v: print(sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()]))
                 tot_steps = sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
                 act_en = max([leaf.data.chain_trajectory[-2].get_eA_chain() for leaf in h.ordered_leaves])
-                
+
             n_opt_steps.append(tot_steps)
             n_opt_splits.append(n_splits)
 
@@ -896,12 +855,12 @@ def create_df(msmep_filename, v=True, refinement_results=False):
             ng_line = [line for line in out if len(line)>3 and line[0]=='>']
             if v: print(ng_line)
             ng = sum([int(ngl.split()[2]) for ngl in ng_line])
-            
+
             ng_geomopt = [line for line in out if len(line)>3 and line[0]=='<']
             ng_geomopt = sum([int(ngl.split()[2]) for ngl in ng_geomopt])
             # ng = 69
             if v: print(ng, ng_geomopt)
-            
+
             activation_ens.append(act_en)
 
             tsg_list.append(out_chain.get_ts_guess())
@@ -934,7 +893,7 @@ def create_df(msmep_filename, v=True, refinement_results=False):
 
 
         if v: print("")
-        
+
     import pandas as pd
     df = pd.DataFrame()
     df['reaction_name'] = [fp.split("/")[-1]for fp in all_rns]
@@ -944,7 +903,7 @@ def create_df(msmep_filename, v=True, refinement_results=False):
     df['n_grad_calls'] = mod_variable(n_grad_calls, all_rns, success_names)
     if v: print(n_grad_calls)
     if v: print(mod_variable(n_grad_calls, all_rns, success_names))
-    
+
     df['n_grad_calls_geoms'] = mod_variable(n_grad_calls_geoms, all_rns, success_names)
 
     df["n_opt_splits"] = mod_variable(n_opt_splits, all_rns, success_names)
@@ -989,7 +948,7 @@ df['activation_ens'].argmax()
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 
 from neb_dynamics.helper_functions import RMSD
 
@@ -1017,7 +976,7 @@ tsg_list = []
 sys_size = []
 xtb = True
 for i, rn in enumerate(all_rns):
-    
+
     p = Path(rn) / 'ASNEB_5_yesSIG'
     print(p.parent)
 
@@ -1027,7 +986,7 @@ for i, rn in enumerate(all_rns):
     refined_fp = Path(rn) / 'refined_results_5_yesSIG'
     print('Refinement done: ', refined_fp.exists())
     if refined_fp.exists():
-        
+
         try:
             out = open(p.parent / "refined_grad_calls.txt").read().splitlines()
             # if out[-5][:3] == 'DIE' or 'ValueError: Error in compute_energy_gradient.' in out or 'IndexError: index 0 is out of bounds for axis 0 with size 0' in out:
@@ -1037,7 +996,7 @@ for i, rn in enumerate(all_rns):
 
 
 
-            refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09, 
+            refiner = Refiner(cni=ChainInputs(k=0.1, delta_k=0.09,
                                                   node_class=Node3D_TC))
 
             leaves = refiner.read_leaves_from_disk(refined_fp)
@@ -1087,13 +1046,13 @@ for i, rn in enumerate(all_rns):
 
 #     except FileNotFoundError:
 #         failed.append(p)
-        
+
 #     except TypeError:
 #         failed.append(p)
-        
+
 #     except KeyboardInterrupt:
 #         skipped.append(p)
-        
+
 
     print()
 # -
@@ -1128,7 +1087,7 @@ for i, rn in enumerate(all_rns):
     # p = Path(rn) / 'production_mr_gi_msmep'
     # p = Path(rn) / 'production_vpo_tjm_msmeap'
     print(p.parent)
-    
+
     try:
         # out = open(p.parent / "out_production_maxima_recycling").read().splitlines()
         # out = open(p.parent / "out_nomaxima_recycling.txt").read().splitlines()
@@ -1136,34 +1095,34 @@ for i, rn in enumerate(all_rns):
         # if out[-5][:3] == 'DIE' or 'ValueError: Error in compute_energy_gradient.' in out or 'IndexError: index 0 is out of bounds for axis 0 with size 0' in out:
         # if 'Traceback (most recent call last):' in out[:50] or 'Terminated' in out:
         #     raise TypeError('failure')
-        
+
         neb = NEB.read_from_disk(p)
-        
-        tot_steps = len(neb.chain_trajectory) 
-        
+
+        tot_steps = len(neb.chain_trajectory)
+
         n_opt_steps.append(tot_steps)
         output  = open(p.parent / 'out_NEB_03_NOSIG_NOMR').read().splitlines()
         ng = [int(line.split()[2]) for line in output if '>>>' in line]
         print(ng)
         n_grad_calls.append(ng)
         activation_ens.append(neb.optimized.get_eA_chain())
-        
+
         sys_size.append(len(neb.optimized[0].coords))
-            
+
         success_names.append(rn)
         n_steps.append(len(neb.optimized)/12)
 
     except FileNotFoundError as e:
         print(e)
         failed.append(p)
-        
+
     except TypeError as e:
         print(e)
         failed.append(p)
-        
+
     except KeyboardInterrupt:
         skipped.append(p)
-        
+
 
     print("")
 # -
@@ -1211,12 +1170,13 @@ nbi = NEBInputs(
 # rn = 'Wittig'
 # rn = 'Robinson-Gabriel-Synthesis'
 # rn = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
-rn = 'Bamford-Stevens-Reaction'
+# rn = 'Bamford-Stevens-Reaction'
+rn = 'Ramberg-Backlund-Reaction-Bromine'
 # rn = 'Rupe-Rearrangement'
 
 ref_p = Path(f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/ASNEB_01_NOSIG_NOMR_v2/")
 h = TreeNode.read_from_disk(ref_p, neb_parameters=nbi)
-neb = NEB.read_from_disk(f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/NEB_12_nodes_neb", 
+neb = NEB.read_from_disk(f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/NEB_12_nodes_neb",
                          chain_parameters=ChainInputs(k=0.1, delta_k=0.09),
                         neb_parameters=nbi)
 neb_long = NEB.read_from_disk(f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/NEB_03_NOSIG_NOMR_neb", chain_parameters=ChainInputs(k=0.1, delta_k=0.09))
@@ -1313,7 +1273,7 @@ def get_mechanism_mols(chain, iter_dist=12):
         r = chain[ind*12].tdstructure.molecule_rp
         if r != out_mols[-1]:
             out_mols.append(r)
-        
+
     p = chain[-1].tdstructure.molecule_rp
     if p != out_mols[-1]:
         out_mols.append(p)
@@ -1376,10 +1336,10 @@ ax.hlines(y=self.parameters.ts_spring_thre, xmin=xmin, xmax=xmax, label='infnorm
 self.parameters.early_stop_force_thre = 0.03*BOHR_TO_ANGSTROMS
 
 
-# ax.hlines(y=self.parameters.early_stop_force_thre, xmin=xmin, xmax=xmax, label='early stop threshold', linestyle='--', linewidth=3, color='red')    
+# ax.hlines(y=self.parameters.early_stop_force_thre, xmin=xmin, xmax=xmax, label='early stop threshold', linestyle='--', linewidth=3, color='red')
 
 
-# ax.vlines(x=18, ymin=ymin, ymax=ymax, linestyle='--', color='red', label='early stop', linewidth=4)    
+# ax.vlines(x=18, ymin=ymin, ymax=ymax, linestyle='--', color='red', label='early stop', linewidth=4)
 
 # ax2 = plt.twinx()
 # plt.plot(barr_height, 'o--',label='barr_height_delta', color='purple')
@@ -1460,8 +1420,8 @@ last_val = 0
 for i, (leaf, manual) in enumerate(zip(h.ordered_leaves, man_gis)):
     final_point = h.output_chain.integrated_path_length[12*i+11]
     start_point = h.output_chain.integrated_path_length[12*i]
-    path_len_leaf = final_point - start_point 
-    
+    path_len_leaf = final_point - start_point
+
     plt.plot((manual.integrated_path_length*path_len_leaf)+start_point, manual.energies_kcalmol+last_val, 'o--', color=colors[i],label=f'GI leaf {i}')
     last_val = manual.energies_kcalmol[-1]
     # last_val = h.output_chain.path_length[12*i+11]
@@ -1492,11 +1452,11 @@ def get_out_chain(path):
         n = NEB.read_from_disk(path / 'node_0.xyz')
         out = n.optimized
         print(len(n.chain_trajectory))
-        
+
     except FileNotFoundError as e:
         print(f'{path} does not exist.')
         raise e
-        
+
     return out
 
 
@@ -1515,11 +1475,12 @@ def _join_output_leaves(self, refined_leaves):
 
 
 def build_report(rn):
-    dft_path = Path(f'/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}/production_vpo_tjm_xtb_preopt_msmep')
+    # dft_path = Path(f'/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}/production_vpo_tjm_xtb_preopt_msmep')
+    dft_path = Path(f'/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}/ASNEB_03_NOSIG_NOMR')
     xtb_path = Path(f'/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/ASNEB_03_NOSIG_NOMR_v2')
     refine_path = Path(f'/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/ASNEB_03_NOSIG_NOMR_v2_refined')
     refinement_done = False
-    
+
     if rn in reactions:
         rp_rn = reactions[rn]
     else:
@@ -1536,28 +1497,28 @@ def build_report(rn):
 
         # joined = ref.join_output_leaves(refined_results)
         joined = _join_output_leaves(ref, refined_results)
-    
-    
-    
+
+
+
     plt.plot(out_dft.path_length, out_dft.energies_kcalmol, 'o-', label='dft')
     plt.plot(out_xtb.path_length, out_xtb.energies_kcalmol, 'o-', label='xtb')
     plt.ylabel("Energies (kcal/mol)")
     plt.xlabel("Path length")
-    
-    
-    
-    
-    
+
+
+
+
+
     if refinement_done:
         plt.plot(joined.path_length, joined.energies_kcalmol, 'o-', label='refinement')
     plt.legend()
     plt.show()
-    
-    
+
+
     out_trajs = [out_dft, out_xtb]
     if refinement_done:
         out_trajs.append(joined)
-    
+
     if rp_rn:
         return rp_rn.draw(size=(200,200)), out_trajs
     else:
@@ -1567,11 +1528,11 @@ ind = 0
 
 from IPython.core.display import display
 
-df_sub[['no' in  val for val in df_sub['agrees?'].values]]
+df_sub[['?' in  val for val in df_sub['agrees?'].values]]
 
 df_sub.loc[38]['experimental link']
 
-rn = 'Madelung-Indole-Synthesis'
+rn = 'Bamford-Stevens-Reaction'
 a, b = build_report(rn)
 a
 
@@ -1593,7 +1554,7 @@ plt.yticks(fontsize=fs)
 
 plt.savefig(f"/home/jdep/T3D_data/msmep_draft/figures/SI_{rn}_refined_path.svg")
 plt.show()
-Molecule.draw_list(get_mechanism_mols(c))
+Molecule.draw_list(get_mechanism_mols(c), mode='d3')
 # -
 
 c.to_trajectory().draw();
@@ -1643,7 +1604,7 @@ df_precond = pd.read_csv("/home/jdep/T3D_data/msmep_draft/comparisons_dft/datase
 df_gi = pd.read_csv("/home/jdep/T3D_data/msmep_draft/comparisons_dft/dataset_results_gi.csv")
 df_ref = pd.read_csv("/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_refinement.csv")
 
-df_ref['n_grad_calls'].median(), df_precond['n_grad_calls'].median(), df_gi['n_grad_calls'].median(), 
+df_ref['n_grad_calls'].median(), df_precond['n_grad_calls'].median(), df_gi['n_grad_calls'].median(),
 
 # +
 fs=18
@@ -1662,12 +1623,12 @@ plt.boxplot(x=[
            positions=x,
            medianprops={'linewidth':lw, 'color':'black'},
            boxprops={'linewidth':lw},
-           capprops={'linewidth':lw-1}, 
+           capprops={'linewidth':lw-1},
            patch_artist=True)
 # fill with colors
 for patch in boxesnosig['boxes']:
     patch.set_facecolor('#E2DADB')
-    
+
 
 
 
@@ -1705,14 +1666,14 @@ elem_step_heights = [
                 len(df_ref[df_ref['n_rxn_steps']==1]),
                 len(df_precond[df_precond['n_rxn_steps']==1]),
                 len(df_gi[df_gi['n_rxn_steps']==1]),
-                
+
                 ]
 
 multi_step_heights = [
                 len(df_ref[df_ref['n_rxn_steps']!=1]),
                 len(df_precond[df_precond['n_rxn_steps']!=1]),
                 len(df_gi[df_gi['n_rxn_steps']!=1]),
-                
+
                 ]
 
 

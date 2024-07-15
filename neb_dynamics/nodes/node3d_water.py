@@ -9,7 +9,7 @@ from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from neb_dynamics.Node import Node
+from nodes.Node import Node
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.trajectory import Trajectory
 import multiprocessing as mp

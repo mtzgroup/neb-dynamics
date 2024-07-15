@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Tuple, Union
+from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,23 +13,15 @@ from IPython.display import HTML
 # from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.trajectory import Trajectory
 
-from neb_dynamics.Node import Node
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+from nodes.Node import Node
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.helper_functions import (
     RMSD,
     get_mass,
-    _get_ind_minima,
     linear_distance,
     qRMSD_distance,
     get_nudged_pe_grad,
-    is_even,
-    steepest_descent
 )
-
-from xtb.interface import Calculator
-from xtb.libxtb import VERBOSITY_MUTED
-from xtb.utils import get_method
 
 
 @dataclass
@@ -53,7 +45,8 @@ class Chain:
                 shape=(len(self.nodes), len(self.nodes[0].coords), 3)
             )
         else:
-            self.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords)))
+            self.velocity = np.zeros(
+                shape=(len(self.nodes), len(self.nodes[0].coords)))
 
     @property
     def n_atoms(self):
@@ -120,7 +113,8 @@ class Chain:
         return projector / normalization
 
     def _gperp_correlation(self, other_chain: Chain):
-        dp = np.dot(self.get_g_perps().flatten(), other_chain.get_g_perps().flatten())
+        dp = np.dot(self.get_g_perps().flatten(),
+                    other_chain.get_g_perps().flatten())
         normalization = np.linalg.norm(self.get_g_perps()) * np.linalg.norm(
             other_chain.get_g_perps().flatten()
         )
@@ -209,7 +203,8 @@ class Chain:
     ):
         e_i = max(node1.energy, node0.energy)
         if e_i > e_ref:
-            new_k = k_max - self.parameters.delta_k * ((e_max - e_i) / (e_max - e_ref))
+            new_k = k_max - self.parameters.delta_k * \
+                ((e_max - e_i) / (e_max - e_ref))
         elif e_i <= e_ref:
             new_k = k_max - self.parameters.delta_k
         return new_k
@@ -249,7 +244,8 @@ class Chain:
 
     def copy(self):
         list_of_nodes = [node.copy() for node in self.nodes]
-        chain_copy = Chain(nodes=list_of_nodes, parameters=self.parameters.copy())
+        chain_copy = Chain(nodes=list_of_nodes,
+                           parameters=self.parameters.copy())
         chain_copy.bfgs_hess = self.bfgs_hess
         chain_copy.velocity = self.velocity
 
@@ -358,7 +354,8 @@ class Chain:
             )
 
         elif current_node.do_climb:
-            pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
+            pe_along_path_const = current_node.dot_function(
+                pe_grad, unit_tan_path)
             pe_along_path = pe_along_path_const * unit_tan_path
 
             climbing_grad = 2 * pe_along_path
@@ -385,37 +382,12 @@ class Chain:
                 next_node=next_node,
             )
 
-            # if self.parameters.node_freezing:
-            # if not current_node.converged:
-            # pe_grads_nudged.append(pe_grad_nudged)
-            # spring_forces_nudged.append(spring_force_nudged)
-            # else:
-            # zero = np.zeros_like(pe_grad_nudged)
-            # pe_grads_nudged.append(zero)
-            # spring_forces_nudged.append(zero)
-            # else:
             pe_grads_nudged.append(pe_grad_nudged)
             spring_forces_nudged.append(spring_force_nudged)
 
         pe_grads_nudged = np.array(pe_grads_nudged)
         spring_forces_nudged = np.array(spring_forces_nudged)
         return pe_grads_nudged, spring_forces_nudged
-
-    @staticmethod
-    def calc_xtb_ene_grad_from_input_tuple(tuple):
-        atomic_numbers, coords_bohr, charge, spinmult = tuple
-
-        calc = Calculator(
-            get_method("GFN2-xTB"),
-            numbers=np.array(atomic_numbers),
-            positions=coords_bohr,
-            charge=charge,
-            uhf=spinmult - 1,
-        )
-        calc.set_verbosity(VERBOSITY_MUTED)
-        res = calc.singlepoint()
-
-        return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
     def get_g_perps(self):
         pe_grads_nudged, _ = self.pe_grads_spring_forces_nudged()
@@ -595,7 +567,8 @@ class Chain:
             if hasattr(self.parameters.k, "__iter__")
             else self.parameters.k
         )
-        e_ref = max(self.nodes[0].energy, self.nodes[len(self.nodes) - 1].energy)
+        e_ref = max(self.nodes[0].energy,
+                    self.nodes[len(self.nodes) - 1].energy)
         e_max = max(self.energies)
 
         k01 = self._k_between_nodes(
@@ -625,321 +598,10 @@ class Chain:
         t = Trajectory([n.tdstructure for n in self.nodes])
         return t
 
-    def is_elem_step(self) -> Tuple(bool, str, Union[list, Chain], int):
-        n_geom_opt_grad_calls = 0
-        chain = self.copy()
-        if len(self) <= 1:
-            return True, None, self.copy(), n_geom_opt_grad_calls
-
-        conditions = {}
-        is_concave, concavity_results, n_grad_calls = self._chain_is_concave()
-        n_geom_opt_grad_calls += n_grad_calls
-
-        conditions["concavity"] = is_concave
-        if not is_concave and isinstance(concavity_results, list):
-            return False, "minima", concavity_results, n_geom_opt_grad_calls
-
-        crude_irc_passed = self.do_crude_irc_check()
-        if crude_irc_passed:
-            return True, "maxima", self.copy(), n_geom_opt_grad_calls
-
-        r, p, resampled_chain, n_grad_calls = self._approx_irc()
-        n_geom_opt_grad_calls += n_grad_calls
-
-        irc_results = resampled_chain
-
-        if self.parameters.use_maxima_recyling:
-            # if chain[0].is_a_molecule and chain.parameters.skip_identical_graphs:
-            #     cases = [
-            #         r._is_connectivity_identical(chain[0]) and p._is_connectivity_identical(chain[-1])
-            #         ]
-            # else:
-            # cases = [
-            #     r.is_identical(chain[0]) and p.is_identical(chain[-1])
-            #     ]
-            cases = [r.is_identical(chain[0]) and p.is_identical(chain[-1])]
-
-            irc_succeeded = r.is_identical(chain[0]) and p.is_identical(chain[-1])
-            graphs_matched = r._is_connectivity_identical(
-                chain[0]
-            ) and p._is_connectivity_identical(chain[-1])
-            new_conformers_found = (not irc_succeeded) and graphs_matched
-            print(f"\n{irc_succeeded=} {graphs_matched=} {new_conformers_found=}\n")
-            # If we are checking a chain that looks like it has one elementary step, but the 'IRC' chec
-            # is not actually connecting the input endpoints, the resampled chain may no longer
-            # contain the actual R-->P reaction, since you could have replaced the P for a second R.
-            # The following block of code checks for this case and will simply continue NEB optimization
-            # as if we were working with an elementary step, since this chain is not near convergence.
-            bad_cases = [
-                r.is_identical(chain[0])
-                and p.is_identical(chain[0]),  # both collapsed to reactants
-                r.is_identical(chain[-1])
-                and p.is_identical(chain[-1]),  # both collapsed to products
-                r.is_identical(chain[-1])
-                and p.is_identical(chain[0]),  # somehow flipped
-            ]
-            if any(bad_cases) or new_conformers_found:
-                resampled_chain = chain
-                cases.append(True)
-
-        else:
-            cases = [
-                r.is_identical(chain[0]) and p.is_identical(chain[-1]),  # best case
-                r.is_identical(chain[0])
-                and p.is_identical(chain[0]),  # both collapsed to reactants
-                r.is_identical(chain[-1])
-                and p.is_identical(chain[-1]),  # both collapsed to products
-            ]
-
-        minimizing_gives_endpoints = any(cases)
-        conditions["irc"] = minimizing_gives_endpoints
-
-        # split_method, output_geometries = self._select_split_method(conditions)
-        elem_step = True if minimizing_gives_endpoints else False
-
-        # if it actually is an elementary step, use the resampled one from the minima
-        # in case we have a kinky chain that goes through multiple Rs and Ps. Maxima based
-        # split might hone in on the wrong maxima
-        if elem_step and isinstance(concavity_results, Chain):
-            return True, "minima", concavity_results, n_geom_opt_grad_calls
-
-        return elem_step, "maxima", irc_results, n_geom_opt_grad_calls
-
-    def _chain_is_concave(self):
-        n_grad_calls = 0
-        rxn_is_isomorphic = None
-        if self[0].is_a_molecule:
-            if self[0]._is_connectivity_identical(self[-1]):
-                rxn_is_isomorphic = True
-            else:
-                rxn_is_isomorphic = False
-
-        else:
-            rxn_is_isomorphic = False
-
-        ind_minima = _get_ind_minima(self)
-        minima_present = len(ind_minima) != 0
-        opt_results = []
-
-        opt_trajs = []
-
-        reuse_start_ind = 0
-        reuse_start_geom = self[0].copy()
-        reuse_end_ind = len(self)
-        reuse_end_geom = self[-1].copy()
-
-        print(f"\n{minima_present=}")
-        if minima_present:
-            minimas_is_r_or_p = []
-            try:
-                for i in ind_minima:
-                    # if self.parameters.use_maxima_recyling:
-                    #     opt_traj = self[i].do_geom_opt_trajectory()
-                    #     opt = self.parameters.node_class(opt_traj[-1])
-
-                    #     if rxn_is_isomorphic or not self.parameters.skip_identical_graphs:
-                    #         minima_is_r = opt.is_identical(self[0])
-                    #         minima_is_p = opt.is_identical(self[-1])
-                    #     else:
-                    #         minima_is_r = opt._is_connectivity_identical(self[0])
-                    #         minima_is_p = opt._is_connectivity_identical(self[-1])
-
-                    #     minimas_is_r_or_p.append(minima_is_r or minima_is_p)
-                    #     opt_trajs.append(opt_traj)
-                    #     if minima_is_r: # i.e. write the last instance where a minimum was R
-                    #         reuse_start_ind = i
-                    #         reuse_start_geom = opt
-                    #     elif minima_is_p and reuse_end_ind==-1: # i.e. only write the first instance where a minimum is P
-                    #         reuse_end_ind = i+1
-                    #         reuse_end_geom = opt
-
-                    #     opt_results.append(opt)
-
-                    # else:
-                    opt_traj = self[i].do_geom_opt_trajectory()
-                    n_grad_calls += len(opt_traj)
-                    opt = self.parameters.node_class(opt_traj[-1])
-                    opt_results.append(opt)
-                    minimas_is_r_or_p.append(
-                        opt.is_identical(self[0]) or opt.is_identical(self[-1])
-                    )
-            except Exception as e:
-                print(
-                    f"Error in geometry optimization: {e}. Pretending this is an elem step."
-                )
-                return True, self.copy(), n_grad_calls
-
-            # if all(minimas_is_r_or_p) and self.parameters.use_maxima_recyling:
-            #     r_half_traj = None
-            #     p_half_traj = None
-            #     reuse_chain = self.copy()
-            #     # print(f'\n\n{reuse_end_ind=} {reuse_start_ind=}')
-            #     if reuse_end_ind < reuse_start_ind:
-            #         # raise ValueError('Chain is very distorted. Has gone back and forth between Reactant and Products.\n')
-            #         print('Warning: Chain is very distorted. Has gone back and forth between Reactant and Products.\n.')
-            #         reuse_start_ind = 0
-            #         reuse_chain.nodes = self.nodes[reuse_start_ind:reuse_end_ind]
-            #         reuse_chain.nodes.append(reuse_end_geom)
-            #     else:
-            #         reuse_chain.nodes = self.nodes[reuse_start_ind:reuse_end_ind]
-            #         reuse_chain.nodes.insert(0, reuse_start_geom)
-            #         reuse_chain.nodes.append(reuse_end_geom)
-            #     # print(f"/n/nLEN OF SELF: {len(self)}// reuse start_ind: {reuse_start_ind} reuse_end: {reuse_end_ind}")
-            #     # resampled_chain = self.resample_chain(reuse_chain, n=len(self),
-            #                                         # raw_half1=r_half_traj, raw_half2=p_half_traj)
-            #     upsampled_traj = reuse_chain.to_trajectory().run_geodesic(nimages=len(self))
-            #     resampled_chain = Chain.from_traj(upsampled_traj, parameters=self.parameters.copy())
-
-            #     return True, resampled_chain, n_grad_calls
-            if all(minimas_is_r_or_p):  # and not self.parameters.use_maxima_recyling:
-                return True, self.copy(), n_grad_calls
-            else:
-                return False, opt_results, n_grad_calls
-
-        else:
-            return True, self.copy(), n_grad_calls
-
-    @staticmethod
-    def resample_chain(
-        chain,
-        n=None,
-        method=None,
-        basis=None,
-        kwds={},
-        raw_half1=None,
-        raw_half2=None,
-        parameters=None,
-    ):
-        n_grad_calls = 0
-        print(
-            f"\n Resampling chain with parameters: {chain.parameters} and TDproperties: {chain[0].tdstructure}\\\\\len of chain: {len(chain)} \\\\ requested n: {n}"
-        )
-        run_gi_on_total_chain = False
-        if n is None:
-            n = len(chain)
-        if parameters is None:
-            parameters = chain.parameters.copy()
-
-        tsg_ind = chain.energies.argmax()
-        if tsg_ind == len(chain) - 1 or tsg_ind == 0:
-            print("***Chain endpoint is a maximum. Returning chain back.")
-            if len(chain) == n:
-                return chain.copy(), n_grad_calls
-            else:
-                new_tr = chain.to_trajectory().run_geodesic(nimages=n)
-                new_chain = Chain.from_traj(new_tr, parameters=chain.parameters.copy())
-                return new_chain, n_grad_calls
-
-        candidate_r = chain[tsg_ind - 1]
-        candidate_p = chain[tsg_ind + 1]
-
-        if method and basis:
-            candidate_r.tdstructure.tc_model_method = method
-            candidate_r.tdstructure.tc_model_basis = basis
-            candidate_r.tdstructure.tc_kwds = kwds
-
-            candidate_p.tdstructure.tc_model_method = method
-            candidate_p.tdstructure.tc_model_basis = basis
-            candidate_p.tdstructure.tc_kwds = kwds
-
-        total_len = n
-        if is_even(total_len):
-            half1_len = total_len / 2
-            half2_len = (total_len / 2) - 1
-        else:
-            half1_len = total_len / 2
-            half2_len = total_len / 2
-
-        if raw_half1 is None:
-            raw_half1 = candidate_r.do_geom_opt_trajectory()
-            n_grad_calls += len(raw_half1)
-
-        raw_half1 = raw_half1.copy()
-        raw_half1.traj.reverse()
-        if len(raw_half1) == 1:
-            half1 = raw_half1
-            run_gi_on_total_chain = True
-        else:
-            half1 = raw_half1.run_geodesic(nimages=half1_len)
-
-        if raw_half2 is None:
-            raw_half2 = candidate_p.do_geom_opt_trajectory()
-            n_grad_calls += len(raw_half2)
-
-        raw_half2 = raw_half2.copy()
-        if len(raw_half2) == 1:
-            half2 = raw_half2
-            run_gi_on_total_chain = True
-        else:
-            half2 = raw_half2.run_geodesic(nimages=half2_len)
-
-        # joined = Trajectory(traj=half1.traj+[chain.get_ts_guess()]+half2.traj)
-        joined = Trajectory(traj=[half1[0]] + [chain.get_ts_guess()] + [half2[-1]])
-        joined.update_tc_parameters(candidate_r.tdstructure)
-        if run_gi_on_total_chain:
-            joined = joined.run_geodesic(nimages=n)
-
-        out_chain = Chain.from_traj(joined, parameters=parameters)
-        _ = out_chain.gradients  # calling it so gradients and energies are cached
-        #  print(f"Resampled chain energies: {out_chain.energies}")
-        return out_chain, n_grad_calls
-
     @property
-    def _chain_is_monotonic(self):
+    def energies_are_monotonic(self):
         arg_max = self.energies.argmax()
         return arg_max == len(self) - 1 or arg_max == 0
-
-    def _approx_irc(self, index=None):
-        n_grad_calls = 0
-        chain = self.copy()
-
-        if index is None:
-            arg_max = np.argmax(chain.energies)
-        else:
-            arg_max = index
-
-        # print(f">>>>>argmax: {arg_max}")
-
-        if (
-            arg_max == len(chain) - 1 or arg_max == 0
-        ):  # monotonically changing function,
-            return chain[0], chain[len(chain) - 1], chain, n_grad_calls
-
-        try:
-            if self.parameters.use_maxima_recyling:
-                resampled_chain, grad_calls_from_resampling = self.resample_chain(self)
-                n_grad_calls += grad_calls_from_resampling
-                r = resampled_chain[0]
-                p = resampled_chain[-1]
-
-            else:
-                candidate_r = chain[arg_max - 1]
-                candidate_p = chain[arg_max + 1]
-                r_traj = candidate_r.do_geom_opt_trajectory()
-                r = self.parameters.node_class(r_traj[-1])
-                n_grad_calls += len(r_traj)
-                # r = candidate_r.do_geometry_optimization()
-
-                p_traj = candidate_p.do_geom_opt_trajectory()
-                n_grad_calls += len(p_traj)
-                p = self.parameters.node_class(p_traj[-1])
-                tsg_ind = self.energies.argmax()
-
-                new_nodes = [r] + self.nodes[tsg_ind - 1 : tsg_ind + 2] + [p]
-                # new_nodes = [r]+self.nodes[1:-1]+[p]
-                resampled_chain = self.copy()
-                resampled_chain.nodes = new_nodes
-                for node in resampled_chain:
-                    node.converged = False
-
-        except Exception as e:
-            print(e)
-            print(
-                "Error in geometry optimization. Pretending this is elementary chain."
-            )
-            return chain[0], chain[len(chain) - 1], chain, n_grad_calls
-
-        return r, p, resampled_chain, n_grad_calls
 
     def _select_split_method(self, conditions: dict, irc_results, concavity_results):
         all_conditions_met = all([val for key, val in conditions.items()])
@@ -959,7 +621,8 @@ class Chain:
         grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
         grad_shape_path = fp.parent / Path(str(fp.stem) + "_grad_shapes.txt")
         np.savetxt(
-            grad_path, np.array([node.gradient for node in self.nodes]).flatten()
+            grad_path, np.array(
+                [node.gradient for node in self.nodes]).flatten()
         )
         np.savetxt(grad_shape_path, self.gradients.shape)
 
@@ -987,59 +650,10 @@ class Chain:
         eA = max(self.energies_kcalmol)
         return eA
 
-    def do_crude_irc_check(self: Chain, nsteps=5, slope_thresh=0.1):
-        if self._chain_is_monotonic:
-            return True
-        chain = self.copy()
-        arg_max = np.argmax(chain.energies)
-
-        r_passes_opt, r_traj = self.converges_to_an_endpoints(chain=chain, node_index=(arg_max - 1), direction=-1, slope_thresh=slope_thresh)
-        p_passes_opt, p_traj = self.converges_to_an_endpoints(chain=chain, node_index=(arg_max + 1), direction=+1, slope_thresh=slope_thresh)
-
-        r_passes = r_passes_opt and r_traj[-1]._is_connectivity_identical(self[0])
-        p_passes = p_passes_opt and p_traj[-1]._is_connectivity_identical(self[-1])
-        if r_passes and p_passes:
-            return True
-        else:
-            return False
-
-    def distances_to_refs(self, ref1: Node, ref2: Node, raw_node: Node):
-        dist_to_ref1 = np.linalg.norm(raw_node.coords - ref1.coords)
-        dist_to_ref2 = np.linalg.norm(raw_node.coords - ref2.coords)
-        return dist_to_ref1, dist_to_ref2
-
-    def converges_to_an_endpoints(self, chain, node_index, slope_thresh=0.01, direction=-1, max_grad_calls=50):
-        done = False
-        total_traj = [chain[node_index]]
-        while not done:
-            traj = steepest_descent(node=total_traj[-1], max_steps=5)
-            total_traj.extend(traj)
-
-            distances = [self.distances_to_refs(ref1=chain[0], ref2=chain[-1],
-                                                raw_node=n) for n in total_traj]
-
-            slopes_to_ref1 = distances[-1][0] - distances[0][0]
-            slopes_to_ref2 = distances[-1][1] - distances[0][1]
-
-            slope1_conv = abs(slopes_to_ref1) / slope_thresh > 1
-            slope2_conv = abs(slopes_to_ref2) / slope_thresh > 1
-
-            slopes_to_ref1, slopes_to_ref2
-
-            done = slope1_conv and slope2_conv
-            if len(total_traj)-1 >= max_grad_calls:
-                done = True
-        print(slopes_to_ref1, slopes_to_ref2)
-        print(f"did {len(total_traj)-1} geom calls")
-        if direction == -1:
-            return slopes_to_ref1 < 0 and slopes_to_ref2 > 0, total_traj
-        elif direction == 1:
-            return slopes_to_ref1 > 0 and slopes_to_ref2 < 0, total_traj
-
     def animate_chain_trajectory(
-                                chain_traj, min_y=-100, max_y=100,
-                                max_x=1.1, min_x=-0.1, norm_path_len=True
-                                ):
+        chain_traj, min_y=-100, max_y=100,
+        max_x=1.1, min_x=-0.1, norm_path_len=True
+    ):
 
         figsize = 5
         fig, ax = plt.subplots(figsize=(1.618 * figsize, figsize))
@@ -1060,5 +674,6 @@ class Chain:
             line.set_color("skyblue")
             return
 
-        ani = matplotlib.animation.FuncAnimation(fig, animate, frames=chain_traj)
+        ani = matplotlib.animation.FuncAnimation(
+            fig, animate, frames=chain_traj)
         return HTML(ani.to_jshtml())
