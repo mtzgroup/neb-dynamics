@@ -3,8 +3,7 @@ from __future__ import annotations
 import shutil
 import sys
 from dataclasses import dataclass, field
-from typing import Union, Tuple, List
-# from hashlib import new
+from typing import Union, Tuple
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -15,13 +14,11 @@ from openbabel import pybel
 from neb_dynamics.Chain import Chain
 from neb_dynamics.errors import (ElectronicStructureError,
                                  NoneConvergedException)
-from neb_dynamics.helper_functions import pairwise
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
-from neb_dynamics.Node import Node
 from nodes.node3d import Node3D
 from neb_dynamics.Optimizer import Optimizer
-from neb_dynamics.optimizers import ALS
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.convergence_helpers import chain_converged
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
@@ -240,9 +237,11 @@ class NEB:
             ind_ts_guess = np.argmax(new_chain.energies)
             ts_guess_grad = np.amax(
                 np.abs(new_chain.get_g_perps()[ind_ts_guess]))
-            chain_converged = self._chain_converged(
-                chain_prev=chain_previous, chain_new=new_chain)
-
+            converged = chain_converged(
+                chain_prev=chain_previous, chain_new=new_chain,
+                parameters=self.parameters)
+            if converged and self.parameters.v:
+                print("\nConverged!")
             # print([node._cached_energy for node in new_chain])
             # print([node.converged for node in new_chain])
 
@@ -275,7 +274,7 @@ class NEB:
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)
 
-            if chain_converged:
+            if converged:
                 if self.parameters.v:
                     print("\nChain converged!")
 
@@ -312,132 +311,6 @@ class NEB:
         new_chain = self.optimizer.optimize_step(
             chain=chain, chain_gradients=grad_step)
         return new_chain
-
-    def _copy_node_information_to_converged(self, new_chain, old_chain):
-        for new_node, old_node in zip(new_chain.nodes, old_chain.nodes):
-            if old_node.converged:
-                new_node._cached_energy = old_node._cached_energy
-                new_node._cached_gradient = old_node._cached_gradient
-
-    def _update_node_convergence(self, chain: Chain, indices: np.array, prev_chain: Chain) -> None:
-        for i, (node, prev_node) in enumerate(zip(chain, prev_chain)):
-            if i in indices:
-                if prev_node._cached_energy is not None and prev_node._cached_gradient is not None:
-                    node.converged = True
-                    node._cached_energy = prev_node._cached_energy
-                    node._cached_gradient = prev_node._cached_gradient
-            else:
-                node.converged = False
-
-    def _check_en_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-        differences = np.abs(chain_new.energies - chain_prev.energies)
-        indices_converged = np.where(differences <= self.parameters.en_thre)
-        return indices_converged[0], differences
-
-    def _check_grad_converged(self, chain: Chain) -> bool:
-        bools = []
-        max_grad_components = []
-        gradients = chain.gradients
-        for grad in gradients:
-            max_grad = np.amax(np.abs(grad))
-            max_grad_components.append(max_grad)
-            bools.append(max_grad < self.parameters.grad_thre)
-
-        return np.where(bools), max_grad_components
-
-    def _check_barrier_height_conv(self, chain_prev: Chain, chain_new: Chain):
-        prev_eA = chain_prev.get_eA_chain()
-        new_eA = chain_new.get_eA_chain()
-
-        delta_eA = np.abs(new_eA - prev_eA)
-        return delta_eA <= self.parameters.barrier_thre
-
-    def _check_rms_grad_converged(self, chain: Chain):
-
-        bools = []
-        rms_gperps = []
-
-        for rms_gp, rms_gradient in zip(chain.rms_gperps, chain.rms_gradients):
-            rms_gperps.append(rms_gp)
-
-            # the boolens are used exclusively for deciding to freeze nodes or not
-            # I want the spring forces to affect whether a node is frozen, but not
-            # to affect the total chain's convergence.
-            rms_grad_converged = rms_gradient <= self.parameters.rms_grad_thre
-            bools.append(rms_grad_converged)
-
-        return np.where(bools), rms_gperps
-
-    def _chain_converged(self, chain_prev: Chain, chain_new: Chain) -> bool:
-
-        rms_grad_conv_ind, rms_gperps = self._check_rms_grad_converged(
-            chain_new)
-        ts_triplet_gspring = chain_new.ts_triplet_gspring_infnorm
-        en_converged_indices, en_deltas = self._check_en_converged(
-            chain_prev=chain_prev, chain_new=chain_new
-        )
-
-        grad_conv_ind, max_grad_components = self._check_grad_converged(
-            chain=chain_new)
-
-        converged_nodes_indices = np.intersect1d(
-            en_converged_indices, rms_grad_conv_ind
-        )
-        # converged_nodes_indices = np.intersect1d(converged_nodes_indices, grad_conv_ind)
-        ind_ts_node = chain_new.energies.argmax()
-        # never freeze TS node
-        converged_nodes_indices = converged_nodes_indices[converged_nodes_indices != ind_ts_node]
-
-        if chain_new.parameters.node_freezing:
-            self._update_node_convergence(
-                chain=chain_new, indices=converged_nodes_indices, prev_chain=chain_prev)
-            self._copy_node_information_to_converged(
-                new_chain=chain_new, old_chain=chain_prev)
-
-        if self.parameters.v > 1:
-            print("\n")
-            [
-                print(
-                    f"\t\tnode{i} | ∆E : {en_deltas[i]} | RMS G_perp: {rms_gperps[i]} | Max(Grad components): {max_grad_components[i]} | Converged? : {chain_new.nodes[i].converged}"
-                )
-                for i in range(len(chain_new))
-            ]
-        if self.parameters.v > 1:
-            print(f"\t{len(converged_nodes_indices)} nodes have converged")
-
-        barrier_height_converged = self._check_barrier_height_conv(
-            chain_prev=chain_prev, chain_new=chain_new)
-        ind_ts_guess = np.argmax(chain_new.energies)
-        ts_guess = chain_new[ind_ts_guess]
-        ts_guess_grad = np.amax(np.abs(chain_new.get_g_perps()[ind_ts_guess]))
-
-        criteria_converged = [
-            max(rms_gperps) <= self.parameters.max_rms_grad_thre,
-            # max(max_grad_components) <= self.parameters.grad_thre,
-            sum(rms_gperps)/len(chain_new) <= self.parameters.rms_grad_thre,
-            ts_guess_grad <= self.parameters.ts_grad_thre,
-            ts_triplet_gspring <= self.parameters.ts_spring_thre,
-            barrier_height_converged]
-        # max(en_deltas) <= self.parameters.en_thre,
-        # return len(converged_nodes_indices) == len(chain_new)
-        criteria_names = ['Max(RMS_GPERP)', 'AVG_RMS_GPERP', 'TS_GRAD',
-                          'TS_SPRINGS', 'BARRIER_THRE']  # , 'ENE_DELTAS']
-
-        converged = sum(criteria_converged) >= 5
-        if converged and self.parameters.v:
-            print(
-                f"\nConverged on conditions: {[criteria_names[ind] for ind, b in enumerate(criteria_converged) if b]}")
-
-        return converged
-
-    def _check_dot_product_converged(self, chain: Chain) -> bool:
-        dps = []
-        for prev_node, current_node, next_node in chain.iter_triplets():
-            vec1 = current_node.coords - prev_node.coords
-            vec2 = next_node.coords - current_node.coords
-            dps.append(current_node.dot_function(vec1, vec2) > 0)
-
-        return all(dps)
 
     def write_to_disk(self, fp: Path, write_history=True):
         # write output chain
@@ -598,8 +471,6 @@ class NEB:
         avg_rms_g = []
         barr_height = []
         ts_gperp = []
-        inf_norm_g = []
-        inf_norm_gperp = []
 
         for ind in range(1, len(ct)):
             avg_rms_g.append(
@@ -612,9 +483,6 @@ class NEB:
             ts_node_ind = ct[ind].energies.argmax()
             ts_node_gperp = np.max(ct[ind].get_g_perps()[ts_node_ind])
             ts_gperp.append(ts_node_gperp)
-            inf_norm_val_g = inf_norm_g.append(np.max(ct[ind].gradients))
-            inf_norm_val_gperp = inf_norm_gperp.append(
-                np.max(ct[ind].get_g_perps()))
 
         if do_indiv:
             f, ax = plt.subplots()

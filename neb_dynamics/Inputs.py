@@ -117,12 +117,14 @@ class ChainInputs:
     def copy(self):
         return ChainInputs(**self.__dict__)
 
+
 @dataclass
 class GIInputs:
     nimages: int = 15
     friction: float = 0.01
     nudge: float = 0.001
     extra_kwds: dict = field(default_factory=dict)
+
 
 @dataclass
 class NetworkInputs:
