@@ -6,12 +6,17 @@
          <changefreq>daily</changefreq>
     </url>
     <url>
-         <loc>https://mtzgroup.github.io/neb-dynamics/colton/</loc>
+         <loc>https://mtzgroup.github.io/neb-dynamics/Tutorial/</loc>
          <lastmod>2024-07-16</lastmod>
          <changefreq>daily</changefreq>
     </url>
     <url>
          <loc>https://mtzgroup.github.io/neb-dynamics/elementarystep/</loc>
+         <lastmod>2024-07-16</lastmod>
+         <changefreq>daily</changefreq>
+    </url>
+    <url>
+         <loc>https://mtzgroup.github.io/neb-dynamics/inputs/</loc>
          <lastmod>2024-07-16</lastmod>
          <changefreq>daily</changefreq>
     </url>

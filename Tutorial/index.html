@@ -1,0 +1,966 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Jan Estrada Pabón">
+      
+      
+        <link rel="canonical" href="https://mtzgroup.github.io/neb-dynamics/Tutorial/">
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../elementarystep/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.0, mkdocs-material-9.5.29">
+    
+    
+      
+        <title>Tutorial - neb-dynamics</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.76a95c52.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tutorial" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="neb-dynamics" class="md-header__button md-logo" aria-label="neb-dynamics" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            neb-dynamics
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tutorial
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="orange"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var media,input,key,value,palette=__md_get("__palette");if(palette&&palette.color){"(prefers-color-scheme)"===palette.color.media&&(media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']"),palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent"));for([key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mtzgroup/neb-dynamics" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 512"><!--! Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M186.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1zM480 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2zm-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3zm-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="neb-dynamics" class="md-nav__button md-logo" aria-label="neb-dynamics" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+
+    </a>
+    neb-dynamics
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mtzgroup/neb-dynamics" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 512"><!--! Font Awesome Free 6.5.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M186.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1zM480 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2zm-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3zm-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Neb Dynamics
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Tutorial
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Tutorial
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#running-neb-using-terachem-in-chemcloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running NEB using TeraChem in ChemCloud
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../elementarystep/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Elementarystep
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inputs/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Inputs
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../neb/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Neb
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#running-neb-using-terachem-in-chemcloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      Running NEB using TeraChem in ChemCloud
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="tutorial">Tutorial<a class="headerlink" href="#tutorial" title="Permanent link">🔗</a></h1>
+<p>This tutorial references <a href="https://mtzgroup.github.io/neb-dynamics/inputs">ChainInputs</a>, <a href="inputs">NEBInputs</a>,<a href="https://mtzgroup.github.io/neb-dynamics/chain/">Chain</a>, <a href="https://mtzgroup.github.io/neb-dynamics/trajectory/">Trajectory</a>, <a href="https://mtzgroup.github.io/neb-dynamics/tdstructure/">TDStructure</a>, <a href="https://mtzgroup.github.io/neb-dynamics/neb/">NEB</a> and <a href="https://mtzgroup.github.io/neb-dynamics/vpo">VelocityProjectedOptimizer</a></p>
+<h2 id="running-neb-using-terachem-in-chemcloud">Running NEB using TeraChem in ChemCloud<a class="headerlink" href="#running-neb-using-terachem-in-chemcloud" title="Permanent link">🔗</a></h2>
+<div class="highlight"><pre><span></span><code><span class="c1"># Running our first NEB calculation. Naturally, we are going to calculate a pi-bond torsion.</span>
+
+<span class="c1"># # 1. Create initial guess</span>
+<span class="c1">#</span>
+<span class="c1"># ### We will create endpoints as we did the previous tutorials.</span>
+
+<span class="kn">from</span> <span class="nn">neb_dynamics.tdstructure</span> <span class="kn">import</span> <span class="n">TDStructure</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.trajectory</span> <span class="kn">import</span> <span class="n">Trajectory</span>
+
+<span class="n">start</span> <span class="o">=</span> <span class="n">TDStructure</span><span class="o">.</span><span class="n">from_smiles</span><span class="p">(</span><span class="s2">&quot;C=C&quot;</span><span class="p">)</span>
+<span class="n">end</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+<span class="c1"># we can also load in a structure from a file path with:</span>
+<span class="c1"># start = TDStructure.from_xyz(&quot;/path/to/file.xyz&quot;)</span>
+<span class="n">end_coords</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">coords</span>
+<span class="n">end_coords_swapped</span> <span class="o">=</span> <span class="n">end_coords</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">],:]</span> <span class="c1"># We have swapped the indices of two hydrogens</span>
+<span class="n">end</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">update_coords</span><span class="p">(</span><span class="n">end_coords_swapped</span><span class="p">)</span>
+<span class="c1"># we can also load in a structure from a file path with:</span>
+<span class="c1"># end = TDStructure.from_xyz(&quot;/path/to/file.xyz&quot;)</span>
+
+<span class="c1"># ### Now we need to optimize them to our desired level of theory</span>
+
+<span class="n">start_opt</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">xtb_geom_optimization</span><span class="p">()</span>
+<span class="c1"># start_opt = start.tc_geom_optimization() # use this one if you want to run TeraChem in ChemCloud</span>
+<span class="n">end_opt</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">xtb_geom_optimization</span><span class="p">()</span>
+<span class="c1"># end_opt = end.tc_geom_optimization() # use this one if you want to run TeraChem in ChemCloud</span>
+
+<span class="c1"># ### Now we need to interpolate between our endpoints</span>
+
+<span class="n">tr</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="p">([</span><span class="n">start_opt</span><span class="p">,</span> <span class="n">end_opt</span><span class="p">])</span><span class="o">.</span><span class="n">run_geodesic</span><span class="p">(</span><span class="n">nimages</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+<span class="c1"># ### Finally, let&#39;s create our Chain object</span>
+
+<span class="kn">from</span> <span class="nn">neb_dynamics.Chain</span> <span class="kn">import</span> <span class="n">Chain</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.Inputs</span> <span class="kn">import</span> <span class="n">ChainInputs</span>
+
+<span class="n">cni</span> <span class="o">=</span> <span class="n">ChainInputs</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">delta_k</span><span class="o">=</span><span class="mf">0.09</span><span class="p">)</span>
+<span class="n">initial_chain</span> <span class="o">=</span> <span class="n">Chain</span><span class="o">.</span><span class="n">from_traj</span><span class="p">(</span><span class="n">tr</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">cni</span><span class="p">)</span>
+
+<span class="c1"># # 2. Let&#39;s set up our NEB optimization</span>
+
+<span class="kn">from</span> <span class="nn">neb_dynamics.NEB</span> <span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.Inputs</span> <span class="kn">import</span> <span class="n">NEBInputs</span>
+
+<span class="c1"># NEB</span>
+
+<span class="c1"># The NEB object takes in 3 parameters:</span>
+<span class="c1"># * initial_chain: our initial guess chain object to optimize</span>
+<span class="c1"># * parameters: an NEBInputs object containing the parameters for NEB optimization and convergence</span>
+<span class="c1"># * optimizer: the optimizer to use. We suggest you use `VelocityProjectedOptimizer` from</span>
+<span class="c1">#             `neb_dynamics.optimizer.VPO`</span>
+
+<span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">0.0001</span><span class="p">,</span> <span class="n">ts_spring_thre</span><span class="o">=</span><span class="mf">0.0001</span><span class="p">,</span> <span class="n">climb</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="kn">from</span> <span class="nn">neb_dynamics.optimizers.VPO</span> <span class="kn">import</span> <span class="n">VelocityProjectedOptimizer</span>
+
+<span class="n">opt</span> <span class="o">=</span> <span class="n">VelocityProjectedOptimizer</span><span class="p">(</span><span class="n">timestep</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
+
+<span class="n">n</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">initial_chain</span><span class="o">=</span><span class="n">initial_chain</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">=</span><span class="n">opt</span><span class="p">)</span>
+
+<span class="n">_</span> <span class="o">=</span> <span class="n">n</span><span class="o">.</span><span class="n">optimize_chain</span><span class="p">()</span>
+
+<span class="n">n</span><span class="o">.</span><span class="n">plot_opt_history</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">optimized</span><span class="o">.</span><span class="n">get_ts_guess</span><span class="p">()</span><span class="o">.</span><span class="n">coords</span><span class="p">)</span>
+</code></pre></div>
+<!-- ```python
+import sys
+from argparse import ArgumentParser
+from pathlib import Path
+
+from nodes.node3d import Node3D
+
+from neb_dynamics.Chain import Chain
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+from neb_dynamics.helper_functions import create_friction_optimal_gi
+from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
+from neb_dynamics.Janitor import Janitor
+from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.NEB import NEB, NoneConvergedException
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.nodes.node3d_water import Node3D_Water
+# from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.trajectory import Trajectory
+
+
+def read_single_arguments():
+    """
+    Command line reader
+    """
+    description_string = "will take path to an xyz file of geodesic \
+        trajectory and relax it using XTB neb"
+    parser = ArgumentParser(description=description_string)
+
+    parser.add_argument(
+        "-c", "--charge", dest="c", type=int, default=0,
+        help="total charge of system"
+    )
+
+    parser.add_argument(
+        "-nimg",
+        "--nimages",
+        dest="nimg",
+        type=int,
+        default=8,
+        help="number of images in the chain",
+    )
+
+    parser.add_argument(
+        "-s",
+        "--spinmult",
+        dest="s",
+        type=int,
+        default=1,
+        help="total spinmultiplicity of system",
+    )
+
+    parser.add_argument(
+        "-dc",
+        "--do_cleanup",
+        dest="dc",
+        type=int,
+        default=0,
+        help="whether to do conformer-conformer NEBs at the end",
+    )
+
+    parser.add_argument(
+        "-nc",
+        "--node_class",
+        dest="nc",
+        type=str,
+        default="node3d",
+        help="what node type to use. options are: node3d, \
+            node3d_tc, node3d_tc_local, node3d_tcpb",
+    )
+
+    parser.add_argument(
+        "-st",
+        "--start",
+        dest="st",
+        required=True,
+        type=str,
+        help="path to the first xyz structure",
+    )
+
+    parser.add_argument(
+        "-en",
+        "--end",
+        dest="en",
+        required=True,
+        type=str,
+        help="path to the final xyz structure",
+    )
+
+    parser.add_argument(
+        "-tol",
+        "--tolerance",
+        dest="tol",
+        required=True,
+        type=float,
+        help="convergence threshold in H/Bohr^2",
+        default=0.002,
+    )
+
+    parser.add_argument(
+        "-sig",
+        "--skip_identical_graphs",
+        dest="sig",
+        required=True,
+        type=int,
+        help="whether to skip optimizations for identical graph endpoints",
+        default=1,
+    )
+
+    parser.add_argument(
+        "-min_ends",
+        "--minimize_endpoints",
+        dest="min_ends",
+        required=True,
+        type=int,
+        help="whether to minimize the endpoints before starting",
+        default=False,
+    )
+
+    parser.add_argument(
+        "-name",
+        "--file_name",
+        dest="name",
+        required=False,
+        type=str,
+        help="name of folder to output to || defaults to react_msmep",
+        default=None,
+    )
+
+    parser.add_argument(
+        "-climb",
+        "--do_climb",
+        dest="climb",
+        required=False,
+        type=int,
+        help="whether to use cNEB",
+        default=0
+    )
+
+    parser.add_argument(
+        "-mr",
+        "--maxima_recyling",
+        dest="mr",
+        required=False,
+        type=int,
+        help="whether to use maxima recyling",
+        default=0
+    )
+
+    parser.add_argument(
+        "-es_ft",
+        "--early_stop_ft",
+        dest="es_ft",
+        required=False,
+        type=float,
+        help="force threshold for early stopping",
+        default=0.03
+    )
+
+    parser.add_argument(
+        "-es_rms",
+        "--early_stop_rms",
+        dest="es_rms",
+        required=False,
+        type=float,
+        help="chain RMS threshold for early stopping",
+        default=1
+    )
+
+    parser.add_argument(
+        "-es_ss",
+        "--early_stop_still_steps",
+        dest="es_ss",
+        required=False,
+        type=float,
+        help="number of still steps until an early stop check",
+        default=500
+    )
+
+    parser.add_argument(
+        "-preopt",
+        "--preopt_with_xtb",
+        dest="preopt",
+        required=True,
+        type=int,
+        help="whether to preconverge chains using xtb",
+        default=1
+    )
+
+    parser.add_argument(
+        "-met",
+        "--method",
+        dest="method",
+        required=False,
+        type=str,
+        help="what type of NEB to use. options: [asneb, neb]",
+        default='asneb'
+    )
+
+    parser.add_argument(
+        "-delk",
+        "--delta_k",
+        dest="delk",
+        required=False,
+        type=float,
+        help="parameter for the delta k",
+        default=0.09
+    )
+
+    parser.add_argument(
+        "-tcin",
+        "--tc_input",
+        dest="tcin",
+        required=False,
+        type=str,
+        help="file path to terachem input file.",
+        default=None
+    )
+
+    return parser.parse_args()
+
+
+def main():
+    args = read_single_arguments()
+
+    nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC,
+             'node3d_tc_local': Node3D_TC_Local,
+             # 'node3d_tcpb': Node3D_TC_TCPB,
+             'node3d_water': Node3D_Water}
+    # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
+    nc = nodes[args.nc]
+
+    start = TDStructure.from_xyz(args.st, tot_charge=args.c,
+                                 tot_spinmult=args.s)
+    end = TDStructure.from_xyz(args.en, tot_charge=args.c,
+                               tot_spinmult=args.s)
+
+    if args.nc != "node3d" and args.nc != "node3d_water":
+        if args.tcin:
+            start.update_tc_parameters_from_inpfile(args.tcin)
+            end.update_tc_parameters_from_inpfile(args.tcin)
+        else:
+            method = "uwb97xd3"  # terachem
+            basis = "def2-svp"
+            kwds = {'gpus': 1}
+
+            start.tc_model_method = method
+            end.tc_model_method = method
+
+            start.tc_model_basis = basis
+            end.tc_model_basis = basis
+
+            start.tc_kwds = kwds
+            end.tc_kwds = kwds
+
+        if int(args.min_ends):
+            start = start.tc_local_geom_optimization()
+            end = end.tc_local_geom_optimization()
+
+    else:
+        if int(args.min_ends):
+            start = start.xtb_geom_optimization()
+            end = end.xtb_geom_optimization()
+
+    traj = Trajectory([start, end]).run_geodesic(nimages=args.nimg)
+
+    if args.nc == "node3d_tc_local":
+        do_parallel = False
+    else:
+        do_parallel = True
+
+    tol = args.tol
+
+    cni = ChainInputs(
+        k=0.1,
+        delta_k=args.delk,
+        node_class=nc,
+        friction_optimal_gi=True,
+        use_maxima_recyling=bool(args.mr),
+        do_parallel=do_parallel,
+        node_freezing=True,
+        skip_identical_graphs=bool(args.sig)
+    )
+
+    optimizer = VelocityProjectedOptimizer(timestep=0.5, activation_tol=0.1)
+
+    nbi = NEBInputs(
+        tol=tol * BOHR_TO_ANGSTROMS,
+        barrier_thre=0.1,  # kcalmol,
+        climb=bool(args.climb),
+
+        rms_grad_thre=tol * BOHR_TO_ANGSTROMS,
+        max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS*2.5,
+        ts_grad_thre=tol * BOHR_TO_ANGSTROMS*2.5,
+        ts_spring_thre=tol * BOHR_TO_ANGSTROMS*1.5,
+
+        v=1,
+        max_steps=500,
+
+        early_stop_chain_rms_thre=args.es_rms,
+        early_stop_force_thre=args.es_ft * BOHR_TO_ANGSTROMS,
+        early_stop_still_steps_thre=args.es_ss,
+        preopt_with_xtb=bool(int(args.preopt))
+    )
+    print(f"{args.preopt=}")
+    print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
+    sys.stdout.flush()
+
+    gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
+    traj = create_friction_optimal_gi(traj, gii)
+    print(traj[0].spinmult)
+    chain = Chain.from_traj(traj=traj, parameters=cni)
+
+    if args.method == 'asneb':
+        m = MSMEP(
+            neb_inputs=nbi,
+            chain_inputs=cni,
+            gi_inputs=gii,
+            optimizer=optimizer,
+        )
+
+        history, out_chain = m.find_mep_multistep(chain)
+
+        leaves_nebs = [
+            obj for obj in history.get_optimization_history() if obj
+        ]
+        tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
+        geom_grad_calls = sum([
+            obj.geom_grad_calls_made for obj in leaves_nebs]
+        )
+        print(f">>> Made {tot_grad_calls} gradient calls total.")
+        print(f"<<< Made {geom_grad_calls} gradient for geometry\
+               optimizations.")
+        fp = Path(args.st)
+        data_dir = fp.parent
+
+        if args.name:
+            foldername = data_dir / args.name
+            filename = data_dir / (args.name + ".xyz")
+
+        else:
+            foldername = data_dir / f"{fp.stem}_msmep"
+            filename = data_dir / f"{fp.stem}_msmep.xyz"
+
+        out_chain.write_to_disk(filename)
+        history.write_to_disk(foldername)
+
+        if args.dc:
+            op = data_dir / f"{filename.stem}_cleanups"
+            cni.skip_identical_graphs = False
+            m = MSMEP(
+                neb_inputs=nbi,
+                chain_inputs=cni,
+                gi_inputs=gii,
+                optimizer=optimizer,
+            )
+
+            j = Janitor(history_object=history, out_path=op, msmep_object=m)
+
+            clean_msmep = j.create_clean_msmep()
+
+            if clean_msmep:
+                clean_msmep.write_to_disk(
+                    filename.parent / (str(filename.stem)+"_clean.xyz")
+                )
+                j.write_to_disk(op)
+
+            tot_grad_calls = j.get_n_grad_calls()
+            print(f">>> Made {tot_grad_calls} gradient calls in cleanup.")
+
+    elif args.method == 'neb':
+        n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+        fp = Path(args.st)
+        data_dir = fp.parent
+        if args.name:
+            filename = data_dir / (args.name + "_neb.xyz")
+
+        else:
+            filename = data_dir / f"{fp.stem}_neb.xyz"
+
+        try:
+            n.optimize_chain()
+
+            n.write_to_disk(data_dir/f"{filename}", write_history=True)
+        except NoneConvergedException as e:
+            e.obj.write_to_disk(data_dir/f"{filename}", write_history=True)
+
+        tot_grad_calls = n.grad_calls_made
+        print(f">>> Made {tot_grad_calls} gradient calls total.")
+
+    else:
+        raise ValueError("Incorrect input method. Use 'asneb' or 'neb'")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+::: neb_dynamics.Chain.Chain -->
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["search.suggest", "search.highlight", "navigation.instant", "navigation.expand"], "search": "../assets/javascripts/workers/search.b8dbb3d2.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.fe8b6f2b.min.js"></script>
+      
+    
+  </body>
+</html>

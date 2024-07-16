@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://mtzgroup.github.io/neb-dynamics/neb/">
       
       
-        <link rel="prev" href="../elementarystep/">
+        <link rel="prev" href="../inputs/">
       
       
       
@@ -263,11 +263,11 @@
   
   
     <li class="md-nav__item">
-      <a href="../colton/" class="md-nav__link">
+      <a href="../Tutorial/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
-    Colton
+    Tutorial
   </span>
   
 
@@ -288,6 +288,26 @@
   
   <span class="md-ellipsis">
     Elementarystep
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inputs/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Inputs
   </span>
   
 
@@ -974,9 +994,7 @@ Main functions to use are:
 <span class="normal">533</span>
 <span class="normal">534</span>
 <span class="normal">535</span>
-<span class="normal">536</span>
-<span class="normal">537</span>
-<span class="normal">538</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="normal">536</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
 <span class="k">class</span> <span class="nc">NEB</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Class for running, storing, and visualizing nudged elastic band minimizations.</span>
@@ -1052,8 +1070,6 @@ Main functions to use are:
 <span class="sd">        values in order to decide whether the expensive minimization of</span>
 <span class="sd">        the chain should be done.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="c1"># max_grad_val = chain.get_maximum_grad_magnitude()</span>
-        <span class="c1"># max_grad_val = np.linalg.norm(chain.get_g_perps())</span>
         <span class="n">ind_ts_guess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">chain</span><span class="o">.</span><span class="n">energies</span><span class="p">)</span>
         <span class="n">ts_guess_grad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">amax</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">chain</span><span class="o">.</span><span class="n">get_g_perps</span><span class="p">()[</span><span class="n">ind_ts_guess</span><span class="p">]))</span>
 
@@ -1548,7 +1564,9 @@ contains the history of the chains minimized. Once it is completed, you can use
 
             <details class="quote">
               <summary>Source code in <code>neb_dynamics/NEB.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">169</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
 <span class="normal">170</span>
 <span class="normal">171</span>
 <span class="normal">172</span>
@@ -1647,9 +1665,7 @@ contains the history of the chains minimized. Once it is completed, you can use
 <span class="normal">265</span>
 <span class="normal">266</span>
 <span class="normal">267</span>
-<span class="normal">268</span>
-<span class="normal">269</span>
-<span class="normal">270</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">optimize_chain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ElemStepResults</span><span class="p">:</span>
+<span class="normal">268</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="k">def</span> <span class="nf">optimize_chain</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ElemStepResults</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Main function. After an NEB object has been created, running this function will</span>
 <span class="sd">    minimize the chain and return the elementary step results from the final minimized chain.</span>
@@ -1785,7 +1801,7 @@ contains the history of the chains minimized. Once it is completed, you can use
           <tr class="doc-section-item">
             <td><code>chain</code></td>
             <td>
-                  <code><a class="autorefs autorefs-internal" title="neb_dynamics.Chain.Chain" href="../colton/#neb_dynamics.Chain.Chain">Chain</a></code>
+                  <code><span title="neb_dynamics.Chain.Chain">Chain</span></code>
             </td>
             <td>
               <div class="doc-md-description">
