@@ -16,7 +16,7 @@
         <link rel="prev" href="..">
       
       
-        <link rel="next" href="../neb/">
+        <link rel="next" href="../elementarystep/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -76,6 +76,11 @@
     <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
     <label class="md-overlay" for="__drawer"></label>
     <div data-md-component="skip">
+      
+        
+        <a href="#colton" class="md-skip">
+          Skip to content
+        </a>
       
     </div>
     <div data-md-component="announce">
@@ -266,6 +271,19 @@
       <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
       
       
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Colton
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
       
       <a href="./" class="md-nav__link md-nav__link--active">
         
@@ -277,6 +295,54 @@
 
       </a>
       
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#neb_dynamics.Chain.Chain" class="md-nav__link">
+    <span class="md-ellipsis">
+      Chain
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../elementarystep/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Elementarystep
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -318,6 +384,25 @@
   
   
   
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#neb_dynamics.Chain.Chain" class="md-nav__link">
+    <span class="md-ellipsis">
+      Chain
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
   
 </nav>
                   </div>
@@ -335,9 +420,1744 @@
   
 
 
-  <h1>Colton</h1>
+<h1 id="colton">Colton<a class="headerlink" href="#colton" title="Permanent link">🔗</a></h1>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">from</span> <span class="nn">argparse</span> <span class="kn">import</span> <span class="n">ArgumentParser</span>
+<span class="kn">from</span> <span class="nn">pathlib</span> <span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span> <span class="nn">nodes.node3d</span> <span class="kn">import</span> <span class="n">Node3D</span>
+
+<span class="kn">from</span> <span class="nn">neb_dynamics.Chain</span> <span class="kn">import</span> <span class="n">Chain</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.constants</span> <span class="kn">import</span> <span class="n">BOHR_TO_ANGSTROMS</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.helper_functions</span> <span class="kn">import</span> <span class="n">create_friction_optimal_gi</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.Inputs</span> <span class="kn">import</span> <span class="n">ChainInputs</span><span class="p">,</span> <span class="n">GIInputs</span><span class="p">,</span> <span class="n">NEBInputs</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.Janitor</span> <span class="kn">import</span> <span class="n">Janitor</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.MSMEP</span> <span class="kn">import</span> <span class="n">MSMEP</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.NEB</span> <span class="kn">import</span> <span class="n">NEB</span><span class="p">,</span> <span class="n">NoneConvergedException</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.nodes.Node3D_TC</span> <span class="kn">import</span> <span class="n">Node3D_TC</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.nodes.Node3D_TC_Local</span> <span class="kn">import</span> <span class="n">Node3D_TC_Local</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.nodes.node3d_water</span> <span class="kn">import</span> <span class="n">Node3D_Water</span>
+<span class="c1"># from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.optimizers.VPO</span> <span class="kn">import</span> <span class="n">VelocityProjectedOptimizer</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.tdstructure</span> <span class="kn">import</span> <span class="n">TDStructure</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.trajectory</span> <span class="kn">import</span> <span class="n">Trajectory</span>
 
 
+<span class="k">def</span> <span class="nf">read_single_arguments</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Command line reader</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">description_string</span> <span class="o">=</span> <span class="s2">&quot;will take path to an xyz file of geodesic </span><span class="se">\</span>
+<span class="s2">        trajectory and relax it using XTB neb&quot;</span>
+    <span class="n">parser</span> <span class="o">=</span> <span class="n">ArgumentParser</span><span class="p">(</span><span class="n">description</span><span class="o">=</span><span class="n">description_string</span><span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-c&quot;</span><span class="p">,</span> <span class="s2">&quot;--charge&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;c&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;total charge of system&quot;</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-nimg&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--nimages&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;nimg&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">8</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;number of images in the chain&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-s&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--spinmult&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;s&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;total spinmultiplicity of system&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-dc&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--do_cleanup&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;dc&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;whether to do conformer-conformer NEBs at the end&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-nc&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--node_class&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;nc&quot;</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s2">&quot;node3d&quot;</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;what node type to use. options are: node3d, </span><span class="se">\</span>
+<span class="s2">            node3d_tc, node3d_tc_local, node3d_tcpb&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-st&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--start&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;st&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;path to the first xyz structure&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-en&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--end&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;en&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;path to the final xyz structure&quot;</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-tol&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--tolerance&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;tol&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;convergence threshold in H/Bohr^2&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.002</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-sig&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--skip_identical_graphs&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;sig&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;whether to skip optimizations for identical graph endpoints&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-min_ends&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--minimize_endpoints&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;min_ends&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;whether to minimize the endpoints before starting&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-name&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--file_name&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;name&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;name of folder to output to || defaults to react_msmep&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-climb&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--do_climb&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;climb&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;whether to use cNEB&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">0</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-mr&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--maxima_recyling&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;mr&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;whether to use maxima recyling&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">0</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-es_ft&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--early_stop_ft&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;es_ft&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;force threshold for early stopping&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.03</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-es_rms&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--early_stop_rms&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;es_rms&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;chain RMS threshold for early stopping&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-es_ss&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--early_stop_still_steps&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;es_ss&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;number of still steps until an early stop check&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">500</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-preopt&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--preopt_with_xtb&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;preopt&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;whether to preconverge chains using xtb&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mi">1</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-met&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--method&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;method&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;what type of NEB to use. options: [asneb, neb]&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="s1">&#39;asneb&#39;</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-delk&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--delta_k&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;delk&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">float</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;parameter for the delta k&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">0.09</span>
+    <span class="p">)</span>
+
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span>
+        <span class="s2">&quot;-tcin&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;--tc_input&quot;</span><span class="p">,</span>
+        <span class="n">dest</span><span class="o">=</span><span class="s2">&quot;tcin&quot;</span><span class="p">,</span>
+        <span class="n">required</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+        <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span>
+        <span class="n">help</span><span class="o">=</span><span class="s2">&quot;file path to terachem input file.&quot;</span><span class="p">,</span>
+        <span class="n">default</span><span class="o">=</span><span class="kc">None</span>
+    <span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">read_single_arguments</span><span class="p">()</span>
+
+    <span class="n">nodes</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;node3d&#39;</span><span class="p">:</span> <span class="n">Node3D</span><span class="p">,</span> <span class="s1">&#39;node3d_tc&#39;</span><span class="p">:</span> <span class="n">Node3D_TC</span><span class="p">,</span>
+             <span class="s1">&#39;node3d_tc_local&#39;</span><span class="p">:</span> <span class="n">Node3D_TC_Local</span><span class="p">,</span>
+             <span class="c1"># &#39;node3d_tcpb&#39;: Node3D_TC_TCPB,</span>
+             <span class="s1">&#39;node3d_water&#39;</span><span class="p">:</span> <span class="n">Node3D_Water</span><span class="p">}</span>
+    <span class="c1"># nodes = {&quot;node3d&quot;: Node3D, &quot;node3d_tc&quot;: Node3D_TC}</span>
+    <span class="n">nc</span> <span class="o">=</span> <span class="n">nodes</span><span class="p">[</span><span class="n">args</span><span class="o">.</span><span class="n">nc</span><span class="p">]</span>
+
+    <span class="n">start</span> <span class="o">=</span> <span class="n">TDStructure</span><span class="o">.</span><span class="n">from_xyz</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">st</span><span class="p">,</span> <span class="n">tot_charge</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">c</span><span class="p">,</span>
+                                 <span class="n">tot_spinmult</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+    <span class="n">end</span> <span class="o">=</span> <span class="n">TDStructure</span><span class="o">.</span><span class="n">from_xyz</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">en</span><span class="p">,</span> <span class="n">tot_charge</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">c</span><span class="p">,</span>
+                               <span class="n">tot_spinmult</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">s</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">nc</span> <span class="o">!=</span> <span class="s2">&quot;node3d&quot;</span> <span class="ow">and</span> <span class="n">args</span><span class="o">.</span><span class="n">nc</span> <span class="o">!=</span> <span class="s2">&quot;node3d_water&quot;</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">tcin</span><span class="p">:</span>
+            <span class="n">start</span><span class="o">.</span><span class="n">update_tc_parameters_from_inpfile</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">tcin</span><span class="p">)</span>
+            <span class="n">end</span><span class="o">.</span><span class="n">update_tc_parameters_from_inpfile</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">tcin</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">method</span> <span class="o">=</span> <span class="s2">&quot;uwb97xd3&quot;</span>  <span class="c1"># terachem</span>
+            <span class="n">basis</span> <span class="o">=</span> <span class="s2">&quot;def2-svp&quot;</span>
+            <span class="n">kwds</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;gpus&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">}</span>
+
+            <span class="n">start</span><span class="o">.</span><span class="n">tc_model_method</span> <span class="o">=</span> <span class="n">method</span>
+            <span class="n">end</span><span class="o">.</span><span class="n">tc_model_method</span> <span class="o">=</span> <span class="n">method</span>
+
+            <span class="n">start</span><span class="o">.</span><span class="n">tc_model_basis</span> <span class="o">=</span> <span class="n">basis</span>
+            <span class="n">end</span><span class="o">.</span><span class="n">tc_model_basis</span> <span class="o">=</span> <span class="n">basis</span>
+
+            <span class="n">start</span><span class="o">.</span><span class="n">tc_kwds</span> <span class="o">=</span> <span class="n">kwds</span>
+            <span class="n">end</span><span class="o">.</span><span class="n">tc_kwds</span> <span class="o">=</span> <span class="n">kwds</span>
+
+        <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">min_ends</span><span class="p">):</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">tc_local_geom_optimization</span><span class="p">()</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">tc_local_geom_optimization</span><span class="p">()</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">min_ends</span><span class="p">):</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">xtb_geom_optimization</span><span class="p">()</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">xtb_geom_optimization</span><span class="p">()</span>
+
+    <span class="n">traj</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="p">([</span><span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">])</span><span class="o">.</span><span class="n">run_geodesic</span><span class="p">(</span><span class="n">nimages</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">nimg</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">nc</span> <span class="o">==</span> <span class="s2">&quot;node3d_tc_local&quot;</span><span class="p">:</span>
+        <span class="n">do_parallel</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">do_parallel</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="n">tol</span> <span class="o">=</span> <span class="n">args</span><span class="o">.</span><span class="n">tol</span>
+
+    <span class="n">cni</span> <span class="o">=</span> <span class="n">ChainInputs</span><span class="p">(</span>
+        <span class="n">k</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+        <span class="n">delta_k</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">delk</span><span class="p">,</span>
+        <span class="n">node_class</span><span class="o">=</span><span class="n">nc</span><span class="p">,</span>
+        <span class="n">friction_optimal_gi</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">use_maxima_recyling</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">mr</span><span class="p">),</span>
+        <span class="n">do_parallel</span><span class="o">=</span><span class="n">do_parallel</span><span class="p">,</span>
+        <span class="n">node_freezing</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">skip_identical_graphs</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">sig</span><span class="p">)</span>
+    <span class="p">)</span>
+
+    <span class="n">optimizer</span> <span class="o">=</span> <span class="n">VelocityProjectedOptimizer</span><span class="p">(</span><span class="n">timestep</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">activation_tol</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+
+    <span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span>
+        <span class="n">tol</span><span class="o">=</span><span class="n">tol</span> <span class="o">*</span> <span class="n">BOHR_TO_ANGSTROMS</span><span class="p">,</span>
+        <span class="n">barrier_thre</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>  <span class="c1"># kcalmol,</span>
+        <span class="n">climb</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">climb</span><span class="p">),</span>
+
+        <span class="n">rms_grad_thre</span><span class="o">=</span><span class="n">tol</span> <span class="o">*</span> <span class="n">BOHR_TO_ANGSTROMS</span><span class="p">,</span>
+        <span class="n">max_rms_grad_thre</span><span class="o">=</span><span class="n">tol</span> <span class="o">*</span> <span class="n">BOHR_TO_ANGSTROMS</span><span class="o">*</span><span class="mf">2.5</span><span class="p">,</span>
+        <span class="n">ts_grad_thre</span><span class="o">=</span><span class="n">tol</span> <span class="o">*</span> <span class="n">BOHR_TO_ANGSTROMS</span><span class="o">*</span><span class="mf">2.5</span><span class="p">,</span>
+        <span class="n">ts_spring_thre</span><span class="o">=</span><span class="n">tol</span> <span class="o">*</span> <span class="n">BOHR_TO_ANGSTROMS</span><span class="o">*</span><span class="mf">1.5</span><span class="p">,</span>
+
+        <span class="n">v</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">max_steps</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>
+
+        <span class="n">early_stop_chain_rms_thre</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">es_rms</span><span class="p">,</span>
+        <span class="n">early_stop_force_thre</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">es_ft</span> <span class="o">*</span> <span class="n">BOHR_TO_ANGSTROMS</span><span class="p">,</span>
+        <span class="n">early_stop_still_steps_thre</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">es_ss</span><span class="p">,</span>
+        <span class="n">preopt_with_xtb</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">preopt</span><span class="p">))</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">args</span><span class="o">.</span><span class="n">preopt</span><span class="si">=}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;NEBinputs: </span><span class="si">{</span><span class="n">nbi</span><span class="si">}</span><span class="se">\n</span><span class="s2">ChainInputs: </span><span class="si">{</span><span class="n">cni</span><span class="si">}</span><span class="se">\n</span><span class="s2">Optimizer: </span><span class="si">{</span><span class="n">optimizer</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+    <span class="n">gii</span> <span class="o">=</span> <span class="n">GIInputs</span><span class="p">(</span><span class="n">nimages</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">nimg</span><span class="p">,</span> <span class="n">extra_kwds</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;sweep&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">})</span>
+    <span class="n">traj</span> <span class="o">=</span> <span class="n">create_friction_optimal_gi</span><span class="p">(</span><span class="n">traj</span><span class="p">,</span> <span class="n">gii</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">traj</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">spinmult</span><span class="p">)</span>
+    <span class="n">chain</span> <span class="o">=</span> <span class="n">Chain</span><span class="o">.</span><span class="n">from_traj</span><span class="p">(</span><span class="n">traj</span><span class="o">=</span><span class="n">traj</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">cni</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;asneb&#39;</span><span class="p">:</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">MSMEP</span><span class="p">(</span>
+            <span class="n">neb_inputs</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span>
+            <span class="n">chain_inputs</span><span class="o">=</span><span class="n">cni</span><span class="p">,</span>
+            <span class="n">gi_inputs</span><span class="o">=</span><span class="n">gii</span><span class="p">,</span>
+            <span class="n">optimizer</span><span class="o">=</span><span class="n">optimizer</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">history</span><span class="p">,</span> <span class="n">out_chain</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">find_mep_multistep</span><span class="p">(</span><span class="n">chain</span><span class="p">)</span>
+
+        <span class="n">leaves_nebs</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">obj</span> <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">history</span><span class="o">.</span><span class="n">get_optimization_history</span><span class="p">()</span> <span class="k">if</span> <span class="n">obj</span>
+        <span class="p">]</span>
+        <span class="n">tot_grad_calls</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="n">obj</span><span class="o">.</span><span class="n">grad_calls_made</span> <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">leaves_nebs</span><span class="p">])</span>
+        <span class="n">geom_grad_calls</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span>
+            <span class="n">obj</span><span class="o">.</span><span class="n">geom_grad_calls_made</span> <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">leaves_nebs</span><span class="p">]</span>
+        <span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&gt;&gt;&gt; Made </span><span class="si">{</span><span class="n">tot_grad_calls</span><span class="si">}</span><span class="s2"> gradient calls total.&quot;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&lt;&lt;&lt; Made </span><span class="si">{</span><span class="n">geom_grad_calls</span><span class="si">}</span><span class="s2"> gradient for geometry</span><span class="se">\</span>
+<span class="s2">               optimizations.&quot;</span><span class="p">)</span>
+        <span class="n">fp</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">st</span><span class="p">)</span>
+        <span class="n">data_dir</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+            <span class="n">foldername</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="n">args</span><span class="o">.</span><span class="n">name</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s2">&quot;.xyz&quot;</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">foldername</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="si">}</span><span class="s2">_msmep&quot;</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="si">}</span><span class="s2">_msmep.xyz&quot;</span>
+
+        <span class="n">out_chain</span><span class="o">.</span><span class="n">write_to_disk</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+        <span class="n">history</span><span class="o">.</span><span class="n">write_to_disk</span><span class="p">(</span><span class="n">foldername</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">dc</span><span class="p">:</span>
+            <span class="n">op</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filename</span><span class="o">.</span><span class="n">stem</span><span class="si">}</span><span class="s2">_cleanups&quot;</span>
+            <span class="n">cni</span><span class="o">.</span><span class="n">skip_identical_graphs</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="n">MSMEP</span><span class="p">(</span>
+                <span class="n">neb_inputs</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span>
+                <span class="n">chain_inputs</span><span class="o">=</span><span class="n">cni</span><span class="p">,</span>
+                <span class="n">gi_inputs</span><span class="o">=</span><span class="n">gii</span><span class="p">,</span>
+                <span class="n">optimizer</span><span class="o">=</span><span class="n">optimizer</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">j</span> <span class="o">=</span> <span class="n">Janitor</span><span class="p">(</span><span class="n">history_object</span><span class="o">=</span><span class="n">history</span><span class="p">,</span> <span class="n">out_path</span><span class="o">=</span><span class="n">op</span><span class="p">,</span> <span class="n">msmep_object</span><span class="o">=</span><span class="n">m</span><span class="p">)</span>
+
+            <span class="n">clean_msmep</span> <span class="o">=</span> <span class="n">j</span><span class="o">.</span><span class="n">create_clean_msmep</span><span class="p">()</span>
+
+            <span class="k">if</span> <span class="n">clean_msmep</span><span class="p">:</span>
+                <span class="n">clean_msmep</span><span class="o">.</span><span class="n">write_to_disk</span><span class="p">(</span>
+                    <span class="n">filename</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">filename</span><span class="o">.</span><span class="n">stem</span><span class="p">)</span><span class="o">+</span><span class="s2">&quot;_clean.xyz&quot;</span><span class="p">)</span>
+                <span class="p">)</span>
+                <span class="n">j</span><span class="o">.</span><span class="n">write_to_disk</span><span class="p">(</span><span class="n">op</span><span class="p">)</span>
+
+            <span class="n">tot_grad_calls</span> <span class="o">=</span> <span class="n">j</span><span class="o">.</span><span class="n">get_n_grad_calls</span><span class="p">()</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&gt;&gt;&gt; Made </span><span class="si">{</span><span class="n">tot_grad_calls</span><span class="si">}</span><span class="s2"> gradient calls in cleanup.&quot;</span><span class="p">)</span>
+
+    <span class="k">elif</span> <span class="n">args</span><span class="o">.</span><span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;neb&#39;</span><span class="p">:</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">initial_chain</span><span class="o">=</span><span class="n">chain</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">=</span><span class="n">optimizer</span><span class="p">)</span>
+        <span class="n">fp</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">st</span><span class="p">)</span>
+        <span class="n">data_dir</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span>
+        <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">name</span><span class="p">:</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s2">&quot;_neb.xyz&quot;</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">filename</span> <span class="o">=</span> <span class="n">data_dir</span> <span class="o">/</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="si">}</span><span class="s2">_neb.xyz&quot;</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">n</span><span class="o">.</span><span class="n">optimize_chain</span><span class="p">()</span>
+
+            <span class="n">n</span><span class="o">.</span><span class="n">write_to_disk</span><span class="p">(</span><span class="n">data_dir</span><span class="o">/</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">write_history</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">NoneConvergedException</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="n">e</span><span class="o">.</span><span class="n">obj</span><span class="o">.</span><span class="n">write_to_disk</span><span class="p">(</span><span class="n">data_dir</span><span class="o">/</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">filename</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">write_history</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="n">tot_grad_calls</span> <span class="o">=</span> <span class="n">n</span><span class="o">.</span><span class="n">grad_calls_made</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;&gt;&gt;&gt; Made </span><span class="si">{</span><span class="n">tot_grad_calls</span><span class="si">}</span><span class="s2"> gradient calls total.&quot;</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Incorrect input method. Use &#39;asneb&#39; or &#39;neb&#39;&quot;</span><span class="p">)</span>
+
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+</code></pre></div>
+
+
+<div class="doc doc-object doc-class">
+
+
+
+<a id="neb_dynamics.Chain.Chain"></a>
+    <div class="doc doc-contents first">
+
+
+              <details class="quote">
+                <summary>Source code in <code>neb_dynamics/Chain.py</code></summary>
+                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 27</span>
+<span class="normal"> 28</span>
+<span class="normal"> 29</span>
+<span class="normal"> 30</span>
+<span class="normal"> 31</span>
+<span class="normal"> 32</span>
+<span class="normal"> 33</span>
+<span class="normal"> 34</span>
+<span class="normal"> 35</span>
+<span class="normal"> 36</span>
+<span class="normal"> 37</span>
+<span class="normal"> 38</span>
+<span class="normal"> 39</span>
+<span class="normal"> 40</span>
+<span class="normal"> 41</span>
+<span class="normal"> 42</span>
+<span class="normal"> 43</span>
+<span class="normal"> 44</span>
+<span class="normal"> 45</span>
+<span class="normal"> 46</span>
+<span class="normal"> 47</span>
+<span class="normal"> 48</span>
+<span class="normal"> 49</span>
+<span class="normal"> 50</span>
+<span class="normal"> 51</span>
+<span class="normal"> 52</span>
+<span class="normal"> 53</span>
+<span class="normal"> 54</span>
+<span class="normal"> 55</span>
+<span class="normal"> 56</span>
+<span class="normal"> 57</span>
+<span class="normal"> 58</span>
+<span class="normal"> 59</span>
+<span class="normal"> 60</span>
+<span class="normal"> 61</span>
+<span class="normal"> 62</span>
+<span class="normal"> 63</span>
+<span class="normal"> 64</span>
+<span class="normal"> 65</span>
+<span class="normal"> 66</span>
+<span class="normal"> 67</span>
+<span class="normal"> 68</span>
+<span class="normal"> 69</span>
+<span class="normal"> 70</span>
+<span class="normal"> 71</span>
+<span class="normal"> 72</span>
+<span class="normal"> 73</span>
+<span class="normal"> 74</span>
+<span class="normal"> 75</span>
+<span class="normal"> 76</span>
+<span class="normal"> 77</span>
+<span class="normal"> 78</span>
+<span class="normal"> 79</span>
+<span class="normal"> 80</span>
+<span class="normal"> 81</span>
+<span class="normal"> 82</span>
+<span class="normal"> 83</span>
+<span class="normal"> 84</span>
+<span class="normal"> 85</span>
+<span class="normal"> 86</span>
+<span class="normal"> 87</span>
+<span class="normal"> 88</span>
+<span class="normal"> 89</span>
+<span class="normal"> 90</span>
+<span class="normal"> 91</span>
+<span class="normal"> 92</span>
+<span class="normal"> 93</span>
+<span class="normal"> 94</span>
+<span class="normal"> 95</span>
+<span class="normal"> 96</span>
+<span class="normal"> 97</span>
+<span class="normal"> 98</span>
+<span class="normal"> 99</span>
+<span class="normal">100</span>
+<span class="normal">101</span>
+<span class="normal">102</span>
+<span class="normal">103</span>
+<span class="normal">104</span>
+<span class="normal">105</span>
+<span class="normal">106</span>
+<span class="normal">107</span>
+<span class="normal">108</span>
+<span class="normal">109</span>
+<span class="normal">110</span>
+<span class="normal">111</span>
+<span class="normal">112</span>
+<span class="normal">113</span>
+<span class="normal">114</span>
+<span class="normal">115</span>
+<span class="normal">116</span>
+<span class="normal">117</span>
+<span class="normal">118</span>
+<span class="normal">119</span>
+<span class="normal">120</span>
+<span class="normal">121</span>
+<span class="normal">122</span>
+<span class="normal">123</span>
+<span class="normal">124</span>
+<span class="normal">125</span>
+<span class="normal">126</span>
+<span class="normal">127</span>
+<span class="normal">128</span>
+<span class="normal">129</span>
+<span class="normal">130</span>
+<span class="normal">131</span>
+<span class="normal">132</span>
+<span class="normal">133</span>
+<span class="normal">134</span>
+<span class="normal">135</span>
+<span class="normal">136</span>
+<span class="normal">137</span>
+<span class="normal">138</span>
+<span class="normal">139</span>
+<span class="normal">140</span>
+<span class="normal">141</span>
+<span class="normal">142</span>
+<span class="normal">143</span>
+<span class="normal">144</span>
+<span class="normal">145</span>
+<span class="normal">146</span>
+<span class="normal">147</span>
+<span class="normal">148</span>
+<span class="normal">149</span>
+<span class="normal">150</span>
+<span class="normal">151</span>
+<span class="normal">152</span>
+<span class="normal">153</span>
+<span class="normal">154</span>
+<span class="normal">155</span>
+<span class="normal">156</span>
+<span class="normal">157</span>
+<span class="normal">158</span>
+<span class="normal">159</span>
+<span class="normal">160</span>
+<span class="normal">161</span>
+<span class="normal">162</span>
+<span class="normal">163</span>
+<span class="normal">164</span>
+<span class="normal">165</span>
+<span class="normal">166</span>
+<span class="normal">167</span>
+<span class="normal">168</span>
+<span class="normal">169</span>
+<span class="normal">170</span>
+<span class="normal">171</span>
+<span class="normal">172</span>
+<span class="normal">173</span>
+<span class="normal">174</span>
+<span class="normal">175</span>
+<span class="normal">176</span>
+<span class="normal">177</span>
+<span class="normal">178</span>
+<span class="normal">179</span>
+<span class="normal">180</span>
+<span class="normal">181</span>
+<span class="normal">182</span>
+<span class="normal">183</span>
+<span class="normal">184</span>
+<span class="normal">185</span>
+<span class="normal">186</span>
+<span class="normal">187</span>
+<span class="normal">188</span>
+<span class="normal">189</span>
+<span class="normal">190</span>
+<span class="normal">191</span>
+<span class="normal">192</span>
+<span class="normal">193</span>
+<span class="normal">194</span>
+<span class="normal">195</span>
+<span class="normal">196</span>
+<span class="normal">197</span>
+<span class="normal">198</span>
+<span class="normal">199</span>
+<span class="normal">200</span>
+<span class="normal">201</span>
+<span class="normal">202</span>
+<span class="normal">203</span>
+<span class="normal">204</span>
+<span class="normal">205</span>
+<span class="normal">206</span>
+<span class="normal">207</span>
+<span class="normal">208</span>
+<span class="normal">209</span>
+<span class="normal">210</span>
+<span class="normal">211</span>
+<span class="normal">212</span>
+<span class="normal">213</span>
+<span class="normal">214</span>
+<span class="normal">215</span>
+<span class="normal">216</span>
+<span class="normal">217</span>
+<span class="normal">218</span>
+<span class="normal">219</span>
+<span class="normal">220</span>
+<span class="normal">221</span>
+<span class="normal">222</span>
+<span class="normal">223</span>
+<span class="normal">224</span>
+<span class="normal">225</span>
+<span class="normal">226</span>
+<span class="normal">227</span>
+<span class="normal">228</span>
+<span class="normal">229</span>
+<span class="normal">230</span>
+<span class="normal">231</span>
+<span class="normal">232</span>
+<span class="normal">233</span>
+<span class="normal">234</span>
+<span class="normal">235</span>
+<span class="normal">236</span>
+<span class="normal">237</span>
+<span class="normal">238</span>
+<span class="normal">239</span>
+<span class="normal">240</span>
+<span class="normal">241</span>
+<span class="normal">242</span>
+<span class="normal">243</span>
+<span class="normal">244</span>
+<span class="normal">245</span>
+<span class="normal">246</span>
+<span class="normal">247</span>
+<span class="normal">248</span>
+<span class="normal">249</span>
+<span class="normal">250</span>
+<span class="normal">251</span>
+<span class="normal">252</span>
+<span class="normal">253</span>
+<span class="normal">254</span>
+<span class="normal">255</span>
+<span class="normal">256</span>
+<span class="normal">257</span>
+<span class="normal">258</span>
+<span class="normal">259</span>
+<span class="normal">260</span>
+<span class="normal">261</span>
+<span class="normal">262</span>
+<span class="normal">263</span>
+<span class="normal">264</span>
+<span class="normal">265</span>
+<span class="normal">266</span>
+<span class="normal">267</span>
+<span class="normal">268</span>
+<span class="normal">269</span>
+<span class="normal">270</span>
+<span class="normal">271</span>
+<span class="normal">272</span>
+<span class="normal">273</span>
+<span class="normal">274</span>
+<span class="normal">275</span>
+<span class="normal">276</span>
+<span class="normal">277</span>
+<span class="normal">278</span>
+<span class="normal">279</span>
+<span class="normal">280</span>
+<span class="normal">281</span>
+<span class="normal">282</span>
+<span class="normal">283</span>
+<span class="normal">284</span>
+<span class="normal">285</span>
+<span class="normal">286</span>
+<span class="normal">287</span>
+<span class="normal">288</span>
+<span class="normal">289</span>
+<span class="normal">290</span>
+<span class="normal">291</span>
+<span class="normal">292</span>
+<span class="normal">293</span>
+<span class="normal">294</span>
+<span class="normal">295</span>
+<span class="normal">296</span>
+<span class="normal">297</span>
+<span class="normal">298</span>
+<span class="normal">299</span>
+<span class="normal">300</span>
+<span class="normal">301</span>
+<span class="normal">302</span>
+<span class="normal">303</span>
+<span class="normal">304</span>
+<span class="normal">305</span>
+<span class="normal">306</span>
+<span class="normal">307</span>
+<span class="normal">308</span>
+<span class="normal">309</span>
+<span class="normal">310</span>
+<span class="normal">311</span>
+<span class="normal">312</span>
+<span class="normal">313</span>
+<span class="normal">314</span>
+<span class="normal">315</span>
+<span class="normal">316</span>
+<span class="normal">317</span>
+<span class="normal">318</span>
+<span class="normal">319</span>
+<span class="normal">320</span>
+<span class="normal">321</span>
+<span class="normal">322</span>
+<span class="normal">323</span>
+<span class="normal">324</span>
+<span class="normal">325</span>
+<span class="normal">326</span>
+<span class="normal">327</span>
+<span class="normal">328</span>
+<span class="normal">329</span>
+<span class="normal">330</span>
+<span class="normal">331</span>
+<span class="normal">332</span>
+<span class="normal">333</span>
+<span class="normal">334</span>
+<span class="normal">335</span>
+<span class="normal">336</span>
+<span class="normal">337</span>
+<span class="normal">338</span>
+<span class="normal">339</span>
+<span class="normal">340</span>
+<span class="normal">341</span>
+<span class="normal">342</span>
+<span class="normal">343</span>
+<span class="normal">344</span>
+<span class="normal">345</span>
+<span class="normal">346</span>
+<span class="normal">347</span>
+<span class="normal">348</span>
+<span class="normal">349</span>
+<span class="normal">350</span>
+<span class="normal">351</span>
+<span class="normal">352</span>
+<span class="normal">353</span>
+<span class="normal">354</span>
+<span class="normal">355</span>
+<span class="normal">356</span>
+<span class="normal">357</span>
+<span class="normal">358</span>
+<span class="normal">359</span>
+<span class="normal">360</span>
+<span class="normal">361</span>
+<span class="normal">362</span>
+<span class="normal">363</span>
+<span class="normal">364</span>
+<span class="normal">365</span>
+<span class="normal">366</span>
+<span class="normal">367</span>
+<span class="normal">368</span>
+<span class="normal">369</span>
+<span class="normal">370</span>
+<span class="normal">371</span>
+<span class="normal">372</span>
+<span class="normal">373</span>
+<span class="normal">374</span>
+<span class="normal">375</span>
+<span class="normal">376</span>
+<span class="normal">377</span>
+<span class="normal">378</span>
+<span class="normal">379</span>
+<span class="normal">380</span>
+<span class="normal">381</span>
+<span class="normal">382</span>
+<span class="normal">383</span>
+<span class="normal">384</span>
+<span class="normal">385</span>
+<span class="normal">386</span>
+<span class="normal">387</span>
+<span class="normal">388</span>
+<span class="normal">389</span>
+<span class="normal">390</span>
+<span class="normal">391</span>
+<span class="normal">392</span>
+<span class="normal">393</span>
+<span class="normal">394</span>
+<span class="normal">395</span>
+<span class="normal">396</span>
+<span class="normal">397</span>
+<span class="normal">398</span>
+<span class="normal">399</span>
+<span class="normal">400</span>
+<span class="normal">401</span>
+<span class="normal">402</span>
+<span class="normal">403</span>
+<span class="normal">404</span>
+<span class="normal">405</span>
+<span class="normal">406</span>
+<span class="normal">407</span>
+<span class="normal">408</span>
+<span class="normal">409</span>
+<span class="normal">410</span>
+<span class="normal">411</span>
+<span class="normal">412</span>
+<span class="normal">413</span>
+<span class="normal">414</span>
+<span class="normal">415</span>
+<span class="normal">416</span>
+<span class="normal">417</span>
+<span class="normal">418</span>
+<span class="normal">419</span>
+<span class="normal">420</span>
+<span class="normal">421</span>
+<span class="normal">422</span>
+<span class="normal">423</span>
+<span class="normal">424</span>
+<span class="normal">425</span>
+<span class="normal">426</span>
+<span class="normal">427</span>
+<span class="normal">428</span>
+<span class="normal">429</span>
+<span class="normal">430</span>
+<span class="normal">431</span>
+<span class="normal">432</span>
+<span class="normal">433</span>
+<span class="normal">434</span>
+<span class="normal">435</span>
+<span class="normal">436</span>
+<span class="normal">437</span>
+<span class="normal">438</span>
+<span class="normal">439</span>
+<span class="normal">440</span>
+<span class="normal">441</span>
+<span class="normal">442</span>
+<span class="normal">443</span>
+<span class="normal">444</span>
+<span class="normal">445</span>
+<span class="normal">446</span>
+<span class="normal">447</span>
+<span class="normal">448</span>
+<span class="normal">449</span>
+<span class="normal">450</span>
+<span class="normal">451</span>
+<span class="normal">452</span>
+<span class="normal">453</span>
+<span class="normal">454</span>
+<span class="normal">455</span>
+<span class="normal">456</span>
+<span class="normal">457</span>
+<span class="normal">458</span>
+<span class="normal">459</span>
+<span class="normal">460</span>
+<span class="normal">461</span>
+<span class="normal">462</span>
+<span class="normal">463</span>
+<span class="normal">464</span>
+<span class="normal">465</span>
+<span class="normal">466</span>
+<span class="normal">467</span>
+<span class="normal">468</span>
+<span class="normal">469</span>
+<span class="normal">470</span>
+<span class="normal">471</span>
+<span class="normal">472</span>
+<span class="normal">473</span>
+<span class="normal">474</span>
+<span class="normal">475</span>
+<span class="normal">476</span>
+<span class="normal">477</span>
+<span class="normal">478</span>
+<span class="normal">479</span>
+<span class="normal">480</span>
+<span class="normal">481</span>
+<span class="normal">482</span>
+<span class="normal">483</span>
+<span class="normal">484</span>
+<span class="normal">485</span>
+<span class="normal">486</span>
+<span class="normal">487</span>
+<span class="normal">488</span>
+<span class="normal">489</span>
+<span class="normal">490</span>
+<span class="normal">491</span>
+<span class="normal">492</span>
+<span class="normal">493</span>
+<span class="normal">494</span>
+<span class="normal">495</span>
+<span class="normal">496</span>
+<span class="normal">497</span>
+<span class="normal">498</span>
+<span class="normal">499</span>
+<span class="normal">500</span>
+<span class="normal">501</span>
+<span class="normal">502</span>
+<span class="normal">503</span>
+<span class="normal">504</span>
+<span class="normal">505</span>
+<span class="normal">506</span>
+<span class="normal">507</span>
+<span class="normal">508</span>
+<span class="normal">509</span>
+<span class="normal">510</span>
+<span class="normal">511</span>
+<span class="normal">512</span>
+<span class="normal">513</span>
+<span class="normal">514</span>
+<span class="normal">515</span>
+<span class="normal">516</span>
+<span class="normal">517</span>
+<span class="normal">518</span>
+<span class="normal">519</span>
+<span class="normal">520</span>
+<span class="normal">521</span>
+<span class="normal">522</span>
+<span class="normal">523</span>
+<span class="normal">524</span>
+<span class="normal">525</span>
+<span class="normal">526</span>
+<span class="normal">527</span>
+<span class="normal">528</span>
+<span class="normal">529</span>
+<span class="normal">530</span>
+<span class="normal">531</span>
+<span class="normal">532</span>
+<span class="normal">533</span>
+<span class="normal">534</span>
+<span class="normal">535</span>
+<span class="normal">536</span>
+<span class="normal">537</span>
+<span class="normal">538</span>
+<span class="normal">539</span>
+<span class="normal">540</span>
+<span class="normal">541</span>
+<span class="normal">542</span>
+<span class="normal">543</span>
+<span class="normal">544</span>
+<span class="normal">545</span>
+<span class="normal">546</span>
+<span class="normal">547</span>
+<span class="normal">548</span>
+<span class="normal">549</span>
+<span class="normal">550</span>
+<span class="normal">551</span>
+<span class="normal">552</span>
+<span class="normal">553</span>
+<span class="normal">554</span>
+<span class="normal">555</span>
+<span class="normal">556</span>
+<span class="normal">557</span>
+<span class="normal">558</span>
+<span class="normal">559</span>
+<span class="normal">560</span>
+<span class="normal">561</span>
+<span class="normal">562</span>
+<span class="normal">563</span>
+<span class="normal">564</span>
+<span class="normal">565</span>
+<span class="normal">566</span>
+<span class="normal">567</span>
+<span class="normal">568</span>
+<span class="normal">569</span>
+<span class="normal">570</span>
+<span class="normal">571</span>
+<span class="normal">572</span>
+<span class="normal">573</span>
+<span class="normal">574</span>
+<span class="normal">575</span>
+<span class="normal">576</span>
+<span class="normal">577</span>
+<span class="normal">578</span>
+<span class="normal">579</span>
+<span class="normal">580</span>
+<span class="normal">581</span>
+<span class="normal">582</span>
+<span class="normal">583</span>
+<span class="normal">584</span>
+<span class="normal">585</span>
+<span class="normal">586</span>
+<span class="normal">587</span>
+<span class="normal">588</span>
+<span class="normal">589</span>
+<span class="normal">590</span>
+<span class="normal">591</span>
+<span class="normal">592</span>
+<span class="normal">593</span>
+<span class="normal">594</span>
+<span class="normal">595</span>
+<span class="normal">596</span>
+<span class="normal">597</span>
+<span class="normal">598</span>
+<span class="normal">599</span>
+<span class="normal">600</span>
+<span class="normal">601</span>
+<span class="normal">602</span>
+<span class="normal">603</span>
+<span class="normal">604</span>
+<span class="normal">605</span>
+<span class="normal">606</span>
+<span class="normal">607</span>
+<span class="normal">608</span>
+<span class="normal">609</span>
+<span class="normal">610</span>
+<span class="normal">611</span>
+<span class="normal">612</span>
+<span class="normal">613</span>
+<span class="normal">614</span>
+<span class="normal">615</span>
+<span class="normal">616</span>
+<span class="normal">617</span>
+<span class="normal">618</span>
+<span class="normal">619</span>
+<span class="normal">620</span>
+<span class="normal">621</span>
+<span class="normal">622</span>
+<span class="normal">623</span>
+<span class="normal">624</span>
+<span class="normal">625</span>
+<span class="normal">626</span>
+<span class="normal">627</span>
+<span class="normal">628</span>
+<span class="normal">629</span>
+<span class="normal">630</span>
+<span class="normal">631</span>
+<span class="normal">632</span>
+<span class="normal">633</span>
+<span class="normal">634</span>
+<span class="normal">635</span>
+<span class="normal">636</span>
+<span class="normal">637</span>
+<span class="normal">638</span>
+<span class="normal">639</span>
+<span class="normal">640</span>
+<span class="normal">641</span>
+<span class="normal">642</span>
+<span class="normal">643</span>
+<span class="normal">644</span>
+<span class="normal">645</span>
+<span class="normal">646</span>
+<span class="normal">647</span>
+<span class="normal">648</span>
+<span class="normal">649</span>
+<span class="normal">650</span>
+<span class="normal">651</span>
+<span class="normal">652</span>
+<span class="normal">653</span>
+<span class="normal">654</span>
+<span class="normal">655</span>
+<span class="normal">656</span>
+<span class="normal">657</span>
+<span class="normal">658</span>
+<span class="normal">659</span>
+<span class="normal">660</span>
+<span class="normal">661</span>
+<span class="normal">662</span>
+<span class="normal">663</span>
+<span class="normal">664</span>
+<span class="normal">665</span>
+<span class="normal">666</span>
+<span class="normal">667</span>
+<span class="normal">668</span>
+<span class="normal">669</span>
+<span class="normal">670</span>
+<span class="normal">671</span>
+<span class="normal">672</span>
+<span class="normal">673</span>
+<span class="normal">674</span>
+<span class="normal">675</span>
+<span class="normal">676</span>
+<span class="normal">677</span>
+<span class="normal">678</span>
+<span class="normal">679</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
+<span class="k">class</span> <span class="nc">Chain</span><span class="p">:</span>
+    <span class="n">nodes</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Node</span><span class="p">]</span>
+    <span class="n">parameters</span><span class="p">:</span> <span class="n">ChainInputs</span>
+
+    <span class="n">_cached_chain_bias</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;velocity&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_zero_velocity</span><span class="p">()</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;bfgs_hess&quot;</span><span class="p">):</span>
+            <span class="n">bfgs_hess</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">coordinates</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">bfgs_hess</span> <span class="o">=</span> <span class="n">bfgs_hess</span>
+
+    <span class="k">def</span> <span class="nf">_zero_velocity</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">is_a_molecule</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">velocity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
+                <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">coords</span><span class="p">),</span> <span class="mi">3</span><span class="p">)</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">velocity</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span>
+                <span class="n">shape</span><span class="o">=</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">coords</span><span class="p">)))</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">n_atoms</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">coordinates</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_xyz</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">fp</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">ChainInputs</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">fp</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fp</span><span class="p">)</span>
+        <span class="n">traj</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="o">.</span><span class="n">from_xyz</span><span class="p">(</span><span class="n">fp</span><span class="p">)</span>
+        <span class="n">traj</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">tc_model_method</span> <span class="o">=</span> <span class="n">parameters</span><span class="o">.</span><span class="n">tc_model_method</span>
+        <span class="n">traj</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">tc_model_basis</span> <span class="o">=</span> <span class="n">parameters</span><span class="o">.</span><span class="n">tc_model_basis</span>
+        <span class="n">traj</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">tc_kwds</span> <span class="o">=</span> <span class="n">parameters</span><span class="o">.</span><span class="n">tc_kwds</span>
+        <span class="n">traj</span><span class="o">.</span><span class="n">update_tc_parameters</span><span class="p">(</span><span class="n">traj</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="n">chain</span> <span class="o">=</span> <span class="bp">cls</span><span class="o">.</span><span class="n">from_traj</span><span class="p">(</span><span class="n">traj</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">parameters</span><span class="p">)</span>
+        <span class="n">energies_fp</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;.energies&quot;</span><span class="p">)</span>
+        <span class="n">grad_path</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;.gradients&quot;</span><span class="p">)</span>
+        <span class="n">grad_shape_path</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;_grad_shapes.txt&quot;</span><span class="p">)</span>
+        <span class="n">grad_shape_path_old</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="s2">&quot;grad_shapes.txt&quot;</span>
+        <span class="k">if</span> <span class="n">grad_shape_path_old</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">grad_shape_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">grad_shape_path</span> <span class="o">=</span> <span class="n">grad_shape_path_old</span>
+
+        <span class="k">if</span> <span class="n">energies_fp</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="n">grad_path</span><span class="o">.</span><span class="n">exists</span><span class="p">()</span> <span class="ow">and</span> <span class="n">grad_shape_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+            <span class="n">energies</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">loadtxt</span><span class="p">(</span><span class="n">energies_fp</span><span class="p">)</span>
+            <span class="n">gradients_flat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">loadtxt</span><span class="p">(</span><span class="n">grad_path</span><span class="p">)</span>
+            <span class="n">gradients_shape</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">loadtxt</span><span class="p">(</span><span class="n">grad_shape_path</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+            <span class="n">gradients</span> <span class="o">=</span> <span class="n">gradients_flat</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">gradients_shape</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">node</span><span class="p">,</span> <span class="p">(</span><span class="n">ene</span><span class="p">,</span> <span class="n">grad</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">chain</span><span class="o">.</span><span class="n">nodes</span><span class="p">,</span> <span class="nb">zip</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="n">gradients</span><span class="p">)):</span>
+                <span class="n">node</span><span class="o">.</span><span class="n">_cached_energy</span> <span class="o">=</span> <span class="n">ene</span>
+                <span class="n">node</span><span class="o">.</span><span class="n">_cached_gradient</span> <span class="o">=</span> <span class="n">grad</span>
+        <span class="k">return</span> <span class="n">chain</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_list_of_chains</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">list_of_chains</span><span class="p">,</span> <span class="n">parameters</span><span class="p">):</span>
+        <span class="n">nodes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">chain</span> <span class="ow">in</span> <span class="n">list_of_chains</span><span class="p">:</span>
+            <span class="n">nodes</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">chain</span><span class="o">.</span><span class="n">nodes</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">nodes</span><span class="o">=</span><span class="n">nodes</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">parameters</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_distance_to_chain</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other_chain</span><span class="p">:</span> <span class="n">Chain</span><span class="p">):</span>
+        <span class="n">chain1</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="n">chain2</span> <span class="o">=</span> <span class="n">other_chain</span>
+
+        <span class="n">distances</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">node1</span><span class="p">,</span> <span class="n">node2</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">chain1</span><span class="o">.</span><span class="n">nodes</span><span class="p">,</span> <span class="n">chain2</span><span class="o">.</span><span class="n">nodes</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">node1</span><span class="o">.</span><span class="n">coords</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">dist</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">RMSD</span><span class="p">(</span><span class="n">node1</span><span class="o">.</span><span class="n">coords</span><span class="p">,</span> <span class="n">node2</span><span class="o">.</span><span class="n">coords</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">dist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">node1</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">node2</span><span class="o">.</span><span class="n">coords</span><span class="p">)</span>
+            <span class="n">distances</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dist</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="nb">sum</span><span class="p">(</span><span class="n">distances</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">chain1</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_tangent_correlations</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other_chain</span><span class="p">:</span> <span class="n">Chain</span><span class="p">):</span>
+        <span class="n">chain1_vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unit_tangents</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">chain2_vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">other_chain</span><span class="o">.</span><span class="n">unit_tangents</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">projector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">chain1_vec</span><span class="p">,</span> <span class="n">chain2_vec</span><span class="p">)</span>
+        <span class="n">normalization</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">chain1_vec</span><span class="p">,</span> <span class="n">chain1_vec</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">projector</span> <span class="o">/</span> <span class="n">normalization</span>
+
+    <span class="k">def</span> <span class="nf">_gperp_correlation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other_chain</span><span class="p">:</span> <span class="n">Chain</span><span class="p">):</span>
+        <span class="n">dp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_g_perps</span><span class="p">()</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span>
+                    <span class="n">other_chain</span><span class="o">.</span><span class="n">get_g_perps</span><span class="p">()</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
+        <span class="n">normalization</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">get_g_perps</span><span class="p">())</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span>
+            <span class="n">other_chain</span><span class="o">.</span><span class="n">get_g_perps</span><span class="p">()</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">dp</span> <span class="o">/</span> <span class="n">normalization</span>
+
+    <span class="k">def</span> <span class="nf">_gradient_correlation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other_chain</span><span class="p">:</span> <span class="n">Chain</span><span class="p">):</span>
+        <span class="n">chain1_vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">gradients</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">chain1_vec</span> <span class="o">=</span> <span class="n">chain1_vec</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">chain1_vec</span><span class="p">)</span>
+
+        <span class="n">chain2_vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">other_chain</span><span class="o">.</span><span class="n">gradients</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">chain2_vec</span> <span class="o">=</span> <span class="n">chain2_vec</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">chain2_vec</span><span class="p">)</span>
+
+        <span class="n">projector</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">chain1_vec</span><span class="p">,</span> <span class="n">chain2_vec</span><span class="p">)</span>
+        <span class="n">normalization</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">chain1_vec</span><span class="p">,</span> <span class="n">chain1_vec</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">projector</span> <span class="o">/</span> <span class="n">normalization</span>
+
+    <span class="k">def</span> <span class="nf">_gradient_delta_mags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other_chain</span><span class="p">:</span> <span class="n">Chain</span><span class="p">):</span>
+        <span class="n">chain1_vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">gradients</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">chain2_vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">other_chain</span><span class="o">.</span><span class="n">gradients</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">chain2_vec</span> <span class="o">-</span> <span class="n">chain1_vec</span><span class="p">)</span>
+        <span class="n">normalization</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_atoms</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">diff</span> <span class="o">/</span> <span class="n">normalization</span>
+
+    <span class="k">def</span> <span class="nf">_get_mass_weighed_coords</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">traj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_trajectory</span><span class="p">()</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="n">traj</span><span class="o">.</span><span class="n">coords</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">get_mass</span><span class="p">(</span><span class="n">s</span><span class="p">))</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">traj</span><span class="o">.</span><span class="n">symbols</span><span class="p">])</span>
+        <span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="nb">sum</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+        <span class="n">mass_weighed_coords</span> <span class="o">=</span> <span class="n">coords</span> <span class="o">*</span> <span class="n">weights</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mass_weighed_coords</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">_path_len_coords</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">is_a_molecule</span><span class="p">:</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_mass_weighed_coords</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">coordinates</span>
+        <span class="k">return</span> <span class="n">coords</span>
+
+    <span class="k">def</span> <span class="nf">_path_len_dist_func</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">coords1</span><span class="p">,</span> <span class="n">coords2</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">is_a_molecule</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">qRMSD_distance</span><span class="p">(</span><span class="n">coords1</span><span class="p">,</span> <span class="n">coords2</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">linear_distance</span><span class="p">(</span><span class="n">coords1</span><span class="p">,</span> <span class="n">coords2</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">integrated_path_length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path_len_coords</span>
+        <span class="n">cum_sums</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">int_path_len</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">frame_coords</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">coords</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">next_frame</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="n">distance</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path_len_dist_func</span><span class="p">(</span><span class="n">frame_coords</span><span class="p">,</span> <span class="n">next_frame</span><span class="p">)</span>
+            <span class="c1"># distance = self._path_len_dist_func(frame_coords, coords[0])</span>
+            <span class="n">cum_sums</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cum_sums</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">distance</span><span class="p">)</span>
+            <span class="c1"># cum_sums.append(distance)</span>
+
+        <span class="n">cum_sums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cum_sums</span><span class="p">)</span>
+        <span class="n">int_path_len</span> <span class="o">=</span> <span class="n">cum_sums</span> <span class="o">/</span> <span class="n">cum_sums</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">int_path_len</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">path_length</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">coords</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path_len_coords</span>
+        <span class="n">cum_sums</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">frame_coords</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">coords</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">coords</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">next_frame</span> <span class="o">=</span> <span class="n">coords</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="n">distance</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_path_len_dist_func</span><span class="p">(</span><span class="n">frame_coords</span><span class="p">,</span> <span class="n">next_frame</span><span class="p">)</span>
+            <span class="c1"># distance = self._path_len_dist_func(frame_coords, coords[0])</span>
+            <span class="n">cum_sums</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cum_sums</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">distance</span><span class="p">)</span>
+            <span class="c1"># cum_sums.append(distance)</span>
+
+        <span class="n">cum_sums</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">cum_sums</span><span class="p">)</span>
+        <span class="n">path_len</span> <span class="o">=</span> <span class="n">cum_sums</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">path_len</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_k_between_nodes</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">node0</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span> <span class="n">node1</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span> <span class="n">e_ref</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">k_max</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">e_max</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="p">):</span>
+        <span class="n">e_i</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">node1</span><span class="o">.</span><span class="n">energy</span><span class="p">,</span> <span class="n">node0</span><span class="o">.</span><span class="n">energy</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">e_i</span> <span class="o">&gt;</span> <span class="n">e_ref</span><span class="p">:</span>
+            <span class="n">new_k</span> <span class="o">=</span> <span class="n">k_max</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">delta_k</span> <span class="o">*</span> \
+                <span class="p">((</span><span class="n">e_max</span> <span class="o">-</span> <span class="n">e_i</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">e_max</span> <span class="o">-</span> <span class="n">e_ref</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">e_i</span> <span class="o">&lt;=</span> <span class="n">e_ref</span><span class="p">:</span>
+            <span class="n">new_k</span> <span class="o">=</span> <span class="n">k_max</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">delta_k</span>
+        <span class="k">return</span> <span class="n">new_k</span>
+
+    <span class="k">def</span> <span class="nf">plot_chain</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">norm_path</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="mi">8</span>
+        <span class="n">fs</span> <span class="o">=</span> <span class="mi">18</span>
+        <span class="n">f</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mf">1.16</span> <span class="o">*</span> <span class="n">s</span><span class="p">,</span> <span class="n">s</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="n">norm_path</span><span class="p">:</span>
+            <span class="n">path_len</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">integrated_path_length</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">path_len</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_length</span>
+
+        <span class="n">plt</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span>
+            <span class="n">path_len</span><span class="p">,</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">energies</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="mf">627.5</span><span class="p">,</span>
+            <span class="s2">&quot;o--&quot;</span><span class="p">,</span>
+            <span class="n">label</span><span class="o">=</span><span class="s2">&quot;neb&quot;</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">ylabel</span><span class="p">(</span><span class="s2">&quot;Energy (kcal/mol)&quot;</span><span class="p">,</span> <span class="n">fontsize</span><span class="o">=</span><span class="n">fs</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">xticks</span><span class="p">(</span><span class="n">fontsize</span><span class="o">=</span><span class="n">fs</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">yticks</span><span class="p">(</span><span class="n">fontsize</span><span class="o">=</span><span class="n">fs</span><span class="p">)</span>
+        <span class="n">plt</span><span class="o">.</span><span class="n">show</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="fm">__getitem__</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">node</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">append</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">list_of_nodes</span> <span class="o">=</span> <span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">]</span>
+        <span class="n">chain_copy</span> <span class="o">=</span> <span class="n">Chain</span><span class="p">(</span><span class="n">nodes</span><span class="o">=</span><span class="n">list_of_nodes</span><span class="p">,</span>
+                           <span class="n">parameters</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+        <span class="n">chain_copy</span><span class="o">.</span><span class="n">bfgs_hess</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bfgs_hess</span>
+        <span class="n">chain_copy</span><span class="o">.</span><span class="n">velocity</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">velocity</span>
+
+        <span class="k">return</span> <span class="n">chain_copy</span>
+
+    <span class="k">def</span> <span class="nf">iter_triplets</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="n">Node</span><span class="p">]]:</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">yield</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">2</span><span class="p">]</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_traj</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">traj</span><span class="p">:</span> <span class="n">Trajectory</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">ChainInputs</span><span class="p">):</span>
+        <span class="n">nodes</span> <span class="o">=</span> <span class="p">[</span><span class="n">parameters</span><span class="o">.</span><span class="n">node_class</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">traj</span><span class="p">]</span>
+        <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">nodes</span><span class="p">:</span>
+            <span class="n">node</span><span class="o">.</span><span class="n">BARRIER_THRE</span> <span class="o">=</span> <span class="n">parameters</span><span class="o">.</span><span class="n">node_conf_barrier_thre</span>
+            <span class="n">node</span><span class="o">.</span><span class="n">KCAL_MOL_CUTOFF</span> <span class="o">=</span> <span class="n">parameters</span><span class="o">.</span><span class="n">node_conf_en_thre</span>
+
+        <span class="k">return</span> <span class="n">Chain</span><span class="p">(</span><span class="n">nodes</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">parameters</span><span class="p">)</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span> <span class="nf">from_list_of_coords</span><span class="p">(</span>
+        <span class="bp">cls</span><span class="p">,</span> <span class="n">list_of_coords</span><span class="p">:</span> <span class="n">List</span><span class="p">,</span> <span class="n">parameters</span><span class="p">:</span> <span class="n">ChainInputs</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Chain</span><span class="p">:</span>
+        <span class="n">nodes</span> <span class="o">=</span> <span class="p">[</span><span class="n">parameters</span><span class="o">.</span><span class="n">node_class</span><span class="p">(</span><span class="n">point</span><span class="p">)</span> <span class="k">for</span> <span class="n">point</span> <span class="ow">in</span> <span class="n">list_of_coords</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">cls</span><span class="p">(</span><span class="n">nodes</span><span class="o">=</span><span class="n">nodes</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">parameters</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">path_distances</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">)):</span>
+            <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+            <span class="n">end</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="n">dist</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">RMSD</span><span class="p">(</span><span class="n">start</span><span class="o">.</span><span class="n">coords</span><span class="p">,</span> <span class="n">end</span><span class="o">.</span><span class="n">coords</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">dist</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">work</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+        <span class="n">ens</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">energies</span>
+        <span class="n">ens</span> <span class="o">-=</span> <span class="n">ens</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">works</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">ens</span><span class="p">[</span><span class="mi">1</span><span class="p">:]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">path_distances</span><span class="p">)</span>
+        <span class="n">tot_work</span> <span class="o">=</span> <span class="n">works</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">tot_work</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">_energies_already_computed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">all_ens</span> <span class="o">=</span> <span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">_cached_energy</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">all</span><span class="p">([</span><span class="n">val</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">all_ens</span><span class="p">])</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">energies</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energies_already_computed</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">do_parallel</span><span class="p">:</span>
+                <span class="n">energy_gradient_tuples</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">node_class</span><span class="o">.</span><span class="n">calculate_energy_and_gradients_parallel</span><span class="p">(</span>
+                        <span class="n">chain</span><span class="o">=</span><span class="bp">self</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">energies</span> <span class="o">=</span> <span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">energy</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">]</span>
+                <span class="n">gradients</span> <span class="o">=</span> <span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">gradient</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">]</span>
+                <span class="n">energy_gradient_tuples</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="n">gradients</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="p">(</span><span class="n">ene</span><span class="p">,</span> <span class="n">grad</span><span class="p">),</span> <span class="n">node</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">energy_gradient_tuples</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">):</span>
+                <span class="n">node</span><span class="o">.</span><span class="n">_cached_energy</span> <span class="o">=</span> <span class="n">ene</span>
+                <span class="n">node</span><span class="o">.</span><span class="n">_cached_gradient</span> <span class="o">=</span> <span class="n">grad</span>
+
+        <span class="n">out_ens</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">node</span><span class="o">.</span><span class="n">_cached_energy</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">])</span>
+
+        <span class="k">assert</span> <span class="nb">all</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">en</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">en</span> <span class="ow">in</span> <span class="n">out_ens</span><span class="p">]</span>
+        <span class="p">),</span> <span class="sa">f</span><span class="s2">&quot;Ens: Chain contains images with energies that did not converge: </span><span class="si">{</span><span class="n">out_ens</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="k">return</span> <span class="n">out_ens</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">energies_kcalmol</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">energies</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">energies</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">*</span> <span class="mf">627.5</span>
+
+    <span class="k">def</span> <span class="nf">neighs_grad_func</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prev_node</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span> <span class="n">current_node</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span> <span class="n">next_node</span><span class="p">:</span> <span class="n">Node</span><span class="p">):</span>
+        <span class="n">vec_tan_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_tangent_path</span><span class="p">(</span>
+            <span class="n">prev_node</span><span class="o">=</span><span class="n">prev_node</span><span class="p">,</span> <span class="n">current_node</span><span class="o">=</span><span class="n">current_node</span><span class="p">,</span> <span class="n">next_node</span><span class="o">=</span><span class="n">next_node</span>
+        <span class="p">)</span>
+        <span class="n">unit_tan_path</span> <span class="o">=</span> <span class="n">vec_tan_path</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">vec_tan_path</span><span class="p">)</span>
+
+        <span class="n">pe_grad</span> <span class="o">=</span> <span class="n">current_node</span><span class="o">.</span><span class="n">gradient</span>
+
+        <span class="c1"># remove rotations and translations</span>
+        <span class="k">if</span> <span class="n">prev_node</span><span class="o">.</span><span class="n">is_a_molecule</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">pe_grad</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="mi">3</span><span class="p">:</span>  <span class="c1"># if we have at least 3 atoms</span>
+                <span class="n">pe_grad</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># this atom cannot move</span>
+                <span class="n">pe_grad</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="p">:</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># this atom can only move in a line</span>
+                <span class="n">pe_grad</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="p">:</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># this atom can only move in a plane</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">current_node</span><span class="o">.</span><span class="n">do_climb</span><span class="p">:</span>
+            <span class="n">pe_grads_nudged</span> <span class="o">=</span> <span class="n">current_node</span><span class="o">.</span><span class="n">get_nudged_pe_grad</span><span class="p">(</span>
+                <span class="n">unit_tan_path</span><span class="p">,</span> <span class="n">gradient</span><span class="o">=</span><span class="n">pe_grad</span>
+            <span class="p">)</span>
+            <span class="n">spring_forces_nudged</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_force_spring_nudged</span><span class="p">(</span>
+                <span class="n">prev_node</span><span class="o">=</span><span class="n">prev_node</span><span class="p">,</span>
+                <span class="n">current_node</span><span class="o">=</span><span class="n">current_node</span><span class="p">,</span>
+                <span class="n">next_node</span><span class="o">=</span><span class="n">next_node</span><span class="p">,</span>
+                <span class="n">unit_tan_path</span><span class="o">=</span><span class="n">unit_tan_path</span><span class="p">,</span>
+            <span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">current_node</span><span class="o">.</span><span class="n">do_climb</span><span class="p">:</span>
+            <span class="n">pe_along_path_const</span> <span class="o">=</span> <span class="n">current_node</span><span class="o">.</span><span class="n">dot_function</span><span class="p">(</span>
+                <span class="n">pe_grad</span><span class="p">,</span> <span class="n">unit_tan_path</span><span class="p">)</span>
+            <span class="n">pe_along_path</span> <span class="o">=</span> <span class="n">pe_along_path_const</span> <span class="o">*</span> <span class="n">unit_tan_path</span>
+
+            <span class="n">climbing_grad</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">pe_along_path</span>
+
+            <span class="n">pe_grads_nudged</span> <span class="o">=</span> <span class="n">pe_grad</span> <span class="o">-</span> <span class="n">climbing_grad</span>
+
+            <span class="n">zero</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">pe_grad</span><span class="p">)</span>
+            <span class="n">spring_forces_nudged</span> <span class="o">=</span> <span class="n">zero</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;current_node.do_climb is not a boolean: </span><span class="si">{</span><span class="n">current_node</span><span class="o">.</span><span class="n">do_climb</span><span class="si">=}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">pe_grads_nudged</span><span class="p">,</span> <span class="n">spring_forces_nudged</span>
+
+    <span class="k">def</span> <span class="nf">pe_grads_spring_forces_nudged</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">pe_grads_nudged</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">spring_forces_nudged</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">prev_node</span><span class="p">,</span> <span class="n">current_node</span><span class="p">,</span> <span class="n">next_node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">iter_triplets</span><span class="p">():</span>
+            <span class="n">pe_grad_nudged</span><span class="p">,</span> <span class="n">spring_force_nudged</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">neighs_grad_func</span><span class="p">(</span>
+                <span class="n">prev_node</span><span class="o">=</span><span class="n">prev_node</span><span class="p">,</span>
+                <span class="n">current_node</span><span class="o">=</span><span class="n">current_node</span><span class="p">,</span>
+                <span class="n">next_node</span><span class="o">=</span><span class="n">next_node</span><span class="p">,</span>
+            <span class="p">)</span>
+
+            <span class="n">pe_grads_nudged</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pe_grad_nudged</span><span class="p">)</span>
+            <span class="n">spring_forces_nudged</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spring_force_nudged</span><span class="p">)</span>
+
+        <span class="n">pe_grads_nudged</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">pe_grads_nudged</span><span class="p">)</span>
+        <span class="n">spring_forces_nudged</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">spring_forces_nudged</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pe_grads_nudged</span><span class="p">,</span> <span class="n">spring_forces_nudged</span>
+
+    <span class="k">def</span> <span class="nf">get_g_perps</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">pe_grads_nudged</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pe_grads_spring_forces_nudged</span><span class="p">()</span>
+        <span class="n">zero</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">pe_grads_nudged</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">grads</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">pe_grads_nudged</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">zero</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">grads</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">grads</span><span class="p">),</span> <span class="n">zero</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">grads</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">_grads_already_computed</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">all_grads</span> <span class="o">=</span> <span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">_cached_gradient</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">([</span><span class="n">g</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">all_grads</span><span class="p">])</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">gradients</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grads_already_computed</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">do_parallel</span><span class="p">:</span>
+                <span class="n">energy_gradient_tuples</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">node_class</span><span class="o">.</span><span class="n">calculate_energy_and_gradients_parallel</span><span class="p">(</span>
+                        <span class="n">chain</span><span class="o">=</span><span class="bp">self</span>
+                    <span class="p">)</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">energies</span> <span class="o">=</span> <span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">energy</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">]</span>
+                <span class="n">gradients</span> <span class="o">=</span> <span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">gradient</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">]</span>
+                <span class="n">energy_gradient_tuples</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">energies</span><span class="p">,</span> <span class="n">gradients</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="p">(</span><span class="n">ene</span><span class="p">,</span> <span class="n">grad</span><span class="p">),</span> <span class="n">node</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">energy_gradient_tuples</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">):</span>
+                <span class="n">node</span><span class="o">.</span><span class="n">_cached_energy</span> <span class="o">=</span> <span class="n">ene</span>
+                <span class="n">node</span><span class="o">.</span><span class="n">_cached_gradient</span> <span class="o">=</span> <span class="n">grad</span>
+
+        <span class="n">pe_grads_nudged</span><span class="p">,</span> <span class="n">spring_forces_nudged</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pe_grads_spring_forces_nudged</span><span class="p">()</span>
+
+        <span class="n">grads</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">pe_grads_nudged</span> <span class="o">-</span> <span class="n">spring_forces_nudged</span>
+        <span class="p">)</span>  <span class="c1"># + self.parameters.k * anti_kinking_grads</span>
+
+        <span class="c1"># add chain bias if relevant</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">do_chain_biasing</span><span class="p">:</span>
+            <span class="n">tans</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">unit_tangents</span>
+            <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cached_chain_bias</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">type</span><span class="p">(</span><span class="kc">None</span><span class="p">):</span>
+                <span class="n">bias_grads</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">cb</span><span class="o">.</span><span class="n">grad_chain_bias</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+                <span class="n">proj_grads</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                    <span class="p">[</span>
+                        <span class="n">get_nudged_pe_grad</span><span class="p">(</span><span class="n">tan</span><span class="p">,</span> <span class="n">grad</span><span class="p">)</span>
+                        <span class="k">for</span> <span class="n">tan</span><span class="p">,</span> <span class="n">grad</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">tans</span><span class="p">,</span> <span class="n">bias_grads</span><span class="p">)</span>
+                    <span class="p">]</span>
+                <span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_cached_chain_bias</span> <span class="o">=</span> <span class="n">proj_grads</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">proj_grads</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cached_chain_bias</span>
+
+            <span class="n">grads</span> <span class="o">+=</span> <span class="n">proj_grads</span>
+
+        <span class="n">zero</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">grads</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">grads</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">zero</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">grads</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="n">grads</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">grads</span><span class="p">),</span> <span class="n">zero</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="c1"># # remove rotations and translations</span>
+        <span class="c1"># if grads.shape[1] &gt;= 3:  # if we have at least 3 atoms</span>
+        <span class="c1">#     grads[:, 0, :] = 0  # this atom cannot move</span>
+        <span class="c1">#     grads[:, 1, :2] = 0  # this atom can only move in a line</span>
+        <span class="c1">#     grads[:, 2, :1] = 0  # this atom can only move in a plane</span>
+
+        <span class="c1"># # zero all nodes that have converged</span>
+        <span class="c1"># for (i, grad), node in zip(enumerate(grads), self.nodes):</span>
+        <span class="c1">#     if node.converged:</span>
+        <span class="c1">#         grads[i] = grad*0</span>
+
+        <span class="k">return</span> <span class="n">grads</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">rms_gradients</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">grads</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradients</span>
+        <span class="n">rms_grads</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">grad</span> <span class="ow">in</span> <span class="n">grads</span><span class="p">:</span>
+            <span class="n">rms_gradient</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">grad</span><span class="o">.</span><span class="n">flatten</span><span class="p">()))</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">grad</span><span class="p">))</span>
+            <span class="n">rms_grads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rms_gradient</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">rms_grads</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">ts_triplet_gspring_infnorm</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">ind_ts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">energies</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">argmax</span><span class="p">()</span>
+
+        <span class="n">_</span><span class="p">,</span> <span class="n">gsprings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pe_grads_spring_forces_nudged</span><span class="p">()</span>
+
+        <span class="c1"># print(f&#39;{ind_ts=}&#39;, f&#39;{len(self)}&#39;, f&#39;{gsprings.shape=}&#39;)</span>
+        <span class="k">if</span> <span class="n">ind_ts</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># print(&quot;first&quot;)</span>
+            <span class="n">triplet</span> <span class="o">=</span> <span class="n">gsprings</span><span class="p">[</span><span class="mi">0</span><span class="p">:</span><span class="mi">2</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">ind_ts</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># print(&quot;second&quot;)</span>
+            <span class="n">triplet</span> <span class="o">=</span> <span class="n">gsprings</span><span class="p">[</span><span class="n">ind_ts</span><span class="o">-</span><span class="mi">1</span><span class="p">:]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># print(&quot;third&quot;)</span>
+            <span class="n">triplet</span> <span class="o">=</span> <span class="n">gsprings</span><span class="p">[</span><span class="n">ind_ts</span><span class="o">-</span><span class="mi">1</span><span class="p">:</span><span class="n">ind_ts</span><span class="o">+</span><span class="mi">2</span><span class="p">]</span>
+        <span class="n">infnorms</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">amax</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">gspr</span><span class="p">))</span> <span class="k">for</span> <span class="n">gspr</span> <span class="ow">in</span> <span class="n">triplet</span><span class="p">]</span>
+        <span class="c1"># print(f&quot;{triplet=} {infnorms=}&quot;)</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">infnorms</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">rms_gperps</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">grads</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_g_perps</span><span class="p">()</span>
+        <span class="n">rms_grads</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">grad</span> <span class="ow">in</span> <span class="n">grads</span><span class="p">:</span>
+            <span class="n">rms_gradient</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">square</span><span class="p">(</span><span class="n">grad</span><span class="o">.</span><span class="n">flatten</span><span class="p">()))</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">grad</span><span class="p">))</span>
+            <span class="n">rms_grads</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rms_gradient</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">rms_grads</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">unit_tangents</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">tan_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">prev_node</span><span class="p">,</span> <span class="n">current_node</span><span class="p">,</span> <span class="n">next_node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">iter_triplets</span><span class="p">():</span>
+            <span class="n">tan_vec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_create_tangent_path</span><span class="p">(</span>
+                <span class="n">prev_node</span><span class="o">=</span><span class="n">prev_node</span><span class="p">,</span> <span class="n">current_node</span><span class="o">=</span><span class="n">current_node</span><span class="p">,</span> <span class="n">next_node</span><span class="o">=</span><span class="n">next_node</span>
+            <span class="p">)</span>
+            <span class="n">unit_tan</span> <span class="o">=</span> <span class="n">tan_vec</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">tan_vec</span><span class="p">)</span>
+            <span class="n">tan_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">unit_tan</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">tan_list</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">coordinates</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">node</span><span class="o">.</span><span class="n">coords</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">])</span>
+
+    <span class="k">def</span> <span class="nf">_create_tangent_path</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">prev_node</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span> <span class="n">current_node</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span> <span class="n">next_node</span><span class="p">:</span> <span class="n">Node</span>
+    <span class="p">):</span>
+        <span class="n">en_2</span> <span class="o">=</span> <span class="n">next_node</span><span class="o">.</span><span class="n">energy</span>
+        <span class="n">en_1</span> <span class="o">=</span> <span class="n">current_node</span><span class="o">.</span><span class="n">energy</span>
+        <span class="n">en_0</span> <span class="o">=</span> <span class="n">prev_node</span><span class="o">.</span><span class="n">energy</span>
+        <span class="k">if</span> <span class="n">en_2</span> <span class="o">&gt;</span> <span class="n">en_1</span> <span class="ow">and</span> <span class="n">en_1</span> <span class="o">&gt;</span> <span class="n">en_0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">next_node</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">current_node</span><span class="o">.</span><span class="n">coords</span>
+        <span class="k">elif</span> <span class="n">en_2</span> <span class="o">&lt;</span> <span class="n">en_1</span> <span class="ow">and</span> <span class="n">en_1</span> <span class="o">&lt;</span> <span class="n">en_0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">current_node</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">prev_node</span><span class="o">.</span><span class="n">coords</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">deltaV_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">en_2</span> <span class="o">-</span> <span class="n">en_1</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">en_0</span> <span class="o">-</span> <span class="n">en_1</span><span class="p">))</span>
+            <span class="n">deltaV_min</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">en_2</span> <span class="o">-</span> <span class="n">en_1</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">en_0</span> <span class="o">-</span> <span class="n">en_1</span><span class="p">))</span>
+
+            <span class="n">tau_plus</span> <span class="o">=</span> <span class="n">next_node</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">current_node</span><span class="o">.</span><span class="n">coords</span>
+            <span class="n">tau_minus</span> <span class="o">=</span> <span class="n">current_node</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">prev_node</span><span class="o">.</span><span class="n">coords</span>
+            <span class="k">if</span> <span class="n">en_2</span> <span class="o">&gt;</span> <span class="n">en_0</span><span class="p">:</span>
+                <span class="n">tan_vec</span> <span class="o">=</span> <span class="n">deltaV_max</span> <span class="o">*</span> <span class="n">tau_plus</span> <span class="o">+</span> <span class="n">deltaV_min</span> <span class="o">*</span> <span class="n">tau_minus</span>
+            <span class="k">elif</span> <span class="n">en_2</span> <span class="o">&lt;</span> <span class="n">en_0</span><span class="p">:</span>
+                <span class="n">tan_vec</span> <span class="o">=</span> <span class="n">deltaV_min</span> <span class="o">*</span> <span class="n">tau_plus</span> <span class="o">+</span> <span class="n">deltaV_max</span> <span class="o">*</span> <span class="n">tau_minus</span>
+
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">tau_minus</span> <span class="o">+</span> <span class="n">tau_plus</span><span class="p">)</span>
+                <span class="c1"># raise ValueError(</span>
+                <span class="c1">#     f&quot;Energies adjacent to current node are identical. {en_2=} {en_0=}&quot;</span>
+                <span class="c1"># )</span>
+
+            <span class="k">return</span> <span class="n">tan_vec</span>
+
+    <span class="k">def</span> <span class="nf">_get_anti_kink_switch_func</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prev_node</span><span class="p">,</span> <span class="n">current_node</span><span class="p">,</span> <span class="n">next_node</span><span class="p">):</span>
+        <span class="c1"># ANTI-KINK FORCE</span>
+        <span class="n">vec_2_to_1</span> <span class="o">=</span> <span class="n">next_node</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">current_node</span><span class="o">.</span><span class="n">coords</span>
+        <span class="n">vec_1_to_0</span> <span class="o">=</span> <span class="n">current_node</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">prev_node</span><span class="o">.</span><span class="n">coords</span>
+        <span class="n">cos_phi</span> <span class="o">=</span> <span class="n">current_node</span><span class="o">.</span><span class="n">dot_function</span><span class="p">(</span><span class="n">vec_2_to_1</span><span class="p">,</span> <span class="n">vec_1_to_0</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">vec_2_to_1</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">vec_1_to_0</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="n">f_phi</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">*</span> <span class="n">cos_phi</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">f_phi</span>
+
+    <span class="k">def</span> <span class="nf">get_force_spring_nudged</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">prev_node</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span>
+        <span class="n">current_node</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span>
+        <span class="n">next_node</span><span class="p">:</span> <span class="n">Node</span><span class="p">,</span>
+        <span class="n">unit_tan_path</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">,</span>
+    <span class="p">):</span>
+        <span class="n">k_max</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">k</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">k</span><span class="p">,</span> <span class="s2">&quot;__iter__&quot;</span><span class="p">)</span>
+            <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">k</span>
+        <span class="p">)</span>
+        <span class="n">e_ref</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">energy</span><span class="p">,</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">energy</span><span class="p">)</span>
+        <span class="n">e_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">energies</span><span class="p">)</span>
+
+        <span class="n">k01</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_k_between_nodes</span><span class="p">(</span>
+            <span class="n">node0</span><span class="o">=</span><span class="n">prev_node</span><span class="p">,</span>
+            <span class="n">node1</span><span class="o">=</span><span class="n">current_node</span><span class="p">,</span>
+            <span class="n">e_ref</span><span class="o">=</span><span class="n">e_ref</span><span class="p">,</span>
+            <span class="n">k_max</span><span class="o">=</span><span class="n">k_max</span><span class="p">,</span>
+            <span class="n">e_max</span><span class="o">=</span><span class="n">e_max</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="n">k12</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_k_between_nodes</span><span class="p">(</span>
+            <span class="n">node0</span><span class="o">=</span><span class="n">current_node</span><span class="p">,</span>
+            <span class="n">node1</span><span class="o">=</span><span class="n">next_node</span><span class="p">,</span>
+            <span class="n">e_ref</span><span class="o">=</span><span class="n">e_ref</span><span class="p">,</span>
+            <span class="n">k_max</span><span class="o">=</span><span class="n">k_max</span><span class="p">,</span>
+            <span class="n">e_max</span><span class="o">=</span><span class="n">e_max</span><span class="p">,</span>
+        <span class="p">)</span>
+
+        <span class="c1"># print(f&quot;***{k12=} // {k01=}&quot;)</span>
+
+        <span class="n">force_spring</span> <span class="o">=</span> <span class="n">k12</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span>
+            <span class="n">next_node</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">current_node</span><span class="o">.</span><span class="n">coords</span>
+        <span class="p">)</span> <span class="o">-</span> <span class="n">k01</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">current_node</span><span class="o">.</span><span class="n">coords</span> <span class="o">-</span> <span class="n">prev_node</span><span class="o">.</span><span class="n">coords</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">force_spring</span> <span class="o">*</span> <span class="n">unit_tan_path</span>
+
+    <span class="k">def</span> <span class="nf">to_trajectory</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="p">([</span><span class="n">n</span><span class="o">.</span><span class="n">tdstructure</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">t</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">energies_are_monotonic</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">arg_max</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">energies</span><span class="o">.</span><span class="n">argmax</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">arg_max</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">arg_max</span> <span class="o">==</span> <span class="mi">0</span>
+
+    <span class="k">def</span> <span class="nf">_select_split_method</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">conditions</span><span class="p">:</span> <span class="nb">dict</span><span class="p">,</span> <span class="n">irc_results</span><span class="p">,</span> <span class="n">concavity_results</span><span class="p">):</span>
+        <span class="n">all_conditions_met</span> <span class="o">=</span> <span class="nb">all</span><span class="p">([</span><span class="n">val</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">val</span> <span class="ow">in</span> <span class="n">conditions</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span>
+        <span class="k">if</span> <span class="n">all_conditions_met</span><span class="p">:</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="n">conditions</span><span class="p">[</span><span class="s2">&quot;concavity&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>  <span class="c1"># prioritize the minima condition</span>
+            <span class="k">return</span> <span class="s2">&quot;minima&quot;</span>
+        <span class="k">elif</span> <span class="n">conditions</span><span class="p">[</span><span class="s2">&quot;irc&quot;</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot;maxima&quot;</span>
+
+    <span class="k">def</span> <span class="nf">write_ene_info_to_disk</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fp</span><span class="p">):</span>
+        <span class="n">ene_path</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;.energies&quot;</span><span class="p">)</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">savetxt</span><span class="p">(</span><span class="n">ene_path</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">energies</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">write_grad_info_to_disk</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fp</span><span class="p">):</span>
+        <span class="n">grad_path</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;.gradients&quot;</span><span class="p">)</span>
+        <span class="n">grad_shape_path</span> <span class="o">=</span> <span class="n">fp</span><span class="o">.</span><span class="n">parent</span> <span class="o">/</span> <span class="n">Path</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">fp</span><span class="o">.</span><span class="n">stem</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;_grad_shapes.txt&quot;</span><span class="p">)</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">savetxt</span><span class="p">(</span>
+            <span class="n">grad_path</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+                <span class="p">[</span><span class="n">node</span><span class="o">.</span><span class="n">gradient</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">])</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="p">)</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">savetxt</span><span class="p">(</span><span class="n">grad_shape_path</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gradients</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">write_to_disk</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">fp</span><span class="p">:</span> <span class="n">Path</span><span class="p">):</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="n">fp</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">fp</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">is_a_molecule</span><span class="p">:</span>
+            <span class="n">traj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_trajectory</span><span class="p">()</span>
+            <span class="n">traj</span><span class="o">.</span><span class="n">write_trajectory</span><span class="p">(</span><span class="n">fp</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_energies_already_computed</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">write_ene_info_to_disk</span><span class="p">(</span><span class="n">fp</span><span class="p">)</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_grads_already_computed</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">write_grad_info_to_disk</span><span class="p">(</span><span class="n">fp</span><span class="p">)</span>
+
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s2">&quot;Cannot write 2D chains yet.&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">get_ts_guess</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">ind_ts_guess</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">energies</span><span class="o">.</span><span class="n">argmax</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">ind_ts_guess</span><span class="p">]</span><span class="o">.</span><span class="n">tdstructure</span>
+
+    <span class="k">def</span> <span class="nf">get_eA_chain</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">eA</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">energies_kcalmol</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">eA</span>
+
+    <span class="k">def</span> <span class="nf">animate_chain_trajectory</span><span class="p">(</span>
+        <span class="n">chain_traj</span><span class="p">,</span> <span class="n">min_y</span><span class="o">=-</span><span class="mi">100</span><span class="p">,</span> <span class="n">max_y</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+        <span class="n">max_x</span><span class="o">=</span><span class="mf">1.1</span><span class="p">,</span> <span class="n">min_x</span><span class="o">=-</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">norm_path_len</span><span class="o">=</span><span class="kc">True</span>
+    <span class="p">):</span>
+
+        <span class="n">figsize</span> <span class="o">=</span> <span class="mi">5</span>
+        <span class="n">fig</span><span class="p">,</span> <span class="n">ax</span> <span class="o">=</span> <span class="n">plt</span><span class="o">.</span><span class="n">subplots</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mf">1.618</span> <span class="o">*</span> <span class="n">figsize</span><span class="p">,</span> <span class="n">figsize</span><span class="p">))</span>
+
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_xlim</span><span class="p">(</span><span class="n">min_x</span><span class="p">,</span> <span class="n">max_x</span><span class="p">)</span>
+        <span class="n">ax</span><span class="o">.</span><span class="n">set_ylim</span><span class="p">(</span><span class="n">min_y</span><span class="p">,</span> <span class="n">max_y</span><span class="p">)</span>
+
+        <span class="p">(</span><span class="n">line</span><span class="p">,)</span> <span class="o">=</span> <span class="n">ax</span><span class="o">.</span><span class="n">plot</span><span class="p">([],</span> <span class="p">[],</span> <span class="s2">&quot;o--&quot;</span><span class="p">,</span> <span class="n">lw</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span>
+
+        <span class="k">def</span> <span class="nf">animate</span><span class="p">(</span><span class="n">chain</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">norm_path_len</span><span class="p">:</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">chain</span><span class="o">.</span><span class="n">integrated_path_length</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">chain</span><span class="o">.</span><span class="n">path_length</span>
+
+            <span class="n">y</span> <span class="o">=</span> <span class="n">chain</span><span class="o">.</span><span class="n">energies_kcalmol</span>
+            <span class="n">line</span><span class="o">.</span><span class="n">set_data</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+            <span class="n">line</span><span class="o">.</span><span class="n">set_color</span><span class="p">(</span><span class="s2">&quot;skyblue&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="n">ani</span> <span class="o">=</span> <span class="n">matplotlib</span><span class="o">.</span><span class="n">animation</span><span class="o">.</span><span class="n">FuncAnimation</span><span class="p">(</span>
+            <span class="n">fig</span><span class="p">,</span> <span class="n">animate</span><span class="p">,</span> <span class="n">frames</span><span class="o">=</span><span class="n">chain_traj</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">HTML</span><span class="p">(</span><span class="n">ani</span><span class="o">.</span><span class="n">to_jshtml</span><span class="p">())</span>
+</code></pre></div></td></tr></table></div>
+              </details>
+
+
+
+  <div class="doc doc-children">
+
+
+
+
+
+
+
+
+
+
+
+  </div>
+
+    </div>
+
+</div>
 
 
 

@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://mtzgroup.github.io/neb-dynamics/neb/">
       
       
-        <link rel="prev" href="../colton/">
+        <link rel="prev" href="../elementarystep/">
       
       
       
@@ -76,7 +76,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#neb_dynamics.NEB" class="md-skip">
+        <a href="#neb_dynamics.NEB.NEB" class="md-skip">
           Skip to content
         </a>
       
@@ -280,6 +280,26 @@
       
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../elementarystep/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Elementarystep
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -325,7 +345,7 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#neb_dynamics.NEB" class="md-nav__link">
+  <a href="#neb_dynamics.NEB.NEB" class="md-nav__link">
     <span class="md-ellipsis">
       NEB
     </span>
@@ -334,16 +354,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#neb_dynamics.NEB.NEB" class="md-nav__link">
-    <span class="md-ellipsis">
-      NEB
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="NEB">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
   <a href="#neb_dynamics.NEB.NEB.optimize_chain" class="md-nav__link">
     <span class="md-ellipsis">
       optimize_chain
@@ -351,18 +361,13 @@
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
+      
+        <li class="md-nav__item">
   <a href="#neb_dynamics.NEB.NEB.set_climbing_nodes" class="md-nav__link">
     <span class="md-ellipsis">
       set_climbing_nodes
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -399,7 +404,7 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#neb_dynamics.NEB" class="md-nav__link">
+  <a href="#neb_dynamics.NEB.NEB" class="md-nav__link">
     <span class="md-ellipsis">
       NEB
     </span>
@@ -408,16 +413,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#neb_dynamics.NEB.NEB" class="md-nav__link">
-    <span class="md-ellipsis">
-      NEB
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="NEB">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
   <a href="#neb_dynamics.NEB.NEB.optimize_chain" class="md-nav__link">
     <span class="md-ellipsis">
       optimize_chain
@@ -425,18 +420,13 @@
   </a>
   
 </li>
-        
-          <li class="md-nav__item">
+      
+        <li class="md-nav__item">
   <a href="#neb_dynamics.NEB.NEB.set_climbing_nodes" class="md-nav__link">
     <span class="md-ellipsis">
       set_climbing_nodes
     </span>
   </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -460,49 +450,21 @@
 
   <h1>Neb</h1>
 
-<div class="doc doc-object doc-module">
-
-
-
-<a id="neb_dynamics.NEB"></a>
-    <div class="doc doc-contents first">
-
-
-
-  <div class="doc doc-children">
-
-
-
-
-
-
-
-
 <div class="doc doc-object doc-class">
 
 
 
-<h2 id="neb_dynamics.NEB.NEB" class="doc doc-heading">
-            <code>NEB</code>
-
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
-  </span>
-
-<a href="#neb_dynamics.NEB.NEB" class="headerlink" title="Permanent link">🔗</a></h2>
-
-
-    <div class="doc doc-contents ">
+<a id="neb_dynamics.NEB.NEB"></a>
+    <div class="doc doc-contents first">
 
 
       <p>Class for running, storing, and visualizing nudged elastic band minimizations.
 Main functions to use are:
 - self.optimize_chain()
 - self.plot_opt_history()</p>
-<div class="admonition danger">
-<p class="admonition-title">Danger</p>
-<p>Colton said this sucks</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Colton said this rocks</p>
 </div>
 
               <details class="quote">
@@ -1022,8 +984,8 @@ Main functions to use are:
 <span class="sd">    - self.optimize_chain()</span>
 <span class="sd">    - self.plot_opt_history()</span>
 
-<span class="sd">    !!! Danger</span>
-<span class="sd">        Colton said this sucks</span>
+<span class="sd">    !!! Note</span>
+<span class="sd">        Colton said this rocks</span>
 
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">initial_chain</span><span class="p">:</span> <span class="n">Chain</span>
@@ -1540,10 +1502,10 @@ Main functions to use are:
 <div class="doc doc-object doc-function">
 
 
-<h3 id="neb_dynamics.NEB.NEB.optimize_chain" class="doc doc-heading">
+<h2 id="neb_dynamics.NEB.NEB.optimize_chain" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">optimize_chain</span><span class="p">()</span></code>
 
-<a href="#neb_dynamics.NEB.NEB.optimize_chain" class="headerlink" title="Permanent link">🔗</a></h3>
+<a href="#neb_dynamics.NEB.NEB.optimize_chain" class="headerlink" title="Permanent link">🔗</a></h2>
 
 
     <div class="doc doc-contents ">
@@ -1798,10 +1760,10 @@ contains the history of the chains minimized. Once it is completed, you can use
 <div class="doc doc-object doc-function">
 
 
-<h3 id="neb_dynamics.NEB.NEB.set_climbing_nodes" class="doc doc-heading">
+<h2 id="neb_dynamics.NEB.NEB.set_climbing_nodes" class="doc doc-heading">
             <code class="highlight language-python"><span class="n">set_climbing_nodes</span><span class="p">(</span><span class="n">chain</span><span class="p">)</span></code>
 
-<a href="#neb_dynamics.NEB.NEB.set_climbing_nodes" class="headerlink" title="Permanent link">🔗</a></h3>
+<a href="#neb_dynamics.NEB.NEB.set_climbing_nodes" class="headerlink" title="Permanent link">🔗</a></h2>
 
 
     <div class="doc doc-contents ">
@@ -1823,7 +1785,7 @@ contains the history of the chains minimized. Once it is completed, you can use
           <tr class="doc-section-item">
             <td><code>chain</code></td>
             <td>
-                  <code><span title="neb_dynamics.Chain.Chain">Chain</span></code>
+                  <code><a class="autorefs autorefs-internal" title="neb_dynamics.Chain.Chain" href="../colton/#neb_dynamics.Chain.Chain">Chain</a></code>
             </td>
             <td>
               <div class="doc-md-description">
@@ -1871,15 +1833,6 @@ contains the history of the chains minimized. Once it is completed, you can use
     </div>
 
 </div>
-
-
-
-  </div>
-
-    </div>
-
-</div>
-
 
 
 
