@@ -387,6 +387,26 @@
   
 
     
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tdstructure/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Tdstructure
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
   </ul>
 </nav>
                   </div>
@@ -743,10 +763,10 @@ def main():
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
 
-    start = TDStructure.from_xyz(args.st, tot_charge=args.c,
-                                 tot_spinmult=args.s)
-    end = TDStructure.from_xyz(args.en, tot_charge=args.c,
-                               tot_spinmult=args.s)
+    start = TDStructure.from_xyz(args.st, charge=args.c,
+                                 spinmult=args.s)
+    end = TDStructure.from_xyz(args.en, charge=args.c,
+                               spinmult=args.s)
 
     if args.nc != "node3d" and args.nc != "node3d_water":
         if args.tcin:
