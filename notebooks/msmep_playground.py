@@ -6,7 +6,7 @@ from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.TreeNode import TreeNode
-from retropaths.reactions.pot import Pot
+from neb_dynamics.pot import Pot
 
 import pandas as pd
 
@@ -38,6 +38,10 @@ HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 # -
 
 h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/start_opt_msmep/")
+
+h.output_chain.plot_chain()
+
+h.ordered_leaves[0].data.plot_convergence_metrics(1)
 
 h.output_chain.plot_chain()
 h.output_chain.to_trajectory().draw();

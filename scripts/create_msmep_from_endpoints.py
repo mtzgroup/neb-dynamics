@@ -1,28 +1,23 @@
-#!/home/jdep/.conda/envs/neb/bin/python
-from pathlib import Path
+import sys
 from argparse import ArgumentParser
-from neb_dynamics.trajectory import Trajectory
-from neb_dynamics.tdstructure import TDStructure
-
-
-from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Chain import Chain
-from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-
-from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
-# from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from pathlib import Path
 
 from nodes.node3d import Node3D
-from neb_dynamics.nodes.node3d_water import Node3D_Water
-from neb_dynamics.Janitor import Janitor
-from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
-from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.helper_functions import create_friction_optimal_gi
 
+from neb_dynamics.Chain import Chain
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
-
-import sys
+from neb_dynamics.helper_functions import create_friction_optimal_gi
+from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
+from neb_dynamics.Janitor import Janitor
+from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.NEB import NEB, NoneConvergedException
+from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.nodes.node3d_water import Node3D_Water
+# from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.trajectory import Trajectory
 
 
 def read_single_arguments():
@@ -236,10 +231,10 @@ def main():
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
 
-    start = TDStructure.from_xyz(args.st, tot_charge=args.c,
-                                 tot_spinmult=args.s)
-    end = TDStructure.from_xyz(args.en, tot_charge=args.c,
-                               tot_spinmult=args.s)
+    start = TDStructure.from_xyz(args.st, charge=args.c,
+                                 spinmult=args.s)
+    end = TDStructure.from_xyz(args.en, charge=args.c,
+                               spinmult=args.s)
 
     if args.nc != "node3d" and args.nc != "node3d_water":
         if args.tcin:

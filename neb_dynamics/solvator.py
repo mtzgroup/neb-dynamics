@@ -56,7 +56,7 @@ class Solvator:
         )
 
         solv = TDStructure.from_xyz(
-            "/tmp/solvated.xyz", tot_charge=td.charge, tot_spinmult=td.spinmult
+            "/tmp/solvated.xyz", charge=td.charge, spinmult=td.spinmult
         )
 
         solv.update_tc_parameters(td_ref=td)

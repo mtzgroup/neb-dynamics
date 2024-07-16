@@ -9,12 +9,14 @@ from pathlib import Path
 import contextlib
 
 import numpy as np
+from typing import Union, List
 import py3Dmol
 import qcop
 from ase import Atoms
 
 # from ase.optimize import LBFGS, LBFGSLineSearch
 from ase.optimize.sciopt import SciPyFminCG
+from ase.io.trajectory import Trajectory as ASETraj
 from sella import Sella
 from chemcloud import CCClient
 from IPython.core.display import HTML
@@ -22,6 +24,7 @@ from openbabel import openbabel, pybel
 from qcio import DualProgramInput
 from qcio import Molecule as TCMolecule
 from qcio import ProgramInput
+from qcio import ResultsType
 from qcparse import parse
 from xtb.ase.calculator import XTB
 from xtb.interface import Calculator, XTBException
@@ -94,7 +97,15 @@ class TDStructure:
         )
 
     @classmethod
-    def from_molecule(cls, rp_mol: Molecule, charge=0, spinmult=1):
+    def from_molecule(cls, rp_mol: Molecule, charge=0, spinmult=1) -> TDStructure:
+        """Instantiate object from `Molecule` object. see [link](https://mtzgroup.github.io/neb-dynamics/molecule/)
+
+        Args:
+            rp_mol (Molecule): Molecule object to build TDStructure from
+            charge (int, optional): charge of molecule. Defaults to 0.
+            spinmult (int, optional): spin multiplicity of molecule. Defaults to 1.
+
+        """
 
         d = {"single": 1, "double": 2, "triple": 3, "aromatic": 1.5}
 
@@ -162,7 +173,7 @@ class TDStructure:
         return len(n_frags)
 
     @property
-    def mass_weight_coords(self):
+    def mass_weight_coords(self) -> np.array:
         labels = self.symbols
         coords = self.coords
         weights = np.array([np.sqrt(get_mass(s)) for s in labels])
@@ -174,14 +185,24 @@ class TDStructure:
     def coords_bohr(self) -> np.array:
         return self.coords * ANGSTROM_TO_BOHR
 
-    def update_coords(self, coords: np.array):
+    def update_coords(self, coords: np.array) -> TDStructure:
+        """updates the coordinates of the TDStructure to be those of `coords`.
+
+        Args:
+            coords: coords to update TDStructure to
+
+        """
+        np.testing.assert_array_equal(coords.shape, self.coords.shape,
+                                      err_msg=f"Input array shape ({coords.shape}) does not match \
+                                        existing shape ({self.coords.shape})")
+
         string = write_xyz(self.symbols, coords)
 
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w", delete=False) as tmp:
             tmp.write(string)
 
         td = TDStructure.from_xyz(
-            tmp.name, tot_charge=self.charge, tot_spinmult=self.spinmult
+            tmp.name, charge=self.charge, spinmult=self.spinmult
         )
         os.remove(tmp.name)
         return td
@@ -194,14 +215,6 @@ class TDStructure:
         finally:
             os.chdir(curdir)
 
-    def remove_Hs_3d(self):
-
-        atoms_to_del = []
-        for atom in openbabel.OBMolAtomIter(self.molecule_obmol):
-            if atom.GetAtomicNum() == 1:
-                atoms_to_del.append(atom)
-        [self.molecule_obmol.DeleteAtom(a) for a in atoms_to_del]
-
     @property
     def symbols(self):
         return np.array(
@@ -211,7 +224,15 @@ class TDStructure:
             ]
         )
 
-    def align_to_td(self, other_td: TDStructure):
+    def align_to_td(self, other_td: TDStructure) -> TDStructure:
+        """Aligns geometry to `other_td` to minimize RMSD. Uses Kabsch algorithm.
+
+        Args:
+            other_td (TDStructure): structure to align to
+
+        Returns:
+            TDStructure: aligned structure
+        """
         __, new_coords = align_geom(other_td.coords, self.coords)
         new_td = self.update_coords(new_coords)
         return new_td
@@ -348,7 +369,12 @@ class TDStructure:
         new_mol.set_neighbors()
         return new_mol
 
-    def to_ASE_atoms(self):
+    def to_ASE_atoms(self) -> Atoms:
+        """converts TDStructure into `Atoms` object for usage with ASE.
+
+        Returns:
+            Atoms: TDStructure converted to Atoms object from ASE
+        """
         # XTB api is summing the initial charges from the ATOM object.
         # it returns a vector of charges (maybe Mulliken), but to initialize the calculation,
         # it literally sums this vector up. So we create a zero vector (natoms long) and we
@@ -356,7 +382,6 @@ class TDStructure:
         charges = np.zeros(self.atomn)
         charges[0] = self.charge
 
-        # JAN IS GONNA EXPLAIN THIS
         spins = np.zeros(self.atomn)
         spins[0] = self.spinmult - 1
 
@@ -368,10 +393,13 @@ class TDStructure:
         )
         return atoms
 
-    def xtb_geom_optimization(self, return_traj=False):
-        from ase.io.trajectory import Trajectory as ASETraj
+    def xtb_geom_optimization(self, return_traj=False) -> Union[List[TDStructure], TDStructure]:
+        """
+        Run geometry optimization using XTB Calculator in ASE.
 
-        from neb_dynamics.trajectory import Trajectory
+        Args:
+            return_traj: Whether to return a list of tdstructures of the optimziation trajectory
+        """
 
         tmp = tempfile.NamedTemporaryFile(
             suffix=".traj", mode="w+", delete=False)
@@ -396,8 +424,7 @@ class TDStructure:
                     aT[i], charge=self.charge, spinmult=self.spinmult
                 )
             )
-        traj = Trajectory(traj_list)
-        traj.update_tc_parameters(self)
+        traj = [td.update_tc_parameters(self) for td in traj_list]
 
         Path(tmp.name).unlink()
         if return_traj:
@@ -406,12 +433,13 @@ class TDStructure:
         else:
             return traj[-1]
 
-
     def xtb_sella_geom_optimization(self, return_traj=False):
-        from ase.io.trajectory import Trajectory as ASETraj
+        """
+        Use SELLA and XTB to minimize the geometry.
 
-        from neb_dynamics.trajectory import Trajectory
-
+        Args:
+            return_traj: Whether to return a list of tdstructures of the optimziation trajectory
+        """
         tmp = tempfile.NamedTemporaryFile(
             suffix=".traj", mode="w+", delete=False)
 
@@ -430,8 +458,7 @@ class TDStructure:
                     aT[i], charge=self.charge, spinmult=self.spinmult
                 )
             )
-        traj = Trajectory(traj_list)
-        traj.update_tc_parameters(self)
+        traj = [td.update_tc_parameters(self) for td in traj_list]
 
         Path(tmp.name).unlink()
         if return_traj:
@@ -490,7 +517,9 @@ class TDStructure:
             f.write(self.xyz)
         f.close()
 
-    def to_pdb(self, fn: Path):
+    def to_pdb(self, fn: Path) -> None:
+        """Writes molecule to PDB format
+        """
         mol_pybel = pybel.Molecule(self.molecule_obmol)
         mol_pybel.write(format="pdb", filename=str(fn), overwrite=True)
 
@@ -501,7 +530,9 @@ class TDStructure:
         atom = self.molecule_obmol.GetAtom(atom_index + 1)
         atom.SetVector(new_x, new_y, new_z)
 
-    def energy_xtb(self):
+    def energy_xtb(self) -> float:
+        """returns XTB energy of TDStructure
+        """
         try:
             calc = Calculator(
                 get_method("GFN2-xTB"),
@@ -516,7 +547,10 @@ class TDStructure:
         except XTBException:
             return None
 
-    def gradient_xtb(self):
+    def gradient_xtb(self) -> np.array:
+        """
+        return XTB gradient of TDStructure
+        """
         calc = Calculator(
             get_method("GFN2-xTB"),
             self.atomic_numbers,
@@ -529,31 +563,61 @@ class TDStructure:
         return res.get_gradient() * BOHR_TO_ANGSTROMS
 
     def set_charge(self, charge):
+        """
+        sets charge of TDStructure
+        """
         self.molecule_obmol.SetTotalCharge(charge)
 
     def set_spinmult(self, tot_spinmult):
+        """
+        sets spin multiplicity of TDStructure
+        """
         self.molecule_obmol.SetTotalSpinMultiplicity(tot_spinmult)
 
     @classmethod
-    def from_ase_Atoms(cls, atoms: Atoms, charge: int, spinmult: int):
+    def from_ase_Atoms(cls, atoms: Atoms, charge: int, spinmult: int) -> TDStructure:
+        """
+        instantiates TDStructure from ASE Atoms object.
+
+        Args:
+            atoms: ASE Atoms object
+            charge: system charge
+            spinmult: system spin multiplicity
+
+        """
         atomT = np.asarray([from_number_to_element(x) for x in atoms.numbers])
         string = write_xyz(atomT, atoms.get_positions())
 
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w", delete=False) as tmp:
             tmp.write(string)
 
-        td = cls.from_xyz(tmp.name, tot_charge=charge, tot_spinmult=spinmult)
+        td = cls.from_xyz(tmp.name, charge=charge, spinmult=spinmult)
         os.remove(tmp.name)
         return td
 
     @classmethod
-    def from_mapped_smiles(cls, smi, spinmult=1, charge=0):
+    def from_mapped_smiles(cls, smi: str, spinmult: int = 1, charge: int = 0) -> TDStructure:
+        """
+        creates a TDStructure from a mapped smiles format
+
+        Args:
+            smi: mapped smiles to use
+            spinmult: system spinmultiplicity
+            charge: system charge
+        """
         mol = Molecule.from_mapped_smiles(smi)
         obj = cls.from_molecule(mol, charge=charge, spinmult=spinmult)
         return obj
 
     @classmethod
-    def from_smiles(cls, smi, tot_spinmult=1):
+    def from_smiles(cls, smi: str, tot_spinmult: int = 1):
+        """
+        creates a TDStructure from a smiles format
+
+        Args:
+            smi: smiles to use
+            spinmult: system spinmultiplicity
+        """
         pybel_mol = pybel.readstring("smi", smi)
         pybel_mol.make3D()
         pybel_mol.localopt("gaff")
@@ -563,72 +627,22 @@ class TDStructure:
         obj.gum_mm_optimization()
         return obj
 
-    def update_charges_from_reference(self, reference: TDStructure):
-        mol_ref = reference.molecule_rp
-        mol = self.molecule_rp
-
-        mapping = mol_ref.get_bond_subgraph_isomorphisms_of(mol)
-        for key, val in mapping[0].reverse_mapping.items():
-            charge = mol_ref.nodes[key]["charge"]
-            self.molecule_obmol.GetAtom(val + 1).SetFormalCharge(charge)
-
     @classmethod
-    def from_oe(cls, oe_mol, tot_charge=None, tot_spinmult=None):
+    def from_xyz(cls, fp: Path, charge=0, spinmult=1) -> TDStructure:
+        """
+        creates a TDStructure from an xyz file
 
-        if tot_charge is not None:
-            charge = tot_charge
-        else:
-            charge = sum(x.GetFormalCharge() for x in oe_mol.GetAtoms())
-            print(
-                "Warning! Input total charge was None. Guessing the charge from formal charges!"
-            )
-        if tot_spinmult is not None:
-            spinmult = tot_spinmult
-        else:
-            spinmult = 1
-
-        numbers = [atom.GetAtomicNum() for atom in oe_mol.GetAtoms()]
-        coords = [oe_mol.GetCoords(atom) for atom in oe_mol.GetAtoms()]
-
-        obmol = openbabel.OBMol()
-        obmol.SetTotalCharge(charge)
-        obmol.SetTotalSpinMultiplicity(spinmult)
-
-        for (x, y, z), atom_number in zip(coords, numbers):
-            atom = openbabel.OBAtom()
-            atom.SetVector(x, y, z)
-            atom.SetAtomicNum(int(atom_number))
-            obmol.AddAtom(atom)
-
-        for oe_bond in oe_mol.GetBonds():
-            atom1_id = oe_bond.GetBgnIdx()
-            atom2_id = oe_bond.GetEndIdx()
-            bond_order = oe_bond.GetOrder()
-            atom1 = obmol.GetAtom(atom1_id + 1)
-            atom2 = obmol.GetAtom(atom2_id + 1)
-
-            bond = openbabel.OBBond()
-            bond.SetBegin(atom1)
-            bond.SetEnd(atom2)
-
-            if oe_bond.IsAromatic():  # i.e., if an aromatic bond
-                bond.SetAromatic(True)
-                bond.SetBondOrder(4)
-            else:
-                bond.SetBondOrder(bond_order)
-
-            obmol.AddBond(bond)
-
-        return cls(obmol)
-
-    @classmethod
-    def from_xyz(cls, fp: Path, tot_charge=0, tot_spinmult=1):
+        Args:
+            fp: path to xyz file to open
+            spinmult: system spinmultiplicity
+            charge: system charge
+        """
         if isinstance(fp, str):
             fp = Path(fp)
         # if "OE_LICENSE" not in os.environ:
         obmol = load_obmol_from_fp(fp)
-        obmol.SetTotalCharge(tot_charge)
-        obmol.SetTotalSpinMultiplicity(tot_spinmult)
+        obmol.SetTotalCharge(charge)
+        obmol.SetTotalSpinMultiplicity(spinmult)
         return cls(molecule_obmol=obmol)
 
         # else:
@@ -641,7 +655,13 @@ class TDStructure:
         #             )
 
     @classmethod
-    def from_cc_result(cls, result):
+    def from_cc_result(cls, result: ResultsType) -> TDStructure:
+        """
+        Build TDStructure from ChemCloud results object
+
+        Args:
+            result: qcio results object see [link](https://mtzgroup.github.io/chemcloud-client/)
+        """
         if hasattr(result, "final_molecule"):
             mol = result.final_molecule
         else:
@@ -664,8 +684,8 @@ class TDStructure:
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w", delete=False) as tmp:
             tmp.write(string)
 
-        td = cls.from_xyz(tmp.name, tot_charge=tot_charge,
-                          tot_spinmult=tot_spinmult)
+        td = cls.from_xyz(tmp.name, charge=tot_charge,
+                          spinmult=tot_spinmult)
         os.remove(tmp.name)
         return td
 
@@ -678,7 +698,16 @@ class TDStructure:
             string, tot_charge=tot_charge, tot_spinmult=tot_spinmult
         )
 
-    def update_tc_parameters(self, td_ref: TDStructure):
+    def update_tc_parameters(self, td_ref: TDStructure) -> None:
+        """
+        updates the TC parameters INPLACE for `self` from a reference TDStructure.
+
+        !!! Warning
+            This update is done INPLACE.
+
+        Args:
+            td_ref: reference TDStructure
+        """
         tc_model_method = td_ref.tc_model_method
         tc_model_basis = td_ref.tc_model_basis
         tc_kwds = td_ref.tc_kwds.copy()
@@ -689,16 +718,29 @@ class TDStructure:
         self.tc_kwds = tc_kwds
         self.tc_geom_opt_kwds = tc_geom_opt_kwds
 
-    def update_tc_parameters_from_inpfile(self, file_path: str, read_in_charges_spinmult: bool = False):
+    def update_tc_parameters_from_inpfile(self, file_path: str, read_in_charges_spinmult: bool = False) -> TDStructure:
+        """updates TC parameters from a terachem input file. Returns a COPY
+
+        !!! Warning
+            This update is NOT done in place. An updated copy is returned.
+
+        Args:
+            file_path: file path to Terachem input file
+            read_in_charges_spinmult: Whether to replace TDStructure `charge` \
+                and `spinmult` values with whatever is specified in the input file.
+        """
         td_copy = self.copy()
 
-        method, basis, charge, spinmult, inp_kwds = _load_info_from_tcin(file_path)
+        method, basis, charge, spinmult, inp_kwds = _load_info_from_tcin(
+            file_path)
         if charge and read_in_charges_spinmult:
-            print(f"Warning!: Setting charge to what is specified in {file_path}")
+            print(
+                f"Warning!: Setting charge to what is specified in {file_path}")
             td_copy.set_charge(charge)
 
         if spinmult and read_in_charges_spinmult:
-            print(f"Warning!: Setting multiplicity to what is specified in {file_path}")
+            print(
+                f"Warning!: Setting multiplicity to what is specified in {file_path}")
             td_copy.set_spinmult(spinmult)
 
         td_copy.tc_model_method = method
@@ -707,15 +749,18 @@ class TDStructure:
 
         return td_copy
 
-
-
-
     @property
     def tc_client(self):
+        """
+        stores chemcloud client
+        """
         client = CCClient()
         return client
 
     def _prepare_input(self, method):
+        """
+        creates a qcio ProgramInput from TDStructure.
+        """
         allowed_methods = [
             "energy",
             "optimization",
@@ -731,7 +776,7 @@ class TDStructure:
         # if self.tc_c0:
         #     self.tc_kwds["guess"] = "c0"
 
-        tc_mol = self._as_tc_molecule()
+        tc_mol = self.as_qcio_molecule()
         if method in ["energy", "gradient"]:
             # if self.tc_c0:
             #     prog_input = ProgramInput(
@@ -785,7 +830,10 @@ class TDStructure:
 
         return inp
 
-    def _as_tc_molecule(self):
+    def as_qcio_molecule(self):
+        """
+        creates a qcio Molecule object from self
+        """
         d = {
             "symbols": self.symbols,
             "geometry": self.coords_bohr,
@@ -818,6 +866,10 @@ class TDStructure:
         return tc_inp_str
 
     def compute_tc(self, program: str, calctype: str):
+        """
+        uses ChemCloud to compute a property defined by `calctype`.
+        See [link](https://mtzgroup.github.io/chemcloud-client/tutorial/compute/)
+        """
         prog_input = self._prepare_input(method=calctype)
 
         future_result = self.tc_client.compute(
@@ -838,6 +890,9 @@ class TDStructure:
     def compute_tc_local(
         self, program: str, calctype: str, return_object: bool = False
     ):
+        """
+        Uses qcop to compute properties. See [link](https://github.com/coltonbh/qcop)
+        """
         prog_input = self._prepare_input(method=calctype)
 
         output = qcop.compute(
@@ -859,10 +914,16 @@ class TDStructure:
             return None
 
     def tc_freq_calculation(self):
+        """
+        returns frequences from hessian calculation using bigchem
+        """
         freqs, _ = self.tc_freq_nma_calculation()
         return freqs
 
     def tc_nma_calculation(self):
+        """
+        returns normal modes from hessian calculation using bigchem
+        """
         _, nmas = self.tc_freq_nma_calculation()
 
         nmas_flat = nmas
@@ -896,18 +957,37 @@ class TDStructure:
             return self._cached_freqs, self._cached_nma
 
     def energy_tc(self):
+        """
+        energy for system using chemcloud
+        """
         return self.compute_tc(ES_PROGRAM, "energy")
 
     def energy_tc_local(self):
+        """
+        energy for system using local terachem
+        """
         return self.compute_tc_local(ES_PROGRAM, "energy")
 
     def gradient_tc(self):
+        """
+        gradient for system using chemcloud
+        """
         return self.compute_tc(ES_PROGRAM, "gradient")
 
     def gradient_tc_local(self):
+        """
+        gradient for system using local terachem
+        """
         return self.compute_tc_local(ES_PROGRAM, "gradient")
 
     def tc_geom_optimization(self, method="minima"):
+        """
+        geometry optimization for system using chemcloud
+
+        Args:
+            method: whether to do a "minima" or "ts" optimization. \
+            uses `geometric` to carry out optimizations.
+        """
         if method == "minima":
             opt_input = self._prepare_input(method="optimization")
         elif method == "ts":
@@ -947,6 +1027,13 @@ class TDStructure:
         return td_opt_tc
 
     def tc_local_geom_optimization(self, method="minima"):
+        """
+        geometry optimization for system using local terachem
+
+        Args:
+            method: whether to do a "minima" or "ts" optimization. \
+            uses `geometric` in `qcop` to carry out optimizations.
+        """
         if method == "minima":
             # opt_input = self._prepare_input(method="optimization")
             return self.run_tc_local(calculation="minimize")
@@ -987,6 +1074,10 @@ class TDStructure:
         return td_opt_tc
 
     def tc_local_ts_optimization(self, **kwargs):
+        """
+        geometry optimization for system using local terachem.
+        Will attempt a transition state search.
+        """
         return self.run_tc_local(
             calculation="ts",
             method=self.tc_model_method,
@@ -995,6 +1086,12 @@ class TDStructure:
         )
 
     def run_tc_local(self, calculation="energy", remove_all=True, return_object=False):
+        """
+        run a local terachem calculation
+
+        Args:
+            calculation: type of calculation to run. Supports 'energy', 'gradient', and 'minimize'
+        """
         # make the geometry file
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w+", delete=False) as tmp:
             self.to_xyz(tmp.name)
@@ -1384,7 +1481,8 @@ class TDStructure:
 
             fps_confomers = list(dd.glob("crest_conf*.xyz"))
             fps_rotamers = list(dd.glob("crest_rot*.xyz"))
-            conformers_already_sampled = len(fps_confomers) >= 1 and len(fps_rotamers) >= 1
+            conformers_already_sampled = len(
+                fps_confomers) >= 1 and len(fps_rotamers) >= 1
 
             if conformers_already_sampled:
                 if verbose:

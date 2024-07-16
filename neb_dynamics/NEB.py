@@ -12,8 +12,7 @@ import numpy as np
 from openbabel import pybel
 
 from neb_dynamics.Chain import Chain
-from neb_dynamics.errors import (ElectronicStructureError,
-                                 NoneConvergedException)
+from neb_dynamics.errors import NoneConvergedException
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from nodes.node3d import Node3D
 from neb_dynamics.Optimizer import Optimizer
@@ -37,6 +36,8 @@ class NEB:
     - self.optimize_chain()
     - self.plot_opt_history()
 
+    !!! Note
+        Colton said this rocks
 
     """
     initial_chain: Chain
@@ -52,11 +53,22 @@ class NEB:
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
 
+    @classmethod
+    def from_tdstruct_and_inputs(cls, reactant: TDStructure, product: TDStructure, chain_inputs: ChainInputs = ChainInputs(), neb_inputs: NEBInputs = NEBInputs()) -> NEB:
+        """
+        shortcut to creating a NEB object that is ready to run using only endpoints and
+        """
+
     def _reset_node_convergence(self, chain) -> None:
         for node in chain:
             node.converged = False
 
     def set_climbing_nodes(self, chain: Chain) -> None:
+        """Iterates through chain and sets the nodes that should climb.
+
+        Args:
+            chain: chain to set inputs for
+        """
         if self.parameters.climb:
             inds_maxima = [chain.energies.argmax()]
 
@@ -98,40 +110,14 @@ class NEB:
         values in order to decide whether the expensive minimization of
         the chain should be done.
         """
-        # max_grad_val = chain.get_maximum_grad_magnitude()
-        # max_grad_val = np.linalg.norm(chain.get_g_perps())
         ind_ts_guess = np.argmax(chain.energies)
         ts_guess_grad = np.amax(np.abs(chain.get_g_perps()[ind_ts_guess]))
 
-        dist_to_prev_chain = chain._distance_to_chain(
-            self.chain_trajectory[-2])  # the -1 is the chain im looking at
-        if dist_to_prev_chain < self.parameters.early_stop_chain_rms_thre:
-            self.n_steps_still_chain += 1
-        else:
-            self.n_steps_still_chain = 0
+        if ts_guess_grad <= self.parameters.early_stop_force_thre:
 
-        correlation = self.chain_trajectory[-2]._gradient_correlation(chain)
-        conditions = [
-            ts_guess_grad <= self.parameters.early_stop_force_thre,
-            dist_to_prev_chain <= self.parameters.early_stop_chain_rms_thre,
-            correlation >= self.parameters.early_stop_corr_thre,
-            self.n_steps_still_chain >= self.parameters.early_stop_still_steps_thre
-        ]
-        # if any(conditions):
-        # if we've dipped below the force thre and chain rms is low
-        if (conditions[0] and conditions[1]) or conditions[3]:
-            # or chain has stayed still for a long time
-            # dont reset them if you stopped due to stillness
-            if (conditions[0] and conditions[1]):
-                new_params = self.parameters.copy()
-
-                # reset early stop checks
-                new_params.early_stop_force_thre = 0.0
-                new_params.early_stop_chain_rms_thre = 0.0
-                new_params.early_stop_corr_thre = 10.
-                new_params.early_stop_still_steps_thre = 100000
-
-                self.parameters = new_params
+            new_params = self.parameters.copy()
+            new_params.early_stop_force_thre = 0.0
+            self.parameters = new_params
 
             # going to set climbing nodes when checking early stop
             if self.parameters.climb:

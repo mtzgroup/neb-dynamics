@@ -4,6 +4,8 @@ from dataclasses import dataclass
 
 import numpy as np
 from neb_dynamics.tdstructure import TDStructure
+from qcop.adapters.utils import set_env_variable
+
 from xtb.interface import Calculator
 from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
@@ -276,15 +278,16 @@ class Node3D(Node):
         if converged:
             return prev_en, np.zeros_like(coords_bohr)
 
-        calc = Calculator(
-            get_method("GFN2-xTB"),
-            numbers=np.array(atomic_numbers),
-            positions=coords_bohr,
-            charge=charge,
-            uhf=spinmult - 1,
-        )
-        calc.set_verbosity(VERBOSITY_MUTED)
-        res = calc.singlepoint()
+        with set_env_variable("OMP_NUM_THREADS", 1):
+            calc = Calculator(
+                get_method("GFN2-xTB"),
+                numbers=np.array(atomic_numbers),
+                positions=coords_bohr,
+                charge=charge,
+                uhf=spinmult - 1,
+            )
+            calc.set_verbosity(VERBOSITY_MUTED)
+            res = calc.singlepoint()
 
         return res.get_energy(), res.get_gradient() * BOHR_TO_ANGSTROMS
 
@@ -321,10 +324,6 @@ class Node3D(Node):
             for n in chain.nodes
         )
 
-        # with mp.Pool() as p:
-        #     ene_gradients = p.map(
-        #         cls.calc_xtb_ene_grad_from_input_tuple, iterator)
-        # return ene_gradients
         # NOTE: Using CPU count since these calls are CPU bound calls to xtb library
-        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             return list(executor.map(cls.calc_xtb_ene_grad_from_input_tuple, iterator))

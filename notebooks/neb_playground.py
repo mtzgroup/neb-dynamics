@@ -427,7 +427,7 @@ ts.to_xyz("/home/jdep/T3D_data/colton_debug/ts_sn2.xyz")
 
 from neb_dynamics.tdstructure import TDStructure
 
-ts = TDStructure.from_xyz("/home/jdep/T3D_data/colton_debug/ts_sn2.xyz", tot_charge=-1)
+ts = TDStructure.from_xyz("/home/jdep/T3D_data/colton_debug/ts_sn2.xyz", charge=-1)
 
 ts.tc_model_method = 'wb97xd3'
 ts.tc_model_basis = 'def2-svp'

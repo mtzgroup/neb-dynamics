@@ -36,10 +36,15 @@ black = "^24.4.2"
 autopep8 = "^2.3.1"
 rxnmapper = "^0.3.0"  # needed for NetworkBuilder is you want smi->smi network
 torch = ">=2.0.0, !=2.0.1, !=2.1.0"
-
-
-[tool.poetry.group.devp.dependencies]
 tqdm = "^4.66.4"
+
+
+[tool.poetry.group.docs.dependencies]
+mkdocs = "^1.6.0"
+mkdocs-material = "^9.5.29"
+markdown-include = "^0.8.1"
+pymdown-extensions = "^10.8.1"
+mkdocstrings = {extras = ["python"], version = "^0.25.1"}
 
 [build-system]
 requires = ["poetry-core"]

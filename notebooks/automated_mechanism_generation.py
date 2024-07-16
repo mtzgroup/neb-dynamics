@@ -1,3 +1,5 @@
+
+
 # +
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
@@ -6,7 +8,7 @@ from neb_dynamics.Chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.TreeNode import TreeNode
-from retropaths.reactions.pot import Pot
+from neb_dynamics.pot import Pot
 
 
 import numpy as np
@@ -32,17 +34,6 @@ HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
 
 # # Network stuff
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Wittig/ASNEB_03_NOSIG_NOMR/")
-
-h.output_chain.plot_chain()
-
-tsg = h.children[1].data.optimized.get_ts_guess()
-
-tsg.tc_model_method = 'uwb97xd3'
-tsg.tc_model_basis = 'def2-svp'
-
-tsg.tc_freq_calculation()
-
 # +
 from neb_dynamics.NetworkBuilder import NetworkBuilder, ReactionData
 from neb_dynamics.Inputs import ChainInputs
@@ -53,8 +44,8 @@ from neb_dynamics.molecule import Molecule
 from neb_dynamics.tdstructure import TDStructure
 # -
 
-start = TDStructure.from_xyz("/home/jdep/T3D_data/ClaisenNoSIG/start_confs/start.xyz")
-end = TDStructure.from_xyz("/home/jdep/T3D_data/ClaisenNoSIG/end_confs/end.xyz")
+start = TDStructure.from_smiles("CC(C)(C)C(C)Br.O")
+end = TDStructure.from_smiles("C(C)(C)(C(C)C)O.Br")
 
 # +
 # from neb_dynamics.solvator import Solvator
@@ -65,14 +56,41 @@ end = TDStructure.from_xyz("/home/jdep/T3D_data/ClaisenNoSIG/end_confs/end.xyz")
 # end = solv.solvate_single_td(end)
 # -
 
-from neb_dynamics.nodes.Node3D_Water import Node3D_Water
+from neb_dynamics.nodes.node3d_water import Node3D_Water
 from nodes.node3d import Node3D
 
-smi1 = start.molecule_rp.smiles
-
-smi2 = end.molecule_rp.smiles
-
 from neb_dynamics.Inputs import NetworkInputs
+
+# +
+"""Must run script like this: python -m examples.xtb"""
+
+from qcio import CalcType, ProgramInput, Structure
+
+from qcop import compute
+
+# Create the structure
+# Can also open a structure from a file
+# structure = Structure.open("path/to/h2o.xyz")
+structure = Structure(
+    symbols=["O", "H", "H"],
+    geometry=[  # type: ignore
+        [0.0, 0.0, 0.0],
+        [0.52421003, 1.68733646, 0.48074633],
+        [1.14668581, -0.45032174, -1.35474466],
+    ],
+)
+
+# Define the program input
+prog_input = ProgramInput(
+    structure=structure,
+    calctype=CalcType.energy,
+    model={"method": "GFN2xTB"},  # type: ignore
+    keywords={"max_iterations": 150},
+)
+
+
+output = compute("xtb", prog_input)
+print(output)
 
 # +
 ugi_fp = Path("/home/jdep/T3D_data/template_rxns/Ugi-Reaction/")
@@ -92,199 +110,119 @@ rgs_fp = Path("/home/jdep/T3D_data/RGS_Network")
 enol_solv_fp = Path("/home/jdep/T3D_data/EnolateClaisen_8Water")
 
 cr_rxnmapper = Path("/home/jdep/T3D_data/ClaisenRxnMapper")
+sn1_rxnmapper = Path("/home/jdep/T3D_data/SN1RxnMapper")
 
 
 network_inps = NetworkInputs(
-
     subsample_confs=True,
-    n_max_conformers=20,
-    use_slurm=True,
-    verbose=0,
+    n_max_conformers=5,
+    use_slurm=False,
+    verbose=1,
     tolerate_kinks=False,
     network_nodes_are_conformers=False,
     maximum_barrier_height=50000
 )
 
 bob = NetworkBuilder(
-    data_dir=cr_rxnmapper,
-    start=smi1,
-    end=smi2,
-    chain_inputs=ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=True, use_maxima_recyling=True, node_class=Node3D),
+    data_dir=sn1_rxnmapper,
+    start=start.molecule_rp.smiles,
+    end=end.molecule_rp.smiles,
+    chain_inputs=ChainInputs(k=0.1, delta_k=0.09, skip_identical_graphs=True, use_maxima_recyling=True, node_class=Node3D_Water),
     network_inputs=network_inps
 
 )
 # -
 
-pot = bob.create_rxn_network()
+pot = bob.run_and_return_network()
+
 
 # +
-# pot = bob.run_and_return_network()
-# -
-
-
-pot.draw()
+# pot.draw()
 
 # +
-ind = 19
-
-fp = f'/home/jdep/T3D_data/ClaisenRxnMapper/msmep_results/results_pair{ind}_msmep'
-h = TreeNode.read_from_disk(fp)
-h.data.optimized.plot_chain()
-h.data.optimized.to_trajectory().draw();
-# -
-
-ind = 1
-all_cs[ind].plot_chain()
-all_cs[ind].to_trajectory()
-
-c = bob.get_lowest_barrier_chain('0-1')
-c.plot_chain()
-c.to_trajectory()
-
-from neb_dynamics.NetworkBuilder import ReactionData
-
-rd = ReactionData(data=bob.leaf_objects)
-
-out = rd.get_all_TS('0-1')
-
-out
-
-c.plot_chain()
-c.to_trajectory()#.write_trajectory("/home/jdep/T3D_data/hi_martin.xyz")
-
-# +
-# pot.draw_shortest_to_node(4, mode='d3', weight='barrier')
-# -
-
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF
-
 import networkx as nx
 
-# +
 # %matplotlib ipympl
-from matplotlib import pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
-alpha=1
+alpha = 1
 plot_enes = True
 n = 100
 
 g = pot.graph
 positions = nx.spring_layout(g)
-# positions = nx.spring_layout(g_sub)
 
-s=1.5
-plt.rcParams["figure.figsize"] = [7.50*s, 3.50*s]
+s = 1.5
+plt.rcParams["figure.figsize"] = [7.50 * s, 3.50 * s]
 plt.rcParams["figure.autolayout"] = True
+
+def scatter_positions(ax, positions, zs, plot_enes=True):
+    xs, ys, labels = [], [], []
+    for node_ind, pos in positions.items():
+        if len(g.nodes[node_ind]['node_energies']) < 1:
+            continue
+        ene = min(g.nodes[node_ind]['node_energies'])
+        for neighbor in g.neighbors(node_ind):
+            if neighbor == node_ind:
+                continue
+            eA = float(g.edges[(neighbor, node_ind)]['reaction'].split(":")[-1])  # kcal/mol
+            TS_ene = ene + (eA / 627.5)
+            start_p = positions[node_ind]
+            end_p = positions[neighbor]
+            TS_p = (end_p + start_p) / 2
+            xs.append(TS_p[0])
+            ys.append(TS_p[1])
+            zs.append(TS_ene if plot_enes else -np.exp(TS_ene))
+        xs.append(pos[0])
+        ys.append(pos[1])
+        zs.append(ene if plot_enes else -np.exp(ene))
+    return xs, ys, zs
 
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
-# ax = Axes3D(fig)
-xs = []
-ys = []
-zs = []
-labels = []
-for node_ind, pos in positions.items():
-    if len(g.nodes[node_ind]['node_energies']) < 1:
-        continue
-    ene = min(g.nodes[node_ind]['node_energies'])
-
-    for neighbor in g.neighbors(node_ind):
-        if neighbor==node_ind:
-            continue
-
-        eA = float(g.edges[(neighbor,node_ind)]['reaction'].split(":")[-1]) #kcal/mol
-        TS_ene = ene+(eA/627.5)
-        start_p = positions[node_ind]
-        end_p = positions[neighbor]
-        TS_p = (end_p + start_p) / 2
-        # ax.scatter(TS_p[0], TS_p[1], TS_ene, marker='x', color='red', s=80, depthshade=False)
-        xs.append(TS_p[0])
-        ys.append(TS_p[1])
-        if plot_enes:
-            zs.append(TS_ene)
-        else:
-            zs.append(-np.exp(TS_ene))
-
-    xs.append(pos[0])
-    ys.append(pos[1])
-    if plot_enes:
-        zs.append(ene)
-    else:
-        zs.append(-np.exp(ene))
-
+xs, ys, zs = scatter_positions(ax, positions, [], plot_enes)
 
 kernel = RBF(1.0, (-20.0, 1e5))
 gpr = GaussianProcessRegressor(kernel=kernel)
-train_data = np.array([xs,ys]).T
+train_data = np.array([xs, ys]).T
 gpr.fit(train_data, zs)
 print(gpr.score(train_data, zs))
 
-
 x_vals = np.linspace(min(xs), max(xs), num=n)
 y_vals = np.linspace(min(ys), max(ys), num=n)
-xx,yy = np.meshgrid(x_vals, y_vals)
-zz = np.array([[0.0]*len(xx)]*len(xx))
+xx, yy = np.meshgrid(x_vals, y_vals)
+zz = np.array([[0.0] * len(xx)] * len(xx))
 
 for i, col_val in enumerate(xx):
     for j, row_val in enumerate(col_val):
-        pred_val = gpr.predict(np.array([[xx[i,j], yy[i,j]]]))[0]
-        if pred_val > max(zs):
-            pred_val = max(zs)
-        elif pred_val < min(zs):
-            pred_val = min(zs)
+        pred_val = gpr.predict(np.array([[xx[i, j], yy[i, j]]]))[0]
+        pred_val = max(min(pred_val, max(zs)), min(zs))
         zz[i, j] = pred_val
 
-
-
-ax.plot_trisurf(xs, ys, zs,cmap='viridis', alpha=alpha)
-# ax.plot_surface(xx, yy, zz,cmap='viridis', alpha=alpha)
-
-
+ax.plot_trisurf(xs, ys, zs, cmap='viridis', alpha=alpha)
 
 for node_ind, pos in positions.items():
     if len(g.nodes[node_ind]['node_energies']) < 1:
         continue
     ene = min(g.nodes[node_ind]['node_energies'])
-
     for neighbor in g.neighbors(node_ind):
-        if neighbor==node_ind:
+        if neighbor == node_ind:
             continue
-
-        eA = float(g.edges[(neighbor,node_ind)]['reaction'].split(":")[-1]) #kcal/mol
-        TS_ene = ene+(eA/627.5)
-        # print(ene, TS_ene)
-        start_p = positions[node_ind]
-        end_p = positions[neighbor]
-        TS_p = (end_p + start_p) / 2
-        # print(start_p, end_p, TS_p)
-        if plot_enes:
-            ax.scatter(TS_p[0], TS_p[1], TS_ene, marker='x', color='red', s=80, depthshade=False)
-        else:
-            ax.scatter(TS_p[0], TS_p[1], -np.exp(TS_ene), marker='x', color='red', s=80, depthshade=False)
-
-    if plot_enes:
-        ax.scatter(pos[0], pos[1], ene, s=50, color='black')
-        ax.text(pos[0]+.05, pos[1]+.05, ene-.001, s=f'node_{node_ind}')
-    else:
-        ax.scatter(pos[0], pos[1], -np.exp(ene), s=50, color='black')
-        ax.text(pos[0]+.05, pos[1]+.05, -np.exp(ene-.001), s=f'node_{node_ind}')
+        eA = float(g.edges[(neighbor, node_ind)]['reaction'].split(":")[-1])  # kcal/mol
+        TS_ene = ene + (eA / 627.5)
+        TS_p = (positions[node_ind] + positions[neighbor]) / 2
+        ax.scatter(TS_p[0], TS_p[1], TS_ene if plot_enes else -np.exp(TS_ene), marker='x', color='red', s=80, depthshade=False)
+    ax.scatter(pos[0], pos[1], ene if plot_enes else -np.exp(ene), s=50, color='black')
+    ax.text(pos[0] + .05, pos[1] + .05, ene - .001 if plot_enes else -np.exp(ene - .001), s=f'node_{node_ind}')
 
 ax.set_xlabel("X axis")
 ax.set_ylabel("Y axis")
-
-
-
-
-
-
-# ax.axis('off')
-# plt.legend(loc=(1.1,0))
-# ax.view_init(azim=45, elev=90)
-ax.set_zlim3d(min(zs),max(zs))
+ax.set_zlim3d(min(zs), max(zs))
 ax.view_init(azim=45, elev=40)
-# plt.legend()
 plt.show()
 
 # +

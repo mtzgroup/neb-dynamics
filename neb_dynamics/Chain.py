@@ -12,6 +12,7 @@ from IPython.display import HTML
 
 # from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.tdstructure import TDStructure
 
 from nodes.Node import Node
 from neb_dynamics.Inputs import ChainInputs
@@ -258,10 +259,6 @@ class Chain:
     @classmethod
     def from_traj(cls, traj: Trajectory, parameters: ChainInputs):
         nodes = [parameters.node_class(s) for s in traj]
-        for node in nodes:
-            node.BARRIER_THRE = parameters.node_conf_barrier_thre
-            node.KCAL_MOL_CUTOFF = parameters.node_conf_en_thre
-
         return Chain(nodes, parameters=parameters)
 
     @classmethod
@@ -642,9 +639,19 @@ class Chain:
         else:
             raise NotImplementedError("Cannot write 2D chains yet.")
 
-    def get_ts_guess(self):
+    def get_ts_guess(self) -> TDStructure:
+        """
+        return the TDStructure corresponding to the transition state guess.
+        """
         ind_ts_guess = self.energies.argmax()
         return self[ind_ts_guess].tdstructure
+
+    def get_ts_node(self) -> Node:
+        """
+        return the node corresponding to the transition state guess.
+        """
+        ind_ts_guess = self.energies.argmax()
+        return self[ind_ts_guess]
 
     def get_eA_chain(self):
         eA = max(self.energies_kcalmol)

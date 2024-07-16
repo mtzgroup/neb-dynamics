@@ -23,6 +23,10 @@ class ElemStepResults:
 
 @dataclass
 class ConcavityResults:
+    """
+    Stores results on concavity checks (i.e. whether chain has a "dip" that could be\
+        a new minimum)
+    """
     is_concave: bool
     minimization_results: list[Node]
     number_grad_calls: int
@@ -34,13 +38,12 @@ class ConcavityResults:
 
 @dataclass
 class IRCResults:
+    """Stores results on (pseudo)IRC checks
+    """
     found_reactant: Node
     found_product: Node
     number_grad_calls: int
 
-
-# @dataclass
-# class ElementaryStepChecker:
 
 def check_if_elem_step(inp_chain: Chain) -> ElemStepResults:
     """Calculates whether an input chain is an elementary step.
@@ -73,8 +76,6 @@ def check_if_elem_step(inp_chain: Chain) -> ElemStepResults:
             minimization_results=concavity_results.minimization_results,
             number_grad_calls=n_geom_opt_grad_calls
         )
-
-    # JAN! THIS IS WHERE YOU STOPPED REFACTOERING>
 
     crude_irc_passed, ngc_approx_elem_step = is_approx_elem_step(
         chain=inp_chain)
@@ -141,7 +142,6 @@ def is_approx_elem_step(chain: Chain, slope_thresh=0.1) -> Tuple[bool, int]:
         return False, n_grad_calls
 
 
-# TODO: needs work + refactor.
 def _converges_to_an_endpoints(
         chain, node_index, direction, slope_thresh=0.01, max_grad_calls=50
 ) -> Tuple[bool, List[Node]]:

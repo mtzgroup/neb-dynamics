@@ -1,4 +1,4 @@
-# Now we reach the moment we've all been waiting for. Running our first NEB calculation. Naturally, we are going to calculate a pi-bond torsion.
+# Running our first NEB calculation. Naturally, we are going to calculate a pi-bond torsion.
 
 # # 1. Create initial guess
 #
@@ -9,9 +9,14 @@ from neb_dynamics.trajectory import Trajectory
 
 start = TDStructure.from_smiles("C=C")
 end = start.copy()
+
+# we can also load in a structure from a file path with:
+# start = TDStructure.from_xyz("/path/to/file.xyz")
 end_coords = end.coords
-end_coords_swapped = end_coords[[0,1,3,2,4,5],:] # this is a pi-bond rotation
+end_coords_swapped = end_coords[[0,1,3,2,4,5],:] # We have swapped the indices of two hydrogens
 end = end.update_coords(end_coords_swapped)
+# we can also load in a structure from a file path with:
+# end = TDStructure.from_xyz("/path/to/file.xyz")
 
 # ### Now we need to optimize them to our desired level of theory
 
@@ -37,15 +42,13 @@ initial_chain = Chain.from_traj(tr, parameters=cni)
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Inputs import NEBInputs
 
-# ?NEB
+# NEB
 
 # The NEB object takes in 3 parameters:
 # * initial_chain: our initial guess chain object to optimize
 # * parameters: an NEBInputs object containing the parameters for NEB optimization and convergence
 # * optimizer: the optimizer to use. We suggest you use `VelocityProjectedOptimizer` from
 #             `neb_dynamics.optimizer.VPO`
-
-# # <span style="color:red">TODO: need documentation on the NEB convergence parameters</span>.
 
 nbi = NEBInputs(v=True, tol=0.0001, ts_spring_thre=0.0001, climb=True)
 
