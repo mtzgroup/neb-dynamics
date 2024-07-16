@@ -1,17 +1,37 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
+
+import numpy as np
+import qcop
+from chemcloud.client import CCClient
 from qcio import ProgramInput, ProgramOutput, Structure
 
+from neb_dynamics.elements import atomic_number_to_symbol
+from neb_dynamics.nodes.Node import Node
+from neb_dynamics.tdstructure import TDStructure
+
+AVAIL_COMPUTE_METHODS = ['qcop', 'chemcloud']
 
 
 @dataclass
 class Node3D_QCIO(Node):
+    """
+    Node object that depends on QCIO data structure.
+    """
+
+    # qcio objects
+    structure: Structure
+    prog_inp: ProgramInput
+    compute_method: str = 'qcop'  # available: ['qcop','chemcloud']
+    compute_program: str = 'terachem'
+
+    # node vars
     converged: bool = False
     do_climb: bool = False
-    qcio_inputs:
-    _cached_energy: float | None = None
-    _cached_gradient: np.array | None = None
+
+    _cached_result: ProgramOutput = None
 
     is_a_molecule = True
 
@@ -20,35 +40,69 @@ class Node3D_QCIO(Node):
     KCAL_MOL_CUTOFF: float = 1.0
     BARRIER_THRE: float = 5  # kcal/mol
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return 'node3d_qcio'
+
+    def compute(self) -> Callable:
+        """
+        stores compute function
+        """
+        if self.compute_method == 'chemcloud':
+            client = CCClient()
+            return client.compute
+        elif self.compute_method == "qcop":
+            return qcop.compute
+
+        else:
+            raise ValueError(
+                f"Invalid compute method: {self.compute_method}. Available: {AVAIL_COMPUTE_METHODS}")
+
+    # these next 3 properties are so I dont break my code. this highlights a need to refactor.
+    @property
+    def tdstructure(self) -> TDStructure:
+        coords = self.structure.geometry_angstrom
+        symbols = [atomic_number_to_symbol(n)
+                   for n in self.structure.atomic_numbers]
+        charge = self.structure.charge
+        spinmult = self.structure.multiplicity
+        return TDStructure.from_coords_symbols(coords=coords, symbols=symbols, tot_charge=charge,
+                                               tot_spinmult=spinmult)
+
+    @property
+    def _cached_gradient(self):
+        if self._cached_result is None:
+            return None
+        else:
+            return self._cached_result.results.gradient
+
+    @property
+    def _cached_energy(self):
+        if self._cached_result is None:
+            return None
+        else:
+            return self._cached_result.results.energy
 
     @property
     def coords(self):
-        return self.tdstructure.coords
+        return self.structure.geometry_angstrom
 
     @property
     def coords_bohr(self):
-        return self.tdstructure.coords * ANGSTROM_TO_BOHR
-
-    @staticmethod
-    def en_func(node: Node3D_TC):
-        res = Node3D_TC.run_tc_calc(node.tdstructure)
-        return res.get_energy()
-
-    @staticmethod
-    def grad_func(node: Node3D_TC):
-        res = Node3D_TC.run_tc_calc(node.tdstructure)
-        return res.get_gradient() * BOHR_TO_ANGSTROMS
+        return self.structure.geometry
 
     @property
     def energy(self):
         if self._cached_energy is not None:
             return self._cached_energy
         else:
-            ene = self.tdstructure.energy_tc()
-            self._cached_energy = ene
-            return ene
+            future_result = self.compute(
+                self.compute_program,
+                self.prog_inp,
+                collect_files=True
+            )
+
+            self._cached_result = future_result.get()
+            return self._cached_energy
 
     @property
     def gradient(self):
@@ -151,7 +205,8 @@ class Node3D_QCIO(Node):
         ens_grads_lists = [None] * len(chain)
         traj = chain.to_trajectory()
         inds_converged = [i for i, node in enumerate(chain) if node.converged]
-        inds_not_converged = [i for i, node in enumerate(chain) if not node.converged]
+        inds_not_converged = [i for i, node in enumerate(
+            chain) if not node.converged]
         for ind in inds_converged:
             ref_node = chain[ind]
             ens_grads_lists[ind] = (
@@ -176,7 +231,8 @@ class Node3D_QCIO(Node):
 
     def do_geom_opt_trajectory(self) -> Trajectory:
         td_copy = self.tdstructure.copy()
-        td_opt_traj = td_copy.run_tc_local(calculation="minimize", return_object=True)
+        td_opt_traj = td_copy.run_tc_local(
+            calculation="minimize", return_object=True)
         print(f"len opt traj: {len(td_opt_traj)}")
         td_opt_traj.update_tc_parameters(td_copy)
         return td_opt_traj
@@ -217,13 +273,15 @@ class Node3D_QCIO(Node):
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
 
-            global_dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
+            global_dist = RMSD(aligned_self.coords,
+                               other.tdstructure.coords)[0]
             per_frag_dists = []
             self_frags = self.tdstructure.split_td_into_frags()
             other_frags = other.tdstructure.split_td_into_frags()
             for frag_self, frag_other in zip(self_frags, other_frags):
                 aligned_frag_self = frag_self.align_to_td(frag_other)
-                frag_dist = RMSD(aligned_frag_self.coords, frag_other.coords)[0]
+                frag_dist = RMSD(aligned_frag_self.coords,
+                                 frag_other.coords)[0]
                 per_frag_dists.append(frag_dist)
             print(f"{per_frag_dists=}")
             print(f"{global_dist=}")
@@ -231,12 +289,13 @@ class Node3D_QCIO(Node):
             en_delta = np.abs((self.energy - other.energy) * 627.5)
 
             global_rmsd_identical = global_dist <= self.GLOBAL_RMSD_CUTOFF
-            fragment_rmsd_identical = max(per_frag_dists) <= self.FRAGMENT_RMSD_CUTOFF
+            fragment_rmsd_identical = max(
+                per_frag_dists) <= self.FRAGMENT_RMSD_CUTOFF
             rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
             # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
 
-            if rmsd_identical and energies_identical:  #and barrier_accessible:
+            if rmsd_identical and energies_identical:  # and barrier_accessible:
                 return True
             else:
                 return False

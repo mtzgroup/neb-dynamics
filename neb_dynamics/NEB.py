@@ -41,9 +41,10 @@ class NEB:
 
     """
     initial_chain: Chain
-    parameters: NEBInputs
     optimizer: Optimizer
+    engine: str = 'qcop'
 
+    parameters: NEBInputs
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
     gradient_trajectory: list[np.array] = field(default_factory=list)
@@ -52,12 +53,6 @@ class NEB:
         self.n_steps_still_chain = 0
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
-
-    @classmethod
-    def from_tdstruct_and_inputs(cls, reactant: TDStructure, product: TDStructure, chain_inputs: ChainInputs = ChainInputs(), neb_inputs: NEBInputs = NEBInputs()) -> NEB:
-        """
-        shortcut to creating a NEB object that is ready to run using only endpoints and
-        """
 
     def _reset_node_convergence(self, chain) -> None:
         for node in chain:
