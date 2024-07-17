@@ -2,7 +2,7 @@
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.helper_functions import RMSD
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.TreeNode import TreeNode
@@ -952,9 +952,9 @@ df['activation_ens'].argmax()
 # ### refinement
 
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
-from nodes.Node import Node
+from nodes.node import Node
 
 from neb_dynamics.helper_functions import RMSD
 

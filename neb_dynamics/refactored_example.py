@@ -5,7 +5,7 @@ from matplotlib.animation import FuncAnimation
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.nodes.Node2d import (
     Node2D,
     Node2D_2,

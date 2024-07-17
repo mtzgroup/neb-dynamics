@@ -6,7 +6,7 @@ from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Refiner import Refiner
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local

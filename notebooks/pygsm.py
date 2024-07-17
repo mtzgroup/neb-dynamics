@@ -252,7 +252,7 @@ if not fixed_reactant:
     )
 
 # +
-    
+
 if not fixed_product:
     nifty.printcool("PRODUCT GEOMETRY NOT FIXED!!! OPTIMIZING")
     path = os.path.join(os.getcwd(), 'scratch', f"{ID:03}", str(num_nodes - 1))
@@ -273,7 +273,7 @@ else:
 
 
 # +
-    
+
 # %%time
 # do GSM
 nifty.printcool("Main GSM Calculation")
@@ -318,7 +318,7 @@ from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 from neb_dynamics.NEB import NEB
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 
 cni = ChainInputs(k=0.1, delta_k=0.01, node_freezing=True, use_maxima_recyling=True)
 

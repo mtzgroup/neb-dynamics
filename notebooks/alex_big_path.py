@@ -1,6 +1,6 @@
 # +
 from neb_dynamics.NEB import NEB
-from neb_dynamics.Chain import Chain
+from chain import Chain
 import os
 
 del os.environ['OE_LICENSE']

@@ -7,7 +7,7 @@ from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
 from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 
 from neb_dynamics.NEB_TCDLF import NEB_TCDLF
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import NEBInputs
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.abinitio.tdstructure import TDStructure

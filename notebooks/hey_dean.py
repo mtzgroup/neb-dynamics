@@ -2,7 +2,7 @@
 
 import numpy as np
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D
@@ -161,7 +161,7 @@ from retropaths.abinitio.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 import matplotlib.pyplot as plt
 from neb_dynamics.NEB import NEB
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
 import warnings
 warnings.filterwarnings('ignore')
@@ -230,7 +230,7 @@ n.optimized.to_trajectory()
 from TS.TS_PRFO import TS_PRFO
 from neb_dynamics.nodes.Node2d import Node2D
 from nodes.node3d import Node3D
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from retropaths.abinitio.tdstructure import TDStructure
 from pathlib import Path
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS

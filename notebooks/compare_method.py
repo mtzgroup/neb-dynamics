@@ -1,6 +1,6 @@
 # +
 from neb_dynamics.CompetitorAnalyzer import CompetitorAnalyzer
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.helper_functions import create_friction_optimal_gi
 from neb_dynamics.MSMEP import MSMEP

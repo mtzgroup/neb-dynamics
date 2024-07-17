@@ -6,7 +6,7 @@ from retropaths.abinitio.tdstructure import TDStructure
 # from neb_dynamics.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from nodes.node3d import Node3D
 
 from neb_dynamics.MSMEP import MSMEP
@@ -292,7 +292,7 @@ pot.draw_from_single_path(p, mode='d3')
 nx.shortest_path(pot.graph, source=0, target=4,weight='barrier')
 
 import numpy as np
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 
 c = path_to_chain([0, 1, 42, 8, 9, 48, 4], bob_frag.leaf_objects)

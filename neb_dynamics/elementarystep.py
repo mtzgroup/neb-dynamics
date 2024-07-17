@@ -3,8 +3,8 @@ this whole module needs to be revamped and integrated with the qcio results obje
 """
 from dataclasses import dataclass
 from typing import List, Tuple
-from neb_dynamics.Chain import Chain
-from neb_dynamics.nodes.Node import Node
+from chain import Chain
+from nodes.node import Node
 from neb_dynamics.helper_functions import _get_ind_minima, steepest_descent
 import numpy as np
 

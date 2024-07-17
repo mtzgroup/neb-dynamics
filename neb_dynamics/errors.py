@@ -8,6 +8,13 @@ class NoneConvergedException(Exception):
     msg: str
     obj: Any = None
 
+@dataclass
+class EnergiesNotComputedError(Exception):
+    msg: str
+
+@dataclass
+class GradientsNotComputedError(Exception):
+    msg: str
 
 @dataclass
 class ElectronicStructureError(Exception):

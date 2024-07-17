@@ -10,7 +10,7 @@ import retropaths.helper_functions as hf
 from neb_dynamics.CompetitorAnalyzer import CompetitorAnalyzer
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.NEB import NEB
 from neb_dynamics.helper_functions import RMSD
 from kneed import KneeLocator
@@ -51,10 +51,10 @@ zs = ens
 for i, (xind, y) in enumerate(zip(x, ys)):
     if i == len(h.data.chain_trajectory):
         ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='red',markersize=5, linewidth=3, label="early stop chain")
-        
+
     elif i < len(ys) -1:
         ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='gray',markersize=1,alpha=.1)
-    
+
     else:
         ax.plot([xind]*len(y), y, 'o-',zs=zs[i], color='blue',markersize=5, label='optimized chain')
 ax.grid(False)

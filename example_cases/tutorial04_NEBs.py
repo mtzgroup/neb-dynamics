@@ -31,7 +31,7 @@ tr = Trajectory([start_opt, end_opt]).run_geodesic(nimages=10)
 
 # ### Finally, let's create our Chain object
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 
 cni = ChainInputs(k=0.1, delta_k=0.09)

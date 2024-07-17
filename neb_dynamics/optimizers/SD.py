@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers import ALS
-from neb_dynamics.Chain import Chain
+from chain import Chain
 import numpy as np
 
 

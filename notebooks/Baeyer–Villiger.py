@@ -6,7 +6,7 @@ from retropaths.reactions.changes import Changes3DList, Changes3D
 from neb_dynamics.tdstructure import TDStructure
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from nodes.node3d import Node3D
 
 from neb_dynamics.MSMEP import MSMEP
@@ -80,7 +80,7 @@ from retropaths.reactions.changes import Changes3DList, Changes3D
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from nodes.node3d import Node3D
 
 from neb_dynamics.MSMEP import MSMEP

@@ -5,7 +5,7 @@ from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.NEB import NEB
 

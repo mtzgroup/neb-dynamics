@@ -10,7 +10,7 @@ from neb_dynamics.optimizers.Linesearch import Linesearch
 from neb_dynamics.tdstructure import TDStructure
 import numpy as np
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.NEB_TCDLF import NEB_TCDLF

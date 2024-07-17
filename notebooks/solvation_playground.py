@@ -1,5 +1,5 @@
 # +
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from nodes.node3d import Node3D
 from neb_dynamics.NEB import NEB
 import retropaths.helper_functions as hf

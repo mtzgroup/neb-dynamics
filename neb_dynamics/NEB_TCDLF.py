@@ -5,7 +5,7 @@ from qcparse import parse
 import shutil
 from pathlib import Path
 from neb_dynamics.Inputs import NEBInputs, ChainInputs
-from neb_dynamics.Chain import Chain
+from chain import Chain
 import matplotlib.pyplot as plt
 
 import numpy as np
@@ -43,11 +43,11 @@ class NEB_TCDLF:
         inp = f"""
             method {method}
             basis {basis}
-            
+
             coordinates {tmp.name}
             charge {td_ref.charge}
             multiplicity {td_ref.spinmult}
-            
+
             run ts
             nstep {self.parameters.max_steps}
             timings yes
@@ -58,10 +58,10 @@ class NEB_TCDLF:
             scrdir {tmp.name[:-4]}
             min_tolerance {self.parameters.tol}
             ts_method neb_frozen
-            
+
             max_nebk {self.initial_chain.parameters.k}
             min_nebk {self.initial_chain.parameters.k - self.initial_chain.parameters.delta_k}
-            
+
             end
             """
 

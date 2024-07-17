@@ -1,5 +1,5 @@
 # +
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.NEB import NEB
 
 from neb_dynamics.MSMEP import MSMEP
@@ -105,24 +105,24 @@ def spawn_geometry_xtb(chain=None, ts_guess=None, dr=3):
     }
     all_geoms = []
     for ind, _ in enumerate(nmas):
-        
+
         nm = np.array(nmas[ind]).reshape(ts_guess.coords.shape)
 
         ts_displaced = ts_guess.copy()
         ts_displaced_plus = ts_displaced.update_coords(ts_displaced.coords + dr*nm)
         ts_displaced_minus = ts_displaced.update_coords(ts_displaced.coords - dr*nm)
-            
+
         output_data['all_displaced'].traj.append(ts_displaced_plus)
         output_data['all_displaced'].traj.append(ts_displaced_minus)
-        
+
     output_data['all_displaced'].update_tc_parameters(ts_guess)
-    
+
     all_inputs = [get_input_tuple(td) for td in output_data['all_displaced']]
     with mp.Pool() as pool:
         geom_opt_output_tuples = list(tqdm(pool.imap(relax_geom, all_inputs), total=len(all_inputs)))
-    
+
     output_tds = [td_from_output_tuple(ot) if ot else None for ot in geom_opt_output_tuples  ]
-    
+
     converged_results = []
     for i, r in enumerate(output_tds):
         if r:
@@ -130,15 +130,15 @@ def spawn_geometry_xtb(chain=None, ts_guess=None, dr=3):
             # output_data['nm_index'].append(i)
             output_data['nm_index'].append(int(i/2))
             output_data['freq'].append(freqs[int(i/2)])
-            
+
 
     output_data['all_displaced_opt'] = Trajectory(converged_results)
-            
+
     return output_data
 
 
 def td_from_output_tuple(output_tuple):
-    coords,symbols, charge, spinmult = output_tuple 
+    coords,symbols, charge, spinmult = output_tuple
     td = TDStructure.from_coords_symbols(
             coords=coords,
             symbols=symbols,
@@ -181,9 +181,9 @@ def extract_new_molecules(chain, output_data_object):
             new_molecule_freq.append(output_data_object['freq'][i])
             # nma = output_data_object['ts_guess'].tc_nma_calculation()
             # new_molecule_nm.append(nma[int(i/2)])
-            
+
             displaced_mol.append(output_data_object['all_displaced'][i])
-            
+
     return new_molecules, new_molecule_freq, displaced_mol
 
 
@@ -216,10 +216,10 @@ min_td = []
 for odb in all_output_data:
     new_molecules, new_molecule_freqs = extract_new_molecules(chain, odb)
     all_molecules = Trajectory([chain[0].tdstructure, chain[-1].tdstructure]+new_molecules)
-    
-    
+
+
     ens = all_molecules.energies_xtb()
-    
+
     min_energy_rel_to_start.append(min(ens))
     min_td.append(all_molecules[np.argmin(ens)])
 

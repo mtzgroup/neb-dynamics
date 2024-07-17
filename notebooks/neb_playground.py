@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from neb_dynamics.nodes.Node import Node
+from nodes.node import Node
 from neb_dynamics.qcio_structure_helpers import   split_structure_into_frags, structure_to_molecule
 
 # +
