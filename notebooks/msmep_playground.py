@@ -740,8 +740,8 @@ def get_n_grad_calls(fp, xtb=False):
     except:
         print(output[-10:])
 
-# all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo.txt").read().splitlines()
-all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons/reactions_todo_xtb.txt").read().splitlines()
+all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo.txt").read().splitlines()
+# all_rns = open("/home/jdep/T3D_data/msmep_draft/comparisons/reactions_todo_xtb.txt").read().splitlines()
 all_rns_xtb = open("/home/jdep/T3D_data/msmep_draft/comparisons/reactions_todo_xtb.txt").read().splitlines()
 
 
@@ -836,6 +836,8 @@ def create_df(msmep_filename, v=True, refinement_results=False):
             elif not clean_fp.exists() and refinement_results:
                 print(clean_fp,' did not succeed')
                 raise FileNotFoundError("boo")
+            elif not clean_fp.exists() and not refinement_results:
+                out_chain = h.output_chain
 
 
             es = len(out_chain)==12
@@ -930,7 +932,7 @@ def create_df(msmep_filename, v=True, refinement_results=False):
     return df
 # -
 
-df = create_df("ASNEB_03_NOSIG_NOMR_v2_refined", refinement_results=True)
+df = create_df("ASNEB_03_NOSIG_NOMR", refinement_results=False)
 
 df.dropna()['n_grad_calls'].plot(kind='box')
 

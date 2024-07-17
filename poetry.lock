@@ -3709,13 +3709,13 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "qcio"
-version = "0.10.3"
+version = "0.10.5"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcio-0.10.3-py3-none-any.whl", hash = "sha256:c5d0f3a8594245f0b4a4469649b01884cdf6ba7ae39f7088f5bff0fd98e78ad7"},
-    {file = "qcio-0.10.3.tar.gz", hash = "sha256:792ba79d28520abaea298af7e17cec6b7e27da109f1d5dd54325e92e2ae97a52"},
+    {file = "qcio-0.10.5-py3-none-any.whl", hash = "sha256:106ec6ab5cb3e7fe4c09d6f7755def7f8183e60def93bb14dcd7744e7d890b46"},
+    {file = "qcio-0.10.5.tar.gz", hash = "sha256:09895cc981746a6336e4790102d723bf94ace9f44389319e9d459c569ba9bf73"},
 ]
 
 [package.dependencies]
@@ -3730,13 +3730,13 @@ rdkit = ["rdkit (>=2022.3.3)"]
 
 [[package]]
 name = "qcop"
-version = "0.7.3"
+version = "0.7.4"
 description = "A package for operating Quantum Chemistry programs using qcio standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcop-0.7.3-py3-none-any.whl", hash = "sha256:f022471874097d7b7234af23ebc5eb71ca11de735dac8d3fdf73eaa0b3a2977e"},
-    {file = "qcop-0.7.3.tar.gz", hash = "sha256:bb7c4aa32dc915e4b61b791249a9f573fa892dde5a7a20f881c29a5d51fe0128"},
+    {file = "qcop-0.7.4-py3-none-any.whl", hash = "sha256:a05d80eb325efa688cb16661f591f34a0a5302a9e68f17b88041a9105aa4d3c6"},
+    {file = "qcop-0.7.4.tar.gz", hash = "sha256:2cb74d6da5a42b34e4d74bb38976f5e05c448ff469f727f31b9f65dc2772dd43"},
 ]
 
 [package.dependencies]
