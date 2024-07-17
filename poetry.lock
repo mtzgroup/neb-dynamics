@@ -3733,20 +3733,24 @@ name = "qcop"
 version = "0.7.3"
 description = "A package for operating Quantum Chemistry programs using qcio standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 optional = false
-python-versions = "<4.0,>=3.8"
-files = [
-    {file = "qcop-0.7.3-py3-none-any.whl", hash = "sha256:f022471874097d7b7234af23ebc5eb71ca11de735dac8d3fdf73eaa0b3a2977e"},
-    {file = "qcop-0.7.3.tar.gz", hash = "sha256:bb7c4aa32dc915e4b61b791249a9f573fa892dde5a7a20f881c29a5d51fe0128"},
-]
+python-versions = "^3.8"
+files = []
+develop = false
 
 [package.dependencies]
-qcio = ">=0.10.2,<0.11.0"
-qcparse = ">=0.6.0,<0.7.0"
+qcio = "^0.10.2"
+qcparse = "^0.6.0"
 
 [package.extras]
 geometric = ["geometric (>=1.0.1,<2.0.0)"]
 qcengine = ["qcelemental (>=0.26.0,<0.27.0)", "qcengine (>=0.27.0,<0.28.0)"]
 xtb = ["xtb (>=22.1,<23.0)"]
+
+[package.source]
+type = "git"
+url = "https://github.com/coltonbh/qcop"
+reference = "feature-xtb-no-stdout"
+resolved_reference = "bff9915d02e736ed50d276f6cd120e178ce7aa5b"
 
 [[package]]
 name = "qcparse"
@@ -5184,4 +5188,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "fccf3afcc41b2d019e0116fbc4302ccb205829aa04f943ecdb1cc8280367489d"
+content-hash = "65f9fd54f79049bed76480f2cdef3001849fc1b31bfe1d59feaf27b154fbb110"

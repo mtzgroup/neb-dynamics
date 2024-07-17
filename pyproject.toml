@@ -16,7 +16,7 @@ pandas = "^2.2.2"
 pysmiles = "^1.1.2"
 rdkit = "^2024.3.3"
 py3dmol = "^2.2.0"
-qcop = "^0.7.1"
+qcop = {git = "https://github.com/coltonbh/qcop", rev = "feature-xtb-no-stdout"}
 ase = "^3.23.0"
 chemcloud = "^0.10.0"
 xtb = "^22.1"

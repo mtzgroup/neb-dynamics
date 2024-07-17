@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 from neb_dynamics.helper_functions import RMSD
+from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 from qcio.models.structure import Structure
 
@@ -49,15 +50,15 @@ class Node:
                                 fragment_rmsd_cutoff: float = 0.5,
                                 kcal_mol_cutoff: float = 1.0) -> bool:
 
-        global_dist, aligned_geometry = align_geom(refgeom=other.structure.geometry, geom=self.structure.geometry)
+        global_dist, aligned_geometry = align_geom(
+            refgeom=other.structure.geometry, geom=self.structure.geometry)
         per_frag_dists = []
         if self.has_molecular_graph:
             self_frags = split_structure_into_frags(self.structure)
-            other_frags = split_structure_into_frags(split_td_into_frags)
+            other_frags = split_structure_into_frags(other.structure)
             for frag_self, frag_other in zip(self_frags, other_frags):
-                aligned_frag_self = frag_self.align_to_td(frag_other)
-                frag_dist = RMSD(aligned_frag_self.coords,
-                                    frag_other.coords)[0]
+                frag_dist, _ = align_geom(
+                    refgeom=frag_self.geometry, geom=frag_other.geometry)
                 per_frag_dists.append(frag_dist)
 
         en_delta = np.abs((self.energy - other.energy) * 627.5)

@@ -1,4 +1,40 @@
 # -*- coding: utf-8 -*-
+from neb_dynamics.nodes.Node import Node
+from neb_dynamics.qcio_structure_helpers import   split_structure_into_frags, structure_to_molecule
+
+# +
+from qcio.models.structure import Structure 
+
+structures = Structure.from_smiles("COCO.CC", force_field="MMFF94")
+
+with open("/home/jdep/debug.xyz",'w+') as f:
+    f.write(structures.to_xyz())
+f.close()
+# -
+
+mol = structure_to_molecule(structures)
+
+from neb_dynamics.tdstructure import TDStructure
+
+td = TDStructure.from_xyz('/tmp/tmp1l4yxrqg.xyz')
+
+td2 = td.copy()
+
+td2.gum_mm_optimization()
+
+td2
+
+mol.draw()
+
+split_structure_into_frags(structures)
+
+node = Node(structure=Structure.from_smiles("COCO"))
+node2 = Node(structure=Structure.from_smiles("COCO"))
+
+
+
+node.is_identical(node2)
+
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
 
