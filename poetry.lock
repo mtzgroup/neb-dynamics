@@ -3731,6 +3731,12 @@ geometric = ["geometric (>=1.0.1,<2.0.0)"]
 qcengine = ["qcelemental (>=0.26.0,<0.27.0)", "qcengine (>=0.27.0,<0.28.0)"]
 xtb = ["xtb (>=22.1,<23.0)"]
 
+[package.source]
+type = "git"
+url = "https://github.com/coltonbh/qcop"
+reference = "feature-xtb-no-stdout"
+resolved_reference = "bff9915d02e736ed50d276f6cd120e178ce7aa5b"
+
 [[package]]
 name = "qcparse"
 version = "0.6.1"
