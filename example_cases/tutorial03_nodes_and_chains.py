@@ -60,7 +60,7 @@ end = end.update_coords(end_coords_swapped)
 tr = Trajectory([start, end]).run_geodesic(nimages=10)
 
 # +
-from neb_dynamics.Chain import Chain
+from chain import Chain
 
 nodes = [Node3D(td) for td in tr]
 parameters = ChainInputs() # using defaults

@@ -5,7 +5,7 @@ from matplotlib.animation import FuncAnimation
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.nodes.Node2d import (
     Node2D,
     Node2D_2,
@@ -14,7 +14,7 @@ from neb_dynamics.nodes.Node2d import (
     Node2D_Flower,
 )
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
-from nodes.Node import AlessioError
+from nodes.node import AlessioError
 from itertools import product
 from TS.TS_PRFO import TS_PRFO
 from neb_dynamics.potential_functions import (

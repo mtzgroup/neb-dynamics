@@ -5,9 +5,9 @@ import numpy as np
 from neb_dynamics.helper_functions import pairwise
 from typing import Tuple, List
 
-from neb_dynamics.nodes.Node import Node
+from nodes.node import Node
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.elementarystep import ElemStepResults
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs

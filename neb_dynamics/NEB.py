@@ -11,7 +11,7 @@ import numpy as np
 
 from openbabel import pybel
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.errors import NoneConvergedException
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from nodes.node3d import Node3D

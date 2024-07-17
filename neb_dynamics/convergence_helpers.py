@@ -1,5 +1,5 @@
 import numpy as np
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import NEBInputs
 
 

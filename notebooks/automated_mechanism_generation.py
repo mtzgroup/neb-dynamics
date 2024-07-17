@@ -43,7 +43,7 @@ prog_output.results.gradient
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.helper_functions import RMSD
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.TreeNode import TreeNode
@@ -478,7 +478,7 @@ from neb_dynamics.helper_functions import pairwise
 
 import numpy as np
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 
 c = path_to_chain(path, leaf_objects=bob.leaf_objects)
 

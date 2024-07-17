@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from neb_dynamics.NEB import NoneConvergedException
-from nodes.Node import Node
+from nodes.node import Node
 
 
 @dataclass

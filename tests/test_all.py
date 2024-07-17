@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.MSMEP import MSMEP

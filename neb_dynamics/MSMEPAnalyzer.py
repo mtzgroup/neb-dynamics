@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.helper_functions import qRMSD_distance
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.NEB import NEB

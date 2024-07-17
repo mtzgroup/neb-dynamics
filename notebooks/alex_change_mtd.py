@@ -71,7 +71,7 @@ from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from nodes.node3d import Node3D
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 # -
 
 tr = Trajectory([root, target]).run_geodesic(nimages=12)
@@ -171,7 +171,7 @@ from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from nodes.Node import Node
+from nodes.node import Node
 import multiprocessing as mp
 
 
@@ -583,7 +583,7 @@ from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from nodes.Node import Node
+from nodes.node import Node
 import multiprocessing as mp
 
 

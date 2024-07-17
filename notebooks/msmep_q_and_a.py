@@ -10,7 +10,7 @@ import retropaths.helper_functions as hf
 from neb_dynamics.CompetitorAnalyzer import CompetitorAnalyzer
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.NEB import NEB
 from neb_dynamics.Node3D_TC import Node3D_TC
 from neb_dynamics.helper_functions import RMSD
@@ -61,9 +61,9 @@ def get_relevant_leaves(rn):
     if adj_mat.size == 1:
         return [Chain.from_xyz(fp / f'node_0.xyz', ChainInputs(k=0.1, delta_k=0.09))]
     else:
-    
+
         a = np.sum(adj_mat,axis=1)
-        inds_leaves = np.where(a == 1)[0] 
+        inds_leaves = np.where(a == 1)[0]
         chains = [Chain.from_xyz(fp / f'node_{ind}.xyz',ChainInputs(k=0.1, delta_k=0.09)) for ind in inds_leaves]
         return chains
 
@@ -82,21 +82,21 @@ for c in out_chains:
     xtb_nodes = [c[0], Node3D(c.get_ts_guess()), c[-1]]
     en = [c[0].energy, c.get_ts_guess().energy_xtb(), c[-1].energy]
     c_xtb_nodes.extend(xtb_nodes)
-    
+
     ens.extend(en)
 
-    
+
 
 for c_dft in dft_chains:
     dft_traj = c_dft.to_trajectory()
     for td in dft_traj:
         td.tc_model_method = method
         td.tc_model_basis = basis
-    
+
     en_dft, _ = dft_traj.energies_and_gradients_tc()
     ens_dft.extend(en_dft)
-    
-    
+
+
 ens = np.array(ens)
 ens_dft = np.array(ens_dft)
 # -
@@ -305,7 +305,7 @@ dft_chain2 = Chain.from_traj(dft_tr2, parameters=cni_dft)
 
 h_dft2, out_dft2 = m_dft.find_mep_multistep(dft_chain2)
 
-# # Could  I have split based on initial guess? 
+# # Could  I have split based on initial guess?
 #
 # **preliminary answer**: maybe
 
@@ -344,9 +344,9 @@ def get_relevant_leaves(rn):
     if adj_mat.size == 1:
         return [Chain.from_xyz(fp / f'node_0.xyz', ChainInputs(k=0.1, delta_k=0.09))]
     else:
-    
+
         a = np.sum(adj_mat,axis=1)
-        inds_leaves = np.where(a == 1)[0] 
+        inds_leaves = np.where(a == 1)[0]
         chains = [Chain.from_xyz(fp / f'node_{ind}.xyz',ChainInputs(k=0.1, delta_k=0.09)) for ind in inds_leaves]
         return chains
 
@@ -436,7 +436,7 @@ def plot_rxn(name):
     cs = get_relevant_leaves(name)
     c = Chain.from_list_of_chains(cs, ChainInputs())
     f, ax = plt.subplots(figsize=(1.618*s, s))
-    
+
     plt.plot(c.integrated_path_length, (c.energies-c.energies[0])*627.5,'o-')
     plt.yticks(fontsize=fs)
     plt.ylabel("Energy (kcal/mol)",fontsize=fs)
@@ -538,7 +538,7 @@ mispred_elem_steps = set_elem_rns - set(actual_elem_step)
 
 overlap_multi = set(actual_multi_step).intersection(set_multi_rns)
 
-mispred_multi_steps = set_multi_rns - set(actual_multi_step) 
+mispred_multi_steps = set_multi_rns - set(actual_multi_step)
 
 print(f"N predicted multistep: {len(set_multi_rns)}")
 print(f"N actual multistep: {len(actual_multi_step)}")
@@ -551,7 +551,7 @@ print(f"\tN True Positives: {len(overlap_elem_steps)}")
 print(f"\tN False Positives: {len(mispred_elem_steps)}")
 
 
-# # How often do transient minima appear ? 
+# # How often do transient minima appear ?
 
 def has_transient_minima(neb_obj):
     for chain in neb_obj.chain_trajectory:

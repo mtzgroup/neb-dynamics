@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers import ALS
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.errors import ElectronicStructureError
 
 import numpy as np

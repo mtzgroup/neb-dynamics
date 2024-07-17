@@ -10,7 +10,7 @@ import retropaths.helper_functions as hf
 from neb_dynamics.CompetitorAnalyzer import CompetitorAnalyzer
 from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.NEB import NEB
 from neb_dynamics.helper_functions import RMSD
 from kneed import KneeLocator
@@ -212,7 +212,7 @@ plt.plot(long_init_guess.integrated_path_length, (long_init_guess.energies-root_
 gi_leaf1 = asneb.ordered_leaves[0].data.initial_chain
 plt.plot(gi_leaf1.integrated_path_length*out_pathlen[14], (gi_leaf1.energies-root_chain.energies[0])*627.5,'o--', label='Leaf1'
          ,markersize=ms,linewidth=lw, color='green')
-# plt.plot(asneb.children[0].data.optimized.integrated_path_length*out_pathlen[14], 
+# plt.plot(asneb.children[0].data.optimized.integrated_path_length*out_pathlen[14],
 #          (asneb.children[0].data.optimized.energies-root_chain.energies[0])*627.5,'-', label='Leaf1 opt'
 #          ,markersize=ms,linewidth=lw, color='green')
 
@@ -220,10 +220,10 @@ plt.plot(gi_leaf1.integrated_path_length*out_pathlen[14], (gi_leaf1.energies-roo
 
 
 gi_leaf2 = asneb.ordered_leaves[1].data.initial_chain
-plt.plot((gi_leaf2.integrated_path_length)*(out_pathlen[-1] - out_pathlen[14])+out_pathlen[14], 
+plt.plot((gi_leaf2.integrated_path_length)*(out_pathlen[-1] - out_pathlen[14])+out_pathlen[14],
          (gi_leaf2.energies-root_chain.energies[0])*627.5,'o--', label='Leaf2'
          ,markersize=ms,linewidth=lw, color='blue')
-# plt.plot(asneb.children[1].data.optimized.integrated_path_length*(out_pathlen[-1] - out_pathlen[14])+out_pathlen[14], 
+# plt.plot(asneb.children[1].data.optimized.integrated_path_length*(out_pathlen[-1] - out_pathlen[14])+out_pathlen[14],
 #          (asneb.children[1].data.optimized.energies-root_chain.energies[1])*627.5,'-', label='Leaf2 opt'
 #          ,markersize=ms,linewidth=lw, color='blue')
 

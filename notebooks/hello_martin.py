@@ -4,7 +4,7 @@ from retropaths.abinitio.trajectory import Trajectory
 from retropaths.abinitio.tdstructure import TDStructure
 import numpy as np
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.NEB import NEB
 from neb_dynamics.nodes.Node2d import Node2D_Flower, Node2D, Node2D_Zero, Node2D_2

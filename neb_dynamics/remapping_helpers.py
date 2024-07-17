@@ -2,7 +2,7 @@ import numpy as np
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.molecules.isomorphism_tools import SubGraphMatcherApplyPermute
 
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from nodes.node3d import Node3D
 

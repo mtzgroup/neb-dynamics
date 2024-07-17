@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-from neb_dynamics.nodes.Node import Node
+from nodes.node import Node
 from neb_dynamics.qcio_structure_helpers import   split_structure_into_frags, structure_to_molecule
 
 # +
-from qcio.models.structure import Structure 
+from qcio.models.structure import Structure
 
 structures = Structure.from_smiles("COCO.CC", force_field="MMFF94")
 
@@ -50,7 +50,7 @@ tr.energies_and_gradients_tc()
 
 # +
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from nodes.node3d import Node3D
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
