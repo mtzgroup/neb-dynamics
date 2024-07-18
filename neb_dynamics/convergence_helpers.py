@@ -1,4 +1,6 @@
 import numpy as np
+from numpy.typing import NDArray
+from typing import Tuple
 from chain import Chain
 from neb_dynamics.inputs import NEBInputs
 
@@ -29,7 +31,11 @@ def _check_barrier_height_conv(chain_prev: Chain, chain_new: Chain, threshold: f
     return delta_eA <= threshold
 
 
-def _check_rms_grad_converged(chain: Chain, threshold: float):
+def _check_rms_grad_converged(chain: Chain, threshold: float) -> Tuple[NDArray, NDArray]:
+    """
+    returns two arrays. first array are the indices of converged nodes.
+    second array is the RMS values of the perpendicular gradients.
+    """
     bools = []
     rms_gperps = []
 
@@ -55,13 +61,9 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
         threshold=parameters.en_thre
     )
 
-    grad_conv_ind, max_grad_components = _check_grad_converged(
-        chain=chain_new, threshold=parameters.grad_thre)
-
     converged_nodes_indices = np.intersect1d(
         en_converged_indices, rms_grad_conv_ind
     )
-
     ind_ts_node = chain_new.energies.argmax()
     # never freeze TS node
     converged_nodes_indices = converged_nodes_indices[converged_nodes_indices != ind_ts_node]
@@ -90,9 +92,11 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
 
 
 def _update_node_convergence(chain: Chain, indices: np.array, prev_chain: Chain) -> None:
+    endpoints_indices = [0, len(chain)-1]
     for i, (node, prev_node) in enumerate(zip(chain, prev_chain)):
-        if i in indices:
+        if i in indices or i in endpoints_indices:
             if prev_node._cached_result is not None:
+                # print(f"node{i} is frozen with _cached res: {prev_node._cached_result}")
                 node.converged = True
                 node._cached_result = prev_node._cached_result
         else:

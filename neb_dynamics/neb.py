@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 import sys
 from dataclasses import dataclass, field
-from typing import Tuple, Union, Any, Dict
+from typing import Tuple, Dict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -11,17 +11,16 @@ import numpy as np
 
 from openbabel import pybel
 
-from chain import Chain
+from neb_dynamics.chain import Chain
 from neb_dynamics.errors import NoneConvergedException
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
-from nodes.node import Node
 from neb_dynamics.Optimizer import Optimizer
+from neb_dynamics.nodes.node import Node
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.convergence_helpers import chain_converged
 from neb_dynamics.helper_functions import _calculate_chain_distances
 from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
 from neb_dynamics.engine import Engine, QCOPEngine
-from qcio.models.inputs import ProgramInput
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
@@ -115,7 +114,7 @@ class NEB:
                     to stop early, and an ElemStepResults objects
         """
 
-        elem_step_results = check_if_elem_step(chain)
+        elem_step_results = check_if_elem_step(inp_chain=chain, engine=self.engine)
 
         if not elem_step_results.is_elem_step:
             print("\nStopped early because chain is not an elementary step.")
@@ -170,7 +169,7 @@ class NEB:
         """
 
         xtb_params = chain.parameters.copy()
-        xtb_params.node_class = Node3D
+        xtb_params.node_class = Node
         chain_traj = chain.to_trajectory()
         xtb_chain = Chain.from_traj(chain_traj, parameters=xtb_params)
         xtb_nbi = NEBInputs(tol=self.parameters.tol*10,
@@ -283,7 +282,7 @@ class NEB:
                 if self.parameters.v:
                     print("\nChain converged!")
 
-                elem_step_results = check_if_elem_step(new_chain)
+                elem_step_results = check_if_elem_step(inp_chain=new_chain, engine=self.engine)
                 self.geom_grad_calls_made += elem_step_results.number_grad_calls
                 self.optimized = new_chain
                 return elem_step_results
@@ -300,6 +299,7 @@ class NEB:
             )
 
     def update_chain(self, chain: Chain) -> Chain:
+
         self.engine.compute_gradients(chain)
 
         import neb_dynamics.chainhelpers as ch
@@ -307,9 +307,13 @@ class NEB:
         new_chain = self.optimizer.optimize_step(
             chain=chain, chain_gradients=grad_step)
 
+        # need to copy the gradients from the converged nodes
+        for new_node, old_node in zip(new_chain.nodes, chain.nodes):
+            if old_node.converged:
+                new_node._cached_result = old_node._cached_result
+
         self.engine.compute_gradients(new_chain)
-        # print(f"{chain.gradients=}")
-        # print(f"{new_chain.gradients=}")
+
         return new_chain
 
     def write_to_disk(self, fp: Path, write_history=True):
