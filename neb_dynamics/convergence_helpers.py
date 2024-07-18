@@ -46,6 +46,7 @@ def _check_rms_grad_converged(chain: Chain, threshold: float):
 
 
 def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) -> bool:
+    import neb_dynamics.chainhelpers as ch
     rms_grad_conv_ind, rms_gperps = _check_rms_grad_converged(
         chain_new, threshold=parameters.rms_grad_thre)
     ts_triplet_gspring = chain_new.ts_triplet_gspring_infnorm
@@ -64,7 +65,7 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
     ind_ts_node = chain_new.energies.argmax()
     # never freeze TS node
     converged_nodes_indices = converged_nodes_indices[converged_nodes_indices != ind_ts_node]
-
+    # print(f"{len(converged_nodes_indices)}=")
     if chain_new.parameters.node_freezing:
         _update_node_convergence(
             chain=chain_new, indices=converged_nodes_indices, prev_chain=chain_prev)
@@ -74,7 +75,7 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
     barrier_height_converged = _check_barrier_height_conv(
         chain_prev=chain_prev, chain_new=chain_new, threshold=parameters.barrier_thre)
     ind_ts_guess = np.argmax(chain_new.energies)
-    ts_guess_grad = np.amax(np.abs(chain_new.get_g_perps()[ind_ts_guess]))
+    ts_guess_grad = np.amax(np.abs(ch.get_g_perps(chain_new)[ind_ts_guess]))
 
     criteria_converged = [
         max(rms_gperps) <= parameters.max_rms_grad_thre,
@@ -91,16 +92,14 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
 def _update_node_convergence(chain: Chain, indices: np.array, prev_chain: Chain) -> None:
     for i, (node, prev_node) in enumerate(zip(chain, prev_chain)):
         if i in indices:
-            if prev_node._cached_energy is not None and prev_node._cached_gradient is not None:
+            if prev_node._cached_result is not None:
                 node.converged = True
-                node._cached_energy = prev_node._cached_energy
-                node._cached_gradient = prev_node._cached_gradient
+                node._cached_result = prev_node._cached_result
         else:
             node.converged = False
 
 
-def _copy_node_information_to_converged(new_chain, old_chain):
+def _copy_node_information_to_converged(new_chain: Chain, old_chain: Chain) -> None:
     for new_node, old_node in zip(new_chain.nodes, old_chain.nodes):
         if old_node.converged:
-            new_node._cached_energy = old_node._cached_energy
-            new_node._cached_gradient = old_node._cached_gradient
+            new_node._cached_result = old_node._cached_result

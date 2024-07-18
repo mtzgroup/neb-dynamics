@@ -1,4 +1,7 @@
 from __future__ import annotations
+from typing import Union
+from qcio.models.inputs import ProgramInput
+from qcio.models.structure import Structure
 
 """
 this module contains helper general functions
@@ -479,3 +482,15 @@ def _calculate_chain_distances(chain_traj):
         dist = prev_chain._distance_to_chain(chain)
         distances.append(dist)
     return np.array(distances)
+
+
+def _change_prog_input_property(prog_inp: ProgramInput,
+                                key: str, value: Union[str, Structure]):
+    prog_dict = prog_inp.__dict__.copy()
+    if prog_dict[key] is not value:
+        prog_dict['calctype'] = 'gradient'
+        new_prog_inp = ProgramInput(**prog_dict)
+    else:
+        new_prog_inp = prog_inp
+
+    return new_prog_inp

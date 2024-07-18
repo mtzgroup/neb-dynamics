@@ -141,11 +141,11 @@ def pe_grads_spring_forces_nudged(chain: Chain):
     return pe_grads_nudged, spring_forces_nudged
 
 
-def get_g_perps(self) -> NDArray:
+def get_g_perps(chain: Chain) -> NDArray:
     """
     computes the perpendicular gradients of a chain.
     """
-    pe_grads_nudged, _ = self.pe_grads_spring_forces_nudged()
+    pe_grads_nudged, _ = pe_grads_spring_forces_nudged(chain=chain)
     zero = np.zeros_like(pe_grads_nudged[0])
     grads = np.insert(pe_grads_nudged, 0, zero, axis=0)
     grads = np.insert(grads, len(grads), zero, axis=0)
