@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 this module contains helper general functions
 """

@@ -1,6 +1,6 @@
 import numpy as np
 from chain import Chain
-from neb_dynamics.Inputs import NEBInputs
+from neb_dynamics.inputs import NEBInputs
 
 
 def _check_en_converged(chain_prev: Chain, chain_new: Chain, threshold: float) -> bool:

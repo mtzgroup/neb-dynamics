@@ -1,5 +1,5 @@
 from collections.abc import Iterable
-from typing import List, Tuple
+from typing import List, Tuple, Union
 import numpy as np
 from pathlib import Path
 
@@ -10,6 +10,15 @@ from neb_dynamics.helper_functions import from_number_to_element, bond_ord_numbe
 from neb_dynamics.molecule import Molecule
 import tempfile
 import os
+from neb_dynamics.geodesic_interpolation.fileio import read_xyz
+
+
+def read_multiple_structure_from_file(fp: Union[Path, str], charge: int = 0, spinmult: int = 1) -> List[Structure]:
+    """
+    will take a file path and return a list of the Structures contained
+    """
+    symbols, coords = read_xyz(fp)
+    return [Structure(geometry=c, symbols=symbols, charge=charge, multiplicity=spinmult) for c in coords]
 
 
 def split_structure_into_frags(structure: Structure) -> list[Structure]:
@@ -56,8 +65,7 @@ def structure_to_molecule(structure: Structure) -> Molecule:
     with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w+", delete=False) as tmp:
         tmp.write(structure.to_xyz())
     obmol = load_obmol_from_fp(Path(tmp.name))
-    print(tmp.name)
-    # os.remove(tmp.name)
+    os.remove(tmp.name)
 
     # create molecule object from this OBmol
     new_mol = Molecule()

@@ -4,12 +4,14 @@ import numpy as np
 
 from chain import Chain
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
-from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
+from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.NEB import NEB
+from neb_dynamics.neb import NEB
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
+
+from qcio.models.inputs import ProgramInput
 
 
 def test_tdstructure():
@@ -50,7 +52,7 @@ def test_trajectory():
 
 
 def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
-    tr = Trajectory.from_xyz(test_data_dir / "test_traj.xyz")
+    # tr = Trajectory.from_xyz(test_data_dir / "test_traj.xyz")
 
     cni = ChainInputs(
         k=0.1,
@@ -72,11 +74,15 @@ def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         v=1,
         max_steps=3000,
         early_stop_force_thre=0.0)
-    initial_chain = Chain.from_traj(tr, parameters=cni)
-    symbols = tr.symbols
+    initial_chain = Chain.from_xyz(
+        test_data_dir / "test_traj.xyz", parameters=cni)
+    prog_inp = ProgramInput(structure=initial_chain[0].structure, calctype='energy',
+                            model={'method': 'GFN2xTB', 'basis': 'GFN2xTB'})
+    # symbols = tr.symbols
 
     opt = VelocityProjectedOptimizer(timestep=0.5)
-    n = NEB(initial_chain=initial_chain, parameters=nbi, optimizer=opt)
+    n = NEB(initial_chain=initial_chain, parameters=nbi, optimizer=opt,
+            engine_inputs={'program_input': prog_inp, 'program': 'xtb'})
 
     _ = n.optimize_chain()
     assert n.optimized is not None, "Chain did not converge."

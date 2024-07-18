@@ -1,6 +1,6 @@
+from __future__ import annotations
 from dataclasses import dataclass, field
 from nodes.node import Node
-from nodes.node3d import Node3D
 from neb_dynamics.ChainBiaser import ChainBiaser
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
@@ -25,7 +25,8 @@ class NEBInputs:
 
     `skip_identical_graphs`: whether to skip minimizations where endpoints have identical graphs
 
-    `early_stop_force_thre`: infinity norm of TS node early stop check threshold (default: 0.0 | i.e. no early stop check)
+    `early_stop_force_thre`: infinity norm of TS node early stop check threshold \
+        (default: 0.0 | i.e. no early stop check)
 
     `negative_steps_thre`: number of steps chain can oscillate until the step size is halved (default: 10)
 
@@ -79,7 +80,7 @@ class NEBInputs:
         if self.max_rms_grad_thre is None:
             self.max_rms_grad_thre = self.tol * 5/2
 
-    def copy(self):
+    def copy(self) -> NEBInputs:
         return NEBInputs(**self.__dict__)
 
 
@@ -110,7 +111,7 @@ class ChainInputs:
     k: float = 0.1
     delta_k: float = 0.0
 
-    node_class: Node = Node3D
+    node_class: Node = Node
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
     friction_optimal_gi: bool = True
@@ -131,7 +132,7 @@ class ChainInputs:
                 "No chain biaser was inputted. Fix this or set 'do_chain_biasing' to False."
             )
 
-    def copy(self):
+    def copy(self) -> ChainInputs:
         return ChainInputs(**self.__dict__)
 
 

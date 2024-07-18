@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from functools import cached_property
-from neb_dynamics.NEB import NEB
+from neb_dynamics.neb import NEB
 from pathlib import Path
 import numpy as np
 import networkx as nx
 import shutil
 from chain import Chain
-from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
+from neb_dynamics.inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
 

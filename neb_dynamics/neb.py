@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 import sys
 from dataclasses import dataclass, field
-from typing import Tuple
+from typing import Tuple, Union, Any, Dict
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -13,13 +13,15 @@ from openbabel import pybel
 
 from chain import Chain
 from neb_dynamics.errors import NoneConvergedException
-from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
-from nodes.node3d import Node3D
+from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
+from nodes.node import Node
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.convergence_helpers import chain_converged
 from neb_dynamics.helper_functions import _calculate_chain_distances
 from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
+from neb_dynamics.engine import Engine, QCOPEngine
+from qcio.models.inputs import ProgramInput
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
@@ -42,9 +44,11 @@ class NEB:
     """
     initial_chain: Chain
     optimizer: Optimizer
-    engine: str = 'qcop'
-
     parameters: NEBInputs
+
+    engine_type: str = 'qcop'
+    engine_inputs: Dict = field(default_factory=dict)
+
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
     gradient_trajectory: list[np.array] = field(default_factory=list)
@@ -53,6 +57,31 @@ class NEB:
         self.n_steps_still_chain = 0
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
+
+        # input checks on engine
+        if self.engine_type in ['qcop', 'chemcloud']:
+            prog_inp_key_exists = "program_input" in self.engine_inputs.keys()
+            prog_key_exists = "program" in self.engine_inputs.keys()
+
+            err_msg1 = f"If using {self.engine_type} you need to specify a `program_input` in the engine_inputs"
+            err_msg2 = f"If using {self.engine_type} you need to specify a `program` in the engine_inputs"
+            if prog_inp_key_exists:
+                assert self.engine_inputs["program_input"] is not None, err_msg1
+            else:
+                raise AssertionError(err_msg1)
+
+            if prog_key_exists:
+                assert self.engine_inputs["program"] is not None, err_msg2
+            else:
+                raise AssertionError(err_msg2)
+
+    @property
+    def engine(self) -> Engine:
+        if self.engine_type == 'qcop':
+            eng = QCOPEngine(**self.engine_inputs)
+            return eng
+        else:
+            raise NotImplementedError
 
     def _reset_node_convergence(self, chain) -> None:
         for node in chain:
@@ -269,9 +298,14 @@ class NEB:
             )
 
     def update_chain(self, chain: Chain) -> Chain:
-        grad_step = chain.gradients
+        self.engine.compute_gradients(chain)
+
+        import neb_dynamics.chainhelpers as ch
+        grad_step = ch.compute_NEB_gradient(chain)
         new_chain = self.optimizer.optimize_step(
             chain=chain, chain_gradients=grad_step)
+
+        self.engine.compute_gradients(chain)
         return new_chain
 
     def write_to_disk(self, fp: Path, write_history=True):
