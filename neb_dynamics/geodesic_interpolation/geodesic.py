@@ -329,7 +329,7 @@ def run_geodesic_py(
     from .interpolation import redistribute
 
     # Read the initial geometries.
-    symbols, X = input_object.symbols, input_object.coords
+    symbols, X = input_object
 
     if len(X) < 2:
         raise ValueError("Need at least two initial geometries.")

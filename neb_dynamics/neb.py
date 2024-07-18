@@ -18,7 +18,6 @@ from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.convergence_helpers import chain_converged
-from neb_dynamics.helper_functions import _calculate_chain_distances
 from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
 from neb_dynamics.engine import Engine, QCOPEngine
 
@@ -44,9 +43,8 @@ class NEB:
     initial_chain: Chain
     optimizer: Optimizer
     parameters: NEBInputs
+    engine: Engine
 
-    engine_type: str = 'qcop'
-    engine_inputs: Dict = field(default_factory=dict)
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
@@ -57,30 +55,7 @@ class NEB:
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
 
-        # input checks on engine
-        if self.engine_type in ['qcop', 'chemcloud']:
-            prog_inp_key_exists = "program_input" in self.engine_inputs.keys()
-            prog_key_exists = "program" in self.engine_inputs.keys()
 
-            err_msg1 = f"If using {self.engine_type} you need to specify a `program_input` in the engine_inputs"
-            err_msg2 = f"If using {self.engine_type} you need to specify a `program` in the engine_inputs"
-            if prog_inp_key_exists:
-                assert self.engine_inputs["program_input"] is not None, err_msg1
-            else:
-                raise AssertionError(err_msg1)
-
-            if prog_key_exists:
-                assert self.engine_inputs["program"] is not None, err_msg2
-            else:
-                raise AssertionError(err_msg2)
-
-    @property
-    def engine(self) -> Engine:
-        if self.engine_type == 'qcop':
-            eng = QCOPEngine(**self.engine_inputs)
-            return eng
-        else:
-            raise NotImplementedError
 
     def _reset_node_convergence(self, chain) -> None:
         for node in chain:
@@ -334,7 +309,8 @@ class NEB:
                 chain.write_to_disk(fp)
 
     def plot_chain_distances(self):
-        distances = _calculate_chain_distances(self.chain_trajectory)
+        import neb_dynamics.chainhelpers as ch
+        distances = ch._calculate_chain_distances(self.chain_trajectory)
 
         fs = 18
         s = 8

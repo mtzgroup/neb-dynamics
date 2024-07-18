@@ -1,12 +1,14 @@
 """
 this whole module needs to be revamped and integrated with the qcio results objects probably.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import List, Tuple
-from chain import Chain
+from neb_dynamics.chain import Chain
 from nodes.node import Node
-from neb_dynamics.helper_functions import _get_ind_minima, steepest_descent
 import numpy as np
+from neb_dynamics.engine import Engine
 
 
 @dataclass
@@ -45,7 +47,7 @@ class IRCResults:
     number_grad_calls: int
 
 
-def check_if_elem_step(inp_chain: Chain) -> ElemStepResults:
+def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     """Calculates whether an input chain is an elementary step.
 
     Args:
@@ -78,7 +80,7 @@ def check_if_elem_step(inp_chain: Chain) -> ElemStepResults:
         )
 
     crude_irc_passed, ngc_approx_elem_step = is_approx_elem_step(
-        chain=inp_chain)
+        chain=inp_chain, engine=engine)
     n_geom_opt_grad_calls += ngc_approx_elem_step
 
     if crude_irc_passed:
@@ -107,7 +109,7 @@ def check_if_elem_step(inp_chain: Chain) -> ElemStepResults:
                            )
 
 
-def is_approx_elem_step(chain: Chain, slope_thresh=0.1) -> Tuple[bool, int]:
+def is_approx_elem_step(chain: Chain, engine: Engine, slope_thresh=0.1) -> Tuple[bool, int]:
     """Will do at most 50 steepest descent steps  on geometries neighboring the transition state guess
     and check whether they are approaching the chain endpoints. If function returns False, the geoms
     will be fully optimized.
@@ -127,14 +129,26 @@ def is_approx_elem_step(chain: Chain, slope_thresh=0.1) -> Tuple[bool, int]:
 
     arg_max = np.argmax(chain.energies)
 
-    r_passes_opt, r_traj = _converges_to_an_endpoints(chain=chain, node_index=(arg_max - 1), direction=-1,
+    r_passes_opt, r_traj = _converges_to_an_endpoints(chain=chain,
+                                                      engine=engine,
+                                                      node_index=(arg_max - 1), direction=-1,
                                                       slope_thresh=slope_thresh)
-    p_passes_opt, p_traj = _converges_to_an_endpoints(chain=chain, node_index=(arg_max + 1), direction=+1,
+    p_passes_opt, p_traj = _converges_to_an_endpoints(chain=chain,
+                                                      engine=engine,
+                                                      node_index=(arg_max + 1), direction=+1,
                                                       slope_thresh=slope_thresh)
 
-    r_passes = r_passes_opt and r_traj[-1]._is_connectivity_identical(chain[0])
-    p_passes = p_passes_opt and p_traj[-1]._is_connectivity_identical(
-        chain[-1])
+    nodes_have_graph = chain.nodes[0].has_molecular_graph
+    # if we have molecular graphs to work with, make sure the connectivities are
+    # isomorphic to each other. Otherwise, we will decide only based on distance.
+    # (which is bad!!)
+    if nodes_have_graph:
+        r_passes = r_passes_opt and r_traj[-1]._is_connectivity_identical(chain[0])
+        p_passes = p_passes_opt and p_traj[-1]._is_connectivity_identical(
+            chain[-1])
+    else:
+        r_passes = r_passes_opt
+        p_passes = p_passes_opt
 
     n_grad_calls = len(r_traj) + len(p_traj)
     if r_passes and p_passes:
@@ -144,7 +158,8 @@ def is_approx_elem_step(chain: Chain, slope_thresh=0.1) -> Tuple[bool, int]:
 
 
 def _converges_to_an_endpoints(
-        chain, node_index, direction, slope_thresh=0.01, max_grad_calls=50
+        chain, node_index, direction, engine: Engine, slope_thresh=0.01, max_grad_calls=50
+
 ) -> Tuple[bool, List[Node]]:
     """helper function to `is_approx_elem_step`. Actually carries out the minimizations.
 
@@ -164,7 +179,7 @@ def _converges_to_an_endpoints(
     done = False
     total_traj = [chain[node_index]]
     while not done:
-        traj = steepest_descent(node=total_traj[-1], max_steps=5)
+        traj = engine.steepest_descent(node=total_traj[-1], max_steps=5)
         total_traj.extend(traj)
 
         distances = [_distances_to_refs(ref1=chain[0], ref2=chain[-1],
@@ -197,8 +212,9 @@ def _distances_to_refs(ref1: Node, ref2: Node, raw_node: Node) -> List[float]:
 
 
 def _chain_is_concave(chain) -> ConcavityResults:
+    import neb_dynamics.chainhelpers as ch
     n_grad_calls = 0
-    ind_minima = _get_ind_minima(chain=chain)
+    ind_minima = ch._get_ind_minima(chain=chain)
     minima_present = len(ind_minima) != 0
     opt_results = []
     if minima_present:

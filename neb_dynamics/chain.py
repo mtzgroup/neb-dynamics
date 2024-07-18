@@ -9,9 +9,8 @@ import numpy as np
 
 
 # from retropaths.abinitio.trajectory import Trajectory
-from neb_dynamics.trajectory import Trajectory
-from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+# from neb_dynamics.trajectory import Trajectory
+# from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
 
 
@@ -48,6 +47,9 @@ class Chain:
         """
         Reads in a chain from an xyz file containing a list of structures.
         """
+        from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+
+
         fp = Path(fp)
 
         nodes = [Node(struct) for struct in read_multiple_structure_from_file(
@@ -299,13 +301,6 @@ class Chain:
 
         else:
             raise NotImplementedError("Cannot write 2D chains yet.")
-
-    def get_ts_guess(self) -> TDStructure:
-        """
-        return the TDStructure corresponding to the transition state guess.
-        """
-        ind_ts_guess = self.energies.argmax()
-        return self[ind_ts_guess].tdstructure
 
     def get_ts_node(self) -> Node:
         """

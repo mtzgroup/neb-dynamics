@@ -6,12 +6,15 @@ from IPython.display import HTML
 from matplotlib.animation import FuncAnimation
 from nodes.node import Node
 from numpy.typing import NDArray
+from scipy.signal import argrelextrema
+
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 from neb_dynamics.helper_functions import get_mass
-from neb_dynamics.inputs import ChainInputs
+from neb_dynamics.inputs import ChainInputs, GIInputs
 from neb_dynamics.engine import Engine
+from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
 
 
 def _distance_to_chain(chain1: Chain, chain2: Chain) -> float:
@@ -63,6 +66,20 @@ def _gradient_correlation(chain: Chain, other_chain: Chain):
     normalization = np.dot(chain1_vec, chain1_vec)
 
     return projector / normalization
+
+
+def _get_ind_minima(chain):
+    ind_minima = argrelextrema(chain.energies, np.less, order=1)[0]
+    return ind_minima
+
+
+def _get_ind_maxima(chain):
+    maxima_indices = argrelextrema(chain.energies, np.greater, order=1)[0]
+    if len(maxima_indices) > 1:
+        ind_maxima = maxima_indices[0]
+    else:
+        ind_maxima = int(maxima_indices)
+    return ind_maxima
 
 
 def _get_mass_weighed_coords(chain: Chain):
@@ -276,6 +293,52 @@ def get_nudged_pe_grad(unit_tangent: np.array, gradient: np.array):
     return pe_grad_nudged
 
 
+def run_geodesic(chain: Chain, **kwargs):
+    xyz_coords = run_geodesic_py((chain.symbols, chain.coordinates), **kwargs)
+    chain_copy = chain.copy()
+    new_nodes = []
+    for node, new_coords in zip(chain_copy.nodes, xyz_coords):
+        new_nodes.append(node.update_coords(new_coords=new_coords))
+    chain_copy.nodes = new_nodes
+    return chain_copy
+
+
+def create_friction_optimal_gi(chain: Chain, gi_inputs: GIInputs):
+
+    frics = [0.0001, 0.001, 0.01, 0.1, 1]
+    all_gis = [
+        run_geodesic(
+            chain=chain,
+            nimages=gi_inputs.nimages,
+            friction=fric,
+            nudge=gi_inputs.nudge,
+            **gi_inputs.extra_kwds,
+        )
+        for fric in frics
+    ]
+    eAs = []
+    for gi in all_gis:
+        try:
+            eAs.append(max(gi.get_eA_chain()))
+        except TypeError:
+            eAs.append(10000000)
+    ind_best = np.argmin(eAs)
+    gi = all_gis[ind_best]
+    return gi
+
+
+def _calculate_chain_distances(chain_traj: List[Chain]):
+    distances = [None]  # None for the first chain
+    for i, chain in enumerate(chain_traj):
+        if i == 0:
+            continue
+
+        prev_chain = chain_traj[i-1]
+        dist = prev_chain._distance_to_chain(chain)
+        distances.append(dist)
+    return np.array(distances)
+
+
 def animate_chain_trajectory(
     chain_traj, min_y=-100, max_y=100,
     max_x=1.1, min_x=-0.1, norm_path_len=True
@@ -303,4 +366,3 @@ def animate_chain_trajectory(
     ani = FuncAnimation(
         fig, animate, frames=chain_traj)
     return HTML(ani.to_jshtml())
-

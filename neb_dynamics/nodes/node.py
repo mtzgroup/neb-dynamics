@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from qcio.models.structure import Structure
 from qcio.models.outputs import ProgramOutput
-from neb_dynamics.helper_functions import _change_prog_input_property
 import numpy as np
+
 
 
 @dataclass
@@ -16,6 +16,11 @@ class Node:
 
     do_climb: bool = False
     _cached_result: ProgramOutput = None
+
+    def __eq__(self, other: Node) -> bool:
+        from neb_dynamics.nodes.nodehelpers import is_identical
+        return is_identical(self, other)
+
 
     @property
     def coords(self) -> np.array:
@@ -51,3 +56,7 @@ class Node:
             return self._cached_result.results.gradient
         else:
             return None
+
+    @property
+    def symbols(self):
+        return self.structure.symbols
