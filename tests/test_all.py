@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 from chain import Chain
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS, ANGSTROM_TO_BOHR
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.neb import NEB
@@ -102,7 +102,7 @@ def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
                              [-1.28292090e+00,  4.20407014e-01,  8.25902640e-01],
                              [-1.28587778e+00, -4.01021162e-01, -8.07049188e-01],
                              [1.27538590e+00,  8.10496554e-01, -4.47287007e-01],
-                             [1.29344547e+00, -8.07823999e-01,  4.09841837e-01]])
+                             [1.29344547e+00, -8.07823999e-01,  4.09841837e-01]])*ANGSTROM_TO_BOHR
     ref_tsg = TDStructure.from_coords_symbols(ref_ts_guess, symbols=symbols)
     aligned_tsg = ts_guess.align_to_td(ref_tsg)
     assert np.allclose(aligned_tsg.coords, ref_ts_guess, atol=0.5, rtol=0.5), \
@@ -174,29 +174,29 @@ def test_msmep():
     tr = Trajectory([start, end]).run_geodesic(nimages=15)
 
     cni = ChainInputs(
-        k=0.1,
-        delta_k=0.09,
+        k=0.1*ANGSTROM_TO_BOHR,
+        delta_k=0.09*ANGSTROM_TO_BOHR,
         do_parallel=True,
         node_freezing=True,
         skip_identical_graphs=True)
 
     tol = 0.001
     nbi = NEBInputs(
-        tol=tol * BOHR_TO_ANGSTROMS,
+        tol=tol,  #* BOHR_TO_ANGSTROMS,
         barrier_thre=0.1,  # kcalmol,
         climb=False,
 
-        rms_grad_thre=tol * BOHR_TO_ANGSTROMS,
-        max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS*2.5,
-        ts_grad_thre=tol * BOHR_TO_ANGSTROMS,
-        ts_spring_thre=tol * BOHR_TO_ANGSTROMS*3,
+        rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
+        max_rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS*2.5,
+        ts_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
+        ts_spring_thre=tol,  # * BOHR_TO_ANGSTROMS*3,
 
         v=1,
         max_steps=3000,
-        early_stop_force_thre=0.03*BOHR_TO_ANGSTROMS)
+        early_stop_force_thre=0.03)  # *BOHR_TO_ANGSTROMS)
     initial_chain = Chain.from_traj(tr, parameters=cni)
 
-    opt = VelocityProjectedOptimizer(timestep=0.5)
+    opt = VelocityProjectedOptimizer(timestep=1.0)
     gii = GIInputs(nimages=12)
 
     m = MSMEP(neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=opt)
