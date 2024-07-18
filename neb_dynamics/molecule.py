@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import networkx as nx
-from cairosvg import svg2png
 from IPython.core.display import HTML
 from IPython.display import SVG
 
@@ -322,13 +321,6 @@ class Molecule(nx.Graph):
         with open(full_path, "w") as f:
             f.write(self.draw(mode="rdkit", string_mode=True))
 
-    def to_png(self, folder=Path("."), file_name=None):
-        if file_name is None:
-            file_name = f"{self.force_smiles()}.png"
-        full_path = folder / file_name
-        full_path = str(full_path)
-        svg_code = self.draw(mode="rdkit", string_mode=True)
-        svg2png(bytestring=svg_code, write_to=full_path)
 
     @classmethod
     def from_rdmol(cls, rdmol, smi, name=None):
