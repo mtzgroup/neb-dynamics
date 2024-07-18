@@ -15,9 +15,106 @@ from neb_dynamics.engine import QCOPEngine
 
 c = Chain.from_xyz("/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz", parameters=ChainInputs())
 
+from pathlib import Path
+
+from neb_dynamics.inputs import NEBInputs
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.neb import NEB
+
+# +
+test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")
+# tr = Trajectory.from_xyz(test_data_dir / "test_traj.xyz")
+tol = 0.001
+cni = ChainInputs(
+    k=0.01,
+    delta_k=0.009,
+    do_parallel=True,
+    node_freezing=True)
+
+nbi = NEBInputs(
+    tol=tol,  # * BOHR_TO_ANGSTROMS,
+    barrier_thre=0.1,  # kcalmol,
+    climb=False,
+
+    rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
+    max_rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS*2.5,
+    ts_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
+    ts_spring_thre=tol,  # * BOHR_TO_ANGSTROMS*3,
+
+    v=1,
+    max_steps=200,
+    early_stop_force_thre=0.0)  # *BOHR_TO_ANGSTROMS)
+initial_chain = c
+prog_inp = ProgramInput(structure=initial_chain[0].structure, calctype='energy',
+                        model={'method': 'GFN2xTB', 'basis': 'GFN2xTB'})
+# symbols = tr.symbols
+
+opt = VelocityProjectedOptimizer(timestep=1.0)
+n = NEB(initial_chain=initial_chain, parameters=nbi, optimizer=opt,engine_inputs={'program_input': prog_inp, 'program': 'xtb'})
+
+
+# +
+import sys
+import os
+from contextlib import contextmanager
+
+@contextmanager
+def suppress_output():
+    """Suppress stdout and stderr."""
+    with open(os.devnull, 'w') as devnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        try:
+            sys.stdout = devnull
+            sys.stderr = devnull
+            yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+
+# # Usage
+# with suppress_output():
+#     # Your code here
+#     print("This will not be printed")
+#     # Any other code that generates output
+
+
+# -
+
+with suppress_output():
+    es_out = n.optimize_chain()
+
+n.grad_calls_made
+
+es_out.number_grad_calls
+
 eng = QCOPEngine(program_input=ProgramInput(structure=c[0].structure,calctype='energy',model={'method':"GFN2xTB"}), program='xtb')
 
-eng.compute_energies(c)
+c[0].structure.geometry
+
+c[1].structure.geometry
+
+out1 = eng.compute_gradients(c)
+
+c[0].structure.geometry
+
+c[1].structure.geometry
+
+out2 = eng.compute_gradients(c.nodes)
+
+import neb_dynamics.chainhelpers as ch
+
+import numpy as np
+
+np.amax(abs(ch.get_g_perps(c)))
+
+c.energies
+
+out1
+
+out2
+
+
 
 from neb_dynamics.trajectory import Trajectory
 
@@ -30,6 +127,12 @@ c._zero_velocity()
 c.velocity
 
 import numpy as np
+
+from neb_dynamics.convergence_helpers import _check_rms_grad_converged
+
+?_check_rms_grad_converged
+
+_check_rms_grad_converged(c, threshold=0.001)
 
 np.zeros_like(a=c.coordinates)
 

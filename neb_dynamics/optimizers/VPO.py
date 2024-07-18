@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 from neb_dynamics.Optimizer import Optimizer
-from chain import Chain
+from neb_dynamics.chain import Chain
 from neb_dynamics.errors import ElectronicStructureError
 
 import numpy as np
@@ -84,12 +84,7 @@ class VelocityProjectedOptimizer(Optimizer):
                 new_nodes.append(node.update_coords(new_coords))
 
             new_chain = Chain(new_nodes, parameters=chain.parameters)
-            # need to copy the gradients from the converged nodes
-            # new_chain = Chain(new_nodes, parameters=chain.parameters)
-            # for new_node, old_node in zip(new_chain.nodes, chain.nodes):
-            #     if old_node.converged:
-            #         new_node._cached_energy = old_node._cached_energy
-            #         new_node._cached_gradient = old_node._cached_gradient
+
             # if np.linalg.norm(new_force) < self.activation_tol:
             new_vel = vj + timestep * (-(chain_gradients))
             # else:
