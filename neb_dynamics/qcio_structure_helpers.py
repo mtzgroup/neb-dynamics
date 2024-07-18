@@ -11,6 +11,7 @@ from neb_dynamics.molecule import Molecule
 import tempfile
 import os
 from neb_dynamics.geodesic_interpolation.fileio import read_xyz
+from neb_dynamics.constants import ANGSTROM_TO_BOHR
 
 
 def read_multiple_structure_from_file(fp: Union[Path, str], charge: int = 0, spinmult: int = 1) -> List[Structure]:
@@ -18,7 +19,8 @@ def read_multiple_structure_from_file(fp: Union[Path, str], charge: int = 0, spi
     will take a file path and return a list of the Structures contained
     """
     symbols, coords = read_xyz(fp)
-    return [Structure(geometry=c, symbols=symbols, charge=charge, multiplicity=spinmult) for c in coords]
+    coords_bohr = [c*ANGSTROM_TO_BOHR for c in coords]
+    return [Structure(geometry=c, symbols=symbols, charge=charge, multiplicity=spinmult) for c in coords_bohr]
 
 
 def split_structure_into_frags(structure: Structure) -> list[Structure]:
