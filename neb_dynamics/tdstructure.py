@@ -26,10 +26,16 @@ from qcio import Molecule as TCMolecule
 from qcio import ProgramInput
 from qcio import ResultsType
 from qcparse import parse
-from xtb.ase.calculator import XTB
-from xtb.interface import Calculator, XTBException
-from xtb.libxtb import VERBOSITY_MUTED
-from xtb.utils import get_method
+
+try:
+    from xtb.ase.calculator import XTB
+    from xtb.interface import Calculator, XTBException
+    from xtb.libxtb import VERBOSITY_MUTED
+    from xtb.utils import get_method
+
+except ImportError:
+    pass  # module doesn't exist, deal with it.
+
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.elements import ElementData, symbol_to_atomic_number
