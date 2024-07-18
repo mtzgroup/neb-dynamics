@@ -17,7 +17,7 @@ from ase import Atoms
 # from ase.optimize import LBFGS, LBFGSLineSearch
 from ase.optimize.sciopt import SciPyFminCG
 from ase.io.trajectory import Trajectory as ASETraj
-from sella import Sella
+# from sella import Sella
 from chemcloud import CCClient
 from IPython.core.display import HTML
 from openbabel import openbabel, pybel
