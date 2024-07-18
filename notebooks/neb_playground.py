@@ -1,20 +1,65 @@
 # -*- coding: utf-8 -*-
+# +
 from neb_dynamics.engine import QCOPEngine
 from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
 from neb_dynamics.nodes.node import Node
-
 from qcio.models.inputs import ProgramInput
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs
 
+import neb_dynamics.chainhelpers as ch
+
+from neb_dynamics.engine import QCOPEngine
+# -
+
 c = Chain.from_xyz("/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz", parameters=ChainInputs())
+
+eng = QCOPEngine(program_input=ProgramInput(structure=c[0].structure,calctype='energy',model={'method':"GFN2xTB"}), program='xtb')
+
+eng.compute_energies(c)
+
+from neb_dynamics.trajectory import Trajectory
+
+tr = Trajectory.from_xyz("/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz")
+
+grads = [td.gradient_xtb() for td in tr]
+
+c._zero_velocity()
+
+c.velocity
+
+import numpy as np
+
+np.zeros_like(a=c.coordinates)
+
+c.gradients[0]
+
+c.gradients[0] / grads[0]
+
+import numpy as np
+
+np.amax(ch.get_g_perps(c))
+
+
+
+
+
+huh = c[0].update_coords(c[-1].coords)
+
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
+
+structure_to_molecule(c[0].structure).draw()
+
+structure_to_molecule(huh.structure).draw()
 
 pi = ProgramInput(
     structure=c[0].structure,
     calctype='energy',
     model={'method':'GFN2xTB', 'basis':'GFN2xTB'}
 )
+
+c[0].structure.__dict__
 
 foo = {'hey':1}
 

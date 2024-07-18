@@ -10,6 +10,8 @@ import qcop
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.nodes.node import Node
+from neb_dynamics.helper_functions import _change_prog_input_property
+
 
 
 @dataclass
@@ -61,11 +63,11 @@ class QCOPEngine(Engine):
             chain.nodes[0], Node), "input Chain has nodes incompatible with QCOPEngine."
 
         # first make sure the program input has calctype set to gradients
-        prog_inp = self._change_prog_input_property(
+        prog_inp = _change_prog_input_property(
             prog_inp=self.program_input, key='calctype', value='energy')
 
         # now create program inputs for each geometry
-        all_prog_inps = [self._change_prog_input_property(
+        all_prog_inps = [_change_prog_input_property(
             prog_inp=prog_inp, key='structure', value=node.structure
         ) for node in chain]
 
@@ -79,7 +81,7 @@ class QCOPEngine(Engine):
                                     key: str, value: Union[str, Structure]):
         prog_dict = prog_inp.__dict__.copy()
         if prog_dict[key] is not value:
-            prog_dict['calctype'] = 'gradient'
+            prog_dict[key] = value
             new_prog_inp = ProgramInput(**prog_dict)
         else:
             new_prog_inp = prog_inp

@@ -134,8 +134,9 @@ class NEB:
         values in order to decide whether the expensive minimization of
         the chain should be done.
         """
+        import neb_dynamics.chainhelpers as ch
         ind_ts_guess = np.argmax(chain.energies)
-        ts_guess_grad = np.amax(np.abs(chain.get_g_perps()[ind_ts_guess]))
+        ts_guess_grad = np.amax(np.abs(ch.get_g_perps(chain)[ind_ts_guess]))
 
         if ts_guess_grad <= self.parameters.early_stop_force_thre:
 
@@ -208,6 +209,7 @@ class NEB:
         Raises:
             NoneConvergedException: If chain did not converge in alloted steps.
         """
+        import neb_dynamics.chainhelpers as ch
 
         nsteps = 1
         nsteps_negative_grad_corr = 0
@@ -238,7 +240,7 @@ class NEB:
             max_rms_grad_val = np.amax(new_chain.rms_gperps)
             ind_ts_guess = np.argmax(new_chain.energies)
             ts_guess_grad = np.amax(
-                np.abs(new_chain.get_g_perps()[ind_ts_guess]))
+                np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
             converged = chain_converged(
                 chain_prev=chain_previous, chain_new=new_chain,
                 parameters=self.parameters)
@@ -253,7 +255,7 @@ class NEB:
             grad_calls_made = len(new_chain) - n_nodes_frozen
             self.grad_calls_made += grad_calls_made
 
-            grad_corr = new_chain._gradient_correlation(chain_previous)
+            grad_corr = ch._gradient_correlation(new_chain, chain_previous)
             if grad_corr < 0:
                 nsteps_negative_grad_corr += 1
             else:
@@ -305,7 +307,9 @@ class NEB:
         new_chain = self.optimizer.optimize_step(
             chain=chain, chain_gradients=grad_step)
 
-        self.engine.compute_gradients(chain)
+        self.engine.compute_gradients(new_chain)
+        # print(f"{chain.gradients=}")
+        # print(f"{new_chain.gradients=}")
         return new_chain
 
     def write_to_disk(self, fp: Path, write_history=True):

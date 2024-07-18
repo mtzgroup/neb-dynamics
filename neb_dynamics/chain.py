@@ -30,6 +30,11 @@ class Chain:
 
     _cached_chain_bias: np.array = None
 
+    def __post_init__(self):
+        if not hasattr(self, "velocity"):
+            self._zero_velocity()
+
+
     @property
     def n_atoms(self) -> int:
         """
@@ -208,9 +213,10 @@ class Chain:
 
     @property
     def ts_triplet_gspring_infnorm(self):
+        import chainhelpers as ch
         ind_ts = self.energies[1:-1].argmax()
 
-        _, gsprings = self.pe_grads_spring_forces_nudged()
+        _, gsprings = ch.pe_grads_spring_forces_nudged(self)
 
         if ind_ts == 0:
             triplet = gsprings[0:2]
@@ -313,4 +319,4 @@ class Chain:
         return eA
 
     def _zero_velocity(self):
-        self.velocity = np.zeros_like(a=self.coordinates.shape)
+        self.velocity = np.zeros_like(a=self.coordinates)
