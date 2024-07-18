@@ -1,11 +1,9 @@
-from __future__ import annotations
-from typing import Union
-from qcio.models.inputs import ProgramInput
-from qcio.models.structure import Structure
 
 """
 this module contains helper general functions
 """
+from __future__ import annotations
+from typing import Union
 
 import math
 
@@ -19,10 +17,11 @@ import scipy.sparse.linalg
 from openbabel import openbabel
 from pysmiles import write_smiles
 from rdkit import Chem
-from scipy.signal import argrelextrema
 
 from neb_dynamics.elements import ElementData
 from neb_dynamics.errors import ElectronicStructureError
+from neb_dynamics.inputs import GIInputs
+# from neb_dynamics.engine import Engine
 
 warnings.filterwarnings("ignore")
 with warnings.catch_warnings():
@@ -51,18 +50,7 @@ def get_mass(s: str):
     return ed.from_symbol(s).mass_amu
 
 
-def _get_ind_minima(chain):
-    ind_minima = argrelextrema(chain.energies, np.less, order=1)[0]
-    return ind_minima
 
-
-def _get_ind_maxima(chain):
-    maxima_indices = argrelextrema(chain.energies, np.greater, order=1)[0]
-    if len(maxima_indices) > 1:
-        ind_maxima = maxima_indices[0]
-    else:
-        ind_maxima = int(maxima_indices)
-    return ind_maxima
 
 
 def qRMSD_distance(structure, reference):
@@ -149,30 +137,7 @@ def linear_distance(coords1, coords2):
     return np.linalg.norm(coords2 - coords1)
 
 
-def create_friction_optimal_gi(traj, gi_inputs):
-    print("GI: Scanning over friction parameter for geodesic interpolation.")
-    sys.stdout.flush()
-    frics = [0.0001, 0.001, 0.01, 0.1, 1]
-    all_gis = [
-        traj.run_geodesic(
-            nimages=gi_inputs.nimages,
-            friction=fric,
-            nudge=gi_inputs.nudge,
-            **gi_inputs.extra_kwds,
-        )
-        for fric in frics
-    ]
-    eAs = []
-    for gi in all_gis:
-        try:
-            eAs.append(max(gi.energies_xtb()))
-        except TypeError:
-            eAs.append(10000000)
-    ind_best = np.argmin(eAs)
-    gi = all_gis[ind_best]
-    print(f"GI: Used friction val: {frics[ind_best]}")
-    sys.stdout.flush()
-    return gi
+
 
 
 def get_nudged_pe_grad(unit_tangent, gradient):
@@ -403,23 +368,23 @@ def is_even(n):
     return not np.mod(n, 2)
 
 
-def steepest_descent(node, ss=1, max_steps=10):
-    tds = []
-    last_node = node.copy()
-    # make sure the node isn't frozen so it returns a gradient
-    last_node.converged = False
-    try:
-        for i in range(max_steps):
-            grad = last_node.gradient
-            new_coords = last_node.coords - 1 * ss * grad
-            node_new = last_node.update_coords(new_coords)
-            tds.append(node_new)
-            last_node = node_new.copy()
-    except Exception:
-        raise ElectronicStructureError(
-            trajectory=[], msg="Error while minimizing in early stop check."
-        )
-    return tds
+# def steepest_descent(node, engine: Engine, ss=1, max_steps=10) -> list[Node]:
+#     history = []
+#     last_node = node.copy()
+#     # make sure the node isn't frozen so it returns a gradient
+#     last_node.converged = False
+#     try:
+#         for i in range(max_steps):
+#             grad = last_node.gradient
+#             new_coords = last_node.coords - 1*ss*grad
+#             node_new = last_node.update_coords(new_coords)
+#             engine.compute_gradients([node_new])
+#             history.append(node_new)
+#             last_node = node_new.copy()
+#     except Exception:
+#         raise ElectronicStructureError(
+#             trajectory=[], msg='Error while minimizing in early stop check.')
+#     return history
 
 
 def give_me_free_index(natural, graph):
@@ -484,13 +449,3 @@ def _calculate_chain_distances(chain_traj):
     return np.array(distances)
 
 
-def _change_prog_input_property(prog_inp: ProgramInput,
-                                key: str, value: Union[str, Structure]):
-    prog_dict = prog_inp.__dict__.copy()
-    if prog_dict[key] is not value:
-        prog_dict['calctype'] = 'gradient'
-        new_prog_inp = ProgramInput(**prog_dict)
-    else:
-        new_prog_inp = prog_inp
-
-    return new_prog_inp

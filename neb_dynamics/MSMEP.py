@@ -10,11 +10,9 @@ from nodes.node import Node
 from chain import Chain
 from neb_dynamics.elementarystep import ElemStepResults
 from neb_dynamics.neb import NEB, NoneConvergedException
+from neb_dynamics.engine import Engine
 from neb_dynamics.inputs import NEBInputs, ChainInputs, GIInputs
-from neb_dynamics.helper_functions import (
-    _get_ind_minima,
-    create_friction_optimal_gi,
-)
+
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
@@ -24,8 +22,9 @@ from neb_dynamics.elementarystep import check_if_elem_step
 
 @dataclass
 class MSMEP:
-    """Class for running autosplitting MEP minimizations."""
-
+    """Class for running autosplitting MEP minimizations.
+    """
+    engine: Engine
     neb_inputs: NEBInputs = NEBInputs()
     chain_inputs: ChainInputs = ChainInputs()
     gi_inputs: GIInputs = GIInputs()
@@ -46,14 +45,17 @@ class MSMEP:
             chain given and its corresponding neb minimization. Children are chains into which
             the root chain was split.
         """
-
-        if self.neb_inputs.skip_identical_graphs and input_chain[0].is_a_molecule:
+        self.engine.compute_gradients(input_chain)
+        if (
+            self.neb_inputs.skip_identical_graphs
+            and input_chain[0].has_molecular_graph
+        ):
             if input_chain[0]._is_connectivity_identical(input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
                 return TreeNode(data=None, children=[], index=tree_node_index)
 
         else:
-            if input_chain[0].is_identical(input_chain[-1]):
+            if input_chain[0] == input_chain[-1]:
                 print("Endpoints are identical. Returning nothing")
                 return TreeNode(data=None, children=[], index=tree_node_index)
 
@@ -94,20 +96,20 @@ class MSMEP:
             return TreeNode(data=None, children=[], index=tree_node_index)
 
     def _create_interpolation(self, chain: Chain):
+        import neb_dynamics.chainhelpers as ch
 
         if chain.parameters.use_geodesic_interpolation:
-            traj = chain.to_trajectory()
             if chain.parameters.friction_optimal_gi:
-                gi = create_friction_optimal_gi(traj, self.gi_inputs)
+                interpolation = ch.create_friction_optimal_gi(chain=chain, gi_inputs=self.gi_inputs)
             else:
-                gi = traj.run_geodesic(
+                interpolation = ch.run_geodesic(
+                    chain=chain,
                     nimages=self.gi_inputs.nimages,
                     friction=self.gi_inputs.friction,
                     nudge=self.gi_inputs.nudge,
                     **self.gi_inputs.extra_kwds,
                 )
 
-            interpolation = Chain.from_traj(traj=gi, parameters=self.chain_inputs)
             interpolation._zero_velocity()
 
         else:  # do a linear interpolation using numpy
@@ -142,6 +144,7 @@ class MSMEP:
             initial_chain=interpolation,
             parameters=self.neb_inputs.copy(),
             optimizer=self.optimizer.copy(),
+            engine=self.engine
         )
         try:
             elem_step_results = n.optimize_chain()
@@ -200,12 +203,13 @@ class MSMEP:
         return chain_frag
 
     def _do_minima_based_split(self, chain: Chain, minimization_results: List[Node]):
+        import neb_dynamics.chainhelpers as ch
         all_geometries = [chain[0]]
         all_geometries.extend(minimization_results)
         all_geometries.append(chain[-1])
 
         all_inds = [0]
-        ind_minima = _get_ind_minima(chain)
+        ind_minima = ch._get_ind_minima(chain)
         all_inds.extend(ind_minima)
         all_inds.append(len(chain) - 1)
 

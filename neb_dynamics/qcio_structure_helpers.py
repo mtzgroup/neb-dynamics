@@ -1,17 +1,19 @@
+import os
+import tempfile
 from collections.abc import Iterable
-from typing import List, Tuple, Union
-import numpy as np
 from pathlib import Path
+from typing import List, Tuple, Union
 
+import numpy as np
 from openbabel import openbabel
+from qcio.models.inputs import ProgramInput
 from qcio.models.structure import Structure
 
-from neb_dynamics.helper_functions import from_number_to_element, bond_ord_number_to_string
-from neb_dynamics.molecule import Molecule
-import tempfile
-import os
-from neb_dynamics.geodesic_interpolation.fileio import read_xyz
 from neb_dynamics.constants import ANGSTROM_TO_BOHR
+from neb_dynamics.geodesic_interpolation.fileio import read_xyz
+from neb_dynamics.helper_functions import (bond_ord_number_to_string,
+                                           from_number_to_element)
+from neb_dynamics.molecule import Molecule
 
 
 def read_multiple_structure_from_file(fp: Union[Path, str], charge: int = 0, spinmult: int = 1) -> List[Structure]:
@@ -129,3 +131,15 @@ def load_obmol_from_fp(fp: Path) -> openbabel.OBMol:
     obconversion.ReadFile(obmol, str(fp.resolve()))
 
     return obmol
+
+
+def _change_prog_input_property(prog_inp: ProgramInput,
+                                key: str, value: Union[str, Structure]):
+    prog_dict = prog_inp.__dict__.copy()
+    if prog_dict[key] is not value:
+        prog_dict[key] = value
+        new_prog_inp = ProgramInput(**prog_dict)
+    else:
+        new_prog_inp = prog_inp
+
+    return new_prog_inp

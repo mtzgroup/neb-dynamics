@@ -2,6 +2,8 @@ import numpy as np
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
+
 
 
 def is_identical(self: Node, other: Node,
@@ -22,7 +24,7 @@ def is_identical(self: Node, other: Node,
         conditions = [_is_connectivity_identical(
             other), _is_conformer_identical(other)]
     else:
-        conditions = [_is_conformer_identical(other,
+        conditions = [_is_conformer_identical(self, other,
                                               global_rmsd_cutoff=global_rmsd_cutoff,
                                               fragment_rmsd_cutoff=fragment_rmsd_cutoff,
                                               kcal_mol_cutoff=kcal_mol_cutoff)]
@@ -30,7 +32,7 @@ def is_identical(self: Node, other: Node,
     return all(conditions)
 
 
-def _is_conformer_identical(self, other: Node,
+def _is_conformer_identical(self: Node, other: Node,
                             *,
                             global_rmsd_cutoff: float = 20.0,
                             fragment_rmsd_cutoff: float = 0.5,
@@ -46,6 +48,8 @@ def _is_conformer_identical(self, other: Node,
             frag_dist, _ = align_geom(
                 refgeom=frag_self.geometry, geom=frag_other.geometry)
             per_frag_dists.append(frag_dist)
+    else:
+        per_frag_dists.append(global_dist)
 
     en_delta = np.abs((self.energy - other.energy) * 627.5)
 
