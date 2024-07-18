@@ -19,7 +19,6 @@ py3dmol = "^2.2.0"
 qcop = "^0.7.1"
 ase = "^3.23.0"
 chemcloud = "^0.10.0"
-xtb = "^22.1"
 cairosvg = "^2.7.1"
 timeout-timer = "^0.2.0"
 biopython = "^1.84"
@@ -37,6 +36,7 @@ autopep8 = "^2.3.1"
 rxnmapper = "^0.3.0"  # needed for NetworkBuilder is you want smi->smi network
 torch = ">=2.0.0, !=2.0.1, !=2.1.0"
 tqdm = "^4.66.4"
+xtb = "^22.1"
 
 
 [tool.poetry.group.docs.dependencies]
