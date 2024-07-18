@@ -19,6 +19,5 @@ class GradientsNotComputedError(Exception):
 @dataclass
 class ElectronicStructureError(Exception):
 
-    trajectory: list
     msg: str
     obj: Any = None

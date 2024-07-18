@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,15 +11,16 @@ import numpy as np
 # from retropaths.abinitio.trajectory import Trajectory
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.tdstructure import TDStructure
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
 
-from nodes.node import Node
-from neb_dynamics.Inputs import ChainInputs
+
+from neb_dynamics.nodes.node import Node
+from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.helper_functions import (
     linear_distance,
     qRMSD_distance,
 )
-from neb_dynamics.chainhelpers import _get_mass_weighed_coords
 
 
 @dataclass
@@ -37,19 +38,16 @@ class Chain:
         return self.coordinates[0].shape[0]
 
     @classmethod
-    def from_xyz(cls, fp: Path, parameters: ChainInputs) -> Chain:
+    def from_xyz(cls, fp: Union[Path, str], parameters: ChainInputs,
+                 charge: int = 0, spinmult: int = 1) -> Chain:
         """
         Reads in a chain from an xyz file containing a list of structures.
         """
-        if isinstance(fp, str):
-            fp = Path(fp)
-        traj = Trajectory.from_xyz(fp)
-        traj[0].tc_model_method = parameters.tc_model_method
-        traj[0].tc_model_basis = parameters.tc_model_basis
-        traj[0].tc_kwds = parameters.tc_kwds
-        traj.update_tc_parameters(traj[0])
+        fp = Path(fp)
 
-        chain = cls.from_traj(traj, parameters=parameters)
+        nodes = [Node(struct) for struct in read_multiple_structure_from_file(
+            fp, charge=charge, spinmult=spinmult)]
+        chain = cls(nodes=nodes, parameters=parameters)
         energies_fp = fp.parent / Path(str(fp.stem) + ".energies")
         grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
         grad_shape_path = fp.parent / Path(str(fp.stem) + "_grad_shapes.txt")
@@ -65,8 +63,8 @@ class Chain:
             gradients = gradients_flat.reshape(gradients_shape)
 
             for node, (ene, grad) in zip(chain.nodes, zip(energies, gradients)):
-                node._cached_energy = ene
-                node._cached_gradient = grad
+                node.energy = ene
+                node.gradient = grad
         return chain
 
     @classmethod
@@ -81,20 +79,21 @@ class Chain:
 
     @property
     def _path_len_coords(self) -> np.array:
-        if self.nodes[0].is_a_molecule:
-            coords = _get_mass_weighed_coords(self)
+        import neb_dynamics.chainhelpers as ch
+        if self.nodes[0].has_molecular_graph:
+            coords = ch._get_mass_weighed_coords(self)
         else:
             coords = self.coordinates
         return coords
 
     def _path_len_dist_func(self, coords1, coords2):
-        if self.nodes[0].is_a_molecule:
+        if self.nodes[0].has_molecular_graph:
             return qRMSD_distance(coords1, coords2)
         else:
             return linear_distance(coords1, coords2)
 
     @property
-    def integrated_path_length(self):
+    def integrated_path_length(self) -> np.array:
         coords = self._path_len_coords
         cum_sums = [0]
         int_path_len = [0]
@@ -103,16 +102,14 @@ class Chain:
                 continue
             next_frame = coords[i + 1]
             distance = self._path_len_dist_func(frame_coords, next_frame)
-            # distance = self._path_len_dist_func(frame_coords, coords[0])
             cum_sums.append(cum_sums[-1] + distance)
-            # cum_sums.append(distance)
 
         cum_sums = np.array(cum_sums)
         int_path_len = cum_sums / cum_sums[-1]
         return np.array(int_path_len)
 
     @property
-    def path_length(self):
+    def path_length(self) -> np.array:
         coords = self._path_len_coords
         cum_sums = [0]
         for i, frame_coords in enumerate(coords):
@@ -120,9 +117,7 @@ class Chain:
                 continue
             next_frame = coords[i + 1]
             distance = self._path_len_dist_func(frame_coords, next_frame)
-            # distance = self._path_len_dist_func(frame_coords, coords[0])
             cum_sums.append(cum_sums[-1] + distance)
-            # cum_sums.append(distance)
 
         cum_sums = np.array(cum_sums)
         path_len = cum_sums
@@ -161,17 +156,14 @@ class Chain:
     def append(self, node):
         self.nodes.append(node)
 
-    def copy(self):
+    def copy(self) -> Chain:
         list_of_nodes = [node.copy() for node in self.nodes]
         chain_copy = Chain(nodes=list_of_nodes,
                            parameters=self.parameters.copy())
-        chain_copy.bfgs_hess = self.bfgs_hess
-        chain_copy.velocity = self.velocity
-
         return chain_copy
 
     @property
-    def _energies_already_computed(self):
+    def _energies_already_computed(self) -> bool:
         all_ens = [node.energy for node in self.nodes]
         return all([val is not None for val in all_ens])
 
@@ -193,7 +185,7 @@ class Chain:
         return (self.energies - self.energies[0]) * 627.5
 
     @property
-    def _grads_already_computed(self):
+    def _grads_already_computed(self) -> bool:
         all_grads = [node.gradient for node in self.nodes]
         return np.all([g is not None for g in all_grads])
 
@@ -231,7 +223,9 @@ class Chain:
 
     @property
     def rms_gperps(self):
-        grads = self.get_g_perps()
+        # imported here to avoid circular imports
+        import neb_dynamics.chainhelpers as ch
+        grads = ch.get_g_perps(self)
         rms_grads = []
         for grad in grads:
             rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / len(grad))
@@ -263,7 +257,8 @@ class Chain:
         if hasattr(self.nodes[0], 'symbols'):
             return self.nodes[0].symbols
         else:
-            raise TypeError(f"Node object {self.nodes[0]} does not have `symbols` attribute.")
+            raise TypeError(
+                f"Node object {self.nodes[0]} does not have `symbols` attribute.")
 
     @property
     def energies_are_monotonic(self):
@@ -316,3 +311,6 @@ class Chain:
     def get_eA_chain(self):
         eA = max(self.energies_kcalmol)
         return eA
+
+    def _zero_velocity(self):
+        self.velocity = np.zeros_like(a=self.coordinates.shape)

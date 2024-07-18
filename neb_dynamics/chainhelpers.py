@@ -1,11 +1,17 @@
-from neb_dynamics.chain import Chain
-from neb_dynamics.helper_functions import get_mass
-from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
-from nodes.node import Node
-import numpy as np
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+import numpy as np
 from IPython.display import HTML
+from matplotlib.animation import FuncAnimation
+from nodes.node import Node
+from numpy.typing import NDArray
+
+from neb_dynamics.chain import Chain
+from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+from neb_dynamics.helper_functions import get_mass
+from neb_dynamics.inputs import ChainInputs
+from neb_dynamics.engine import Engine
 
 
 def _distance_to_chain(chain1: Chain, chain2: Chain) -> float:
@@ -88,10 +94,9 @@ def neighs_grad_func(chain: Chain, prev_node: Node, current_node: Node, next_nod
         pe_grad[1, :2] = 0  # this atom can only move in a line
         pe_grad[2, :1] = 0  # this atom can only move in a plane
 
-    # TODO: JAN!! This is where you stopped refactoring
     if current_node.do_climb:
-        pe_along_path_const = current_node.dot_function(
-            pe_grad, unit_tan_path)
+        pe_along_path_const = np.dot(
+            pe_grad.flatten(), unit_tan_path.flatten())
         pe_along_path = pe_along_path_const * unit_tan_path
 
         climbing_grad = 2 * pe_along_path
@@ -102,19 +107,15 @@ def neighs_grad_func(chain: Chain, prev_node: Node, current_node: Node, next_nod
         spring_forces_nudged = zero
 
     else:
-        pe_grads_nudged = current_node.get_nudged_pe_grad(
-            unit_tan_path, gradient=pe_grad
+        pe_grads_nudged = get_nudged_pe_grad(
+            unit_tangent=unit_tan_path, gradient=pe_grad
         )
-        spring_forces_nudged = chain.get_force_spring_nudged(
+        spring_forces_nudged = get_force_spring_nudged(
+            chain=chain,
             prev_node=prev_node,
             current_node=current_node,
             next_node=next_node,
             unit_tan_path=unit_tan_path,
-        )
-
-    else:
-        raise ValueError(
-            f"current_node.do_climb is not a boolean: {current_node.do_climb=}"
         )
 
     return pe_grads_nudged, spring_forces_nudged
@@ -140,7 +141,10 @@ def pe_grads_spring_forces_nudged(chain: Chain):
     return pe_grads_nudged, spring_forces_nudged
 
 
-def get_g_perps(self):
+def get_g_perps(self) -> NDArray:
+    """
+    computes the perpendicular gradients of a chain.
+    """
     pe_grads_nudged, _ = self.pe_grads_spring_forces_nudged()
     zero = np.zeros_like(pe_grads_nudged[0])
     grads = np.insert(pe_grads_nudged, 0, zero, axis=0)
@@ -150,23 +154,23 @@ def get_g_perps(self):
 
 
 def _k_between_nodes(
-    self, node0: Node, node1: Node, e_ref: float, k_max: float, e_max: float
+    node0: Node, node1: Node, e_ref: float, k_max: float, e_max: float,
+    parameters: ChainInputs
 ):
     e_i = max(node1.energy, node0.energy)
     if e_i > e_ref:
-        new_k = k_max - self.parameters.delta_k * \
+        new_k = k_max - parameters.delta_k * \
             ((e_max - e_i) / (e_max - e_ref))
     elif e_i <= e_ref:
-        new_k = k_max - self.parameters.delta_k
+        new_k = k_max - parameters.delta_k
     return new_k
 
 
-def compute_NEB_gradient(chain: Chain) -> np.array:
+def compute_NEB_gradient(chain: Chain) -> NDArray:
     """
     will return the sum of the perpendicular gradient
     and the spring gradient
     """
-
     pe_grads_nudged, spring_forces_nudged = pe_grads_spring_forces_nudged(
         chain)
 
@@ -181,8 +185,7 @@ def compute_NEB_gradient(chain: Chain) -> np.array:
     return grads
 
 
-def _create_tangent_path(prev_node: Node, current_node: Node, next_node: Node
-):
+def _create_tangent_path(prev_node: Node, current_node: Node, next_node: Node):
     en_2 = next_node.energy
     en_1 = current_node.energy
     en_0 = prev_node.energy
@@ -212,38 +215,39 @@ def _create_tangent_path(prev_node: Node, current_node: Node, next_node: Node
 
 
 def get_force_spring_nudged(
-    self,
+    chain: Chain,
     prev_node: Node,
     current_node: Node,
     next_node: Node,
     unit_tan_path: np.array,
 ):
+    parameters = chain.parameters
     k_max = (
-        max(self.parameters.k)
-        if hasattr(self.parameters.k, "__iter__")
-        else self.parameters.k
+        max(parameters.k)
+        if hasattr(parameters.k, "__iter__")
+        else parameters.k
     )
-    e_ref = max(self.nodes[0].energy,
-                self.nodes[len(self.nodes) - 1].energy)
-    e_max = max(self.energies)
+    e_ref = max(chain.nodes[0].energy,
+                chain.nodes[len(chain.nodes) - 1].energy)
+    e_max = max(chain.energies)
 
-    k01 = self._k_between_nodes(
+    k01 = _k_between_nodes(
         node0=prev_node,
         node1=current_node,
         e_ref=e_ref,
         k_max=k_max,
         e_max=e_max,
+        parameters=parameters
     )
 
-    k12 = self._k_between_nodes(
+    k12 = _k_between_nodes(
         node0=current_node,
         node1=next_node,
         e_ref=e_ref,
         k_max=k_max,
         e_max=e_max,
+        parameters=parameters
     )
-
-    # print(f"***{k12=} // {k01=}")
 
     force_spring = k12 * np.linalg.norm(
         next_node.coords - current_node.coords
@@ -260,6 +264,16 @@ def _select_split_method(self, conditions: dict, irc_results, concavity_results)
         return "minima"
     elif conditions["irc"] is False:
         return "maxima"
+
+
+def get_nudged_pe_grad(unit_tangent: np.array, gradient: np.array):
+    """
+    Returns the component of the gradient that acts perpendicular to the path tangent
+    """
+    pe_grad = gradient
+    pe_grad_nudged_const = np.dot(pe_grad.flatten(), unit_tangent.flatten())
+    pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
+    return pe_grad_nudged
 
 
 def animate_chain_trajectory(
@@ -289,3 +303,4 @@ def animate_chain_trajectory(
     ani = FuncAnimation(
         fig, animate, frames=chain_traj)
     return HTML(ani.to_jshtml())
+

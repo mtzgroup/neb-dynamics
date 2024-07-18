@@ -1,4 +1,4 @@
-# +
+w# +
 from pathlib import Path
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.abinitio.tdstructure import TDStructure

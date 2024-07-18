@@ -4,7 +4,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Callable
 from neb_dynamics.Optimizer import Optimizer
-from neb_dynamics.optimizers import ALS
 from chain import Chain
 from neb_dynamics.errors import ElectronicStructureError
 
@@ -96,9 +95,6 @@ class VelocityProjectedOptimizer(Optimizer):
                 #     new_vel = vj + timestep*(-(chain_gradients))
                 new_chain.velocity = new_vel
 
-                new_chain.gradients  # calling it to make sure gradients will converge
-                new_chain_gradients_fails = False
-
             except Exception:
                 print(
                     "VPO: Gradients failed with displacement. Resetting velocity, shrinking by 50%"
@@ -107,6 +103,6 @@ class VelocityProjectedOptimizer(Optimizer):
                 timestep *= 0.5
                 retry_count += 1
 
-        if new_chain_gradients_fails:
-            raise ElectronicStructureError(msg="Electronic structure of chain failed.")
+        # if new_chain_gradients_fails:
+        #     raise ElectronicStructureError(msg="Electronic structure of chain failed.")
         return new_chain

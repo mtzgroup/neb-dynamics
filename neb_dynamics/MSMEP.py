@@ -9,8 +9,8 @@ from nodes.node import Node
 
 from chain import Chain
 from neb_dynamics.elementarystep import ElemStepResults
-from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
+from neb_dynamics.neb import NEB, NoneConvergedException
+from neb_dynamics.inputs import NEBInputs, ChainInputs, GIInputs
 from neb_dynamics.helper_functions import (
     _get_ind_minima,
     create_friction_optimal_gi,

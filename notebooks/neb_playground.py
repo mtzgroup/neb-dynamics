@@ -1,4 +1,72 @@
 # -*- coding: utf-8 -*-
+from neb_dynamics.engine import QCOPEngine
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+from neb_dynamics.nodes.node import Node
+
+from qcio.models.inputs import ProgramInput
+
+from neb_dynamics.chain import Chain
+from neb_dynamics.inputs import ChainInputs
+
+c = Chain.from_xyz("/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz", parameters=ChainInputs())
+
+pi = ProgramInput(
+    structure=c[0].structure,
+    calctype='energy',
+    model={'method':'GFN2xTB', 'basis':'GFN2xTB'}
+)
+
+foo = {'hey':1}
+
+foo['lol']
+
+type(c[0])
+
+n = Node(c[0].structure)
+
+type(n)
+
+eng = QCOPEngine(prog_input=pi, program='xtb')
+
+from qcop import compute
+
+compute(
+
+eng.compute_energies(c)
+
+from qcio.models.inputs import ProgramInput
+
+compute(
+
+structs[0] is structs[0]
+
+from qcio.models.outputs import ProgramOutput
+
+from qcop import compute
+
+pi = ProgramInput(
+    structure=structs[0],
+    calctype='energy',
+    model={"method": "GFN2xTB"},  # type: ignore
+    keywords={},
+)
+
+res = compute("xtb", pi)
+
+res.results.gradient
+
+ProgramInput
+
+pi.__dict__.copy()
+
+len(structs)
+
+mol = structure_to_molecule(structs[-1])
+
+mol.draw()
+
+len(structs)
+
 from nodes.node import Node
 from neb_dynamics.qcio_structure_helpers import   split_structure_into_frags, structure_to_molecule
 

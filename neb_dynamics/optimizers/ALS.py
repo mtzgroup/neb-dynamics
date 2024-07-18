@@ -1,6 +1,6 @@
 import numpy as np
 import sys
-from neb_dynamics.NEB import Chain
+from neb_dynamics.neb import Chain
 
 
 def _attempt_step(chain: Chain, t):
