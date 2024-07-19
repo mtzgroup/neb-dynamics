@@ -16,9 +16,7 @@ pandas = "^2.2.2"
 pysmiles = "^1.1.2"
 rdkit = "^2024.3.3"
 py3dmol = "^2.2.0"
-qcop = {git = "https://github.com/coltonbh/qcop", rev = "feature-xtb-no-stdout"}
 ase = "^3.23.0"
-chemcloud = "^0.10.0"
 xtb = "^22.1"
 cairosvg = "^2.7.1"
 timeout-timer = "^0.2.0"
@@ -29,6 +27,10 @@ sella = "^2.3.4"
 pydantic = "^2.8.2"
 scikit-learn = "^1.5.1"
 setuptools = "^70.3.0"
+geometric = "^1.0.2"
+qcop = "^0.8.0"
+qcio = {extras = ["view"], version = "^0.11.0"}
+chemcloud = "^0.11.1"
 
 
 [tool.poetry.group.dev.dependencies]
