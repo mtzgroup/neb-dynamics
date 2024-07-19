@@ -7,11 +7,11 @@ from typing import Union, List
 from neb_dynamics.chain import Chain
 from numpy.typing import NDArray
 import numpy as np
-from qcio.models.inputs import ProgramInput
+from qcio.models.inputs import ProgramInput, DualProgramInput, Structure
 import qcop
 
 from neb_dynamics.nodes.node import Node
-from neb_dynamics.helper_functions import _change_prog_input_property
+from neb_dynamics.qcio_structure_helpers import _change_prog_input_property
 
 
 @dataclass
@@ -33,11 +33,26 @@ class Engine(ABC):
         """
         ...
 
+    def steepest_descent(self, node: Node, ss=1, max_steps=10) -> list[Node]:
+        history = []
+        last_node = node.copy()
+        # make sure the node isn't frozen so it returns a gradient
+        last_node.converged = False
+        for i in range(max_steps):
+            grad = last_node.gradient
+            new_coords = last_node.coords - 1*ss*grad
+            node_new = last_node.update_coords(new_coords)
+            self.compute_gradients([node_new])
+            history.append(node_new)
+            last_node = node_new.copy()
+        return history
+
 
 @dataclass
 class QCOPEngine(Engine):
     program_input: ProgramInput
     program: str
+    geometry_optimizer: str = 'geometric'
 
     def _run_calc(self, calctype: str, chain: Union[Chain, List]) -> List[Node]:
         if isinstance(chain, Chain):
@@ -90,16 +105,29 @@ class QCOPEngine(Engine):
         node_list = self._run_calc(chain=chain, calctype='energy')
         return np.array([node.energy for node in node_list])
 
-    def steepest_descent(self, node, ss=1, max_steps=10) -> list[Node]:
-        history = []
-        last_node = node.copy()
-        # make sure the node isn't frozen so it returns a gradient
-        last_node.converged = False
-        for i in range(max_steps):
-            grad = last_node.gradient
-            new_coords = last_node.coords - 1*ss*grad
-            node_new = last_node.update_coords(new_coords)
-            self.compute_gradients([node_new])
-            history.append(node_new)
-            last_node = node_new.copy()
-        return history
+    def _run_geom_opt_calc(self, structure: Structure):
+        """
+        this will return a ProgramOutput from qcio geom opt call.
+        """
+        dpi = DualProgramInput(
+            calctype="optimization",  # type: ignore
+            structure=structure,
+            subprogram=self.program,
+            subprogram_args={'model': self.program_input.model,
+                             'keywords': self.program_input.keywords},
+            keywords={}
+        )
+
+        output = qcop.compute(
+            self.geometry_optimizer, dpi, propagate_wfn=False, rm_scratch_dir=False)
+        return output
+
+    def compute_geometry_optimization(self, node: Node) -> list[Node]:
+        """
+        will run a geometry optimization call and parse the output into
+        a list of Node objects
+        """
+        output = self._run_geom_opt_calc(structure=node.structure)
+        all_outputs = output.results.trajectory
+        structures = [output.input_data.structure for output in all_outputs]
+        return [Node(structure=struct, _cached_result=result) for struct, result in zip(structures, all_outputs)]

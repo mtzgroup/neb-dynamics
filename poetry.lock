@@ -545,21 +545,21 @@ files = [
 
 [[package]]
 name = "chemcloud"
-version = "0.12.0"
+version = "0.10.1"
 description = "Fast, secure, scalable quantum chemistry. A Python client for the the ChemCloud server."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "chemcloud-0.12.0-py3-none-any.whl", hash = "sha256:ec6534f180f648daa5bd336de300fd2ee586ef7b6a40725229da4ff6ef527690"},
-    {file = "chemcloud-0.12.0.tar.gz", hash = "sha256:48e1efade4e5f5abe702f257170b0834344dd91ede103711b26382c3399425ab"},
+    {file = "chemcloud-0.10.1-py3-none-any.whl", hash = "sha256:50877cdc4a5f96ee2caa9bfdf80704708fd40d07bf05c55dce072cb117257e0d"},
+    {file = "chemcloud-0.10.1.tar.gz", hash = "sha256:f0ae0d807cb89d957564329650696a25023eb76c9887f981d9ed1aae5354e83e"},
 ]
 
 [package.dependencies]
 httpx = ">=0.27,<0.28"
 pydantic = ">=2.0.0,<2.4.0 || >2.4.0"
 pydantic-settings = ">=2.0.3,<3.0.0"
-qcio = ">=0.11.0,<0.12.0"
-tomli = {version = ">=2.0,<3.0", markers = "python_version < \"3.11\""}
+qcio = ">=0.10.1,<0.11.0"
+tomli = {version = ">=1.1.0", markers = "python_version < \"3.11\""}
 tomli-w = ">=1.0.0,<2.0.0"
 
 [[package]]
@@ -967,6 +967,21 @@ test = ["aiohttp (!=4.0.0a0,!=4.0.0a1)", "numpy", "pytest", "pytest-asyncio (!=0
 test-downstream = ["aiobotocore (>=2.5.4,<3.0.0)", "dask-expr", "dask[dataframe,test]", "moto[server] (>4,<5)", "pytest-timeout", "xarray"]
 test-full = ["adlfs", "aiohttp (!=4.0.0a0,!=4.0.0a1)", "cloudpickle", "dask", "distributed", "dropbox", "dropboxdrivefs", "fastparquet", "fusepy", "gcsfs", "jinja2", "kerchunk", "libarchive-c", "lz4", "notebook", "numpy", "ocifs", "pandas", "panel", "paramiko", "pyarrow", "pyarrow (>=1)", "pyftpdlib", "pygit2", "pytest", "pytest-asyncio (!=0.22.0)", "pytest-benchmark", "pytest-cov", "pytest-mock", "pytest-recording", "pytest-rerunfailures", "python-snappy", "requests", "smbprotocol", "tqdm", "urllib3", "zarr", "zstandard"]
 tqdm = ["tqdm"]
+
+[[package]]
+name = "geometric"
+version = "1.0.2"
+description = "Geometry optimization for quantum chemistry"
+optional = false
+python-versions = "*"
+files = [
+    {file = "geometric-1.0.2.tar.gz", hash = "sha256:8d9989ca40a4d079d3e9f00c55bdd894c2b5d195d40d7508bf46ec61f8d46b1a"},
+]
+
+[package.dependencies]
+networkx = "*"
+numpy = ">=1.11"
+six = "*"
 
 [[package]]
 name = "ghp-import"
@@ -3092,13 +3107,13 @@ tests = ["pytest"]
 
 [[package]]
 name = "py3dmol"
-version = "2.3.0"
+version = "2.2.0"
 description = "An IPython interface for embedding 3Dmol.js views in Jupyter notebooks"
 optional = false
 python-versions = "*"
 files = [
-    {file = "py3Dmol-2.3.0-py2.py3-none-any.whl", hash = "sha256:d94df1edebbe40ae24512735008fac46c511c27958afa7f649472034af3c91f7"},
-    {file = "py3Dmol-2.3.0.tar.gz", hash = "sha256:3dc53a65ba5ad908b78f4a9a1be31f3bc49d57d69c673797b1173fa3298b1f98"},
+    {file = "py3Dmol-2.2.0-py2.py3-none-any.whl", hash = "sha256:d5d8d390d95fdd0cc2b190f6b8204f0e489aef656cad75b85630196572803151"},
+    {file = "py3Dmol-2.2.0.tar.gz", hash = "sha256:706f7183a7ed1736ecb4b966c51ef2540a59b8186310b4da5e2071687eff9765"},
 ]
 
 [package.extras]
@@ -3689,17 +3704,20 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "qcio"
-version = "0.11.7"
+version = "0.10.3"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcio-0.11.7-py3-none-any.whl", hash = "sha256:f8949b636a10a188d5d76b574f6f700cd4e13ed133352f93fd7bc04137b28867"},
-    {file = "qcio-0.11.7.tar.gz", hash = "sha256:65cd93d26986a5effc470445a1f5b518bd7f44c194a928ab1a9e34cc3a647422"},
+    {file = "qcio-0.10.3-py3-none-any.whl", hash = "sha256:c5d0f3a8594245f0b4a4469649b01884cdf6ba7ae39f7088f5bff0fd98e78ad7"},
+    {file = "qcio-0.10.3.tar.gz", hash = "sha256:792ba79d28520abaea298af7e17cec6b7e27da109f1d5dd54325e92e2ae97a52"},
 ]
 
 [package.dependencies]
+ipython = {version = ">=8.0.0", optional = true, markers = "extra == \"view\""}
+matplotlib = {version = ">=3.0.0", optional = true, markers = "extra == \"view\""}
 numpy = ">=1.20,<2.0"
+py3Dmol = {version = ">=2.2.1", optional = true, markers = "extra == \"view\""}
 pydantic = ">=2.0.0,<2.0.1 || >2.0.1,<2.1.0 || >2.1.0,<3.0.0"
 pyyaml = ">=6.0,<7.0"
 toml = ">=0.10.2,<0.11.0"
@@ -3730,12 +3748,6 @@ qcparse = ">=0.6.0,<0.7.0"
 geometric = ["geometric (>=1.0.1,<2.0.0)"]
 qcengine = ["qcelemental (>=0.26.0,<0.27.0)", "qcengine (>=0.27.0,<0.28.0)"]
 xtb = ["xtb (>=22.1,<23.0)"]
-
-[package.source]
-type = "git"
-url = "https://github.com/coltonbh/qcop"
-reference = "feature-xtb-no-stdout"
-resolved_reference = "bff9915d02e736ed50d276f6cd120e178ce7aa5b"
 
 [[package]]
 name = "qcparse"
@@ -5140,4 +5152,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "57ceef1c04ec3b7973ede120b488ebb28c150524a9dc14fcbe9c8bb0bacb90fe"
+content-hash = "65f9fd54f79049bed76480f2cdef3001849fc1b31bfe1d59feaf27b154fbb110"
