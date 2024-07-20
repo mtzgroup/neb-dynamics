@@ -15,6 +15,7 @@ from neb_dynamics.helper_functions import get_mass
 from neb_dynamics.inputs import ChainInputs, GIInputs
 from neb_dynamics.engine import Engine
 from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
+from typing import List
 
 
 def _distance_to_chain(chain1: Chain, chain2: Chain) -> float:
@@ -196,6 +197,8 @@ def compute_NEB_gradient(chain: Chain) -> NDArray:
     )
 
     # endpoints have 0 gradient because we freeze them
+    if len(grads) == 0:
+        print(f"WTAF: \n\n{chain.gradients=}\n\n{pe_grads_nudged=}\n\n{spring_forces_nudged=}")
     zero = np.zeros_like(grads[0])
     grads = np.insert(grads, 0, zero, axis=0)
     grads = np.insert(grads, len(grads), zero, axis=0)
@@ -296,9 +299,10 @@ def get_nudged_pe_grad(unit_tangent: np.array, gradient: np.array):
 def run_geodesic(chain: Chain, **kwargs):
     xyz_coords = run_geodesic_py((chain.symbols, chain.coordinates), **kwargs)
     chain_copy = chain.copy()
+    pseudo_node = chain_copy[0]
     new_nodes = []
-    for node, new_coords in zip(chain_copy.nodes, xyz_coords):
-        new_nodes.append(node.update_coords(new_coords=new_coords))
+    for new_coords in xyz_coords:
+        new_nodes.append(pseudo_node.update_coords(new_coords=new_coords))
     chain_copy.nodes = new_nodes
     return chain_copy
 
@@ -337,6 +341,14 @@ def _calculate_chain_distances(chain_traj: List[Chain]):
         dist = prev_chain._distance_to_chain(chain)
         distances.append(dist)
     return np.array(distances)
+
+
+def _reset_node_convergence(chain) -> None:
+    """
+    sets each node in chain  to `node.converged = False`
+    """
+    for node in chain:
+        node.converged = False
 
 
 def animate_chain_trajectory(

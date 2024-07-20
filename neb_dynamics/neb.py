@@ -45,7 +45,6 @@ class NEB:
     parameters: NEBInputs
     engine: Engine
 
-
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
     gradient_trajectory: list[np.array] = field(default_factory=list)
@@ -54,12 +53,6 @@ class NEB:
         self.n_steps_still_chain = 0
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
-
-
-
-    def _reset_node_convergence(self, chain) -> None:
-        for node in chain:
-            node.converged = False
 
     def set_climbing_nodes(self, chain: Chain) -> None:
         """Iterates through chain and sets the nodes that should climb.
@@ -89,7 +82,8 @@ class NEB:
                     to stop early, and an ElemStepResults objects
         """
 
-        elem_step_results = check_if_elem_step(inp_chain=chain, engine=self.engine)
+        elem_step_results = check_if_elem_step(
+            inp_chain=chain, engine=self.engine)
 
         if not elem_step_results.is_elem_step:
             print("\nStopped early because chain is not an elementary step.")
@@ -257,7 +251,8 @@ class NEB:
                 if self.parameters.v:
                     print("\nChain converged!")
 
-                elem_step_results = check_if_elem_step(inp_chain=new_chain, engine=self.engine)
+                elem_step_results = check_if_elem_step(
+                    inp_chain=new_chain, engine=self.engine)
                 self.geom_grad_calls_made += elem_step_results.number_grad_calls
                 self.optimized = new_chain
                 return elem_step_results

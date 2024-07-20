@@ -3,12 +3,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Union, List
-
+from functools import partial
 from neb_dynamics.chain import Chain
 from numpy.typing import NDArray
 import numpy as np
 from qcio.models.inputs import ProgramInput, DualProgramInput, Structure
 import qcop
+import concurrent
 
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.qcio_structure_helpers import _change_prog_input_property
@@ -81,8 +82,17 @@ class QCOPEngine(Engine):
             all_prog_inps) if i not in inds_frozen]
 
         # only compute the nonfrozen structures
-        non_frozen_results = [qcop.compute(
-            self.program, pi) for pi in non_frozen_prog_inps]
+        if self.program == 'xtb':
+            def helper(inp):
+                prog, prog_inp = inp
+                return qcop.compute(prog, prog_inp)
+
+            iterables = [(self.program, inp) for inp in non_frozen_prog_inps]
+            with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
+                non_frozen_results = list(executor.map(helper, iterables))
+        else:
+            non_frozen_results = [qcop.compute(
+                self.program, pi) for pi in non_frozen_prog_inps]
 
         # merge the results
         all_results = []

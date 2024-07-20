@@ -4,15 +4,18 @@ from dataclasses import dataclass
 from qcio.models.structure import Structure
 from qcio.models.outputs import ProgramOutput
 import numpy as np
+from neb_dynamics.molecule import Molecule
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
+from neb_dynamics.errors import GradientsNotComputedError, EnergiesNotComputedError
 
 
 
 @dataclass
 class Node:
     structure: Structure
-
+    graph: Molecule = None
     converged: bool = False
-    has_molecular_graph: bool = False
+    has_molecular_graph: bool = True
 
     do_climb: bool = False
     _cached_result: ProgramOutput = None
@@ -20,6 +23,9 @@ class Node:
     def __eq__(self, other: Node) -> bool:
         from neb_dynamics.nodes.nodehelpers import is_identical
         return is_identical(self, other)
+
+    def __post_init__(self):
+        self.graph = structure_to_molecule(self.structure)
 
 
     @property
@@ -48,14 +54,14 @@ class Node:
         if self._cached_result is not None:
             return self._cached_result.results.energy
         else:
-            return None
+            raise EnergiesNotComputedError
 
     @property
     def gradient(self):
         if self._cached_result is not None:
             return self._cached_result.results.gradient
         else:
-            return None
+            raise GradientsNotComputedError
 
     @property
     def symbols(self):

@@ -4,86 +4,14 @@ from neb_dynamics.engine import QCOPEngine
 from neb_dynamics.nodes.node import Node
 from qcio.models.inputs import Structure, ProgramInput
 
-h2 = Structure(
-    symbols=["H", "H"],
-    geometry=[[0, 0.0, 0.0], [0, 0, 1.4]],  # type: ignore
-)
-
-
-ProgramInput(
-
-eng = QCOPEngine(
-
-# +
-"""Example of using geometric subprogram to optimize H2 bond length.
-
-Constraints docs: https://geometric.readthedocs.io/en/latest/constraints.html
-"""
-
-from qcio import DualProgramInput, Structure
-
-from qcop import compute, exceptions
-
-# Create Structure
-h2 = Structure(
-    symbols=["H", "H"],
-    geometry=[[0, 0.0, 0.0], [0, 0, 1.4]],  # type: ignore
-)
-
-# Define the program input
-prog_inp = DualProgramInput(
-    calctype="optimization",  # type: ignore
-    structure=h2,
-    subprogram="xtb",
-    subprogram_args={  # type: ignore
-        "model": {"method": "GFN2xTB", "basis": "6-31g"}
-    },
-    keywords={
-        "check": 3,
-        # This is obviously a stupid constraint, but it's just an example to show how
-        # to use them
-        "constraints": {
-            "freeze": [
-                {"type": "distance", "indices": [0, 1], "value": 1.4},
-            ],
-        },
-    },
-)
-
-# Run calculation
-try:
-    output = compute("geometric", prog_inp, propagate_wfn=False, rm_scratch_dir=False)
-except exceptions.QCOPBaseError as e:
-    # Calculation failed
-    output = e.program_output
-    print(output.stdout)  # or output.pstdout for short
-    # Input data used to generate the calculation
-    print(output.input_data)
-    # Provenance of generated calculation
-    print(output.provenance)
-    print(output.traceback)
-    raise
-
-else:
-    # Check results
-    print("Energies:", output.results.energies)
-    print("Structures:", output.results.structures)
-    print("Trajectory:", output.results.trajectory)
-    # Stdout from the program
-    print(output.stdout)  # or output.pstdout for short
-    # Input data used to generate the calculation
-    print(output.input_data)
-    # Provenance of generated calculation
-    print(output.provenance)
-# -
-
-output.results.trajectory
-
-output.results.trajectory[0].input_data
+import pstats
+from pstats import SortKey
+p = pstats.Stats('/home/jdep/neb_dynamics/tests/wtf.txt')
+p.strip_dirs().sort_stats(SortKey.TIME).print_stats()
 
 # +
 from neb_dynamics.engine import QCOPEngine
-from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file, split_structure_into_frags
 from neb_dynamics.nodes.node import Node
 from qcio.models.inputs import ProgramInput
 
@@ -94,6 +22,26 @@ import neb_dynamics.chainhelpers as ch
 
 from neb_dynamics.engine import QCOPEngine
 # -
+
+
+
+from qcio import Structure, view
+
+struct = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/start_opt.xyz")
+
+struct2 = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/end_opt.xyz")
+
+view.view(struct, struct2)
+
+mols = split_structure_into_frags(struct)
+
+view.view(*mols)
+
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
+
+mol = structure_to_molecule(struct)
+
+mol.draw()
 
 c = Chain.from_xyz("/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz", parameters=ChainInputs())
 
