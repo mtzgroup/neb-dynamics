@@ -5,9 +5,10 @@ import numpy as np
 from neb_dynamics.helper_functions import pairwise
 from typing import Tuple, List
 
-from nodes.node import Node
+from neb_dynamics.nodes.node import Node
+from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
 
-from chain import Chain
+from neb_dynamics.chain import Chain
 from neb_dynamics.elementarystep import ElemStepResults
 from neb_dynamics.neb import NEB, NoneConvergedException
 from neb_dynamics.engine import Engine
@@ -44,19 +45,21 @@ class MSMEP:
             chain given and its corresponding neb minimization. Children are chains into which
             the root chain was split.
         """
-        self.engine.compute_gradients(input_chain)
+        import neb_dynamics.chainhelpers as ch
         if (
             self.neb_inputs.skip_identical_graphs
             and input_chain[0].has_molecular_graph
         ):
-            if input_chain[0]._is_connectivity_identical(input_chain[-1]):
+            if _is_connectivity_identical(input_chain[0], input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
                 return TreeNode(data=None, children=[], index=tree_node_index)
 
-        else:
-            if input_chain[0] == input_chain[-1]:
-                print("Endpoints are identical. Returning nothing")
-                return TreeNode(data=None, children=[], index=tree_node_index)
+        ch._reset_node_convergence(input_chain)
+        self.engine.compute_gradients(input_chain)
+
+        if input_chain[0] == input_chain[-1]:
+            print("Endpoints are identical. Returning nothing")
+            return TreeNode(data=None, children=[], index=tree_node_index)
 
         try:
             root_neb_obj, elem_step_results = self.get_neb_chain(
@@ -98,7 +101,7 @@ class MSMEP:
 
         if chain.parameters.use_geodesic_interpolation:
             if chain.parameters.friction_optimal_gi:
-                interpolation = ch.create_friction_optimal_gi(chain=chain, gi_inputs=self.gi_inputs)
+                interpolation = ch.create_friction_optimal_gi(chain=chain, gi_inputs=self.gi_inputs.copy())
             else:
                 interpolation = ch.run_geodesic(
                     chain=chain,
@@ -130,6 +133,8 @@ class MSMEP:
         input_chain.parameters = self.chain_inputs
         if len(input_chain) != self.gi_inputs.nimages:
             interpolation = self._create_interpolation(input_chain)
+            assert len(interpolation) == self.gi_inputs.nimages, f"Geodesic interpolation wrong length.\
+                 Requested: {self.gi_inputs.nimages}. Given: {len(interpolation)}"
 
         else:
             interpolation = input_chain

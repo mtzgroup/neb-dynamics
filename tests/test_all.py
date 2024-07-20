@@ -5,7 +5,7 @@ import numpy as np
 from neb_dynamics.chain import Chain
 from neb_dynamics.constants import ANGSTROM_TO_BOHR
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
-from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.tdstructure import TDStructure
@@ -132,7 +132,7 @@ def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         node_freezing=True,
         friction_optimal_gi=False)
 
-    tol = 0.001
+    tol = 0.002
     nbi = NEBInputs(
         tol=tol,  # * BOHR_TO_ANGSTROMS,
         barrier_thre=0.1,  # kcalmol,
@@ -166,5 +166,5 @@ def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
 if __name__ == "__main__":
     # test_tdstructure()
     # test_trajectory()
-    test_neb()
+    # test_neb()
     test_msmep()

@@ -2,8 +2,6 @@ import numpy as np
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
-from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
-
 
 
 def is_identical(self: Node, other: Node,
@@ -21,8 +19,11 @@ def is_identical(self: Node, other: Node,
     """
     if self.has_molecular_graph:
         assert other.has_molecular_graph, "Both node objects must have computable molecular graphs."
-        conditions = [_is_connectivity_identical(
-            other), _is_conformer_identical(other)]
+        conditions = [_is_connectivity_identical(self, other),
+                      _is_conformer_identical(self, other,
+                                              global_rmsd_cutoff=global_rmsd_cutoff,
+                                              fragment_rmsd_cutoff=fragment_rmsd_cutoff,
+                                              kcal_mol_cutoff=kcal_mol_cutoff)]
     else:
         conditions = [_is_conformer_identical(self, other,
                                               global_rmsd_cutoff=global_rmsd_cutoff,
@@ -42,6 +43,9 @@ def _is_conformer_identical(self: Node, other: Node,
         refgeom=other.structure.geometry, geom=self.structure.geometry)
     per_frag_dists = []
     if self.has_molecular_graph:
+        if not _is_connectivity_identical(self, other):
+            return False
+
         self_frags = split_structure_into_frags(self.structure)
         other_frags = split_structure_into_frags(other.structure)
         for frag_self, frag_other in zip(self_frags, other_frags):
@@ -71,7 +75,7 @@ def _is_connectivity_identical(self: Node, other: Node) -> bool:
     to each other.
     """
     # print("different graphs")
-    connectivity_identical = self.structure.molecule_rp.remove_Hs().is_bond_isomorphic_to(
-        other.structure.molecule_rp.remove_Hs()
+    connectivity_identical = self.graph.remove_Hs().is_bond_isomorphic_to(
+        other.graph.remove_Hs()
     )
     return connectivity_identical

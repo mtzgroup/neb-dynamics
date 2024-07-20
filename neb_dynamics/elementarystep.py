@@ -9,6 +9,7 @@ from neb_dynamics.chain import Chain
 from nodes.node import Node
 import numpy as np
 from neb_dynamics.engine import Engine
+from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
 
 
 @dataclass
@@ -67,7 +68,7 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
             number_grad_calls=0
         )
 
-    concavity_results = _chain_is_concave(inp_chain)
+    concavity_results = _chain_is_concave(chain=inp_chain, engine=engine)
     n_geom_opt_grad_calls += concavity_results.number_grad_calls
 
     if concavity_results.is_not_concave:
@@ -92,11 +93,11 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
             number_grad_calls=n_geom_opt_grad_calls
         )
 
-    pseu_irc_results = pseudo_irc(chain=inp_chain)
+    pseu_irc_results = pseudo_irc(chain=inp_chain, engine=engine)
     n_geom_opt_grad_calls += pseu_irc_results.number_grad_calls
 
-    found_r = pseu_irc_results.found_reactant.is_identical(chain[0])
-    found_p = pseu_irc_results.found_product.is_identical(chain[-1])
+    found_r = pseu_irc_results.found_reactant == chain[0]
+    found_p = pseu_irc_results.found_product == chain[-1]
     minimizing_gives_endpoints = found_r and found_p
 
     elem_step = True if minimizing_gives_endpoints else False
@@ -143,9 +144,8 @@ def is_approx_elem_step(chain: Chain, engine: Engine, slope_thresh=0.1) -> Tuple
     # isomorphic to each other. Otherwise, we will decide only based on distance.
     # (which is bad!!)
     if nodes_have_graph:
-        r_passes = r_passes_opt and r_traj[-1]._is_connectivity_identical(chain[0])
-        p_passes = p_passes_opt and p_traj[-1]._is_connectivity_identical(
-            chain[-1])
+        r_passes = r_passes_opt and _is_connectivity_identical(r_traj[-1], chain[0])
+        p_passes = p_passes_opt and _is_connectivity_identical(p_traj[-1], chain[-1])
     else:
         r_passes = r_passes_opt
         p_passes = p_passes_opt
@@ -211,7 +211,10 @@ def _distances_to_refs(ref1: Node, ref2: Node, raw_node: Node) -> List[float]:
     return [dist_to_ref1, dist_to_ref2]
 
 
-def _chain_is_concave(chain) -> ConcavityResults:
+def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
+    """
+    will assess+categorize the presence of minima on the chain.
+    """
     import neb_dynamics.chainhelpers as ch
     n_grad_calls = 0
     ind_minima = ch._get_ind_minima(chain=chain)
@@ -221,14 +224,16 @@ def _chain_is_concave(chain) -> ConcavityResults:
         minimas_is_r_or_p = []
         try:
             for i in ind_minima:
-                opt_traj = chain[i].do_geom_opt_trajectory()
+                opt_traj = engine.compute_geometry_optimization(chain[i])
                 n_grad_calls += len(opt_traj)
-                opt = chain.parameters.node_class(opt_traj[-1])
+                opt = opt_traj[-1]
                 opt_results.append(opt)
                 minimas_is_r_or_p.append(
-                    opt.is_identical(chain[0]) or opt.is_identical(chain[-1])
+                    opt == chain[0] or opt == chain[-1]
                 )
         except Exception as e:
+            import traceback
+            print(traceback.format_exc())
             print(
                 f"Error in geometry optimization: {e}. Pretending this is an elem step."
             )
@@ -259,7 +264,7 @@ def _chain_is_concave(chain) -> ConcavityResults:
         )
 
 
-def pseudo_irc(chain):
+def pseudo_irc(chain: Chain, engine: Engine):
     n_grad_calls = 0
     arg_max = np.argmax(chain.energies)
 
@@ -276,15 +281,17 @@ def pseudo_irc(chain):
 
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
-        r_traj = candidate_r.do_geom_opt_trajectory()
-        r = chain.parameters.node_class(r_traj[-1])
+        r_traj = engine.compute_geometry_optimization(candidate_r)
+        r = r_traj[-1]
         n_grad_calls += len(r_traj)
 
-        p_traj = candidate_p.do_geom_opt_trajectory()
+        p_traj = engine.compute_geometry_optimization(candidate_p)
         n_grad_calls += len(p_traj)
-        p = chain.parameters.node_class(p_traj[-1])
+        p = p_traj[-1]
 
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         print(e)
         print(
             "Error in geometry optimization. Pretending this is elementary chain."

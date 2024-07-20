@@ -3,11 +3,9 @@
 this module contains helper general functions
 """
 from __future__ import annotations
-from typing import Union
 
 import math
 # from openeye import oechem
-import sys
 import warnings
 from pathlib import Path
 
@@ -18,9 +16,7 @@ from pysmiles import write_smiles
 from rdkit import Chem
 
 from neb_dynamics.elements import ElementData
-from neb_dynamics.errors import ElectronicStructureError
-from neb_dynamics.inputs import GIInputs
-# from neb_dynamics.engine import Engine
+
 
 warnings.filterwarnings("ignore")
 with warnings.catch_warnings():
