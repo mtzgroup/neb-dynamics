@@ -522,7 +522,8 @@ class NEB:
                        chain_parameters=ChainInputs(),
                        neb_parameters=NEBInputs(),
                        gi_parameters=GIInputs(),
-                       optimizer=VelocityProjectedOptimizer()):
+                       optimizer=VelocityProjectedOptimizer(),
+                       engine: Engine = None):
         if isinstance(fp, str):
             fp = Path(fp)
 
@@ -545,6 +546,7 @@ class NEB:
             parameters=neb_parameters,
             optimized=history[-1],
             chain_trajectory=history,
-            optimizer=optimizer
+            optimizer=optimizer,
+            engine=engine
         )
         return n

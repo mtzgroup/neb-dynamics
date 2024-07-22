@@ -1,21 +1,28 @@
 from __future__ import annotations
+from IPython.display import display, HTML, Javascript
+import base64
+import io
+
+from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
-from IPython.display import HTML
+from IPython.display import HTML, display
 from matplotlib.animation import FuncAnimation
 from nodes.node import Node
 from numpy.typing import NDArray
+from qcio.view import generate_structure_html
 from scipy.signal import argrelextrema
 
-
 from neb_dynamics.chain import Chain
+from neb_dynamics.engine import Engine
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
 from neb_dynamics.helper_functions import get_mass
 from neb_dynamics.inputs import ChainInputs, GIInputs
-from neb_dynamics.engine import Engine
-from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
-from typing import List
+from qcio.view import generate_structure_html
+from IPython.display import HTML, display
+from ipywidgets import IntSlider, interact
 
 
 def _distance_to_chain(chain1: Chain, chain2: Chain) -> float:
@@ -198,7 +205,8 @@ def compute_NEB_gradient(chain: Chain) -> NDArray:
 
     # endpoints have 0 gradient because we freeze them
     if len(grads) == 0:
-        print(f"WTAF: \n\n{chain.gradients=}\n\n{pe_grads_nudged=}\n\n{spring_forces_nudged=}")
+        print(
+            f"WTAF: \n\n{chain.gradients=}\n\n{pe_grads_nudged=}\n\n{spring_forces_nudged=}")
     zero = np.zeros_like(grads[0])
     grads = np.insert(grads, 0, zero, axis=0)
     grads = np.insert(grads, len(grads), zero, axis=0)
@@ -351,6 +359,26 @@ def _reset_node_convergence(chain) -> None:
         node.converged = False
 
 
+def extend_by_n_frames(list_obj: List, n: int = 2):
+    """
+    will return the same chain where each node has been duplicated by n
+    """
+    orig_list = list_obj
+    new_list = []
+    for value in orig_list:
+        new_list.extend([value]*n)
+
+    return new_list
+
+
+def _animate_structure_list(structure_list):
+    """
+    animates a list of qcio structure objects
+    """
+    structure_html = generate_structure_html(structure_list)
+    return display(HTML(structure_html))
+
+
 def animate_chain_trajectory(
     chain_traj, min_y=-100, max_y=100,
     max_x=1.1, min_x=-0.1, norm_path_len=True
@@ -378,3 +406,77 @@ def animate_chain_trajectory(
     ani = FuncAnimation(
         fig, animate, frames=chain_traj)
     return HTML(ani.to_jshtml())
+
+
+def generate_neb_plot(chain, ind_node, figsize=(6.4, 4.8), grid=True, markersize=20,
+                      title='Energies across chain') -> str:
+    """
+    generate plot of chain
+    """
+    energies = chain.energies_kcalmol
+
+    fig, ax1 = plt.subplots(figsize=figsize)
+    color = "tab:blue"
+    ax1.set_xlabel("Path length")
+    ax1.set_ylabel("Relative energies (kcal/mol)", color=color)
+    markercolors = ['green']*len(chain)
+    markersizes = [markersize]*len(chain)
+
+    markercolors[ind_node] = 'gold'
+    markersizes[ind_node] = markersize+50
+
+    ax1.plot(chain.path_length, energies, color='green')
+    ax1.scatter(chain.path_length, energies, label="Energy", marker="o", color=markercolors,
+                s=markersizes)
+
+    ax1.tick_params(axis="y", labelcolor=color)
+    plt.title(title, pad=20)
+    ax1.legend(loc="upper right")
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    buf.seek(0)
+    image_base64 = base64.b64encode(buf.read()).decode("utf-8")
+    buf.close()
+    plt.close(fig)  # Close the figure to avoid duplicate plots
+    return image_base64
+
+
+def visualize_chain(chain: Chain):
+    """
+    returns an interactive visualizer for a chain
+    """
+    def wrap(frame):
+        final_html = []
+        image_base64 = generate_neb_plot(chain, ind_node=frame)
+        structure_html = generate_structure_html(chain[frame].structure)
+        img_html = (
+            f'<img src="data:image/png;base64,{image_base64}" alt="Energy Optimization by '
+            'Cycle" style="width: 100%; max-width: 600px;">')
+
+        final_html.append(
+            f"""
+        <div style="text-align: center;">
+            <div style="display: flex; align-items: center; justify-content: space-around;">
+                <div style="text-align: center; margin-right: 20px; flex: 1;">
+                    <div style="display: inline-block; text-align: center;">
+                        {structure_html}
+                    </div>
+                </div>
+                <div style="text-align: center; margin-left: 20px; flex: 1;">
+                    {img_html}
+                </div>
+            </div>
+        </div>
+                """
+        )
+
+        return HTML("".join(final_html))
+
+    return interact(
+        wrap,
+        frame=IntSlider(
+            min=0, max=len(chain) - 1, step=1, description="Trajectory frames"
+        ),
+    )

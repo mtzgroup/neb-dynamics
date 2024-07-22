@@ -12,14 +12,31 @@ import numpy as np
 # from neb_dynamics.trajectory import Trajectory
 # from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
+from neb_dynamics.geodesic_interpolation.fileio import write_xyz
 
 
 from neb_dynamics.nodes.node import Node
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.helper_functions import (
     linear_distance,
     qRMSD_distance,
 )
+
+@dataclass
+class FakeQCIOOutput:
+    """
+    class that has an attribute results that has another attribute `energy` and `gradient`
+    for returning previously cached properties. Class exists to add order across different
+    node types that were not created with QCIO.
+    """
+    results: FakeQCIOResults
+
+@dataclass
+class FakeQCIOResults:
+    energy: float
+    gradient: np.array
+
 
 
 @dataclass
@@ -32,7 +49,6 @@ class Chain:
     def __post_init__(self):
         if not hasattr(self, "velocity"):
             self._zero_velocity()
-
 
     @property
     def n_atoms(self) -> int:
@@ -49,16 +65,17 @@ class Chain:
         """
         from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
 
-
         fp = Path(fp)
 
         nodes = [Node(struct) for struct in read_multiple_structure_from_file(
             fp, charge=charge, spinmult=spinmult)]
         chain = cls(nodes=nodes, parameters=parameters)
+
         energies_fp = fp.parent / Path(str(fp.stem) + ".energies")
         grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
         grad_shape_path = fp.parent / Path(str(fp.stem) + "_grad_shapes.txt")
         grad_shape_path_old = fp.parent / "grad_shapes.txt"
+
         if grad_shape_path_old.exists() and not grad_shape_path.exists():
             grad_shape_path = grad_shape_path_old
 
@@ -70,8 +87,9 @@ class Chain:
             gradients = gradients_flat.reshape(gradients_shape)
 
             for node, (ene, grad) in zip(chain.nodes, zip(energies, gradients)):
-                node.energy = ene
-                node.gradient = grad
+                fake_res = FakeQCIOResults(energy=ene, gradient=grad)
+                fake_output = FakeQCIOOutput(results=fake_res)
+                node._cached_result = fake_output
         return chain
 
     @classmethod
@@ -284,23 +302,18 @@ class Chain:
             grad_path, np.array(
                 [node.gradient for node in self.nodes]).flatten()
         )
-        np.savetxt(grad_shape_path, self.gradients.shape)
+        np.savetxt(grad_shape_path, np.array(self.gradients).shape)
 
     def write_to_disk(self, fp: Path):
-        if isinstance(fp, str):
-            fp = Path(fp)
+        fp = Path(fp)
+        xyz_arr = self.coordinates*BOHR_TO_ANGSTROMS
+        symbs = self.symbols
+        write_xyz(filename=fp, atoms=symbs, coords=xyz_arr)
 
-        if self.nodes[0].is_a_molecule:
-            traj = self.to_trajectory()
-            traj.write_trajectory(fp)
-
-            if self._energies_already_computed:
-                self.write_ene_info_to_disk(fp)
-            if self._grads_already_computed:
-                self.write_grad_info_to_disk(fp)
-
-        else:
-            raise NotImplementedError("Cannot write 2D chains yet.")
+        if self._energies_already_computed:
+            self.write_ene_info_to_disk(fp)
+        if self._grads_already_computed:
+            self.write_grad_info_to_disk(fp)
 
     def get_ts_node(self) -> Node:
         """

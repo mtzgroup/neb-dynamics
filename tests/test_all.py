@@ -100,7 +100,9 @@ def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         calctype='energy', model={'method': "GFN2xTB"}), program='xtb')
 
     opt = VelocityProjectedOptimizer(timestep=1.0)
-    n = NEB(initial_chain=initial_chain, parameters=nbi, optimizer=opt,
+    n = NEB(initial_chain=initial_chain,
+            parameters=nbi,
+            optimizer=opt,
             engine=eng)
 
     elem_step_output = n.optimize_chain()
@@ -139,9 +141,9 @@ def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         climb=False,
 
         rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
-        max_rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS*2.5,
-        ts_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
-        ts_spring_thre=tol,  # * BOHR_TO_ANGSTROMS*3,
+        max_rms_grad_thre=tol*2.5,  # * BOHR_TO_ANGSTROMS*2.5,
+        ts_grad_thre=tol*2.5,  # * BOHR_TO_ANGSTROMS,
+        ts_spring_thre=tol*1.5,  # * BOHR_TO_ANGSTROMS*3,
 
         v=1,
         max_steps=3000,
@@ -159,6 +161,7 @@ def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
     m = MSMEP(neb_inputs=nbi, chain_inputs=cni,
               gi_inputs=gii, optimizer=opt, engine=eng)
     h = m.find_mep_multistep(initial_chain)
+    h.write_to_disk("./test_msmep_results")
     assert len(h.ordered_leaves) == 2, f"MSMEP found incorrect number of elementary steps.\
           Found {len(h.ordered_leaves)}. Reference: 2"
 

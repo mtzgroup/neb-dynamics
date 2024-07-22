@@ -91,6 +91,7 @@ class TreeNode:
         return nodes_to_iter_through
 
     def write_to_disk(self, folder_name: Path):
+        folder_name = Path(folder_name)
 
         if folder_name.exists():
             shutil.rmtree(folder_name)
@@ -139,6 +140,7 @@ class TreeNode:
         chain_parameters=ChainInputs(),
         gi_parameters=GIInputs(),
         optimizer=VelocityProjectedOptimizer(),
+        engine=None
     ):
         if isinstance(folder_name, str):
             folder_name = Path(folder_name)
@@ -160,6 +162,7 @@ class TreeNode:
                     neb_parameters=neb_parameters,
                     gi_parameters=gi_parameters,
                     optimizer=optimizer,
+                    engine=engine
                 )
                 for i in range(len(nodes))
             ]
@@ -176,6 +179,7 @@ class TreeNode:
                     chain_parameters=chain_parameters,
                     neb_parameters=neb_parameters,
                     optimizer=optimizer,
+                    engine=engine
                 )
             ]
             root = cls(data=neb_nodes[0], children=[], index=0)
