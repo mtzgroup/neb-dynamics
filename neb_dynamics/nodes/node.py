@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from dataclasses import dataclass
 from qcio.models.structure import Structure
 from qcio.models.outputs import ProgramOutput

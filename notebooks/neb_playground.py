@@ -1,17 +1,40 @@
 # -*- coding: utf-8 -*-
-from neb_dynamics.engine import QCOPEngine
+from qcio import ProgramOutput, view
 
-from neb_dynamics.nodes.node import Node
-from qcio.models.inputs import Structure, ProgramInput
+output = ProgramOutput.open("/home/jdep/for_laura/geokopt_chemcloud_results/molecule_15_RESULTS")
 
-import pstats
-from pstats import SortKey
-p = pstats.Stats('/home/jdep/neb_dynamics/tests/wtf.txt')
-p.strip_dirs().sort_stats(SortKey.TIME).print_stats()
+len(output.results.trajectory)
+
+view.view(output.return_result)
+
+from neb_dynamics.TreeNode import TreeNode
+import neb_dynamics.chainhelpers as ch
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Curtius-Rearrangement/ASNEB_0_NOSIG_NOMR_v2/")
+
+ch.visualize_chain(h.output_chain)
+
+
+
+
+
+from neb_dynamics.chain import Chain
+
+len(h.output_chain)
+
+
+
+visualize_chain(h2.output_chain)
+
+
+
+view.view(*, animate=True)
+
+opt_hist[2].plot_opt_history(1)
 
 # +
 from neb_dynamics.engine import QCOPEngine
-from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file, split_structure_into_frags
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file, split_structure_into_frags, structure_to_molecule
 from neb_dynamics.nodes.node import Node
 from qcio.models.inputs import ProgramInput
 
@@ -23,7 +46,7 @@ import neb_dynamics.chainhelpers as ch
 from neb_dynamics.engine import QCOPEngine
 # -
 
-
+from qcio.models.outputs import ProgramOutput
 
 from qcio import Structure, view
 
@@ -31,9 +54,18 @@ struct = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons/structures/
 
 struct2 = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/end_opt.xyz")
 
-view.view(struct, struct2)
-
 mols = split_structure_into_frags(struct)
+
+mol_rp = structure_to_molecule(struct)
+
+mol_rp.draw()
+
+view.view(mols[1])
+
+view.view(struct)
+
+
+mols
 
 view.view(*mols)
 
@@ -44,6 +76,8 @@ mol = structure_to_molecule(struct)
 mol.draw()
 
 c = Chain.from_xyz("/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz", parameters=ChainInputs())
+
+
 
 from pathlib import Path
 
