@@ -114,7 +114,7 @@ def neighs_grad_func(chain: Chain, prev_node: Node, current_node: Node, next_nod
     pe_grad = current_node.gradient
 
     # remove rotations and translations
-    if pe_grad.shape[1] >= 3:  # if we have at least 3 atoms
+    if len(pe_grad.shape) > 1 and pe_grad.shape[1] >= 3:  # if we have at least 3 atoms
         pe_grad[0, :] = 0  # this atom cannot move
         pe_grad[1, :2] = 0  # this atom can only move in a line
         pe_grad[2, :1] = 0  # this atom can only move in a plane
