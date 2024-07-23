@@ -31,6 +31,7 @@ geometric = "^1.0.2"
 qcop = "^0.8.0"
 qcio = {extras = ["view"], version = "^0.11.0"}
 chemcloud = "^0.11.1"
+qcengine = "^0.30.0"
 
 
 [tool.poetry.group.dev.dependencies]

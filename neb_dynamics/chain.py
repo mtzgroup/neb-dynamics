@@ -23,6 +23,7 @@ from neb_dynamics.helper_functions import (
     qRMSD_distance,
 )
 
+
 @dataclass
 class FakeQCIOOutput:
     """
@@ -32,11 +33,11 @@ class FakeQCIOOutput:
     """
     results: FakeQCIOResults
 
+
 @dataclass
 class FakeQCIOResults:
     energy: float
     gradient: np.array
-
 
 
 @dataclass

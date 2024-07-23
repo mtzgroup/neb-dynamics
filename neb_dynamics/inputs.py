@@ -157,6 +157,9 @@ class GIInputs:
     nudge: float = 0.001
     extra_kwds: dict = field(default_factory=dict)
 
+    def copy(self) -> GIInputs:
+        return GIInputs(**self.__dict__)
+
 
 @dataclass
 class NetworkInputs:

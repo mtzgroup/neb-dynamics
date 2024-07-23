@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
 from chain import Chain
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.NEB import NEB
+from neb_dynamics.neb import NEB
 from pathlib import Path
 from functools import cached_property
-from neb_dynamics.MSMEP import MSMEP
+from neb_dynamics.msmep import MSMEP
 
 
 @dataclass
@@ -38,7 +38,6 @@ class Janitor:
         elif isinstance(self.history_object, Chain):
             return self.history_object
 
-
     @cached_property
     def insertion_points(self):
         """
@@ -46,7 +45,7 @@ class Janitor:
         """
         original_start = self.starting_chain[0]
         original_end = self.starting_chain[-1]
-        leaves = [l for l in self.reaction_leaves]
+        leaves = [leaf for leaf in self.reaction_leaves]
         insertion_indices = []
         for i, leaf in enumerate(leaves):
             if i == 0:
@@ -65,8 +64,7 @@ class Janitor:
         return insertion_indices
 
     def cleanup_nebs(self):
-        leaves = [l for l in self.reaction_leaves]
-        cleanup_results = []
+        leaves = [leaf for leaf in self.reaction_leaves]
         original_start = self.starting_chain[0]
 
         for index in self.insertion_points:

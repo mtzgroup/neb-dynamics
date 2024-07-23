@@ -3,7 +3,6 @@ from pathlib import Path
 import numpy as np
 
 from neb_dynamics.chain import Chain
-from neb_dynamics.constants import ANGSTROM_TO_BOHR
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB
