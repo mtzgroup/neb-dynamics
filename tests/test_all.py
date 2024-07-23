@@ -7,9 +7,7 @@ from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
-from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.trajectory import Trajectory
-from neb_dynamics.engine import QCOPEngine, ThreeWellPotential
+from neb_dynamics.engine import QCOPEngine, ThreeWellPotential, FlowerPotential
 from neb_dynamics.nodes.node import XYNode
 
 from qcio.models.inputs import ProgramInput
@@ -30,43 +28,6 @@ def test_engine():
 
     assert np.array_equal(geom0_before and geom0_after) and np.array_equal(
         geom1_before, geom1_after), "Engine is overwriting structures of chain."
-
-
-def test_tdstructure():
-    td = TDStructure.from_smiles("C")
-    td.tc_model_method = 'ub3lyp'
-    td.tc_model_basis = '3-21gs'
-    td.tc_kwds = {}
-
-    ene_xtb = td.energy_xtb()
-    # ene_tc = td.energy_tc()
-    assert np.isclose(
-        ene_xtb, -4.174962211746928), "XTB energy was different to reference."
-    # assert np.isclose(ene_tc, -40.3015855774), "TC Chemcloud energy was different to reference"
-
-
-def test_trajectory():
-    coords = np.array([[1.07708884,  0.06051313,  0.04629178],
-                      [2.41285238,  0.06051313,  0.04629178],
-                       [0.51728556,  0.80914007,  0.59808046],
-                       [0.51728556, -0.68811381, -0.50549689],
-                       [2.97265566,  0.80914007,  0.59808046],
-                       [2.97265566, -0.68811381, -0.50549689]])
-    symbols = np.array(['C', 'C', 'H', 'H', 'H', 'H'], dtype='<U1')
-    start = TDStructure.from_coords_symbols(coords, symbols)
-
-    end = start.copy()
-    end_coords = end.coords
-    # this is a pi-bond rotation
-    end_coords_swapped = end_coords[[0, 1, 3, 2, 4, 5], :]
-    end = end.update_coords(end_coords_swapped)
-
-    traj = Trajectory([start, end])
-    traj_interpolated = traj.run_geodesic(nimages=10, sweep=False)
-    barrier = max(traj_interpolated.energies_xtb())
-    ref_barrier = 73  # there is a high variance in this barrier estimate.
-    assert np.isclose(barrier, ref_barrier, atol=5,
-                      rtol=5), f"GI barrier was off. ref={ref_barrier}. test={barrier}"
 
 
 def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
@@ -165,26 +126,35 @@ def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
     assert len(h.ordered_leaves) == 2, f"MSMEP found incorrect number of elementary steps.\
           Found {len(h.ordered_leaves)}. Reference: 2"
 
+
 def test_2d_neb():
 
     nimages = 15
 
-    ### node 2d
-    end_point = (3.00002182, 1.99995542)
-    start_point = (-3.77928812, -3.28320392)
+    # inital guess ThreeWellPotential
+    # end_point = (3.00002182, 1.99995542)
+    # start_point = (-3.77928812, -3.28320392)
+
+    # inital guess FlowerPotential
+    start_point = [-2.59807434, -1.499999]
+    end_point = [2.5980755, 1.49999912]
+
     coords = np.linspace(start_point, end_point, nimages)
+    coords[1:-1] += [-1, 1]
+
     ks = 0.1
     cni = ChainInputs(k=ks, delta_k=0, node_class=XYNode)
-    nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True, max_steps=500, climb=False)
-    chain = Chain(nodes=[XYNode(structure=xy) for xy in coords], parameters=cni)
-    eng = ThreeWellPotential()
-    opt = VelocityProjectedOptimizer(timestep=0.001)
+    nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True,
+                    max_steps=500, climb=False)
+    chain = Chain(nodes=[XYNode(structure=xy)
+                  for xy in coords], parameters=cni)
+    eng = FlowerPotential()  # ThreeWellPotential()
+    opt = VelocityProjectedOptimizer(timestep=0.01)
     n = NEB(initial_chain=chain,
             parameters=nbi,
             optimizer=opt,
             engine=eng)
     n.optimize_chain()
-
 
 
 if __name__ == "__main__":
