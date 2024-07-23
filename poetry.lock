@@ -589,11 +589,16 @@ colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
 name = "cmake"
+<<<<<<< HEAD
 version = "3.30.2"
+=======
+version = "3.30.1"
+>>>>>>> 3860033 (removed some files)
 description = "CMake is an open-source, cross-platform family of tools designed to build, test and package software"
 optional = false
 python-versions = ">=3.7"
 files = [
+<<<<<<< HEAD
     {file = "cmake-3.30.2-py3-none-macosx_11_0_universal2.macosx_10_10_x86_64.macosx_11_0_arm64.whl", hash = "sha256:e706eded76e0e8b09d2cf09cbab0a930f6550084a85950982b7c53f6a79a0451"},
     {file = "cmake-3.30.2-py3-none-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:48e0998068d785d3b78cc60a7e3d38fd71cfb942ce0a72ee046de38ec2bd6523"},
     {file = "cmake-3.30.2-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:709568c04f60f6dbee846a997a774ae28e12e809b4cbb12b6cd00767c111ede0"},
@@ -611,6 +616,25 @@ files = [
     {file = "cmake-3.30.2-py3-none-win_amd64.whl", hash = "sha256:894214560a6d70af6e88d8506f41f6911c31757a7799eced3322ca1fc4c76e4a"},
     {file = "cmake-3.30.2-py3-none-win_arm64.whl", hash = "sha256:33e6ce72a4865b25f7f61e40e634382a7cfbe494785ce3c0aa94475b5e0f9252"},
     {file = "cmake-3.30.2.tar.gz", hash = "sha256:54dba98c12c6b77bd86b452b71c7f7f3b04027081f3451e18cdf2d926e4695e5"},
+=======
+    {file = "cmake-3.30.1-py3-none-macosx_10_10_x86_64.macosx_11_0_arm64.macosx_11_0_universal2.whl", hash = "sha256:d56c1d96c4f8277bebbef768ad008a15d8b20b5946c87d888b85251d00b7509d"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:15796c4ca5f32207d315a402604785e3288a9ca8bcf3a59427af31c21a09df50"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:c94ce1df31a0e9244e1ec00b1efc2c4df2cbb9450d640087bacb46dc99a90abd"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e8ec762c5364a4d33cbc395c435a0afbf706cc623f55d7c51166d6c48e745dfd"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:065d68e35f6fa7973982f2d725ee8662b7e94cb5fd6856787608be7d62f64e30"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:88c561e29af6a21fb4dc80f9438767af8ba5081d2c58cfc2a16298076d731539"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:77577bdc99c6597da9674d788f23421c0417c598b411d6b8ada64d0c70ff32a5"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7743a2ba38edf56701ad3a40fac09ea3bba0538c6843fbc29cfccdbfc567873c"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:b6cd7e8b854e4bd366632317ea3a8d7554fd5de8f5056ba13fab78576b31a2f8"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_i686.whl", hash = "sha256:21c9db134fb859bbf163431f13c38c10bbcbc9a93287f6df61a305fe80c030b1"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_ppc64le.whl", hash = "sha256:6d86335029ca716bad3c6fbcb83eb14acb0f70daa961cdf229a349057c7f1df4"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_s390x.whl", hash = "sha256:212a6061ea724dfe89225005303f9f5ec804f46338338e9061381c22aca990ae"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:3f6b8f12be57e8246f553ff1b081d2d02dc0b6194565e92ff08eb7159eceef24"},
+    {file = "cmake-3.30.1-py3-none-win32.whl", hash = "sha256:8b15804f28dd3c22798c93e38be4d328e2aca00cc852a5afd72ca2332e28a021"},
+    {file = "cmake-3.30.1-py3-none-win_amd64.whl", hash = "sha256:b512dfdbfe99d608aa22a152dac614fa00456b6adc2a24f4e586ab781b1c573a"},
+    {file = "cmake-3.30.1-py3-none-win_arm64.whl", hash = "sha256:5b2556b2e999169121a7720f4e597848391d174dde05de9dfeec43c29565c97f"},
+    {file = "cmake-3.30.1.tar.gz", hash = "sha256:51f01ce429a55acbfe1f1baf507f0fe6916243a9f3e5868a928d073ae4b18ef9"},
+>>>>>>> 3860033 (removed some files)
 ]
 
 [package.extras]
@@ -1118,13 +1142,22 @@ socks = ["socksio (==1.*)"]
 
 [[package]]
 name = "huggingface-hub"
+<<<<<<< HEAD
 version = "0.24.5"
+=======
+version = "0.24.0"
+>>>>>>> 3860033 (removed some files)
 description = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 optional = false
 python-versions = ">=3.8.0"
 files = [
+<<<<<<< HEAD
     {file = "huggingface_hub-0.24.5-py3-none-any.whl", hash = "sha256:d93fb63b1f1a919a22ce91a14518974e81fc4610bf344dfe7572343ce8d3aced"},
     {file = "huggingface_hub-0.24.5.tar.gz", hash = "sha256:7b45d6744dd53ce9cbf9880957de00e9d10a9ae837f1c9b7255fc8fa4e8264f3"},
+=======
+    {file = "huggingface_hub-0.24.0-py3-none-any.whl", hash = "sha256:7ad92edefb93d8145c061f6df8d99df2ff85f8379ba5fac8a95aca0642afa5d7"},
+    {file = "huggingface_hub-0.24.0.tar.gz", hash = "sha256:6c7092736b577d89d57b3cdfea026f1b0dc2234ae783fa0d59caf1bf7d52dfa7"},
+>>>>>>> 3860033 (removed some files)
 ]
 
 [package.dependencies]
@@ -2326,8 +2359,8 @@ files = [
 [package.dependencies]
 numpy = [
     {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
-    {version = ">=1.21.2", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
     {version = ">1.20", markers = "python_version < \"3.10\""},
+    {version = ">=1.21.2", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
     {version = ">=1.23.3", markers = "python_version >= \"3.11\" and python_version < \"3.12\""},
 ]
 
@@ -3800,12 +3833,12 @@ files = [
 
 [package.dependencies]
 numpy = [
-    {version = ">=1.26.1", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
     {version = ">=1.26.1,<2.0", markers = "python_version >= \"3.9\" and python_version < \"3.10\""},
+    {version = ">=1.26.1", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
 ]
 pint = [
-    {version = ">=0.24", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
     {version = ">=0.23", markers = "python_version >= \"3.9\" and python_version < \"3.10\""},
+    {version = ">=0.24", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
 ]
 pydantic = ">=1.8.2"
 
@@ -3839,13 +3872,13 @@ tests = ["pytest", "pytest-cov"]
 
 [[package]]
 name = "qcio"
-version = "0.11.0"
+version = "0.11.4"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcio-0.11.0-py3-none-any.whl", hash = "sha256:fecc984cb7a6af58956b9025d9043bdb62fb3c86041ae0fc2bd380c4448f39c9"},
-    {file = "qcio-0.11.0.tar.gz", hash = "sha256:084f31b4241346a1d44e34c3b49333c44d2f8f83b0e572b4bade3d6dc0807490"},
+    {file = "qcio-0.11.4-py3-none-any.whl", hash = "sha256:f05bef1cdba98a853465bfd6fe2d9752986154d34a422d54742898a7f1bc1eb0"},
+    {file = "qcio-0.11.4.tar.gz", hash = "sha256:07e7e39a279353e6188f936f27befcb7b16e4dcad34df7525703f185b80ed26f"},
 ]
 
 [package.dependencies]
@@ -4648,13 +4681,22 @@ tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 
 [[package]]
 name = "sympy"
+<<<<<<< HEAD
 version = "1.13.2"
+=======
+version = "1.13.1"
+>>>>>>> 3860033 (removed some files)
 description = "Computer algebra system (CAS) in Python"
 optional = false
 python-versions = ">=3.8"
 files = [
+<<<<<<< HEAD
     {file = "sympy-1.13.2-py3-none-any.whl", hash = "sha256:c51d75517712f1aed280d4ce58506a4a88d635d6b5dd48b39102a7ae1f3fcfe9"},
     {file = "sympy-1.13.2.tar.gz", hash = "sha256:401449d84d07be9d0c7a46a64bd54fe097667d5e7181bfe67ec777be9e01cb13"},
+=======
+    {file = "sympy-1.13.1-py3-none-any.whl", hash = "sha256:db36cdc64bf61b9b24578b6f7bab1ecdd2452cf008f34faa33776680c26d66f8"},
+    {file = "sympy-1.13.1.tar.gz", hash = "sha256:9cebf7e04ff162015ce31c9c6c9144daa34a93bd082f54fd8f12deca4f47515f"},
+>>>>>>> 3860033 (removed some files)
 ]
 
 [package.dependencies]
@@ -5287,4 +5329,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "9f02b4a112650f70db95571248f82622cb78730d0135f3ffc64f057e706bf9d7"
+content-hash = "fded163b66166519ca3c2dd8b73016a36199a432eb6438ee38c5c880852447d7"
