@@ -366,47 +366,6 @@ webencodings = "*"
 css = ["tinycss2 (>=1.1.0,<1.3)"]
 
 [[package]]
-name = "cairocffi"
-version = "1.7.1"
-description = "cffi-based cairo bindings for Python"
-optional = false
-python-versions = ">=3.8"
-files = [
-    {file = "cairocffi-1.7.1-py3-none-any.whl", hash = "sha256:9803a0e11f6c962f3b0ae2ec8ba6ae45e957a146a004697a1ac1bbf16b073b3f"},
-    {file = "cairocffi-1.7.1.tar.gz", hash = "sha256:2e48ee864884ec4a3a34bfa8c9ab9999f688286eb714a15a43ec9d068c36557b"},
-]
-
-[package.dependencies]
-cffi = ">=1.1.0"
-
-[package.extras]
-doc = ["sphinx", "sphinx_rtd_theme"]
-test = ["numpy", "pikepdf", "pytest", "ruff"]
-xcb = ["xcffib (>=1.4.0)"]
-
-[[package]]
-name = "cairosvg"
-version = "2.7.1"
-description = "A Simple SVG Converter based on Cairo"
-optional = false
-python-versions = ">=3.5"
-files = [
-    {file = "CairoSVG-2.7.1-py3-none-any.whl", hash = "sha256:8a5222d4e6c3f86f1f7046b63246877a63b49923a1cd202184c3a634ef546b3b"},
-    {file = "CairoSVG-2.7.1.tar.gz", hash = "sha256:432531d72347291b9a9ebfb6777026b607563fd8719c46ee742db0aef7271ba0"},
-]
-
-[package.dependencies]
-cairocffi = "*"
-cssselect2 = "*"
-defusedxml = "*"
-pillow = "*"
-tinycss2 = "*"
-
-[package.extras]
-doc = ["sphinx", "sphinx-rtd-theme"]
-test = ["flake8", "isort", "pytest"]
-
-[[package]]
 name = "certifi"
 version = "2024.7.4"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -615,28 +574,28 @@ colorama = {version = "*", markers = "platform_system == \"Windows\""}
 
 [[package]]
 name = "cmake"
-version = "3.30.0"
+version = "3.30.1"
 description = "CMake is an open-source, cross-platform family of tools designed to build, test and package software"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "cmake-3.30.0-py3-none-macosx_10_10_x86_64.macosx_11_0_universal2.macosx_11_0_arm64.whl", hash = "sha256:9caf5839d041f3276596abf564267f7bbaf4b36731ad1f574f3d4c04d7f8c26b"},
-    {file = "cmake-3.30.0-py3-none-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:2c19c50ee12fb1fddb636401b60f301e873b1f0bc726968509556450496c26fb"},
-    {file = "cmake-3.30.0-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:cc343a5fd4b3013e313083fd3226f4599210560e4d72743faa98057e9f41ccea"},
-    {file = "cmake-3.30.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:cbe32916158e6ca2f45f6e1dc4578a99f5c9ab6cfc7e4f812fae284d54c4749d"},
-    {file = "cmake-3.30.0-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:4a981336efd0d97a02bab4aba90f989077516a42c2510a1ba216f1a5cc00656f"},
-    {file = "cmake-3.30.0-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:59b8491d54064bf734e709001b1f79b1356a4c6c016f78445d5c0516785d096b"},
-    {file = "cmake-3.30.0-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:968e00571f6c07f36b2226a8dbd63eeba4888bcc2f9f30b1dbd2673f75b98564"},
-    {file = "cmake-3.30.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:e123afb34f08e38e76cd3303d1cea166f15ec7acd48353b6fe9d1175b10b4553"},
-    {file = "cmake-3.30.0-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:d7c6265b3d066b25eaf07fc69b8672c28f531b59403cbabb864219f84098b378"},
-    {file = "cmake-3.30.0-py3-none-musllinux_1_1_i686.whl", hash = "sha256:a6960b4b9e91bbcd68fc1a0395306a0eab68981752e667d4dc1721d9ad895358"},
-    {file = "cmake-3.30.0-py3-none-musllinux_1_1_ppc64le.whl", hash = "sha256:100da4b77c2133a426ec6bffc01efcbdd9c212665c0b9acaa20bcaf98dc75097"},
-    {file = "cmake-3.30.0-py3-none-musllinux_1_1_s390x.whl", hash = "sha256:e6e3ab9d48d5bf5564840e8152bcfe41a9318b1fe95b1410f8cc1f15800ff2bf"},
-    {file = "cmake-3.30.0-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:bfb761c3dc275034d251494503e643dc8f23d15e8e6284eca1b2bfbde4634851"},
-    {file = "cmake-3.30.0-py3-none-win32.whl", hash = "sha256:23253f76f44f0f69cf18c8343e56184ea3ab51e837198db691fbdef1bf986455"},
-    {file = "cmake-3.30.0-py3-none-win_amd64.whl", hash = "sha256:aa9b483ff53804566909ec7ef8c25eaf4226c224756d731cb3dd28d9be2dea46"},
-    {file = "cmake-3.30.0-py3-none-win_arm64.whl", hash = "sha256:fc9aba5cc8a631cbbe7a6b4b6b1f981346e70af35900459b4ac6a1b18f489568"},
-    {file = "cmake-3.30.0.tar.gz", hash = "sha256:b6b9b584ce226dfde4d419578a2ae542e72409655c0ea2c989d5f9bb688cf024"},
+    {file = "cmake-3.30.1-py3-none-macosx_10_10_x86_64.macosx_11_0_arm64.macosx_11_0_universal2.whl", hash = "sha256:d56c1d96c4f8277bebbef768ad008a15d8b20b5946c87d888b85251d00b7509d"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_12_i686.manylinux2010_i686.whl", hash = "sha256:15796c4ca5f32207d315a402604785e3288a9ca8bcf3a59427af31c21a09df50"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:c94ce1df31a0e9244e1ec00b1efc2c4df2cbb9450d640087bacb46dc99a90abd"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:e8ec762c5364a4d33cbc395c435a0afbf706cc623f55d7c51166d6c48e745dfd"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:065d68e35f6fa7973982f2d725ee8662b7e94cb5fd6856787608be7d62f64e30"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:88c561e29af6a21fb4dc80f9438767af8ba5081d2c58cfc2a16298076d731539"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_s390x.manylinux2014_s390x.whl", hash = "sha256:77577bdc99c6597da9674d788f23421c0417c598b411d6b8ada64d0c70ff32a5"},
+    {file = "cmake-3.30.1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7743a2ba38edf56701ad3a40fac09ea3bba0538c6843fbc29cfccdbfc567873c"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_aarch64.whl", hash = "sha256:b6cd7e8b854e4bd366632317ea3a8d7554fd5de8f5056ba13fab78576b31a2f8"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_i686.whl", hash = "sha256:21c9db134fb859bbf163431f13c38c10bbcbc9a93287f6df61a305fe80c030b1"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_ppc64le.whl", hash = "sha256:6d86335029ca716bad3c6fbcb83eb14acb0f70daa961cdf229a349057c7f1df4"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_s390x.whl", hash = "sha256:212a6061ea724dfe89225005303f9f5ec804f46338338e9061381c22aca990ae"},
+    {file = "cmake-3.30.1-py3-none-musllinux_1_1_x86_64.whl", hash = "sha256:3f6b8f12be57e8246f553ff1b081d2d02dc0b6194565e92ff08eb7159eceef24"},
+    {file = "cmake-3.30.1-py3-none-win32.whl", hash = "sha256:8b15804f28dd3c22798c93e38be4d328e2aca00cc852a5afd72ca2332e28a021"},
+    {file = "cmake-3.30.1-py3-none-win_amd64.whl", hash = "sha256:b512dfdbfe99d608aa22a152dac614fa00456b6adc2a24f4e586ab781b1c573a"},
+    {file = "cmake-3.30.1-py3-none-win_arm64.whl", hash = "sha256:5b2556b2e999169121a7720f4e597848391d174dde05de9dfeec43c29565c97f"},
+    {file = "cmake-3.30.1.tar.gz", hash = "sha256:51f01ce429a55acbfe1f1baf507f0fe6916243a9f3e5868a928d073ae4b18ef9"},
 ]
 
 [package.extras]
@@ -732,25 +691,6 @@ docs = ["furo", "sphinx (>=7.2)", "sphinx-copybutton"]
 mypy = ["contourpy[bokeh,docs]", "docutils-stubs", "mypy (==1.8.0)", "types-Pillow"]
 test = ["Pillow", "contourpy[test-no-images]", "matplotlib"]
 test-no-images = ["pytest", "pytest-cov", "pytest-xdist", "wurlitzer"]
-
-[[package]]
-name = "cssselect2"
-version = "0.7.0"
-description = "CSS selectors for Python ElementTree"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "cssselect2-0.7.0-py3-none-any.whl", hash = "sha256:fd23a65bfd444595913f02fc71f6b286c29261e354c41d722ca7a261a49b5969"},
-    {file = "cssselect2-0.7.0.tar.gz", hash = "sha256:1ccd984dab89fc68955043aca4e1b03e0cf29cad9880f6e28e3ba7a74b14aa5a"},
-]
-
-[package.dependencies]
-tinycss2 = "*"
-webencodings = "*"
-
-[package.extras]
-doc = ["sphinx", "sphinx_rtd_theme"]
-test = ["flake8", "isort", "pytest"]
 
 [[package]]
 name = "cycler"
@@ -853,13 +793,13 @@ wmi = ["wmi (>=1.5.1)"]
 
 [[package]]
 name = "exceptiongroup"
-version = "1.2.1"
+version = "1.2.2"
 description = "Backport of PEP 654 (exception groups)"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "exceptiongroup-1.2.1-py3-none-any.whl", hash = "sha256:5258b9ed329c5bbdd31a309f53cbfb0b155341807f6ff7606a1e801a891b29ad"},
-    {file = "exceptiongroup-1.2.1.tar.gz", hash = "sha256:a4785e48b045528f5bfe627b6ad554ff32def154f42372786903b7abcfe1aa16"},
+    {file = "exceptiongroup-1.2.2-py3-none-any.whl", hash = "sha256:3111b9d131c238bec2f8f516e123e14ba243563fb135d3fe885990585aa7795b"},
+    {file = "exceptiongroup-1.2.2.tar.gz", hash = "sha256:47c2edf7c6738fafb49fd34290706d1a1a2f4d1c6df275526b62cbb4aa5393cc"},
 ]
 
 [package.extras]
@@ -1162,13 +1102,13 @@ socks = ["socksio (==1.*)"]
 
 [[package]]
 name = "huggingface-hub"
-version = "0.23.4"
+version = "0.24.0"
 description = "Client library to download and publish models, datasets and other repos on the huggingface.co hub"
 optional = false
 python-versions = ">=3.8.0"
 files = [
-    {file = "huggingface_hub-0.23.4-py3-none-any.whl", hash = "sha256:3a0b957aa87150addf0cc7bd71b4d954b78e749850e1e7fb29ebbd2db64ca037"},
-    {file = "huggingface_hub-0.23.4.tar.gz", hash = "sha256:35d99016433900e44ae7efe1c209164a5a81dbbcd53a52f99c281dcd7ce22431"},
+    {file = "huggingface_hub-0.24.0-py3-none-any.whl", hash = "sha256:7ad92edefb93d8145c061f6df8d99df2ff85f8379ba5fac8a95aca0642afa5d7"},
+    {file = "huggingface_hub-0.24.0.tar.gz", hash = "sha256:6c7092736b577d89d57b3cdfea026f1b0dc2234ae783fa0d59caf1bf7d52dfa7"},
 ]
 
 [package.dependencies]
@@ -1181,17 +1121,17 @@ tqdm = ">=4.42.1"
 typing-extensions = ">=3.7.4.3"
 
 [package.extras]
-all = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "mypy (==1.5.1)", "numpy", "pytest", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "ruff (>=0.3.0)", "soundfile", "types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)", "urllib3 (<2.0)"]
+all = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "mypy (==1.5.1)", "numpy", "pytest (>=8.1.1,<8.2.2)", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-mock", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "ruff (>=0.5.0)", "soundfile", "types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)", "urllib3 (<2.0)"]
 cli = ["InquirerPy (==0.3.4)"]
-dev = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "mypy (==1.5.1)", "numpy", "pytest", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "ruff (>=0.3.0)", "soundfile", "types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)", "urllib3 (<2.0)"]
+dev = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "mypy (==1.5.1)", "numpy", "pytest (>=8.1.1,<8.2.2)", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-mock", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "ruff (>=0.5.0)", "soundfile", "types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)", "urllib3 (<2.0)"]
 fastai = ["fastai (>=2.4)", "fastcore (>=1.3.27)", "toml"]
 hf-transfer = ["hf-transfer (>=0.1.4)"]
 inference = ["aiohttp", "minijinja (>=1.0)"]
-quality = ["mypy (==1.5.1)", "ruff (>=0.3.0)"]
+quality = ["mypy (==1.5.1)", "ruff (>=0.5.0)"]
 tensorflow = ["graphviz", "pydot", "tensorflow"]
 tensorflow-testing = ["keras (<3.0)", "tensorflow"]
-testing = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "numpy", "pytest", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "soundfile", "urllib3 (<2.0)"]
-torch = ["safetensors", "torch"]
+testing = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "numpy", "pytest (>=8.1.1,<8.2.2)", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-mock", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "soundfile", "urllib3 (<2.0)"]
+torch = ["safetensors[torch]", "torch"]
 typing = ["types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)"]
 
 [[package]]
@@ -1660,13 +1600,13 @@ jupyter-server = ">=1.1.2"
 
 [[package]]
 name = "jupyter-server"
-version = "2.14.1"
+version = "2.14.2"
 description = "The backend—i.e. core services, APIs, and REST endpoints—to Jupyter web applications."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "jupyter_server-2.14.1-py3-none-any.whl", hash = "sha256:16f7177c3a4ea8fe37784e2d31271981a812f0b2874af17339031dc3510cc2a5"},
-    {file = "jupyter_server-2.14.1.tar.gz", hash = "sha256:12558d158ec7a0653bf96cc272bc7ad79e0127d503b982ed144399346694f726"},
+    {file = "jupyter_server-2.14.2-py3-none-any.whl", hash = "sha256:47ff506127c2f7851a17bf4713434208fc490955d0e8632e95014a9a9afbeefd"},
+    {file = "jupyter_server-2.14.2.tar.gz", hash = "sha256:66095021aa9638ced276c248b1d81862e4c50f292d575920bbe960de1c56b12b"},
 ]
 
 [package.dependencies]
@@ -1758,13 +1698,13 @@ files = [
 
 [[package]]
 name = "jupyterlab-server"
-version = "2.27.2"
+version = "2.27.3"
 description = "A set of server components for JupyterLab and JupyterLab like applications."
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "jupyterlab_server-2.27.2-py3-none-any.whl", hash = "sha256:54aa2d64fd86383b5438d9f0c032f043c4d8c0264b8af9f60bd061157466ea43"},
-    {file = "jupyterlab_server-2.27.2.tar.gz", hash = "sha256:15cbb349dc45e954e09bacf81b9f9bcb10815ff660fb2034ecd7417db3a7ea27"},
+    {file = "jupyterlab_server-2.27.3-py3-none-any.whl", hash = "sha256:e697488f66c3db49df675158a77b3b017520d772c6e1548c7d9bcc5df7944ee4"},
+    {file = "jupyterlab_server-2.27.3.tar.gz", hash = "sha256:eb36caca59e74471988f0ae25c77945610b887f777255aa21f8065def9e51ed4"},
 ]
 
 [package.dependencies]
@@ -2370,8 +2310,8 @@ files = [
 [package.dependencies]
 numpy = [
     {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
-    {version = ">=1.21.2", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
     {version = ">1.20", markers = "python_version < \"3.10\""},
+    {version = ">=1.21.2", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
     {version = ">=1.23.3", markers = "python_version >= \"3.11\" and python_version < \"3.12\""},
 ]
 
@@ -3211,13 +3151,13 @@ files = [
 
 [[package]]
 name = "pure-eval"
-version = "0.2.2"
+version = "0.2.3"
 description = "Safely evaluate AST nodes without side effects"
 optional = false
 python-versions = "*"
 files = [
-    {file = "pure_eval-0.2.2-py3-none-any.whl", hash = "sha256:01eaab343580944bc56080ebe0a674b39ec44a945e6d09ba7db3cb8cec289350"},
-    {file = "pure_eval-0.2.2.tar.gz", hash = "sha256:2b45320af6dfaa1750f543d714b6d1c520a1688dec6fd24d339063ce0aaa9ac3"},
+    {file = "pure_eval-0.2.3-py3-none-any.whl", hash = "sha256:1db8e35b67b3d218d818ae653e27f06c3aa420901fa7b081ca98cbedc874e0d0"},
+    {file = "pure_eval-0.2.3.tar.gz", hash = "sha256:5f4e983f40564c576c7c8635ae88db5956bb2229d7e9237d03b3c0b0190eaf42"},
 ]
 
 [package.extras]
@@ -3820,12 +3760,12 @@ files = [
 
 [package.dependencies]
 numpy = [
-    {version = ">=1.26.1", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
     {version = ">=1.26.1,<2.0", markers = "python_version >= \"3.9\" and python_version < \"3.10\""},
+    {version = ">=1.26.1", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
 ]
 pint = [
-    {version = ">=0.24", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
     {version = ">=0.23", markers = "python_version >= \"3.9\" and python_version < \"3.10\""},
+    {version = ">=0.24", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
 ]
 pydantic = ">=1.8.2"
 
@@ -3859,13 +3799,13 @@ tests = ["pytest", "pytest-cov"]
 
 [[package]]
 name = "qcio"
-version = "0.11.0"
+version = "0.11.4"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcio-0.11.0-py3-none-any.whl", hash = "sha256:fecc984cb7a6af58956b9025d9043bdb62fb3c86041ae0fc2bd380c4448f39c9"},
-    {file = "qcio-0.11.0.tar.gz", hash = "sha256:084f31b4241346a1d44e34c3b49333c44d2f8f83b0e572b4bade3d6dc0807490"},
+    {file = "qcio-0.11.4-py3-none-any.whl", hash = "sha256:f05bef1cdba98a853465bfd6fe2d9752986154d34a422d54742898a7f1bc1eb0"},
+    {file = "qcio-0.11.4.tar.gz", hash = "sha256:07e7e39a279353e6188f936f27befcb7b16e4dcad34df7525703f185b80ed26f"},
 ]
 
 [package.dependencies]
@@ -4273,13 +4213,13 @@ files = [
 
 [[package]]
 name = "rxn-chem-utils"
-version = "1.5.0"
+version = "1.6.0"
 description = "Chemistry-related utilities"
 optional = false
 python-versions = ">=3.7"
 files = [
-    {file = "rxn-chem-utils-1.5.0.tar.gz", hash = "sha256:16e81a728ce4e87449bbd304aac3a1dc8fe9df73ca7d31be21ebec2516c9ded4"},
-    {file = "rxn_chem_utils-1.5.0-py3-none-any.whl", hash = "sha256:7b2d841d0547f2ca72a66141c990b3fc2a4045d256f51ccbf6b292221f4106c9"},
+    {file = "rxn_chem_utils-1.6.0-py3-none-any.whl", hash = "sha256:196a8498256d4774164944a6e16c7116111077316307437e183a792dbd3668f3"},
+    {file = "rxn_chem_utils-1.6.0.tar.gz", hash = "sha256:54f2973b32cdd67625bbc5441984323235b17b20e00dc5b5a83c20f64850bacb"},
 ]
 
 [package.dependencies]
@@ -4669,13 +4609,13 @@ tests = ["cython", "littleutils", "pygments", "pytest", "typeguard"]
 
 [[package]]
 name = "sympy"
-version = "1.13.0"
+version = "1.13.1"
 description = "Computer algebra system (CAS) in Python"
 optional = false
 python-versions = ">=3.8"
 files = [
-    {file = "sympy-1.13.0-py3-none-any.whl", hash = "sha256:6b0b32a4673fb91bd3cac3b55406c8e01d53ae22780be467301cc452f6680c92"},
-    {file = "sympy-1.13.0.tar.gz", hash = "sha256:3b6af8f4d008b9a1a6a4268b335b984b23835f26d1d60b0526ebc71d48a25f57"},
+    {file = "sympy-1.13.1-py3-none-any.whl", hash = "sha256:db36cdc64bf61b9b24578b6f7bab1ecdd2452cf008f34faa33776680c26d66f8"},
+    {file = "sympy-1.13.1.tar.gz", hash = "sha256:9cebf7e04ff162015ce31c9c6c9144daa34a93bd082f54fd8f12deca4f47515f"},
 ]
 
 [package.dependencies]
@@ -5338,4 +5278,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "9f02b4a112650f70db95571248f82622cb78730d0135f3ffc64f057e706bf9d7"
+content-hash = "fded163b66166519ca3c2dd8b73016a36199a432eb6438ee38c5c880852447d7"
