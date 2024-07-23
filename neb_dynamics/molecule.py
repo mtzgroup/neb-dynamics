@@ -320,7 +320,6 @@ class Molecule(nx.Graph):
         with open(full_path, "w") as f:
             f.write(self.draw(mode="rdkit", string_mode=True))
 
-
     @classmethod
     def from_rdmol(cls, rdmol, smi, name=None):
         new_mol = cls(name=name, smi=smi)
