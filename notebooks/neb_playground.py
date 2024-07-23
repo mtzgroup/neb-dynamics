@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-from qcio import ProgramOutput, view
+from neb_dynamics.TreeNode import TreeNode
+import neb_dynamics.chainhelpers as ch
+
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Meyer-Schuster-Rearrangement/ASNEB_0_NOSIG_NOMR/")
+
+ch.visualize_chain(h.output_chain)
 
 output = ProgramOutput.open("/home/jdep/for_laura/geokopt_chemcloud_results/molecule_15_RESULTS")
 

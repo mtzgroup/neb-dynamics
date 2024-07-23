@@ -10,7 +10,6 @@ from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 from neb_dynamics.errors import GradientsNotComputedError, EnergiesNotComputedError
 
 
-
 @dataclass
 class Node:
     structure: Structure
@@ -27,7 +26,6 @@ class Node:
 
     def __post_init__(self):
         self.graph = structure_to_molecule(self.structure)
-
 
     @property
     def coords(self) -> np.array:

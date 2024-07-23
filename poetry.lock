@@ -34,6 +34,17 @@ test = ["anyio[trio]", "coverage[toml] (>=7)", "exceptiongroup (>=1.2.0)", "hypo
 trio = ["trio (>=0.23)"]
 
 [[package]]
+name = "appdirs"
+version = "1.4.4"
+description = "A small Python module for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
+optional = false
+python-versions = "*"
+files = [
+    {file = "appdirs-1.4.4-py2.py3-none-any.whl", hash = "sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128"},
+    {file = "appdirs-1.4.4.tar.gz", hash = "sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41"},
+]
+
+[[package]]
 name = "appnope"
 version = "0.1.4"
 description = "Disable App Nap on macOS >= 10.9"
@@ -545,20 +556,20 @@ files = [
 
 [[package]]
 name = "chemcloud"
-version = "0.10.1"
+version = "0.11.1"
 description = "Fast, secure, scalable quantum chemistry. A Python client for the the ChemCloud server."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "chemcloud-0.10.1-py3-none-any.whl", hash = "sha256:50877cdc4a5f96ee2caa9bfdf80704708fd40d07bf05c55dce072cb117257e0d"},
-    {file = "chemcloud-0.10.1.tar.gz", hash = "sha256:f0ae0d807cb89d957564329650696a25023eb76c9887f981d9ed1aae5354e83e"},
+    {file = "chemcloud-0.11.1-py3-none-any.whl", hash = "sha256:7e164be64681d6ea9e5efd9ff798792545366125611632dddf892ee93202f7fb"},
+    {file = "chemcloud-0.11.1.tar.gz", hash = "sha256:ca55d95fa473b98e564314a2ed9a063a13b35305c6b84b1b09ff42a3e163b7d0"},
 ]
 
 [package.dependencies]
 httpx = ">=0.27,<0.28"
 pydantic = ">=2.0.0,<2.4.0 || >2.4.0"
 pydantic-settings = ">=2.0.3,<3.0.0"
-qcio = ">=0.10.1,<0.11.0"
+qcio = ">=0.11.0,<0.12.0"
 tomli = {version = ">=1.1.0", markers = "python_version < \"3.11\""}
 tomli-w = ">=1.0.0,<2.0.0"
 
@@ -852,6 +863,40 @@ files = [
 docs = ["furo (>=2023.9.10)", "sphinx (>=7.2.6)", "sphinx-autodoc-typehints (>=1.25.2)"]
 testing = ["covdefaults (>=2.3)", "coverage (>=7.3.2)", "diff-cover (>=8.0.1)", "pytest (>=7.4.3)", "pytest-asyncio (>=0.21)", "pytest-cov (>=4.1)", "pytest-mock (>=3.12)", "pytest-timeout (>=2.2)", "virtualenv (>=20.26.2)"]
 typing = ["typing-extensions (>=4.8)"]
+
+[[package]]
+name = "flexcache"
+version = "0.3"
+description = "Saves and loads to the cache a transformed versions of a source object."
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "flexcache-0.3-py3-none-any.whl", hash = "sha256:d43c9fea82336af6e0115e308d9d33a185390b8346a017564611f1466dcd2e32"},
+    {file = "flexcache-0.3.tar.gz", hash = "sha256:18743bd5a0621bfe2cf8d519e4c3bfdf57a269c15d1ced3fb4b64e0ff4600656"},
+]
+
+[package.dependencies]
+typing-extensions = "*"
+
+[package.extras]
+test = ["pytest", "pytest-cov", "pytest-mpl", "pytest-subtests"]
+
+[[package]]
+name = "flexparser"
+version = "0.3.1"
+description = "Parsing made fun ... using typing."
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "flexparser-0.3.1-py3-none-any.whl", hash = "sha256:2e3e2936bec1f9277f777ef77297522087d96adb09624d4fe4240fd56885c013"},
+    {file = "flexparser-0.3.1.tar.gz", hash = "sha256:36f795d82e50f5c9ae2fde1c33f21f88922fdd67b7629550a3cc4d0b40a66856"},
+]
+
+[package.dependencies]
+typing-extensions = "*"
+
+[package.extras]
+test = ["pytest", "pytest-cov", "pytest-mpl", "pytest-subtests"]
 
 [[package]]
 name = "fonttools"
@@ -3008,6 +3053,35 @@ typing = ["typing-extensions"]
 xmp = ["defusedxml"]
 
 [[package]]
+name = "pint"
+version = "0.24.3"
+description = "Physical quantities module"
+optional = false
+python-versions = ">=3.9"
+files = [
+    {file = "Pint-0.24.3-py3-none-any.whl", hash = "sha256:d98667e46fd03a1b94694fbfa104ec30858684d8ab26952e2a348b48059089bb"},
+    {file = "pint-0.24.3.tar.gz", hash = "sha256:d54771093e8b94c4e0a35ac638c2444ddf3ef685652bab7675ffecfa0c5c5cdf"},
+]
+
+[package.dependencies]
+appdirs = ">=1.4.4"
+flexcache = ">=0.3"
+flexparser = ">=0.3"
+typing-extensions = "*"
+
+[package.extras]
+babel = ["babel (<=2.8)"]
+bench = ["pytest", "pytest-codspeed"]
+dask = ["dask"]
+mip = ["mip (>=1.13)"]
+numpy = ["numpy (>=1.23)"]
+pandas = ["pint-pandas (>=0.3)"]
+test = ["pytest", "pytest-benchmark", "pytest-cov", "pytest-mpl", "pytest-subtests"]
+testbase = ["pytest", "pytest-benchmark", "pytest-cov", "pytest-subtests"]
+uncertainties = ["uncertainties (>=3.1.6)"]
+xarray = ["xarray"]
+
+[[package]]
 name = "platformdirs"
 version = "4.2.2"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
@@ -3106,14 +3180,25 @@ files = [
 tests = ["pytest"]
 
 [[package]]
+name = "py-cpuinfo"
+version = "9.0.0"
+description = "Get CPU info with pure Python"
+optional = false
+python-versions = "*"
+files = [
+    {file = "py-cpuinfo-9.0.0.tar.gz", hash = "sha256:3cdbbf3fac90dc6f118bfd64384f309edeadd902d7c8fb17f02ffa1fc3f49690"},
+    {file = "py_cpuinfo-9.0.0-py3-none-any.whl", hash = "sha256:859625bc251f64e21f077d099d4162689c762b5d6a4c3c97553d56241c9674d5"},
+]
+
+[[package]]
 name = "py3dmol"
-version = "2.2.0"
+version = "2.2.1"
 description = "An IPython interface for embedding 3Dmol.js views in Jupyter notebooks"
 optional = false
 python-versions = "*"
 files = [
-    {file = "py3Dmol-2.2.0-py2.py3-none-any.whl", hash = "sha256:d5d8d390d95fdd0cc2b190f6b8204f0e489aef656cad75b85630196572803151"},
-    {file = "py3Dmol-2.2.0.tar.gz", hash = "sha256:706f7183a7ed1736ecb4b966c51ef2540a59b8186310b4da5e2071687eff9765"},
+    {file = "py3Dmol-2.2.1-py2.py3-none-any.whl", hash = "sha256:0637bb977dc36b513e632b178e7bc59ce3daf9295d409eba002de099e6408836"},
+    {file = "py3Dmol-2.2.1.tar.gz", hash = "sha256:48becd3fee529e87117a588f229d6b642b730fd3c18d73ecd43f525cb47d69d9"},
 ]
 
 [package.extras]
@@ -3703,14 +3788,64 @@ files = [
 cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
+name = "qcelemental"
+version = "0.28.0"
+description = "Core data structures for Quantum Chemistry."
+optional = false
+python-versions = "<4.0,>=3.7"
+files = [
+    {file = "qcelemental-0.28.0-py3-none-any.whl", hash = "sha256:34fc05de5e9c32edd687e4306a050c42f9bca94b9feb2d51221f3156c8a327c9"},
+    {file = "qcelemental-0.28.0.tar.gz", hash = "sha256:da96fddb88c1701f812b25369a6a169d35f2d5446c37c62e86048cb0f1b168a2"},
+]
+
+[package.dependencies]
+numpy = [
+    {version = ">=1.26.1", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
+    {version = ">=1.26.1,<2.0", markers = "python_version >= \"3.9\" and python_version < \"3.10\""},
+]
+pint = [
+    {version = ">=0.24", markers = "python_version >= \"3.10\" and python_version < \"3.13\""},
+    {version = ">=0.23", markers = "python_version >= \"3.9\" and python_version < \"3.10\""},
+]
+pydantic = ">=1.8.2"
+
+[package.extras]
+align = ["networkx (<3.0)", "scipy (>=1.6.0)", "scipy (>=1.9.0)"]
+test = ["pytest (>=7.2.2,<8.0.0)"]
+viz = ["ipykernel (<6.0.0)", "nglview (>=3.0.3,<4.0.0)"]
+
+[[package]]
+name = "qcengine"
+version = "0.30.0"
+description = "A compute wrapper for Quantum Chemistry."
+optional = false
+python-versions = "*"
+files = [
+    {file = "qcengine-0.30.0-py3-none-any.whl", hash = "sha256:312f03825918d6bfc640ce9cf49257d3dd2d3966354d8db3003391cd703026df"},
+    {file = "qcengine-0.30.0.tar.gz", hash = "sha256:ba62d34dbcf487e8368f6c19762a19e1c5f06af7e705f6c583c0632b35bccf7d"},
+]
+
+[package.dependencies]
+psutil = "*"
+py-cpuinfo = "*"
+pydantic = ">=1.8.2"
+pyyaml = "*"
+qcelemental = ">=0.24.0,<0.30.0"
+
+[package.extras]
+docs = ["numpydoc", "sphinx (==1.2.3)", "sphinx-rtd-theme", "sphinxcontrib-napoleon"]
+lint = ["black (>=22.1.0,<23.0a0)"]
+tests = ["pytest", "pytest-cov"]
+
+[[package]]
 name = "qcio"
-version = "0.10.3"
+version = "0.11.0"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcio-0.10.3-py3-none-any.whl", hash = "sha256:c5d0f3a8594245f0b4a4469649b01884cdf6ba7ae39f7088f5bff0fd98e78ad7"},
-    {file = "qcio-0.10.3.tar.gz", hash = "sha256:792ba79d28520abaea298af7e17cec6b7e27da109f1d5dd54325e92e2ae97a52"},
+    {file = "qcio-0.11.0-py3-none-any.whl", hash = "sha256:fecc984cb7a6af58956b9025d9043bdb62fb3c86041ae0fc2bd380c4448f39c9"},
+    {file = "qcio-0.11.0.tar.gz", hash = "sha256:084f31b4241346a1d44e34c3b49333c44d2f8f83b0e572b4bade3d6dc0807490"},
 ]
 
 [package.dependencies]
@@ -5152,4 +5287,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "65f9fd54f79049bed76480f2cdef3001849fc1b31bfe1d59feaf27b154fbb110"
+content-hash = "9f02b4a112650f70db95571248f82622cb78730d0135f3ffc64f057e706bf9d7"

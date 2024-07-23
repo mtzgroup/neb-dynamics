@@ -2,20 +2,20 @@ import sys
 from argparse import ArgumentParser
 from pathlib import Path
 
-from neb_dynamics.chain import Chain
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS
-from neb_dynamics.helper_functions import create_friction_optimal_gi
-from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
-from neb_dynamics.Janitor import Janitor
-from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.NEB import NEB, NoneConvergedException
-from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+from neb_dynamics.nodes.node import Node
+from qcio import Structure, ProgramInput
 
+from neb_dynamics.chain import Chain
+from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
+from neb_dynamics.Janitor import Janitor
+from neb_dynamics.msmep import MSMEP
+from neb_dynamics.neb import NEB, NoneConvergedException
+# from neb_dynamics.nodes.Node3D_TC import Node3D_TC
+# from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
+# from neb_dynamics.nodes.node3d_water import Node3D_Water
 # from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
-from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.engine import QCOPEngine
 
 
 def read_single_arguments():
@@ -172,7 +172,17 @@ def read_single_arguments():
         required=False,
         type=float,
         help="number of still steps until an early stop check",
-        default=500,
+        default=500
+    )
+
+    parser.add_argument(
+        "-prog",
+        "--program",
+        dest="program",
+        required=True,
+        type=str,
+        help="what electronic structure program to use",
+        default='xtb'
     )
 
     parser.add_argument(
@@ -206,23 +216,23 @@ def read_single_arguments():
     )
 
     parser.add_argument(
-        "-tcin",
-        "--tc_input",
-        dest="tcin",
+        "-pif",
+        "--program_input_file",
+        dest="pif",
         required=False,
         type=str,
-        help="file path to terachem input file.",
-        default=None,
+        help="file path to a ProgramInput file from qcio.",
+        default=None
     )
 
     parser.add_argument(
-        "-maxsteps",
-        "--maxsteps",
-        dest="maxsteps",
+        "-geom_opt",
+        "--geometry_optimization",
+        dest="geom_opt",
         required=False,
         type=str,
-        help="Maximum number of optimization steps for a single NEB run.",
-        default=500,
+        help="Which optimizer to use. Default is 'geometric'",
+        default='geometric'
     )
 
     return parser.parse_args()
@@ -231,67 +241,23 @@ def read_single_arguments():
 def main():
     args = read_single_arguments()
 
-    try:
-        from neb_dynamics.nodes.node3d import Node3D
-        from neb_dynamics.nodes.node3d_water import Node3D_Water
-
-        nodes = {
-            "node3d": Node3D,
-            "node3d_tc": Node3D_TC,
-            "node3d_tc_local": Node3D_TC_Local,
-            "node3d_water": Node3D_Water,
-        }
-    except ImportError as e:
-        print("Cannot use Node3D or Node3D water since XTB is not installed")
-        nodes = {"node3d_tc": Node3D_TC, "node3d_tc_local": Node3D_TC_Local}
-
+    # nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC,
+    #          'node3d_tc_local': Node3D_TC_Local,
+    #          # 'node3d_tcpb': Node3D_TC_TCPB,
+    #          'node3d_water': Node3D_Water}
+    nodes = {'node3d': Node}
+    # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
 
-    start = TDStructure.from_xyz(args.st, charge=args.c, spinmult=args.s)
-    end = TDStructure.from_xyz(args.en, charge=args.c, spinmult=args.s)
+    start = Structure.open(args.st)
+    s_dict = start.model_dump()
+    s_dict['charge'], s_dict['multiplicity'] = args.c, args.s
+    start = Structure(**s_dict)
 
-    if args.nc != "node3d" and args.nc != "node3d_water":
-        if args.tcin:
-            start = start.update_tc_parameters_from_inpfile(args.tcin)
-            end = end.update_tc_parameters_from_inpfile(args.tcin)
-        else:
-            method = "uwb97xd3"  # terachem
-            basis = "def2-svp"
-            kwds = {"gpus": 1}
-
-            start.tc_model_method = method
-            end.tc_model_method = method
-
-            start.tc_model_basis = basis
-            end.tc_model_basis = basis
-
-            start.tc_kwds = kwds
-            end.tc_kwds = kwds
-
-        if int(args.min_ends):
-            start_node = nc(start)
-            start_opt = start_node.do_geometry_optimization()
-            start = start_opt.tdstructure
-
-            end_node = nc(end)
-            end_opt = end_node.do_geometry_optimization()
-            end = end_opt.tdstructure
-
-    else:
-        if int(args.min_ends):
-            start = start.xtb_geom_optimization()
-            end = end.xtb_geom_optimization()
-            print(start)
-            print(end)
-            assert start is not None and end is not None, "Geometry optimization failed"
-
-    print(start.tc_model_method, start.tc_model_basis, start.tc_kwds)
-    traj = Trajectory([start, end]).run_geodesic(nimages=args.nimg)
-
-    if args.nc == "node3d_tc_local":
-        do_parallel = False
-    else:
-        do_parallel = True
+    end = Structure.open(args.en)
+    e_dict = end.model_dump()
+    e_dict['charge'], e_dict['multiplicity'] = args.c, args.s
+    end = Structure(**e_dict)
 
     tol = args.tol
 
@@ -302,41 +268,60 @@ def main():
         k=0.1,
         delta_k=args.delk,
         node_class=nc,
-        friction_optimal_gi=fog,
-        do_parallel=do_parallel,
+        friction_optimal_gi=True,
         node_freezing=True,
     )
 
     optimizer = VelocityProjectedOptimizer(timestep=0.5, activation_tol=0.1)
 
     nbi = NEBInputs(
-        tol=tol * BOHR_TO_ANGSTROMS,
+        tol=tol,
         barrier_thre=0.1,  # kcalmol,
         climb=bool(args.climb),
-        rms_grad_thre=tol * BOHR_TO_ANGSTROMS,
-        max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS * 2.5,
-        ts_grad_thre=tol * BOHR_TO_ANGSTROMS * 2.5,
-        ts_spring_thre=tol * BOHR_TO_ANGSTROMS * 1.5,
+
+        rms_grad_thre=tol,
+        max_rms_grad_thre=tol*2.5,
+        ts_grad_thre=tol*2.5,
+        ts_spring_thre=tol*1.5,
+
         v=1,
         max_steps=int(args.maxsteps),
         early_stop_chain_rms_thre=args.es_rms,
-        early_stop_force_thre=args.es_ft * BOHR_TO_ANGSTROMS,
+        early_stop_force_thre=args.es_ft,
         early_stop_still_steps_thre=args.es_ss,
-        preopt_with_xtb=bool(int(args.preopt)),
         skip_identical_graphs=bool(args.sig),
+
+        preopt_with_xtb=bool(int(args.preopt))
     )
     print(f"{args.preopt=}")
     print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
     sys.stdout.flush()
 
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
+    chain = Chain(nodes=[Node(start), Node(end)], parameters=cni)
 
-    if fog:
-        traj = create_friction_optimal_gi(traj, gii)
+    if args.pif:
+        program_input = ProgramInput.open(args.pif)
     else:
-        traj = traj.run_geodesic(nimages=args.nimg)
-    print(traj[0].spinmult)
-    chain = Chain.from_traj(traj=traj, parameters=cni)
+        if args.program == 'xtb':
+            program_input = ProgramInput(
+                structure=start,
+                calctype="gradient",
+                model={"method": "GFN2xTB"},
+                keywords={},
+            )
+        elif args.program == 'terachem':
+            program_input = ProgramInput(
+                structure=start,
+                calctype="gradient",
+                model={"method": "ub3lyp", "basis": "3-21g"},
+                keywords={},
+            )
+        else:
+            raise TypeError(f"Need to specify a program input file in -pif flag. No defaults \
+                            exist for program {args.program}")
+
+    eng = QCOPEngine(program_input=program_input, program=args.program, geometry_optimizer=args.geom_opt)
 
     if args.method == "asneb":
         m = MSMEP(
@@ -344,10 +329,10 @@ def main():
             chain_inputs=cni,
             gi_inputs=gii,
             optimizer=optimizer,
+            engine=eng
         )
 
         history = m.find_mep_multistep(chain)
-        out_chain = history.output_chain
 
         leaves_nebs = [obj for obj in history.get_optimization_history() if obj]
         tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
@@ -368,7 +353,7 @@ def main():
             foldername = data_dir / f"{fp.stem}_msmep"
             filename = data_dir / f"{fp.stem}_msmep.xyz"
 
-        out_chain.write_to_disk(filename)
+        history.output_chain.write_to_disk(filename)
         history.write_to_disk(foldername)
 
         if args.dc:

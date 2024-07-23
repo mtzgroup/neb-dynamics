@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 import sys
 from dataclasses import dataclass, field
-from typing import Tuple, Dict
+from typing import Tuple
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -15,11 +15,12 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.errors import NoneConvergedException
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.Optimizer import Optimizer
+from neb_dynamics.engine import Engine
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.convergence_helpers import chain_converged
 from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
-from neb_dynamics.engine import Engine, QCOPEngine
+import neb_dynamics.chainhelpers as ch
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
@@ -444,7 +445,7 @@ class NEB:
             barr_height.append(
                 abs(ct[ind].get_eA_chain() - ct[ind-1].get_eA_chain()))
             ts_node_ind = ct[ind].energies.argmax()
-            ts_node_gperp = np.max(ct[ind].get_g_perps()[ts_node_ind])
+            ts_node_gperp = np.max(ch.get_g_perps(ct[ind])[ts_node_ind])
             ts_gperp.append(ts_node_gperp)
 
         if do_indiv:
