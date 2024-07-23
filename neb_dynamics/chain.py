@@ -15,29 +15,14 @@ from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedEr
 from neb_dynamics.geodesic_interpolation.fileio import write_xyz
 
 
-from neb_dynamics.nodes.node import Node
+from neb_dynamics.nodes.node import Node, StructureNode
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.inputs import ChainInputs
+from neb_dynamics.fakeoutputs import FakeQCIOResults, FakeQCIOOutput
 from neb_dynamics.helper_functions import (
     linear_distance,
     qRMSD_distance,
 )
-
-
-@dataclass
-class FakeQCIOOutput:
-    """
-    class that has an attribute results that has another attribute `energy` and `gradient`
-    for returning previously cached properties. Class exists to add order across different
-    node types that were not created with QCIO.
-    """
-    results: FakeQCIOResults
-
-
-@dataclass
-class FakeQCIOResults:
-    energy: float
-    gradient: np.array
 
 
 @dataclass
@@ -68,7 +53,7 @@ class Chain:
 
         fp = Path(fp)
 
-        nodes = [Node(struct) for struct in read_multiple_structure_from_file(
+        nodes = [StructureNode(structure=struct) for struct in read_multiple_structure_from_file(
             fp, charge=charge, spinmult=spinmult)]
         chain = cls(nodes=nodes, parameters=parameters)
 

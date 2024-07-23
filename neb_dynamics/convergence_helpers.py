@@ -95,10 +95,11 @@ def _update_node_convergence(chain: Chain, indices: np.array, prev_chain: Chain)
     endpoints_indices = [0, len(chain)-1]
     for i, (node, prev_node) in enumerate(zip(chain, prev_chain)):
         if i in indices or i in endpoints_indices:
-            if prev_node._cached_result is not None:
+            if prev_node._cached_gradient is not None:
                 # print(f"node{i} is frozen with _cached res: {prev_node._cached_result}")
                 node.converged = True
-                node._cached_result = prev_node._cached_result
+                node._cached_gradient = prev_node._cached_gradient
+                node._cached_energy = prev_node._cached_energy
         else:
             node.converged = False
 
@@ -106,4 +107,5 @@ def _update_node_convergence(chain: Chain, indices: np.array, prev_chain: Chain)
 def _copy_node_information_to_converged(new_chain: Chain, old_chain: Chain) -> None:
     for new_node, old_node in zip(new_chain.nodes, old_chain.nodes):
         if old_node.converged:
-            new_node._cached_result = old_node._cached_result
+            new_node._cached_gradient = old_node._cached_gradient
+            new_node._cached_energy = old_node._cached_energy

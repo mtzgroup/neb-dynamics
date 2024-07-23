@@ -105,7 +105,8 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     return ElemStepResults(is_elem_step=elem_step,
                            is_concave=concavity_results.is_concave,
                            splitting_criterion='maxima',
-                           minimization_results=[pseu_irc_results.found_reactant, pseu_irc_results.found_product],
+                           minimization_results=[
+                               pseu_irc_results.found_reactant, pseu_irc_results.found_product],
                            number_grad_calls=n_geom_opt_grad_calls
                            )
 
@@ -144,8 +145,10 @@ def is_approx_elem_step(chain: Chain, engine: Engine, slope_thresh=0.1) -> Tuple
     # isomorphic to each other. Otherwise, we will decide only based on distance.
     # (which is bad!!)
     if nodes_have_graph:
-        r_passes = r_passes_opt and _is_connectivity_identical(r_traj[-1], chain[0])
-        p_passes = p_passes_opt and _is_connectivity_identical(p_traj[-1], chain[-1])
+        r_passes = r_passes_opt and _is_connectivity_identical(
+            r_traj[-1], chain[0])
+        p_passes = p_passes_opt and _is_connectivity_identical(
+            p_traj[-1], chain[-1])
     else:
         r_passes = r_passes_opt
         p_passes = p_passes_opt
@@ -211,6 +214,20 @@ def _distances_to_refs(ref1: Node, ref2: Node, raw_node: Node) -> List[float]:
     return [dist_to_ref1, dist_to_ref2]
 
 
+def _run_geom_opt(node: Node, engine: Engine):
+    """
+    will run a check on whether the Engine has implemented the
+    geometry optimization function. If not, it will just run Steepest
+    Descent.
+    """
+    try:
+        opt_traj = engine.compute_geometry_optimization(node)
+    except AttributeError:
+        opt_traj = engine.steepest_descent(node, max_steps=500, ss=.001)
+
+    return opt_traj
+
+
 def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
     """
     will assess+categorize the presence of minima on the chain.
@@ -224,7 +241,7 @@ def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
         minimas_is_r_or_p = []
         try:
             for i in ind_minima:
-                opt_traj = engine.compute_geometry_optimization(chain[i])
+                opt_traj = _run_geom_opt(chain[i], engine=engine)
                 n_grad_calls += len(opt_traj)
                 opt = opt_traj[-1]
                 opt_results.append(opt)
@@ -281,11 +298,12 @@ def pseudo_irc(chain: Chain, engine: Engine):
 
         candidate_r = chain[arg_max - 1]
         candidate_p = chain[arg_max + 1]
-        r_traj = engine.compute_geometry_optimization(candidate_r)
+
+        r_traj = _run_geom_opt(candidate_r, engine=engine)
         r = r_traj[-1]
         n_grad_calls += len(r_traj)
 
-        p_traj = engine.compute_geometry_optimization(candidate_p)
+        p_traj = _run_geom_opt(candidate_p, engine=engine)
         n_grad_calls += len(p_traj)
         p = p_traj[-1]
 

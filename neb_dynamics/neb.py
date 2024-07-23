@@ -4,6 +4,7 @@ import shutil
 import sys
 from dataclasses import dataclass, field
 from typing import Tuple
+from numpy.typing import NDArray
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -269,11 +270,22 @@ class NEB:
                 obj=self,
             )
 
+    def _update_cache(self, chain: Chain, gradients: NDArray, energies: NDArray) -> None:
+        """
+        will update the `_cached_energy` and `_cached_gradient` attributes in the chain
+        nodes based on the input `gradients` and `energies`
+        """
+        for node, grad, ene in zip(chain, gradients, energies):
+            node._cached_energy = ene
+            node._cached_gradient = grad
+
     def update_chain(self, chain: Chain) -> Chain:
-
-        self.engine.compute_gradients(chain)
-
         import neb_dynamics.chainhelpers as ch
+
+        grads = self.engine.compute_gradients(chain)
+        enes = self.engine.compute_energies(chain)
+        self._update_cache(chain, grads, enes)
+
         grad_step = ch.compute_NEB_gradient(chain)
         new_chain = self.optimizer.optimize_step(
             chain=chain, chain_gradients=grad_step)
@@ -281,7 +293,8 @@ class NEB:
         # need to copy the gradients from the converged nodes
         for new_node, old_node in zip(new_chain.nodes, chain.nodes):
             if old_node.converged:
-                new_node._cached_result = old_node._cached_result
+                new_node._cached_energy = old_node._cached_energy
+                new_node._cached_gradient = old_node._cached_gradient
 
         self.engine.compute_gradients(new_chain)
 

@@ -9,7 +9,8 @@ from neb_dynamics.neb import NEB
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
-from neb_dynamics.engine import QCOPEngine
+from neb_dynamics.engine import QCOPEngine, ThreeWellPotential
+from neb_dynamics.nodes.node import XYNode
 
 from qcio.models.inputs import ProgramInput
 
@@ -164,9 +165,31 @@ def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
     assert len(h.ordered_leaves) == 2, f"MSMEP found incorrect number of elementary steps.\
           Found {len(h.ordered_leaves)}. Reference: 2"
 
+def test_2d_neb():
+
+    nimages = 15
+
+    ### node 2d
+    end_point = (3.00002182, 1.99995542)
+    start_point = (-3.77928812, -3.28320392)
+    coords = np.linspace(start_point, end_point, nimages)
+    ks = 0.1
+    cni = ChainInputs(k=ks, delta_k=0, node_class=XYNode)
+    nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True, max_steps=500, climb=False)
+    chain = Chain(nodes=[XYNode(structure=xy) for xy in coords], parameters=cni)
+    eng = ThreeWellPotential()
+    opt = VelocityProjectedOptimizer(timestep=0.001)
+    n = NEB(initial_chain=chain,
+            parameters=nbi,
+            optimizer=opt,
+            engine=eng)
+    n.optimize_chain()
+
+
 
 if __name__ == "__main__":
     # test_tdstructure()
     # test_trajectory()
     # test_neb()
-    test_msmep()
+    # test_msmep()
+    test_2d_neb()

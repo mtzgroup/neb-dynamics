@@ -10,11 +10,11 @@ class NoneConvergedException(Exception):
 
 @dataclass
 class EnergiesNotComputedError(Exception):
-    msg: str
+    msg: str = "Energies not computed."
 
 @dataclass
 class GradientsNotComputedError(Exception):
-    msg: str
+    msg: str = "Gradients not computed."
 
 @dataclass
 class ElectronicStructureError(Exception):
