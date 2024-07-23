@@ -38,7 +38,6 @@ rxnmapper = "^0.3.0"  # needed for NetworkBuilder is you want smi->smi network
 torch = ">=2.0.0, !=2.0.1, !=2.1.0"
 tqdm = "^4.66.4"
 xtb = "^22.1"
-sella = "^2.3.4"
 
 
 [tool.poetry.group.docs.dependencies]
