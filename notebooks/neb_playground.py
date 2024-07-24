@@ -1,155 +1,45 @@
 # -*- coding: utf-8 -*-
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics import QCOPEngine, Chain, StructureNode
+from qcio import Structure, ProgramInput
 import neb_dynamics.chainhelpers as ch
+from qcio.view import view
 
+struc = Structure.from_smiles("COCO.C.COCO.CO.COOC.S.SCSC", program='openbabel')
+# struc = Structure.from_smiles("COC", program='openbabel')
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Meyer-Schuster-Rearrangement/ASNEB_0_NOSIG_NOMR/")
+view(struc)
 
-ch.visualize_chain(h.output_chain)
+eng = QCOPEngine()
 
-output = ProgramOutput.open("/home/jdep/for_laura/geokopt_chemcloud_results/molecule_15_RESULTS")
+c = Chain([StructureNode(structure=struc)])
 
-len(output.results.trajectory)
+res = eng._run_geom_opt_calc(struc)
 
-view.view(output.return_result)
+view(res)
 
-from neb_dynamics.TreeNode import TreeNode
-import neb_dynamics.chainhelpers as ch
+res.
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Curtius-Rearrangement/ASNEB_0_NOSIG_NOMR_v2/")
-
-ch.visualize_chain(h.output_chain)
-
-
-
-
-
-from neb_dynamics.chain import Chain
-
-len(h.output_chain)
-
-
-
-visualize_chain(h2.output_chain)
-
-
-
-view.view(*, animate=True)
-
-opt_hist[2].plot_opt_history(1)
-
-# +
-from neb_dynamics.engine import QCOPEngine
-from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file, split_structure_into_frags, structure_to_molecule
-from neb_dynamics.nodes.node import Node
-from qcio.models.inputs import ProgramInput
-
-from neb_dynamics.chain import Chain
-from neb_dynamics.inputs import ChainInputs
-
-import neb_dynamics.chainhelpers as ch
-
-from neb_dynamics.engine import QCOPEngine
-# -
-
-from qcio.models.outputs import ProgramOutput
-
-from qcio import Structure, view
-
-struct = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/start_opt.xyz")
-
-struct2 = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/end_opt.xyz")
-
-mols = split_structure_into_frags(struct)
-
-mol_rp = structure_to_molecule(struct)
-
-mol_rp.draw()
-
-view.view(mols[1])
-
-view.view(struct)
-
-
-mols
-
-view.view(*mols)
+list_nodes = [StructureNode(structure=n, _cached_result=result) for n, result in zip(res.results.structures[:-1], res.results.trajectory)]
 
 from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 
-mol = structure_to_molecule(struct)
+mols = [structure_to_molecule(struc) for struc in res.results.structures]
 
-mol.draw()
+[m.to_smiles() for m in res.results.structures]
 
-c = Chain.from_xyz("/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz", parameters=ChainInputs())
+view(res.results.structures[0])
 
+mols[0].smiles
 
+mols[1].draw()
 
-from pathlib import Path
+mols = []
 
-from neb_dynamics.inputs import NEBInputs
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
-from neb_dynamics.neb import NEB
+ch.visualize_chain(list_nodes)
 
-# +
-test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")
-# tr = Trajectory.from_xyz(test_data_dir / "test_traj.xyz")
-tol = 0.001
-cni = ChainInputs(
-    k=0.01,
-    delta_k=0.009,
-    do_parallel=True,
-    node_freezing=True)
+opt_tra = eng.compute_geometry_optimization(c[0])
 
-nbi = NEBInputs(
-    tol=tol,  # * BOHR_TO_ANGSTROMS,
-    barrier_thre=0.1,  # kcalmol,
-    climb=False,
-
-    rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
-    max_rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS*2.5,
-    ts_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
-    ts_spring_thre=tol,  # * BOHR_TO_ANGSTROMS*3,
-
-    v=1,
-    max_steps=200,
-    early_stop_force_thre=0.0)  # *BOHR_TO_ANGSTROMS)
-initial_chain = c
-prog_inp = ProgramInput(structure=initial_chain[0].structure, calctype='energy',
-                        model={'method': 'GFN2xTB', 'basis': 'GFN2xTB'})
-# symbols = tr.symbols
-
-opt = VelocityProjectedOptimizer(timestep=1.0)
-n = NEB(initial_chain=initial_chain, parameters=nbi, optimizer=opt,engine_inputs={'program_input': prog_inp, 'program': 'xtb'})
-
-
-# +
-import sys
-import os
-from contextlib import contextmanager
-
-@contextmanager
-def suppress_output():
-    """Suppress stdout and stderr."""
-    with open(os.devnull, 'w') as devnull:
-        old_stdout = sys.stdout
-        old_stderr = sys.stderr
-        try:
-            sys.stdout = devnull
-            sys.stderr = devnull
-            yield
-        finally:
-            sys.stdout = old_stdout
-            sys.stderr = old_stderr
-
-# # Usage
-# with suppress_output():
-#     # Your code here
-#     print("This will not be printed")
-#     # Any other code that generates output
-
-
-# -
+ch.visualize_chain(opt_tra)
 
 with suppress_output():
     es_out = n.optimize_chain()

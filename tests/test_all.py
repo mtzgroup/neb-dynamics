@@ -150,11 +150,15 @@ def test_2d_neb():
                   for xy in coords], parameters=cni)
     eng = FlowerPotential()  # ThreeWellPotential()
     opt = VelocityProjectedOptimizer(timestep=0.01)
-    n = NEB(initial_chain=chain,
-            parameters=nbi,
-            optimizer=opt,
-            engine=eng)
-    n.optimize_chain()
+    m = MSMEP(engine=eng, neb_inputs=nbi, chain_inputs=cni,
+              optimizer=opt)
+    # n = NEB(initial_chain=chain,
+    #         parameters=nbi,
+    #         optimizer=opt,
+    #         engine=eng)
+    # n.optimize_chain()
+    history = m.find_mep_multistep(chain)
+    for obj in history.get_optimization_history()
 
 
 if __name__ == "__main__":
