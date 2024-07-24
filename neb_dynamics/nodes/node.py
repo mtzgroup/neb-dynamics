@@ -8,7 +8,6 @@ from numpy.typing import NDArray
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 from neb_dynamics.errors import GradientsNotComputedError, EnergiesNotComputedError
-from neb_dynamics.fakeoutputs import FakeQCIOResults
 from abc import ABC, abstractmethod
 
 
@@ -48,6 +47,21 @@ class Node(ABC):
     def coords(self):
         ...
 
+    @property
+    def energy(self):
+        if self._cached_energy is not None:
+            return self._cached_energy
+        else:
+            raise EnergiesNotComputedError()
+
+    @property
+    def gradient(self):
+        if self._cached_gradient is not None:
+            return self._cached_gradient
+        else:
+            raise GradientsNotComputedError()
+
+
 @dataclass
 class XYNode(Node):
     structure: np.array = None
@@ -70,20 +84,6 @@ class XYNode(Node):
         shortcut to coordinates stored in Structure.geometry
         """
         return self.structure
-
-    @property
-    def energy(self):
-        if self._cached_energy is not None:
-            return self._cached_energy
-        else:
-            raise EnergiesNotComputedError()
-
-    @property
-    def gradient(self):
-        if self._cached_gradient is not None:
-            return self._cached_gradient
-        else:
-            raise GradientsNotComputedError()
 
     def copy(self) -> XYNode:
         return XYNode(**self.__dict__)
@@ -111,6 +111,9 @@ class StructureNode(Node):
 
     def __post_init__(self):
         self.graph = structure_to_molecule(self.structure)
+        if self._cached_result is not None:
+            self._cached_energy = self._cached_result.results.energy
+            self._cached_gradient = self._cached_result.results.gradient
 
     @property
     def coords(self) -> np.array:

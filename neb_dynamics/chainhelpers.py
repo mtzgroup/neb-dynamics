@@ -1,5 +1,5 @@
 from __future__ import annotations
-from IPython.display import display, HTML, Javascript
+from IPython.display import display, HTML
 import base64
 import io
 
@@ -7,21 +7,21 @@ from typing import List
 
 import matplotlib.pyplot as plt
 import numpy as np
-from IPython.display import HTML, display
 from matplotlib.animation import FuncAnimation
-from nodes.node import Node
 from numpy.typing import NDArray
 from qcio.view import generate_structure_html
 from scipy.signal import argrelextrema
 
 from neb_dynamics.chain import Chain
-from neb_dynamics.engine import Engine
+from neb_dynamics.nodes.node import StructureNode, Node, XYNode
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
 from neb_dynamics.helper_functions import get_mass
 from neb_dynamics.inputs import ChainInputs, GIInputs
-from qcio.view import generate_structure_html
-from IPython.display import HTML, display
+from neb_dynamics.helper_functions import (
+    linear_distance,
+    qRMSD_distance,
+)
 from ipywidgets import IntSlider, interact
 
 
@@ -91,8 +91,8 @@ def _get_ind_maxima(chain):
 
 
 def _get_mass_weighed_coords(chain: Chain):
-    coords = chain.coordinates
-    symbols = chain.symbols
+    coords = np.array([node.coords for node in chain])
+    symbols = chain[0].symbols
 
     weights = np.array([np.sqrt(get_mass(s)) for s in symbols])
     weights = weights / sum(weights)
@@ -408,12 +408,12 @@ def animate_chain_trajectory(
     return HTML(ani.to_jshtml())
 
 
-def generate_neb_plot(chain, ind_node, figsize=(6.4, 4.8), grid=True, markersize=20,
+def generate_neb_plot(chain: List[Node], ind_node, figsize=(6.4, 4.8), grid=True, markersize=20,
                       title='Energies across chain') -> str:
     """
     generate plot of chain
     """
-    energies = chain.energies_kcalmol
+    energies = _energies_kcalmol(chain)
 
     fig, ax1 = plt.subplots(figsize=figsize)
     color = "tab:blue"
@@ -425,8 +425,8 @@ def generate_neb_plot(chain, ind_node, figsize=(6.4, 4.8), grid=True, markersize
     markercolors[ind_node] = 'gold'
     markersizes[ind_node] = markersize+50
 
-    ax1.plot(chain.path_length, energies, color='green')
-    ax1.scatter(chain.path_length, energies, label="Energy", marker="o", color=markercolors,
+    ax1.plot(path_length(chain=chain), energies, color='green')
+    ax1.scatter(path_length(chain=chain), energies, label="Energy", marker="o", color=markercolors,
                 s=markersizes)
 
     ax1.tick_params(axis="y", labelcolor=color)
@@ -443,7 +443,49 @@ def generate_neb_plot(chain, ind_node, figsize=(6.4, 4.8), grid=True, markersize
     return image_base64
 
 
-def visualize_chain(chain: Chain):
+def _path_len_dist_func(coords1, coords2, molecular_system: bool = False):
+    if molecular_system:
+        return qRMSD_distance(coords1, coords2)
+    else:
+        return linear_distance(coords1, coords2)
+
+
+def path_length(chain: List[Node]) -> np.array:
+    if isinstance(chain[0], StructureNode):
+        molecular_system = True
+    elif isinstance(chain[0], XYNode):
+        molecular_system = False
+    else:
+        raise NotImplementedError(f"Cannot compute path length for node type: {type(chain[0])}")
+
+    if molecular_system:
+        coords = _get_mass_weighed_coords(chain)
+    else:
+        coords = np.array([node.coords for node in chain])
+
+    cum_sums = [0]
+    for i, frame_coords in enumerate(coords):
+        if i == len(coords) - 1:
+            continue
+        next_frame = coords[i + 1]
+        distance = _path_len_dist_func(frame_coords, next_frame, molecular_system=molecular_system)
+        cum_sums.append(cum_sums[-1] + distance)
+
+    cum_sums = np.array(cum_sums)
+    path_len = cum_sums
+    return np.array(path_len)
+
+
+def _energies_kcalmol(chain: List[Node]):
+    """
+    returns the relative energies of the list of nodes
+    in kcal/mol, where the first energy will be set to 0.
+    """
+    enes = np.array([node.energy for node in chain])
+    return (enes-enes[0])*627.5
+
+
+def visualize_chain(chain: List[StructureNode]):
     """
     returns an interactive visualizer for a chain
     """

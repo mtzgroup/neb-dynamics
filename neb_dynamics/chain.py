@@ -28,7 +28,7 @@ from neb_dynamics.helper_functions import (
 @dataclass
 class Chain:
     nodes: List[Node]
-    parameters: ChainInputs
+    parameters: ChainInputs = ChainInputs()
 
     _cached_chain_bias: np.array = None
 
@@ -76,6 +76,8 @@ class Chain:
                 fake_res = FakeQCIOResults(energy=ene, gradient=grad)
                 fake_output = FakeQCIOOutput(results=fake_res)
                 node._cached_result = fake_output
+                node._cached_energy = ene
+                node._cached_gradient = grad
         return chain
 
     @classmethod
