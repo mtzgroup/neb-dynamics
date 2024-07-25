@@ -97,7 +97,7 @@ from neb_dynamics.Inputs import NEBInputs, GIInputs, ChainInputs
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 # -
 
 nbi = NEBInputs(v=True)

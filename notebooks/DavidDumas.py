@@ -239,7 +239,7 @@ c_xtb  = bob_frag.leaf_objects['4-7'][0]
 from neb_dynamics.Refiner import Refiner
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 opt = VelocityProjectedOptimizer(timestep=0.5, activation_tol=0.1)
 ref = Refiner(method='ub3lyp',v=True, cni=ChainInputs(k=0.1, delta_k=0.09, node_class=Node3D_TC, use_maxima_recyling=True),
@@ -363,11 +363,11 @@ c.plot_chain()
 c.to_trajectory()
 
 from neb_dynamics.Janitor import Janitor
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 m = MSMEP(neb_inputs=NEBInputs(v=True), chain_inputs=ChainInputs(),gi_inputs=GIInputs(nimages=12),optimizer=VelocityProjectedOptimizer(timestep=0.5))
 
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 
 j = Janitor(history_object=TreeNode(data=neb,children=[],index=0), reaction_leaves=[path_to_chain([0,1], bob.leaf_objects),path_to_chain([1,4],bob.leaf_objects)],
            msmep_object=m)

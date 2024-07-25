@@ -1,6 +1,6 @@
 # +
 from pathlib import Path
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.optimizers.BFGS import BFGS
 from neb_dynamics.optimizers.Linesearch import Linesearch
 # from retropaths.abinitio.trajectory import Trajectory
@@ -22,7 +22,7 @@ from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.potential_functions import sorry_func_0, sorry_func_1, sorry_func_2,sorry_func_3, flower_func
 
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 
 from itertools import product
 import matplotlib.pyplot as plt
@@ -128,7 +128,7 @@ cni = ChainInputs(
 # chain = Chain.from_traj(h_tr, parameters=cni)
 chain = Chain.from_traj(tr, parameters=cni)
 
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 opt = VelocityProjectedOptimizer(timestep=.5, activation_tol=0.01)
 # opt2 = BFGS(step_size=10, min_step_size=.5, use_linion_tol=.1esearch=False, bfgs_flush_thre=0.80,

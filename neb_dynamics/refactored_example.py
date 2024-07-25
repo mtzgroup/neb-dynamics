@@ -13,7 +13,7 @@ from neb_dynamics.nodes.Node2d import (
     Node2D_LEPS,
     Node2D_Flower,
 )
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from nodes.node import AlessioError
 from itertools import product
 from TS.TS_PRFO import TS_PRFO

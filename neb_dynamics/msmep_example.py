@@ -23,7 +23,7 @@ from neb_dynamics.potential_functions import (
     sorry_func_3,
 )
 
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from TS.TS_PRFO import TS_PRFO
 from neb_dynamics.ChainBiaser import ChainBiaser
 

@@ -14,7 +14,7 @@ from nodes.node3d import Node3D
 from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from neb_dynamics.ChainBiaser import ChainBiaser
 
 from itertools import product
@@ -449,7 +449,7 @@ plt.legend(loc='upper right')
 # +
 # vetoing this until I implement having multiple chains as bias!
 # +
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from nodes.node3d import Node3D

@@ -1,4 +1,4 @@
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 
 h = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Robinson-Gabriel-Synthesis/wb97xd3_def2svp_2024/"))
 
@@ -65,7 +65,7 @@ target.gum_mm_optimization()
 from neb_dynamics.NEB import NoneConvergedException
 from neb_dynamics.optimizers.BFGS import BFGS
 from neb_dynamics.optimizers.Linesearch import Linesearch
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.Inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS

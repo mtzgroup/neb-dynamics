@@ -14,7 +14,7 @@ from chain import Chain
 from neb_dynamics.NEB import NEB
 from neb_dynamics.helper_functions import RMSD
 from kneed import KneeLocator
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from retropaths.molecules.elements import ElementData
 from retropaths.abinitio.tdstructure import TDStructure
 import warnings

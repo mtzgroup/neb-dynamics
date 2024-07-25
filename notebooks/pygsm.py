@@ -328,7 +328,7 @@ tr_xtb = tr.run_geodesic(nimages=11)
 
 c = Chain.from_traj(tr_xtb, parameters=cni)
 
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 opt = VelocityProjectedOptimizer()
 

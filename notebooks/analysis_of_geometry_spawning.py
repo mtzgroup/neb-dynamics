@@ -10,7 +10,7 @@ from neb_dynamics.Node3D import Node3D
 from pathlib import Path
 
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from retropaths.abinitio.trajectory import Trajectory
 from retropaths.molecules.smiles_tools import (
     bond_ord_number_to_string,

@@ -1,5 +1,5 @@
 # +
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from neb_dynamics.tdstructure import TDStructure
 import numpy as np
 

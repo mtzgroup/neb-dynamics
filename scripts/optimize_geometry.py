@@ -16,7 +16,7 @@ from neb_dynamics.Janitor import Janitor
 from neb_dynamics.nodes.Node3D_gfn1xtb import Node3D_gfn1xtb
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 import numpy as np
 

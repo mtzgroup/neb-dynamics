@@ -116,7 +116,7 @@ leaves = ref.read_leaves_from_disk(Path("/home/jdep/T3D_data/msmep_draft/compari
 
 out = ref.join_output_leaves(leaves)
 
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 
 h = TreeNode.read_from_disk(Path("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Benzimidazolone-Synthesis-1-X-Iodine/production_vpo_tjm_msmep/"))
 

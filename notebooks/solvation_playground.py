@@ -36,7 +36,7 @@ solv = Solvator(n_solvent=5)
 
 td_solv = solv.solvate_td(td)
 
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 
 h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Meyer-Schuster-Rearrangement/production_vpo_tjm_xtb_preopt_msmep/")
 
@@ -54,7 +54,7 @@ tr = Trajectory([solv_r, solv_p]).run_geodesic(nimages=12)
 
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 chain = Chain.from_traj(tr, ChainInputs(k=0.1, delta_k=0.09, node_freezing=True))
 

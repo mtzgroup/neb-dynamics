@@ -15,10 +15,10 @@ from openbabel import pybel
 from neb_dynamics.chain import Chain
 from neb_dynamics.errors import NoneConvergedException
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
-from neb_dynamics.Optimizer import Optimizer
+from neb_dynamics.optimizer import Optimizer
 from neb_dynamics.engine import Engine
 from neb_dynamics.nodes.node import Node
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.convergence_helpers import chain_converged
 from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
 import neb_dynamics.chainhelpers as ch

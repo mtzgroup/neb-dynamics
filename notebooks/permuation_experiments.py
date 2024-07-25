@@ -1,5 +1,5 @@
 # +
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from neb_dynamics.Inputs import ChainInputs, GIInputs
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from nodes.node3d import Node3D
@@ -23,7 +23,7 @@ from neb_dynamics.NEB import NEB
 from neb_dynamics.NEB import NoneConvergedException
 from neb_dynamics.optimizers.BFGS import BFGS
 from neb_dynamics.optimizers.Linesearch import Linesearch
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 
 # -

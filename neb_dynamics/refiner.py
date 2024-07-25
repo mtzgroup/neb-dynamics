@@ -3,10 +3,10 @@ from neb_dynamics.nodes.Node3D_TC import Node3D_TC  # , Node3D_TC_Local, Node3D_
 from neb_dynamics.Inputs import NEBInputs, ChainInputs, GIInputs
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.MSMEP import MSMEP
-from neb_dynamics.Optimizer import Optimizer
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizer import Optimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from chain import Chain
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from neb_dynamics.NEB import NEB
 
 import numpy as np

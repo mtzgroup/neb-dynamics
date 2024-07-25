@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Callable
-from neb_dynamics.Optimizer import Optimizer
+from neb_dynamics.optimizer import Optimizer
 from neb_dynamics.optimizers import ALS
 from chain import Chain
 import numpy as np

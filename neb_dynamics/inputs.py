@@ -1,6 +1,8 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+from typing import Union
 from nodes.node import Node
+
 # from neb_dynamics.ChainBiaser import ChainBiaser
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
@@ -36,6 +38,7 @@ class NEBInputs:
 
     `preopt_with_xtb`: whether to preconverge a chain using XTB (default: False)
     """
+
     tol: float = 0.001 * BOHR_TO_ANGSTROMS
     climb: bool = False
     en_thre: float = None
@@ -72,13 +75,13 @@ class NEBInputs:
             self.grad_thre = self.tol / 2
 
         if self.ts_grad_thre is None:
-            self.ts_grad_thre = self.tol * 5/2
+            self.ts_grad_thre = self.tol * 5 / 2
 
         if self.ts_spring_thre is None:
-            self.ts_spring_thre = self.tol * 5/2
+            self.ts_spring_thre = self.tol * 5 / 2
 
         if self.max_rms_grad_thre is None:
-            self.max_rms_grad_thre = self.tol * 5/2
+            self.max_rms_grad_thre = self.tol * 5 / 2
 
     def copy(self) -> NEBInputs:
         return NEBInputs(**self.__dict__)
@@ -108,6 +111,7 @@ class ChainInputs:
     `tc_model_basis`: 'method' parameter for electronic structure calculations
     `tc_kwds`: keyword arguments for electronic structure calculations
     """
+
     k: float = 0.1
     delta_k: float = 0.0
 
@@ -152,6 +156,7 @@ class GIInputs:
 
     `extra_kwds`: dictionary containing other keywords geodesic interpolation might use.
     """
+
     nimages: int = 15
     friction: float = 0.01
     nudge: float = 0.001
@@ -188,3 +193,6 @@ class NetworkInputs:
     CREST_temp: float = 298.15  # Kelvin
     CREST_ewin: float = 6.0  # kcal/mol
     # crest inputs for conformer generation. Incomplete list.
+
+
+Parameters = Union[NEBInputs, ChainInputs, GIInputs, NetworkInputs]

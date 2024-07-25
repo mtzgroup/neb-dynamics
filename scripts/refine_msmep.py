@@ -3,7 +3,7 @@ from pathlib import Path
 from argparse import ArgumentParser
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from neb_dynamics.Refiner import Refiner
 from neb_dynamics.NEB import NEB, NoneConvergedException
 from chain import Chain
@@ -11,7 +11,7 @@ from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
 from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 from nodes.node3d import Node3D
 from neb_dynamics.nodes.Node3D_Water import Node3D_Water

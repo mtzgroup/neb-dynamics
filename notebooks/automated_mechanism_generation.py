@@ -46,7 +46,7 @@ from neb_dynamics.helper_functions import RMSD
 from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.molecule import Molecule
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 from neb_dynamics.pot import Pot
 
 
@@ -324,7 +324,7 @@ c_nosig.plot_chain()
 # pot.draw_shortest_to_node(6, mode='d3', weight='barrier')
 # -
 
-from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.treenode import TreeNode
 
 fake_neb_objects = [NEB(initial_chain=None, parameters=NEBInputs(), optimizer=VelocityProjectedOptimizer) for i in range(len(list_of_chains))]
 
@@ -837,7 +837,7 @@ jan_path = path_to_chain([0,1,2, 3, 4], leaf_objects=rd.data)
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.MSMEP import MSMEP
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 m = MSMEP(neb_inputs=NEBInputs(v=True), chain_inputs=ChainInputs(), gi_inputs=GIInputs(nimages=12), optimizer=VelocityProjectedOptimizer(timestep=0.5))
 jj = Janitor(history_object=jan_path, msmep_object=m)

@@ -16,23 +16,23 @@ from qcio.models.outputs import ProgramOutput
 class Engine(ABC):
 
     @abstractmethod
-    def compute_gradients(self, chain: Union[Chain, List]) -> Union[FakeQCIOOutput, ProgramOutput]:
-        """
-        returns the gradients for each node in the chain as
-        specified by the object inputs
-        """
-        ...
+    def compute_gradients(self, chain: Union[Chain, List]) -> None:
+        """Sets the gradients for each node in the chain at node.gradient"""
+        raise NotImplementedError()
 
     @abstractmethod
-    def compute_energies(self, chain: Union[Chain, List]) -> Union[FakeQCIOOutput, ProgramOutput]:
-        """
-        returns the gradients for each node in the chain as
-        specified by the object inputs
-        """
-        ...
+    def compute_energies(self, chain: Union[Chain, List]) -> None:
+        """Sets the energies for each node in the chain at node.energy"""
+        raise NotImplementedError()
 
-    def steepest_descent(self, node: Node, ss=1, max_steps=10,
-                         ene_thre: float = 1e-6, grad_thre: float = 1e-4) -> list[Node]:
+    def steepest_descent(
+        self,
+        node: Node,
+        ss=1,
+        max_steps=10,
+        ene_thre: float = 1e-6,
+        grad_thre: float = 1e-4,
+    ) -> list[Node]:
         history = []
         last_node = node.copy()
         # make sure the node isn't frozen so it returns a gradient
@@ -42,7 +42,7 @@ class Engine(ABC):
         converged = False
         while curr_step < max_steps and not converged:
             grad = last_node.gradient
-            new_coords = last_node.coords - 1*ss*grad
+            new_coords = last_node.coords - 1 * ss * grad
             node_new = last_node.update_coords(new_coords)
             grads = self.compute_gradients([node_new])
             ene = self.compute_energies([node_new])

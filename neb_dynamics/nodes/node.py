@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import TypeVar, Generic, Optional
 from dataclasses import dataclass
 from qcio.models.structure import Structure
 from qcio.models.outputs import ProgramOutput
@@ -9,6 +10,41 @@ from neb_dynamics.molecule import Molecule
 from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 from neb_dynamics.errors import GradientsNotComputedError, EnergiesNotComputedError
 from abc import ABC, abstractmethod
+
+from pydantic import BaseModel
+
+StructureType = TypeVar("StructureType", np.array, Structure)
+
+
+class ColtonABCNode(ABC, BaseModel, Generic[StructureType]):
+    structure: StructureType
+    energy: Optional[float] = None
+    gradient: Optional[NDArray] = None
+
+    @property
+    def coords(self) -> np.array:
+        """
+        shortcut to coordinates stored in Structure.geometry
+        """
+        raise NotImplementedError()
+
+    def __eq__(self, other: ColtonABCNode) -> bool:
+        """Compare two nodes"""
+        raise NotImplementedError()
+
+
+class ColtonStructure(ColtonABCNode[Structure]):
+    @property
+    def coords(self) -> np.array:
+        """
+        shortcut to coordinates stored in Structure.geometry
+        """
+        return self.structure.geometry
+
+    def __eq__(self, other: ColtonABCNode) -> bool:
+        """Compare two nodes"""
+        # TODO: Copy over current code for checking nodes
+        raise NotImplementedError()
 
 
 @dataclass
@@ -21,7 +57,7 @@ class Node(ABC):
     def has_molecular_graph(self): ...
 
     @property
-    @abstractmethod
+    @abstractmethod  # frozen
     def converged(self): ...
 
     @property
@@ -40,12 +76,10 @@ class Node(ABC):
     def update_coords(coords): ...
 
     @abstractmethod
-    def copy(self):
-        ...
+    def copy(self): ...
 
     @abstractmethod
-    def coords(self):
-        ...
+    def coords(self): ...
 
     @property
     def energy(self):
