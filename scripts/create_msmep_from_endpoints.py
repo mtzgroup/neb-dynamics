@@ -281,6 +281,9 @@ def main():
         if int(args.min_ends):
             start = start.xtb_geom_optimization()
             end = end.xtb_geom_optimization()
+            print(start)
+            print(end)
+            assert start is not None and end is not None, "Geometry optimization failed"
 
     traj = Trajectory([start, end]).run_geodesic(nimages=args.nimg)
 

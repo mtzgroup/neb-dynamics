@@ -79,7 +79,8 @@ class Node3D(Node):
         td_copy = self.tdstructure.copy()
         td_copy.tc_model_method = "gfn2xtb"
         td_copy.tc_model_basis = "gfn2xtb"
-        td_opt_traj = td_copy.xtb_geom_optimization(return_traj=True)
+        td_opt_traj_list = td_copy.xtb_geom_optimization(return_traj=True)
+        td_opt_traj = Trajectory(td_opt_traj_list)
         td_opt_traj.update_tc_parameters(td_copy)
         # td_opt = self.tdstructure.xtb_geom_optimization()
         return td_opt_traj
