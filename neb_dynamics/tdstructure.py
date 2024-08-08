@@ -14,7 +14,7 @@ import py3Dmol
 import qcop
 from ase import Atoms
 
-# from ase.optimize import LBFGS, LBFGSLineSearch
+from ase.optimize import LBFGS, LBFGSLineSearch
 from ase.optimize.sciopt import SciPyFminCG
 from ase.io.trajectory import Trajectory as ASETraj
 # from sella import Sella
@@ -417,7 +417,7 @@ class TDStructure:
         # opt = LBFGSLineSearch(atoms, logfile=None, trajectory=tmp.name)
         opt = SciPyFminCG(atoms, logfile=None, trajectory=tmp.name)
         # opt = Sella(atoms, logfile=None, trajectory=tmp.name)
-        # opt = LBFGS(atoms, logfile=None, trajectory='/tmp/log.traj')
+        # opt = LBFGS(atoms, logfile=None, trajectory=tmp.name)
         # opt = FIRE(atoms, logfile=None)
         opt.run(fmax=0.01)
         # opt.run(fmax=0.5)
@@ -435,9 +435,9 @@ class TDStructure:
         Path(tmp.name).unlink()
         if return_traj:
             print("len opt traj: ", len(traj))
-            return traj
+            return traj_list
         else:
-            return traj[-1]
+            return traj_list[-1]
 
     def xtb_sella_geom_optimization(self, return_traj=False):
         """

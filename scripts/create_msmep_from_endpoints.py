@@ -236,6 +236,9 @@ def main():
     end = TDStructure.from_xyz(args.en, charge=args.c,
                                spinmult=args.s)
 
+    # print(start)
+    # print(end)
+
     if args.nc != "node3d" and args.nc != "node3d_water":
         if args.tcin:
             start.update_tc_parameters_from_inpfile(args.tcin)
@@ -262,6 +265,9 @@ def main():
         if int(args.min_ends):
             start = start.xtb_geom_optimization()
             end = end.xtb_geom_optimization()
+            print(start)
+            print(end)
+            assert start is not None and end is not None, "Geometry optimization failed"
 
     traj = Trajectory([start, end]).run_geodesic(nimages=args.nimg)
 
@@ -277,10 +283,8 @@ def main():
         delta_k=args.delk,
         node_class=nc,
         friction_optimal_gi=True,
-        use_maxima_recyling=bool(args.mr),
         do_parallel=do_parallel,
         node_freezing=True,
-        skip_identical_graphs=bool(args.sig)
     )
 
     optimizer = VelocityProjectedOptimizer(timestep=0.5, activation_tol=0.1)
@@ -290,6 +294,7 @@ def main():
         barrier_thre=0.1,  # kcalmol,
         climb=bool(args.climb),
 
+        skip_identical_graphs=bool(args.sig),
         rms_grad_thre=tol * BOHR_TO_ANGSTROMS,
         max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS*2.5,
         ts_grad_thre=tol * BOHR_TO_ANGSTROMS*2.5,
@@ -320,7 +325,8 @@ def main():
             optimizer=optimizer,
         )
 
-        history, out_chain = m.find_mep_multistep(chain)
+        history = m.find_mep_multistep(chain)
+        out_chain = history.output_chian
 
         leaves_nebs = [
             obj for obj in history.get_optimization_history() if obj

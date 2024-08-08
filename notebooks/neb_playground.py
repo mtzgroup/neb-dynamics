@@ -1,4 +1,331 @@
 # -*- coding: utf-8 -*-
+from neb_dynamics.TreeNode import TreeNode
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures/Achmatowicz-Reaction/
+
+import retropaths.helper_functions as hf
+from pathlib import Path
+from retropaths.abinitio.tdstructure import TDStructure
+
+reactions = hf.pload("/home/jdep/retropaths/data/reactions.p")
+
+
+def create_endpoints_from_rxn_name(rxn_name, reactions_object):
+    rxn = reactions_object[rxn_name]
+    root = TDStructure.from_rxn_name(rxn_name, reactions_object)
+    c3d_list = root.get_changes_in_3d(rxn)
+
+    root = root.pseudoalign(c3d_list)
+    # root = root.xtb_geom_optimization()
+
+    target = root.copy()
+    target.apply_changed3d_list(c3d_list)
+    target.mm_optimization("gaff")
+    target.mm_optimization("uff")
+    target.mm_optimization("mmff94")
+    # target = target.xtb_geom_optimization()
+
+    return root, target
+
+
+names = [name for name in reactions]
+
+failed = []
+data_dir = Path("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/")
+# for name in names:
+name = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
+out_dir = data_dir / name
+start_fp = out_dir / 'start_raw.xyz'
+end_fp = out_dir / 'end_raw.xyz'
+# if start_fp.exists() and end_fp.exists():
+#     # print("\talready done...")
+#     continue
+# else:
+try:
+    print(name)
+    out_dir.mkdir(exist_ok=True)
+    start, end = create_endpoints_from_rxn_name(name, reactions)
+    start.to_xyz(start_fp)
+    end.to_xyz(end_fp)
+except AssertionError:
+    failed.append(name)
+
+start = TDStructure.from_xyz(start_fp)
+
+start.xtb_geom_optimization()
+
+end = TDStructure.from_xyz(end_fp)
+
+end.xtb_geom_optimization()
+
+start_fp
+
+start.xtb_geom_optimization()
+
+failed
+
+reactions[failed[0]].draw()
+
+from neb_dynamics.tdstructure import TDStructure
+end = TDStructure.from_xyz("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/Wohl-Ziegler/end_raw.xyz")
+
+end_opt = end.xtb_geom_optimization()
+
+end_opt
+
+reactions['Wohl-Ziegler'].draw()
+
+len(failed)
+
+from neb_dynamics import QCOPEngine, Chain, StructureNode
+from qcio import Structure, ProgramInput
+import neb_dynamics.chainhelpers as ch
+from qcio.view import view
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+
+from neb_dynamics.engines import QCOPEngine
+
+eng = QCOPEngine()
+
+opt_tr = eng._run_geom_opt_calc(h.output_chain[6].structure)
+
+from neb_dynamics import StructureNode
+
+
+
+c = Chain([StructureNode(structure=st, _cached_result=res) for st, res in zip(opt_tr.results.structures, opt_tr.results.trajectory)])
+
+c.write_to_disk("/home/jdep/T3D_data/msmep_draft/figures/xtb_intermediate_minimization.xyz")
+
+c.plot_chain()
+
+
+
+
+
+structs = []
+
+eng._run_geom_opt_calc(
+
+from neb_dynamics.TreeNode import TreeNode
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/ASNEB_0_NOSIG_NOMR_v2/")
+
+h.output_chain.plot_chain()
+
+# +
+# view(*[node.structure for node in h.output_chain])
+# -
+
+ch.visualize_chain(h.output_chain)
+
+struc = Structure.from_smiles("COCO.C.COCO.CO.COOC.S.SCSC", program='openbabel')
+# struc = Structure.from_smiles("COC", program='openbabel')
+
+view(struc)
+
+eng = QCOPEngine()
+
+c = Chain([StructureNode(structure=struc)])
+
+res = eng._run_geom_opt_calc(struc)
+
+view(res)
+
+res.
+
+list_nodes = [StructureNode(structure=n, _cached_result=result) for n, result in zip(res.results.structures[:-1], res.results.trajectory)]
+
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
+
+mols = [structure_to_molecule(struc) for struc in res.results.structures]
+
+[m.to_smiles() for m in res.results.structures]
+
+view(res.results.structures[0])
+
+mols[0].smiles
+
+mols[1].draw()
+
+mols = []
+
+ch.visualize_chain(list_nodes)
+
+opt_tra = eng.compute_geometry_optimization(c[0])
+
+ch.visualize_chain(opt_tra)
+
+with suppress_output():
+    es_out = n.optimize_chain()
+
+n.grad_calls_made
+
+es_out.number_grad_calls
+
+eng = QCOPEngine(program_input=ProgramInput(structure=c[0].structure,calctype='energy',model={'method':"GFN2xTB"}), program='xtb')
+
+c[0].structure.geometry
+
+c[1].structure.geometry
+
+out1 = eng.compute_gradients(c)
+
+c[0].structure.geometry
+
+c[1].structure.geometry
+
+out2 = eng.compute_gradients(c.nodes)
+
+import neb_dynamics.chainhelpers as ch
+
+import numpy as np
+
+np.amax(abs(ch.get_g_perps(c)))
+
+c.energies
+
+out1
+
+out2
+
+
+
+from neb_dynamics.trajectory import Trajectory
+
+tr = Trajectory.from_xyz("/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz")
+
+grads = [td.gradient_xtb() for td in tr]
+
+c._zero_velocity()
+
+c.velocity
+
+import numpy as np
+
+from neb_dynamics.convergence_helpers import _check_rms_grad_converged
+
+?_check_rms_grad_converged
+
+_check_rms_grad_converged(c, threshold=0.001)
+
+np.zeros_like(a=c.coordinates)
+
+c.gradients[0]
+
+c.gradients[0] / grads[0]
+
+import numpy as np
+
+np.amax(ch.get_g_perps(c))
+
+
+
+
+
+huh = c[0].update_coords(c[-1].coords)
+
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
+
+structure_to_molecule(c[0].structure).draw()
+
+structure_to_molecule(huh.structure).draw()
+
+pi = ProgramInput(
+    structure=c[0].structure,
+    calctype='energy',
+    model={'method':'GFN2xTB', 'basis':'GFN2xTB'}
+)
+
+c[0].structure.__dict__
+
+foo = {'hey':1}
+
+foo['lol']
+
+type(c[0])
+
+n = Node(c[0].structure)
+
+type(n)
+
+eng = QCOPEngine(prog_input=pi, program='xtb')
+
+from qcop import compute
+
+compute(
+
+eng.compute_energies(c)
+
+from qcio.models.inputs import ProgramInput
+
+compute(
+
+structs[0] is structs[0]
+
+from qcio.models.outputs import ProgramOutput
+
+from qcop import compute
+
+pi = ProgramInput(
+    structure=structs[0],
+    calctype='energy',
+    model={"method": "GFN2xTB"},  # type: ignore
+    keywords={},
+)
+
+res = compute("xtb", pi)
+
+res.results.gradient
+
+ProgramInput
+
+pi.__dict__.copy()
+
+len(structs)
+
+mol = structure_to_molecule(structs[-1])
+
+mol.draw()
+
+len(structs)
+
+from nodes.node import Node
+from neb_dynamics.qcio_structure_helpers import   split_structure_into_frags, structure_to_molecule
+
+# +
+from qcio.models.structure import Structure
+
+structures = Structure.from_smiles("COCO.CC", force_field="MMFF94")
+
+with open("/home/jdep/debug.xyz",'w+') as f:
+    f.write(structures.to_xyz())
+f.close()
+# -
+
+mol = structure_to_molecule(structures)
+
+from neb_dynamics.tdstructure import TDStructure
+
+td = TDStructure.from_xyz('/tmp/tmp1l4yxrqg.xyz')
+
+td2 = td.copy()
+
+td2.gum_mm_optimization()
+
+td2
+
+mol.draw()
+
+split_structure_into_frags(structures)
+
+node = Node(structure=Structure.from_smiles("COCO"))
+node2 = Node(structure=Structure.from_smiles("COCO"))
+
+
+
+node.is_identical(node2)
+
 from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.trajectory import Trajectory
 
@@ -14,7 +341,7 @@ tr.energies_and_gradients_tc()
 
 # +
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.Chain import Chain
+from chain import Chain
 from nodes.node3d import Node3D
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
