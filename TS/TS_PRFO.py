@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from neb_dynamics.NEB import NoneConvergedException
-from nodes.Node import Node
+from neb_dynamics.nodes.Node import Node
 
 
 @dataclass
@@ -63,20 +63,29 @@ class TS_PRFO:
         F_vec = np.dot(H_evecs.T, grad_reshaped)
 
         lambda_p = self.get_lambda_p(H_evals[0], F_vec[0])
-        lambda_n, _ = self.get_lambda_n(all_eigenvalues=H_evals, f_vector=F_vec, break_limit=1e6)
+        lambda_n, _ = self.get_lambda_n(
+            all_eigenvalues=H_evals, f_vector=F_vec, break_limit=1e6
+        )
         if lambda_n is None:
-            raise NoneConvergedException("lambda_n calculation failed. maybe start again with a different initial guess")
+            raise NoneConvergedException(
+                "lambda_n calculation failed. maybe start again with a different initial guess"
+            )
 
         h0 = (-1 * F_vec[0] * H_evecs[:, 0]) / (H_evals[0] - lambda_p)
-        hrest = sum([(-1 * F_vec[i] * H_evecs[:, i]) / (H_evals[i] - lambda_n) for i in range(1, len(F_vec))])
+        hrest = sum(
+            [
+                (-1 * F_vec[i] * H_evecs[:, i]) / (H_evals[i] - lambda_n)
+                for i in range(1, len(F_vec))
+            ]
+        )
         step = h0 + hrest
         step_reshaped = step.reshape(orig_dim)
 
         length_step = np.linalg.norm(step_reshaped)
 
-        if length_step  > self.max_step_size:
+        if length_step > self.max_step_size:
             step_rescaled = step_reshaped / length_step
-            step_reshaped = step_rescaled*self.max_step_size
+            step_reshaped = step_rescaled * self.max_step_size
 
         return step_reshaped
 
@@ -92,7 +101,10 @@ class TS_PRFO:
         converged = grad_mag <= self.grad_thre
         while steps_taken < self.max_nsteps and not converged:
             steps_taken += 1
-            print(f"StepsTaken:{steps_taken}||grad_mag:{grad_mag}                 \r", end="")
+            print(
+                f"StepsTaken:{steps_taken}||grad_mag:{grad_mag}                 \r",
+                end="",
+            )
             direction = self.prfo_step(start_node)
 
             new_point = start_node.coords + direction * self.dr
@@ -137,7 +149,14 @@ class TS_PRFO:
         cs = plt.contourf(x, x, h, levels=10)
         # _ = f.colorbar(cs)
 
-        plt.plot([x.coords[0] for x in traj], [x.coords[1] for x in traj], "*--", c="white", label="path", ms=15)
+        plt.plot(
+            [x.coords[0] for x in traj],
+            [x.coords[1] for x in traj],
+            "*--",
+            c="white",
+            label="path",
+            ms=15,
+        )
         # for inp, (evec0, evec1) in zip(traj, eigvecs):
         #     plt.arrow(inp[0], inp[1], evec0[0], evec0[1], color='red', width=.05)
         #     plt.arrow(inp[0], inp[1], evec1[0], evec1[1], color='green', width=.05)
