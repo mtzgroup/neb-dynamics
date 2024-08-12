@@ -19,7 +19,7 @@ from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.Optimizer import Optimizer
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 from neb_dynamics.errors import ElectronicStructureError
-from elementarystep import check_if_elem_step
+from neb_dynamics.elementarystep import check_if_elem_step
 
 
 @dataclass
