@@ -17,6 +17,7 @@ from ase import Atoms
 from ase.optimize import LBFGS, LBFGSLineSearch
 from ase.optimize.sciopt import SciPyFminCG
 from ase.io.trajectory import Trajectory as ASETraj
+
 # from sella import Sella
 from chemcloud import CCClient
 from IPython.core.display import HTML
@@ -32,23 +33,23 @@ try:
     from xtb.interface import Calculator, XTBException
     from xtb.libxtb import VERBOSITY_MUTED
     from xtb.utils import get_method
-
-except ImportError:
-    pass  # module doesn't exist, deal with it.
-
+except ImportError as e:
+    print("warning! XTB not installed. Some features unavailable.")
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.elements import ElementData, symbol_to_atomic_number
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 from neb_dynamics.geodesic_interpolation.fileio import read_xyz
-from neb_dynamics.helper_functions import (atomic_number_to_symbol,
-                                           bond_ord_number_to_string,
-                                           from_number_to_element,
-                                           load_obmol_from_fp,
-                                           run_tc_local_optimization,
-                                           get_mass,
-                                           _load_info_from_tcin,
-                                           write_xyz)
+from neb_dynamics.helper_functions import (
+    atomic_number_to_symbol,
+    bond_ord_number_to_string,
+    from_number_to_element,
+    load_obmol_from_fp,
+    run_tc_local_optimization,
+    get_mass,
+    _load_info_from_tcin,
+    write_xyz,
+)
 
 from neb_dynamics.molecule import Molecule
 from scipy.spatial import ConvexHull
@@ -198,18 +199,19 @@ class TDStructure:
             coords: coords to update TDStructure to
 
         """
-        np.testing.assert_array_equal(coords.shape, self.coords.shape,
-                                      err_msg=f"Input array shape ({coords.shape}) does not match \
-                                        existing shape ({self.coords.shape})")
+        np.testing.assert_array_equal(
+            coords.shape,
+            self.coords.shape,
+            err_msg=f"Input array shape ({coords.shape}) does not match \
+                                        existing shape ({self.coords.shape})",
+        )
 
         string = write_xyz(self.symbols, coords)
 
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w", delete=False) as tmp:
             tmp.write(string)
 
-        td = TDStructure.from_xyz(
-            tmp.name, charge=self.charge, spinmult=self.spinmult
-        )
+        td = TDStructure.from_xyz(tmp.name, charge=self.charge, spinmult=self.spinmult)
         os.remove(tmp.name)
         return td
 
@@ -370,8 +372,7 @@ class TDStructure:
                 k_prime = 1.5
             else:
                 k_prime = k
-            new_mol.add_edge(
-                i, j, bond_order=bond_ord_number_to_string(k_prime))
+            new_mol.add_edge(i, j, bond_order=bond_ord_number_to_string(k_prime))
         new_mol.set_neighbors()
         return new_mol
 
@@ -399,7 +400,9 @@ class TDStructure:
         )
         return atoms
 
-    def xtb_geom_optimization(self, return_traj=False) -> Union[List[TDStructure], TDStructure]:
+    def xtb_geom_optimization(
+        self, return_traj=False
+    ) -> Union[List[TDStructure], TDStructure]:
         """
         Run geometry optimization using XTB Calculator in ASE.
 
@@ -407,8 +410,7 @@ class TDStructure:
             return_traj: Whether to return a list of tdstructures of the optimziation trajectory
         """
 
-        tmp = tempfile.NamedTemporaryFile(
-            suffix=".traj", mode="w+", delete=False)
+        tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
 
         atoms = self.to_ASE_atoms()
         # print(tmp.name)
@@ -446,8 +448,7 @@ class TDStructure:
         Args:
             return_traj: Whether to return a list of tdstructures of the optimziation trajectory
         """
-        tmp = tempfile.NamedTemporaryFile(
-            suffix=".traj", mode="w+", delete=False)
+        tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
 
         atoms = self.to_ASE_atoms()
         # print(tmp.name)
@@ -524,8 +525,7 @@ class TDStructure:
         f.close()
 
     def to_pdb(self, fn: Path) -> None:
-        """Writes molecule to PDB format
-        """
+        """Writes molecule to PDB format"""
         mol_pybel = pybel.Molecule(self.molecule_obmol)
         mol_pybel.write(format="pdb", filename=str(fn), overwrite=True)
 
@@ -537,8 +537,7 @@ class TDStructure:
         atom.SetVector(new_x, new_y, new_z)
 
     def energy_xtb(self) -> float:
-        """returns XTB energy of TDStructure
-        """
+        """returns XTB energy of TDStructure"""
         try:
             calc = Calculator(
                 get_method("GFN2-xTB"),
@@ -602,7 +601,9 @@ class TDStructure:
         return td
 
     @classmethod
-    def from_mapped_smiles(cls, smi: str, spinmult: int = 1, charge: int = 0) -> TDStructure:
+    def from_mapped_smiles(
+        cls, smi: str, spinmult: int = 1, charge: int = 0
+    ) -> TDStructure:
         """
         creates a TDStructure from a mapped smiles format
 
@@ -690,8 +691,7 @@ class TDStructure:
         with tempfile.NamedTemporaryFile(suffix=".xyz", mode="w", delete=False) as tmp:
             tmp.write(string)
 
-        td = cls.from_xyz(tmp.name, charge=tot_charge,
-                          spinmult=tot_spinmult)
+        td = cls.from_xyz(tmp.name, charge=tot_charge, spinmult=tot_spinmult)
         os.remove(tmp.name)
         return td
 
@@ -724,7 +724,9 @@ class TDStructure:
         self.tc_kwds = tc_kwds
         self.tc_geom_opt_kwds = tc_geom_opt_kwds
 
-    def update_tc_parameters_from_inpfile(self, file_path: str, read_in_charges_spinmult: bool = False) -> TDStructure:
+    def update_tc_parameters_from_inpfile(
+        self, file_path: str, read_in_charges_spinmult: bool = False
+    ) -> TDStructure:
         """updates TC parameters from a terachem input file. Returns a COPY
 
         !!! Warning
@@ -737,16 +739,13 @@ class TDStructure:
         """
         td_copy = self.copy()
 
-        method, basis, charge, spinmult, inp_kwds = _load_info_from_tcin(
-            file_path)
+        method, basis, charge, spinmult, inp_kwds = _load_info_from_tcin(file_path)
         if charge and read_in_charges_spinmult:
-            print(
-                f"Warning!: Setting charge to what is specified in {file_path}")
+            print(f"Warning!: Setting charge to what is specified in {file_path}")
             td_copy.set_charge(charge)
 
         if spinmult and read_in_charges_spinmult:
-            print(
-                f"Warning!: Setting multiplicity to what is specified in {file_path}")
+            print(f"Warning!: Setting multiplicity to what is specified in {file_path}")
             td_copy.set_spinmult(spinmult)
 
         td_copy.tc_model_method = method
@@ -943,8 +942,7 @@ class TDStructure:
     def tc_freq_nma_calculation(self):
         if self._cached_nma is None or self._cached_freqs is None:
             prog_input = self._prepare_input(method="hessian")
-            future_result = self.tc_client.compute(
-                "bigchem", prog_input, queue=q)
+            future_result = self.tc_client.compute("bigchem", prog_input, queue=q)
             output = future_result.get()
 
             if output.success:
@@ -1184,8 +1182,7 @@ class TDStructure:
 
     def displace_by_dr(self, dr):
         ts_displaced = self.copy()
-        ts_displaced_by_dr = ts_displaced.update_coords(
-            ts_displaced.coords + dr)
+        ts_displaced_by_dr = ts_displaced.update_coords(ts_displaced.coords + dr)
         return ts_displaced_by_dr
 
     def split_td_into_frags(self):
@@ -1204,7 +1201,7 @@ class TDStructure:
 
         return td_list
 
-    def _get_points_in_cavity(self, step=.5):
+    def _get_points_in_cavity(self, step=0.5):
         """
         returns a set of points that are inside the solvent cavity formed by
         the structure. points are generated from a 3D grid with step size 'step'
@@ -1215,15 +1212,14 @@ class TDStructure:
         y_ = np.arange(ymin, ymax, step)
         z_ = np.arange(zmin, zmax, step)
 
-        x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
+        x, y, z = np.meshgrid(x_, y_, z_, indexing="ij")
 
         @np.vectorize
         def is_in_cavity(x, y, z):
             for atom in openbabel.OBMolAtomIter(self.molecule_obmol):
                 vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
                 atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
-                dist_to_atom = np.linalg.norm(
-                    np.array([x, y, z]) - atom_coords)
+                dist_to_atom = np.linalg.norm(np.array([x, y, z]) - atom_coords)
                 if dist_to_atom <= vdw:
                     return x, y, z
             return None
@@ -1255,7 +1251,7 @@ class TDStructure:
 
         atom = td.molecule_obmol.GetAtomById(atom_ind)
         vdw_r = openbabel.GetVdwRad(atom.GetAtomicNum())
-        xlim = td.coords[:, col_ind][atom_ind] + (sign*vdw_r)
+        xlim = td.coords[:, col_ind][atom_ind] + (sign * vdw_r)
         return xlim
 
     def get_xyz_lims(self):
@@ -1288,7 +1284,7 @@ class TDStructure:
         y_ = np.arange(ymin, ymax, step)
         z_ = np.arange(zmin, zmax, step)
 
-        x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
+        x, y, z = np.meshgrid(x_, y_, z_, indexing="ij")
 
         @np.vectorize
         def is_in_cavity(x, y, z):
@@ -1296,16 +1292,14 @@ class TDStructure:
             for atom in openbabel.OBMolAtomIter(self.molecule_obmol):
                 vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
                 atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
-                dist_to_atom = np.linalg.norm(
-                    np.array([x, y, z]) - atom_coords)
+                dist_to_atom = np.linalg.norm(np.array([x, y, z]) - atom_coords)
                 if dist_to_atom <= vdw:
                     flag1 = True
 
             for atom in openbabel.OBMolAtomIter(other_td.molecule_obmol):
                 vdw = openbabel.GetVdwRad(atom.GetAtomicNum())
                 atom_coords = np.array([atom.GetX(), atom.GetY(), atom.GetZ()])
-                dist_to_atom = np.linalg.norm(
-                    np.array([x, y, z]) - atom_coords)
+                dist_to_atom = np.linalg.norm(np.array([x, y, z]) - atom_coords)
                 if dist_to_atom <= vdw:
                     if flag1:
                         return x, y, z
@@ -1346,18 +1340,27 @@ class TDStructure:
 
         return step
 
-    def plot_overlap_hulls(self, other_td, step=None, just_overlap=True,
-                           initial_step=1, threshold=1, shrink_factor=0.8):
+    def plot_overlap_hulls(
+        self,
+        other_td,
+        step=None,
+        just_overlap=True,
+        initial_step=1,
+        threshold=1,
+        shrink_factor=0.8,
+    ):
         if step is None:
             step1 = self.get_optimal_volume_step(
                 initial_step=initial_step,
                 threshold=threshold,
-                shrink_factor=shrink_factor)
+                shrink_factor=shrink_factor,
+            )
 
             step2 = other_td.get_optimal_volume_step(
                 initial_step=initial_step,
                 threshold=threshold,
-                shrink_factor=shrink_factor)
+                shrink_factor=shrink_factor,
+            )
 
             step = min([step1, step2])
 
@@ -1373,8 +1376,7 @@ class TDStructure:
         zmax = max([zmax1, zmax2])
 
         if just_overlap:
-            p_in_cav = self._get_points_in_both_cavities(other_td=other_td,
-                                                         step=step)
+            p_in_cav = self._get_points_in_both_cavities(other_td=other_td, step=step)
 
             hull = ConvexHull(p_in_cav)
 
@@ -1386,78 +1388,105 @@ class TDStructure:
             hull2 = ConvexHull(p_in_cav2)
 
         s = 5
-        fig = plt.figure(figsize=(1.6*s, s))
-        ax = fig.add_subplot(111, projection='3d')
+        fig = plt.figure(figsize=(1.6 * s, s))
+        ax = fig.add_subplot(111, projection="3d")
 
         if just_overlap:
 
             for simplex in hull.simplices:
-                plt.plot(p_in_cav[simplex, 0], p_in_cav[simplex,
-                         1], p_in_cav[simplex, 2], 'k--')
+                plt.plot(
+                    p_in_cav[simplex, 0],
+                    p_in_cav[simplex, 1],
+                    p_in_cav[simplex, 2],
+                    "k--",
+                )
         else:
             for simplex in hull1.simplices:
-                plt.plot(p_in_cav1[simplex, 0], p_in_cav1[simplex, 1],
-                         p_in_cav1[simplex, 2], 'k--', color='blue')
+                plt.plot(
+                    p_in_cav1[simplex, 0],
+                    p_in_cav1[simplex, 1],
+                    p_in_cav1[simplex, 2],
+                    "k--",
+                    color="blue",
+                )
 
             for simplex in hull2.simplices:
-                plt.plot(p_in_cav2[simplex, 0], p_in_cav2[simplex, 1],
-                         p_in_cav2[simplex, 2], 'k--', color='red')
+                plt.plot(
+                    p_in_cav2[simplex, 0],
+                    p_in_cav2[simplex, 1],
+                    p_in_cav2[simplex, 2],
+                    "k--",
+                    color="red",
+                )
 
-        ax.set_xlabel('X Label')
-        ax.set_ylabel('Y Label')
-        ax.set_zlabel('Z Label')
+        ax.set_xlabel("X Label")
+        ax.set_ylabel("Y Label")
+        ax.set_zlabel("Z Label")
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(ymin, ymax)
         ax.set_zlim(zmin, zmax)
         if just_overlap:
-            plt.title(f'Volume: {hull.volume}')
+            plt.title(f"Volume: {hull.volume}")
         else:
-            plt.title(f'Volumes: {hull1.volume}, {hull2.volume}')
+            plt.title(f"Volumes: {hull1.volume}, {hull2.volume}")
 
         plt.show()
 
     def compute_overlap_volume(self, other_td, step):
-        p_in_cav = self._get_points_in_both_cavities(
-            other_td=other_td, step=step)
+        p_in_cav = self._get_points_in_both_cavities(other_td=other_td, step=step)
         hull = ConvexHull(p_in_cav)
         return hull.volume
 
-    def plot_convex_hull(self, step=None, plot_grid=False, plot_hull=True,
-                         initial_step=1, threshold=1, shrink_factor=0.8):
+    def plot_convex_hull(
+        self,
+        step=None,
+        plot_grid=False,
+        plot_hull=True,
+        initial_step=1,
+        threshold=1,
+        shrink_factor=0.8,
+    ):
         if step is None:
             step = self.get_optimal_volume_step(
-                initial_step=initial_step, threshold=threshold, shrink_factor=shrink_factor)
+                initial_step=initial_step,
+                threshold=threshold,
+                shrink_factor=shrink_factor,
+            )
 
         xmin, xmax, ymin, ymax, zmin, zmax = self.get_xyz_lims()
         p_in_cav = self._get_points_in_cavity(step=step)
         hull = ConvexHull(p_in_cav)
 
         s = 5
-        fig = plt.figure(figsize=(1.6*s, s))
-        ax = fig.add_subplot(projection='3d')
+        fig = plt.figure(figsize=(1.6 * s, s))
+        ax = fig.add_subplot(projection="3d")
 
         x_ = np.arange(xmin, xmax, step)
         y_ = np.arange(ymin, ymax, step)
         z_ = np.arange(zmin, zmax, step)
 
-        x, y, z = np.meshgrid(x_, y_, z_, indexing='ij')
+        x, y, z = np.meshgrid(x_, y_, z_, indexing="ij")
 
         if plot_grid:
             for x, y, z in p_in_cav:
-                ax.scatter3D(xs=x, ys=y, zs=z, color='gray', alpha=.3)
+                ax.scatter3D(xs=x, ys=y, zs=z, color="gray", alpha=0.3)
         # ax.scatter3D(xs=x,ys=y, zs=z, color='gray', alpha=.3)
         if plot_hull:
             for simplex in hull.simplices:
-                plt.plot(p_in_cav[simplex, 0], p_in_cav[simplex,
-                         1], p_in_cav[simplex, 2], 'k--')
+                plt.plot(
+                    p_in_cav[simplex, 0],
+                    p_in_cav[simplex, 1],
+                    p_in_cav[simplex, 2],
+                    "k--",
+                )
 
-        ax.set_xlabel('X Label')
-        ax.set_ylabel('Y Label')
-        ax.set_zlabel('Z Label')
+        ax.set_xlabel("X Label")
+        ax.set_ylabel("Y Label")
+        ax.set_zlabel("Z Label")
         ax.set_xlim(xmin, xmax)
         ax.set_ylim(ymin, ymax)
         ax.set_zlim(zmin, zmax)
-        plt.title(f'Volume: {round(hull.volume,3)}')
+        plt.title(f"Volume: {round(hull.volume,3)}")
 
         return fig
 
@@ -1474,11 +1503,12 @@ class TDStructure:
 
         return round(struct.sasa)
 
-    def sample_all_conformers(self, dd: Path, fn: str = None, verbose=True,
-                              CREST_ewin=6.0, CREST_temp=298.15):
+    def sample_all_conformers(
+        self, dd: Path, fn: str = None, verbose=True, CREST_ewin=6.0, CREST_temp=298.15
+    ):
 
         if fn is None:
-            fn = 'tdstructure.xyz'
+            fn = "tdstructure.xyz"
 
         confs_fp = dd / fn
         self.to_xyz(confs_fp)
@@ -1487,8 +1517,9 @@ class TDStructure:
 
             fps_confomers = list(dd.glob("crest_conf*.xyz"))
             fps_rotamers = list(dd.glob("crest_rot*.xyz"))
-            conformers_already_sampled = len(
-                fps_confomers) >= 1 and len(fps_rotamers) >= 1
+            conformers_already_sampled = (
+                len(fps_confomers) >= 1 and len(fps_rotamers) >= 1
+            )
 
             if conformers_already_sampled:
                 if verbose:

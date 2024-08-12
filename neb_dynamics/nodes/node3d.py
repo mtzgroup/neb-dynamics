@@ -6,9 +6,12 @@ import numpy as np
 from neb_dynamics.tdstructure import TDStructure
 from qcop.adapters.utils import set_env_variable
 
-from xtb.interface import Calculator
-from xtb.libxtb import VERBOSITY_MUTED
-from xtb.utils import get_method
+try:
+	from xtb.interface import Calculator
+	from xtb.libxtb import VERBOSITY_MUTED
+	from xtb.utils import get_method
+except ImportError as e:
+	print("Cannot use Node3D. XTB not installed.")
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from nodes.Node import Node

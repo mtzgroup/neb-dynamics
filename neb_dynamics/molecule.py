@@ -12,7 +12,6 @@ from IPython.display import SVG
 # from openeye import oechem, oedepict
 from neb_dynamics.isomorphism_tools import SubGraphMatcher
 from neb_dynamics.rdkit_draw import moldrawsvg
-
 from neb_dynamics.d3_tools import draw_d3, molecule_to_d3json
 from neb_dynamics.helper_functions import (
     graph_to_smiles, from_number_to_element, bond_ord_number_to_string, give_me_free_index, naturals)
