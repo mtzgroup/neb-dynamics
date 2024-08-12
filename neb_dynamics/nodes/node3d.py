@@ -7,14 +7,14 @@ from neb_dynamics.tdstructure import TDStructure
 from qcop.adapters.utils import set_env_variable
 
 try:
-	from xtb.interface import Calculator
-	from xtb.libxtb import VERBOSITY_MUTED
-	from xtb.utils import get_method
+    from xtb.interface import Calculator
+    from xtb.libxtb import VERBOSITY_MUTED
+    from xtb.utils import get_method
 except ImportError as e:
-	print("Cannot use Node3D. XTB not installed.")
+    print("Cannot use Node3D. XTB not installed.")
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from nodes.Node import Node
+from neb_dynamics.nodes.Node import Node
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.elements import symbol_to_atomic_number, atomic_number_to_symbol
@@ -22,7 +22,6 @@ from neb_dynamics.elements import symbol_to_atomic_number, atomic_number_to_symb
 import multiprocessing as mp
 import concurrent.futures
 import os
-
 
 
 @dataclass
@@ -46,7 +45,7 @@ class Node3D(Node):
         return self.is_identical(other)
 
     def __repr__(self):
-        return 'node3d'
+        return "node3d"
 
     @property
     def coords(self):
@@ -104,8 +103,10 @@ class Node3D(Node):
 
     def _is_connectivity_identical(self, other) -> bool:
         # print("different graphs")
-        connectivity_identical = self.tdstructure.molecule_rp.remove_Hs().is_bond_isomorphic_to(
-            other.tdstructure.molecule_rp.remove_Hs()
+        connectivity_identical = (
+            self.tdstructure.molecule_rp.remove_Hs().is_bond_isomorphic_to(
+                other.tdstructure.molecule_rp.remove_Hs()
+            )
         )
         return connectivity_identical
 
@@ -113,15 +114,13 @@ class Node3D(Node):
         if self._is_connectivity_identical(other):
             aligned_self = self.tdstructure.align_to_td(other.tdstructure)
 
-            global_dist = RMSD(aligned_self.coords,
-                               other.tdstructure.coords)[0]
+            global_dist = RMSD(aligned_self.coords, other.tdstructure.coords)[0]
             per_frag_dists = []
             self_frags = self.tdstructure.split_td_into_frags()
             other_frags = other.tdstructure.split_td_into_frags()
             for frag_self, frag_other in zip(self_frags, other_frags):
                 aligned_frag_self = frag_self.align_to_td(frag_other)
-                frag_dist = RMSD(aligned_frag_self.coords,
-                                 frag_other.coords)[0]
+                frag_dist = RMSD(aligned_frag_self.coords, frag_other.coords)[0]
                 per_frag_dists.append(frag_dist)
             print(f"{per_frag_dists=}")
             print(f"{global_dist=}")
@@ -129,8 +128,7 @@ class Node3D(Node):
             en_delta = np.abs((self.energy - other.energy) * 627.5)
 
             global_rmsd_identical = global_dist <= self.GLOBAL_RMSD_CUTOFF
-            fragment_rmsd_identical = max(
-                per_frag_dists) <= self.FRAGMENT_RMSD_CUTOFF
+            fragment_rmsd_identical = max(per_frag_dists) <= self.FRAGMENT_RMSD_CUTOFF
             rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
             # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
@@ -314,7 +312,9 @@ class Node3D(Node):
         # return output.results.energy, output.results.gradient*BOHR_TO_ANGSTROMS
 
     @classmethod
-    def calculate_energy_and_gradients_parallel(cls, chain) -> list[tuple[float, np.ndarray]]:
+    def calculate_energy_and_gradients_parallel(
+        cls, chain
+    ) -> list[tuple[float, np.ndarray]]:
         """"""
         iterator = (
             (

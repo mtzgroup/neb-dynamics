@@ -9,7 +9,7 @@ from xtb.libxtb import VERBOSITY_MUTED
 from xtb.utils import get_method
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from nodes.Node import Node
+from neb_dynamics.nodes.Node import Node
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.trajectory import Trajectory
 import multiprocessing as mp
@@ -36,7 +36,7 @@ class Node3D_Water(Node):
         return self.is_identical(other)
 
     def __repr__(self):
-        return 'node3d_water'
+        return "node3d_water"
 
     @property
     def coords(self):
@@ -93,8 +93,10 @@ class Node3D_Water(Node):
 
     def _is_connectivity_identical(self, other) -> bool:
         # print("different graphs")
-        connectivity_identical = self.tdstructure.molecule_rp.remove_Hs().is_bond_isomorphic_to(
-            other.tdstructure.molecule_rp.remove_Hs()
+        connectivity_identical = (
+            self.tdstructure.molecule_rp.remove_Hs().is_bond_isomorphic_to(
+                other.tdstructure.molecule_rp.remove_Hs()
+            )
         )
         return connectivity_identical
 

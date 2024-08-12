@@ -13,7 +13,7 @@ from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
 from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
 
-from nodes.node3d import Node3D
+from neb_dynamics.nodes.node3d import Node3D
 from neb_dynamics.nodes.Node3D_Water import Node3D_Water
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.Inputs import ChainInputs, NEBInputs, GIInputs
@@ -34,8 +34,12 @@ def read_single_arguments():
     parser = ArgumentParser(description=description_string)
 
     parser.add_argument(
-        "-c", "--charge", dest="c", type=int, default=0,
-        help="total charge of syrgsstem"
+        "-c",
+        "--charge",
+        dest="c",
+        type=int,
+        default=0,
+        help="total charge of syrgsstem",
     )
 
     parser.add_argument(
@@ -82,7 +86,6 @@ def read_single_arguments():
             node3d_tc, node3d_tc_local, node3d_tcpb",
     )
 
-
     parser.add_argument(
         "-tol",
         "--tolerance",
@@ -103,7 +106,6 @@ def read_single_arguments():
         default=1,
     )
 
-
     parser.add_argument(
         "-name",
         "--file_name",
@@ -121,7 +123,7 @@ def read_single_arguments():
         required=False,
         type=int,
         help="whether to use cNEB",
-        default=0
+        default=0,
     )
 
     parser.add_argument(
@@ -131,7 +133,7 @@ def read_single_arguments():
         required=False,
         type=int,
         help="whether to use maxima recyling",
-        default=0
+        default=0,
     )
 
     parser.add_argument(
@@ -141,7 +143,7 @@ def read_single_arguments():
         required=False,
         type=float,
         help="force threshold for early stopping",
-        default=0.03
+        default=0.03,
     )
 
     parser.add_argument(
@@ -151,7 +153,7 @@ def read_single_arguments():
         required=False,
         type=float,
         help="chain RMS threshold for early stopping",
-        default=1
+        default=1,
     )
 
     parser.add_argument(
@@ -161,7 +163,7 @@ def read_single_arguments():
         required=False,
         type=float,
         help="number of still steps until an early stop check",
-        default=500
+        default=500,
     )
 
     parser.add_argument(
@@ -171,7 +173,7 @@ def read_single_arguments():
         required=True,
         type=int,
         help="whether to preconverge chains using xtb",
-        default=1
+        default=1,
     )
 
     parser.add_argument(
@@ -181,7 +183,7 @@ def read_single_arguments():
         required=False,
         type=str,
         help="what type of NEB to use. options: [asneb, neb]",
-        default='asneb'
+        default="asneb",
     )
 
     parser.add_argument(
@@ -191,7 +193,7 @@ def read_single_arguments():
         required=False,
         type=float,
         help="parameter for the delta k",
-        default=0.09
+        default=0.09,
     )
 
     return parser.parse_args()
@@ -200,13 +202,15 @@ def read_single_arguments():
 def main():
     args = read_single_arguments()
 
-    nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC,
-             'node3d_tc_local': Node3D_TC_Local,
-             'node3d_tcpb': Node3D_TC_TCPB,
-             'node3d_water': Node3D_Water}
+    nodes = {
+        "node3d": Node3D,
+        "node3d_tc": Node3D_TC,
+        "node3d_tc_local": Node3D_TC_Local,
+        "node3d_tcpb": Node3D_TC_TCPB,
+        "node3d_water": Node3D_Water,
+    }
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
-
 
     if args.nc != "node3d":
         method = "uwb97xd3"  # terachem
@@ -215,33 +219,31 @@ def main():
         # method = "wb97x-d3" # psi4
         basis = "def2-svp"
         # basis = '3-21g'
-        kwds = {'gpus': 1}
+        kwds = {"gpus": 1}
         # kwds = {'maxit':'500'}
         # kwds = {'dftd': 'd3-bj'}
         # method = 'ub3lyp'
         # basis = '3-21gs'
-#        kwds = {
-#         'convthre': 0.0001,
-#         'maxit':    700,
-#         'diismaxvecs':    20,
-#         'precision':   'mixed',
-#         'dftgrid':     1,
-#         'threall':     1.0e-14,
-        # levelshift:    'yes'
-        # levelshiftvala: 2.7
-        # levelshiftvalb: 1.0
-#         'fon':   'yes',
-#         'fon_anneal': 'yes',
-#         'fon_target': 0.0,
-#         'fon_temperature':  0.1,
-#         'fon_anneal_iter':  500,
-#         'fon_converger': 'yes',
-#         'fon_coldstart': 'yes',
-#         'fon_tests': 1,
-#         'purify': 'no'
-#        }
-
-
+    #        kwds = {
+    #         'convthre': 0.0001,
+    #         'maxit':    700,
+    #         'diismaxvecs':    20,
+    #         'precision':   'mixed',
+    #         'dftgrid':     1,
+    #         'threall':     1.0e-14,
+    # levelshift:    'yes'
+    # levelshiftvala: 2.7
+    # levelshiftvalb: 1.0
+    #         'fon':   'yes',
+    #         'fon_anneal': 'yes',
+    #         'fon_target': 0.0,
+    #         'fon_temperature':  0.1,
+    #         'fon_anneal_iter':  500,
+    #         'fon_converger': 'yes',
+    #         'fon_coldstart': 'yes',
+    #         'fon_tests': 1,
+    #         'purify': 'no'
+    #        }
 
     if args.nc == "node3d_tc_local":
         do_parallel = False
@@ -258,7 +260,7 @@ def main():
         use_maxima_recyling=bool(args.mr),
         do_parallel=do_parallel,
         node_freezing=True,
-        skip_identical_graphs=bool(args.sig)
+        skip_identical_graphs=bool(args.sig),
     )
 
     optimizer = VelocityProjectedOptimizer(timestep=0.5, activation_tol=0.1)
@@ -267,21 +269,17 @@ def main():
         tol=tol * BOHR_TO_ANGSTROMS,
         barrier_thre=0.1,  # kcalmol,
         climb=bool(args.climb),
-
         rms_grad_thre=tol * BOHR_TO_ANGSTROMS,
-        max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS*2.5,
-        ts_grad_thre=tol * BOHR_TO_ANGSTROMS*2.5,
-        ts_spring_thre=tol * BOHR_TO_ANGSTROMS*1.5,
-
+        max_rms_grad_thre=tol * BOHR_TO_ANGSTROMS * 2.5,
+        ts_grad_thre=tol * BOHR_TO_ANGSTROMS * 2.5,
+        ts_spring_thre=tol * BOHR_TO_ANGSTROMS * 1.5,
         v=1,
         max_steps=500,
-
         early_stop_chain_rms_thre=args.es_rms,
         early_stop_force_thre=args.es_ft * BOHR_TO_ANGSTROMS,
         early_stop_still_steps_thre=args.es_ss,
-
         _use_dlf_conv=False,
-        preopt_with_xtb=bool(int(args.preopt))
+        preopt_with_xtb=bool(int(args.preopt)),
     )
     print(f"{args.preopt=}")
     print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
@@ -290,7 +288,7 @@ def main():
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
     h = TreeNode.read_from_disk(args.fp)
 
-    if args.method == 'asneb':
+    if args.method == "asneb":
         m = MSMEP(
             neb_inputs=nbi,
             chain_inputs=cni,
@@ -303,12 +301,12 @@ def main():
         out_chain = refiner.join_output_leaves(refined_leaves)
 
         tot_grad_calls = sum([obj.data.grad_calls_made for obj in refined_leaves])
-        geom_grad_calls = sum([
-            obj.data.geom_grad_calls_made for obj in refined_leaves]
-        )
+        geom_grad_calls = sum([obj.data.geom_grad_calls_made for obj in refined_leaves])
         print(f">>> Made {tot_grad_calls} gradient calls total.")
-        print(f"<<< Made {geom_grad_calls} gradient for geometry\
-               optimizations.")
+        print(
+            f"<<< Made {geom_grad_calls} gradient for geometry\
+               optimizations."
+        )
         fp = Path(args.fp)
         data_dir = fp.parent
 
@@ -323,30 +321,29 @@ def main():
         out_chain.write_to_disk(filename)
         refiner.write_leaves_to_disk(foldername, refined_leaves)
 
-
-    elif args.method == 'neb':
-        #n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
-        #fp = Path(args.st)
-        #data_dir = fp.parent
-        #if args.name:
+    elif args.method == "neb":
+        # n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+        # fp = Path(args.st)
+        # data_dir = fp.parent
+        # if args.name:
         #    filename = data_dir / (args.name + "_neb.xyz")
 
-       # else:
+        # else:
         #    filename = data_dir / f"{fp.stem}_neb.xyz"
 
-        #try:
-         #   n.optimize_chain()
+        # try:
+        #   n.optimize_chain()
 
         #    n.write_to_disk(data_dir/f"{filename}", write_history=True)
-        #except NoneConvergedException as e:
-         #   e.obj.write_to_disk(data_dir/f"{filename}", write_history=True)
+        # except NoneConvergedException as e:
+        #   e.obj.write_to_disk(data_dir/f"{filename}", write_history=True)
 
-        #tot_grad_calls = n.grad_calls_made
-        #print(f">>> Made {tot_grad_calls} gradient calls total.")
+        # tot_grad_calls = n.grad_calls_made
+        # print(f">>> Made {tot_grad_calls} gradient calls total.")
         print("Unsupported for now")
     else:
         raise ValueError("Incorrect input method. Use 'asneb' or 'neb'")
 
 
 if __name__ == "__main__":
-   main()
+    main()

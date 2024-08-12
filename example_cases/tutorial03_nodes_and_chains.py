@@ -6,7 +6,7 @@
 # We have two main Node3D objects: `Node3D` and `Node3D_TC`. The first one uses **GFN2-XTB** to compute energies and gradients. The latter uses **TeraChem** in [ChemCloud](https://mtzgroup.github.io/chemcloud-client/tutorial/compute/)
 #
 
-from nodes.node3d import Node3D
+from neb_dynamics.nodes.node3d import Node3D
 from neb_dynamics.tdstructure import TDStructure
 
 td = TDStructure.from_smiles("COCO")
@@ -31,7 +31,7 @@ node_opt = node.do_geometry_optimization()
 
 node_opt_traj = node.do_geom_opt_trajectory()
 
-node_opt_traj.draw();
+node_opt_traj.draw()
 
 # # Chain
 # A `Chain` is a wrapper for a list of Node objects. It does the heavy lifting of computing the projected gradients and the spring forces NEB.
@@ -54,7 +54,7 @@ from neb_dynamics.trajectory import Trajectory
 start = TDStructure.from_smiles("C=C")
 end = start.copy()
 end_coords = end.coords
-end_coords_swapped = end_coords[[0,1,3,2,4,5],:] # this is a pi-bond rotation
+end_coords_swapped = end_coords[[0, 1, 3, 2, 4, 5], :]  # this is a pi-bond rotation
 end = end.update_coords(end_coords_swapped)
 
 tr = Trajectory([start, end]).run_geodesic(nimages=10)
@@ -63,7 +63,7 @@ tr = Trajectory([start, end]).run_geodesic(nimages=10)
 from neb_dynamics.Chain import Chain
 
 nodes = [Node3D(td) for td in tr]
-parameters = ChainInputs() # using defaults
+parameters = ChainInputs()  # using defaults
 chain_1 = Chain(nodes=nodes, parameters=parameters)
 # -
 
@@ -74,6 +74,4 @@ chain_2 = Chain.from_traj(traj=tr, parameters=parameters)
 chain_2.plot_chain()
 
 # you can also convert any chain object back to a trajectory for easy viewing!
-chain_1.to_trajectory().draw();
-
-
+chain_1.to_trajectory().draw()

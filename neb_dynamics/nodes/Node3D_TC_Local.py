@@ -12,11 +12,10 @@ import shutil
 from qcparse import parse
 from pathlib import Path
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
-from nodes.Node import Node
+from neb_dynamics.nodes.Node import Node
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.trajectory import Trajectory
 import qcop
-
 
 
 @dataclass
@@ -35,7 +34,7 @@ class Node3D_TC_Local(Node):
     BARRIER_THRE: float = 5  # kcal/mol
 
     def __repr__(self):
-        return 'node3d_tc_local'
+        return "node3d_tc_local"
 
     @property
     def coords(self):
@@ -115,7 +114,6 @@ class Node3D_TC_Local(Node):
             FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
             KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
         )
-
 
     def opt_func(self, v=True):
         return self.tdstructure.tc_local_geom_optimization()
@@ -216,14 +214,15 @@ class Node3D_TC_Local(Node):
     def do_geometry_optimization(self) -> Node3D_TC_Local:
         td_opt = self.tdstructure.tc_local_geom_optimization()
         return Node3D_TC_Local(
-                        td_opt,
-                        tdstructure=td_opt,
-                        converged=self.converged,
-                        do_climb=self.do_climb,
-                        BARRIER_THRE=self.BARRIER_THRE,
-                        GLOBAL_RMSD_CUTOFF=self.GLOBAL_RMSD_CUTOFF,
-                        FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
-                        KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF)
+            td_opt,
+            tdstructure=td_opt,
+            converged=self.converged,
+            do_climb=self.do_climb,
+            BARRIER_THRE=self.BARRIER_THRE,
+            GLOBAL_RMSD_CUTOFF=self.GLOBAL_RMSD_CUTOFF,
+            FRAGMENT_RMSD_CUTOFF=self.FRAGMENT_RMSD_CUTOFF,
+            KCAL_MOL_CUTOFF=self.KCAL_MOL_CUTOFF,
+        )
 
     def _is_connectivity_identical(self, other) -> bool:
         connectivity_identical = self.tdstructure.molecule_rp.is_bond_isomorphic_to(
