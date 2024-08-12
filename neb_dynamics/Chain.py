@@ -14,7 +14,7 @@ from IPython.display import HTML
 from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.tdstructure import TDStructure
 
-from nodes.Node import Node
+from neb_dynamics.nodes.Node import Node
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.helper_functions import (
     RMSD,
@@ -46,8 +46,7 @@ class Chain:
                 shape=(len(self.nodes), len(self.nodes[0].coords), 3)
             )
         else:
-            self.velocity = np.zeros(
-                shape=(len(self.nodes), len(self.nodes[0].coords)))
+            self.velocity = np.zeros(shape=(len(self.nodes), len(self.nodes[0].coords)))
 
     @property
     def n_atoms(self):
@@ -114,8 +113,7 @@ class Chain:
         return projector / normalization
 
     def _gperp_correlation(self, other_chain: Chain):
-        dp = np.dot(self.get_g_perps().flatten(),
-                    other_chain.get_g_perps().flatten())
+        dp = np.dot(self.get_g_perps().flatten(), other_chain.get_g_perps().flatten())
         normalization = np.linalg.norm(self.get_g_perps()) * np.linalg.norm(
             other_chain.get_g_perps().flatten()
         )
@@ -204,8 +202,7 @@ class Chain:
     ):
         e_i = max(node1.energy, node0.energy)
         if e_i > e_ref:
-            new_k = k_max - self.parameters.delta_k * \
-                ((e_max - e_i) / (e_max - e_ref))
+            new_k = k_max - self.parameters.delta_k * ((e_max - e_i) / (e_max - e_ref))
         elif e_i <= e_ref:
             new_k = k_max - self.parameters.delta_k
         return new_k
@@ -245,8 +242,7 @@ class Chain:
 
     def copy(self):
         list_of_nodes = [node.copy() for node in self.nodes]
-        chain_copy = Chain(nodes=list_of_nodes,
-                           parameters=self.parameters.copy())
+        chain_copy = Chain(nodes=list_of_nodes, parameters=self.parameters.copy())
         chain_copy.bfgs_hess = self.bfgs_hess
         chain_copy.velocity = self.velocity
 
@@ -254,7 +250,7 @@ class Chain:
 
     def iter_triplets(self) -> list[list[Node]]:
         for i in range(1, len(self.nodes) - 1):
-            yield self.nodes[i - 1: i + 2]
+            yield self.nodes[i - 1 : i + 2]
 
     @classmethod
     def from_traj(cls, traj: Trajectory, parameters: ChainInputs):
@@ -351,8 +347,7 @@ class Chain:
             )
 
         elif current_node.do_climb:
-            pe_along_path_const = current_node.dot_function(
-                pe_grad, unit_tan_path)
+            pe_along_path_const = current_node.dot_function(pe_grad, unit_tan_path)
             pe_along_path = pe_along_path_const * unit_tan_path
 
             climbing_grad = 2 * pe_along_path
@@ -476,12 +471,12 @@ class Chain:
         if ind_ts == 0:
             # print("first")
             triplet = gsprings[0:2]
-        elif ind_ts == len(self)-1:
+        elif ind_ts == len(self) - 1:
             # print("second")
-            triplet = gsprings[ind_ts-1:]
+            triplet = gsprings[ind_ts - 1 :]
         else:
             # print("third")
-            triplet = gsprings[ind_ts-1:ind_ts+2]
+            triplet = gsprings[ind_ts - 1 : ind_ts + 2]
         infnorms = [np.amax(abs(gspr)) for gspr in triplet]
         # print(f"{triplet=} {infnorms=}")
         return max(infnorms)
@@ -564,8 +559,7 @@ class Chain:
             if hasattr(self.parameters.k, "__iter__")
             else self.parameters.k
         )
-        e_ref = max(self.nodes[0].energy,
-                    self.nodes[len(self.nodes) - 1].energy)
+        e_ref = max(self.nodes[0].energy, self.nodes[len(self.nodes) - 1].energy)
         e_max = max(self.energies)
 
         k01 = self._k_between_nodes(
@@ -618,8 +612,7 @@ class Chain:
         grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
         grad_shape_path = fp.parent / Path(str(fp.stem) + "_grad_shapes.txt")
         np.savetxt(
-            grad_path, np.array(
-                [node.gradient for node in self.nodes]).flatten()
+            grad_path, np.array([node.gradient for node in self.nodes]).flatten()
         )
         np.savetxt(grad_shape_path, self.gradients.shape)
 
@@ -658,8 +651,7 @@ class Chain:
         return eA
 
     def animate_chain_trajectory(
-        chain_traj, min_y=-100, max_y=100,
-        max_x=1.1, min_x=-0.1, norm_path_len=True
+        chain_traj, min_y=-100, max_y=100, max_x=1.1, min_x=-0.1, norm_path_len=True
     ):
 
         figsize = 5
@@ -681,6 +673,5 @@ class Chain:
             line.set_color("skyblue")
             return
 
-        ani = matplotlib.animation.FuncAnimation(
-            fig, animate, frames=chain_traj)
+        ani = matplotlib.animation.FuncAnimation(fig, animate, frames=chain_traj)
         return HTML(ani.to_jshtml())

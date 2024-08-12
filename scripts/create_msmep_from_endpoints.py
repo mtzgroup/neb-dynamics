@@ -232,7 +232,7 @@ def main():
     args = read_single_arguments()
 
     try:
-        from nodes.node3d import Node3D
+        from neb_dynamics.nodes.node3d import Node3D
         from neb_dynamics.nodes.node3d_water import Node3D_Water
 
         nodes = {
