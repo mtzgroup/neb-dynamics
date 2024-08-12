@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import networkx as nx
-from cairosvg import svg2png
 from IPython.core.display import HTML
 from IPython.display import SVG
 

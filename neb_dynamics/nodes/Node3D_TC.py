@@ -33,7 +33,7 @@ class Node3D_TC(Node):
     BARRIER_THRE: float = 5  # kcal/mol
 
     def __repr__(self):
-        return 'node3d_tc'
+        return "node3d_tc"
 
     @property
     def coords(self):
@@ -179,7 +179,7 @@ class Node3D_TC(Node):
                 traj[0]
             )  # needed so we propagate the setting.... bad.....
             new_traj_ene_grads = new_traj.energies_and_gradients_tc()
-            for (ene, grad, ind) in zip(
+            for ene, grad, ind in zip(
                 new_traj_ene_grads[0], new_traj_ene_grads[1], inds_not_converged
             ):
                 ens_grads_lists[ind] = (ene, grad * BOHR_TO_ANGSTROMS)
@@ -197,7 +197,7 @@ class Node3D_TC(Node):
         try:
             # td_opt_xtb = self.tdstructure.xtb_geom_optimization()
             # td_opt = td_opt_xtb.tc_geom_optimization()
-            td_opt = self.tdstructure.tc_local_geom_optimization()
+            td_opt = self.tdstructure.tc_geom_optimization()
             # td_opt = td_opt_xtb.tc_local_geom_optimization()
 
         except Exception:
@@ -248,7 +248,7 @@ class Node3D_TC(Node):
             energies_identical = en_delta < self.KCAL_MOL_CUTOFF
             # print(f"\nbarrier_to_conformer_rearr: {barrier} kcal/mol\n{en_delta=}\n")
 
-            if rmsd_identical and energies_identical:  #and barrier_accessible:
+            if rmsd_identical and energies_identical:  # and barrier_accessible:
                 return True
             else:
                 return False

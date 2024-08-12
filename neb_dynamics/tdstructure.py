@@ -17,7 +17,7 @@ from ase import Atoms
 # from ase.optimize import LBFGS, LBFGSLineSearch
 from ase.optimize.sciopt import SciPyFminCG
 from ase.io.trajectory import Trajectory as ASETraj
-from sella import Sella
+# from sella import Sella
 from chemcloud import CCClient
 from IPython.core.display import HTML
 from openbabel import openbabel, pybel
@@ -26,10 +26,13 @@ from qcio import Molecule as TCMolecule
 from qcio import ProgramInput
 from qcio import ResultsType
 from qcparse import parse
-from xtb.ase.calculator import XTB
-from xtb.interface import Calculator, XTBException
-from xtb.libxtb import VERBOSITY_MUTED
-from xtb.utils import get_method
+try:
+	from xtb.ase.calculator import XTB
+	from xtb.interface import Calculator, XTBException
+	from xtb.libxtb import VERBOSITY_MUTED
+	from xtb.utils import get_method
+except ImportError as e:
+	print("warning! XTB not installed. Some features unavailable.")
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.elements import ElementData, symbol_to_atomic_number
