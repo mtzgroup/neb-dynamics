@@ -89,7 +89,7 @@ def read_single_arguments():
         "-tol",
         "--tolerance",
         dest="tol",
-        required=True,
+        required=False,
         type=float,
         help="convergence threshold in H/Bohr^2",
         default=0.002,
@@ -99,20 +99,20 @@ def read_single_arguments():
         "-sig",
         "--skip_identical_graphs",
         dest="sig",
-        required=True,
+        required=False,
         type=int,
         help="whether to skip optimizations for identical graph endpoints",
-        default=1,
+        default=0,
     )
 
     parser.add_argument(
         "-min_ends",
         "--minimize_endpoints",
         dest="min_ends",
-        required=True,
+        required=False,
         type=int,
         help="whether to minimize the endpoints before starting",
-        default=False,
+        default=0,
     )
 
     parser.add_argument(
@@ -179,10 +179,10 @@ def read_single_arguments():
         "-preopt",
         "--preopt_with_xtb",
         dest="preopt",
-        required=True,
+        required=False,
         type=int,
         help="whether to preconverge chains using xtb",
-        default=1,
+        default=0,
     )
 
     parser.add_argument(
@@ -213,6 +213,16 @@ def read_single_arguments():
         type=str,
         help="file path to terachem input file.",
         default=None,
+    )
+
+    parser.add_argument(
+        "-maxsteps",
+        "--maxsteps",
+        dest="maxsteps",
+        required=False,
+        type=str,
+        help="Maximum number of optimization steps for a single NEB run.",
+        default=500,
     )
 
     return parser.parse_args()
@@ -304,7 +314,7 @@ def main():
         ts_grad_thre=tol * BOHR_TO_ANGSTROMS * 2.5,
         ts_spring_thre=tol * BOHR_TO_ANGSTROMS * 1.5,
         v=1,
-        max_steps=500,
+        max_steps=int(args.maxsteps),
         early_stop_chain_rms_thre=args.es_rms,
         early_stop_force_thre=args.es_ft * BOHR_TO_ANGSTROMS,
         early_stop_still_steps_thre=args.es_ss,
@@ -332,7 +342,8 @@ def main():
             optimizer=optimizer,
         )
 
-        history, out_chain = m.find_mep_multistep(chain)
+        history = m.find_mep_multistep(chain)
+        out_chain = history.output_chain
 
         leaves_nebs = [obj for obj in history.get_optimization_history() if obj]
         tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])

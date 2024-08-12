@@ -1,7 +1,9 @@
 """
 this module contains helper general functions
 """
+
 import math
+
 # from openeye import oechem
 import sys
 import warnings
@@ -20,7 +22,8 @@ from neb_dynamics.errors import ElectronicStructureError
 warnings.filterwarnings("ignore")
 with warnings.catch_warnings():
     warnings.filterwarnings(
-        'ignore', r'RuntimeWarning: invalid value encountered in divide')
+        "ignore", r"RuntimeWarning: invalid value encountered in divide"
+    )
 
 
 def pairwise(iterable):
@@ -382,8 +385,7 @@ def run_tc_local_optimization(td, tmp, return_optim_traj):
     from neb_dynamics.trajectory import Trajectory
 
     optim_fp = Path(tmp.name[:-4]) / "optim.xyz"
-    tr = Trajectory.from_xyz(
-        optim_fp, tot_charge=td.charge, tot_spinmult=td.spinmult)
+    tr = Trajectory.from_xyz(optim_fp, tot_charge=td.charge, tot_spinmult=td.spinmult)
     tr.update_tc_parameters(td)
 
     if return_optim_traj:
@@ -404,13 +406,14 @@ def steepest_descent(node, ss=1, max_steps=10):
     try:
         for i in range(max_steps):
             grad = last_node.gradient
-            new_coords = last_node.coords - 1*ss*grad
+            new_coords = last_node.coords - 1 * ss * grad
             node_new = last_node.update_coords(new_coords)
             tds.append(node_new)
             last_node = node_new.copy()
     except Exception:
         raise ElectronicStructureError(
-            trajectory=[], msg='Error while minimizing in early stop check.')
+            trajectory=[], msg="Error while minimizing in early stop check."
+        )
     return tds
 
 
@@ -440,21 +443,22 @@ def _load_info_from_tcin(file_path):
 
     inp_kwds = {}
     tcin = open(file_path).read().splitlines()
-    assert len(
-        tcin) > 2, "File path given needs to have at least method and basis specified."
+    assert (
+        len(tcin) >= 2
+    ), "File path given needs to have at least method and basis specified."
     for line in tcin:
         key, val = line.split()
-        if key == 'run':
+        if key == "run":
             continue
-        elif key == 'method':
+        elif key == "method":
             method = val
-        elif key == 'basis':
+        elif key == "basis":
             basis = val
-        elif key == 'coordinates':
+        elif key == "coordinates":
             continue
-        elif key == 'charge':
+        elif key == "charge":
             charge = int(val)
-        elif key == 'spinmult':
+        elif key == "spinmult":
             spinmult = int(val)
 
         else:
@@ -469,7 +473,7 @@ def _calculate_chain_distances(chain_traj):
         if i == 0:
             continue
 
-        prev_chain = chain_traj[i-1]
+        prev_chain = chain_traj[i - 1]
         dist = prev_chain._distance_to_chain(chain)
         distances.append(dist)
     return np.array(distances)

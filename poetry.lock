@@ -545,21 +545,21 @@ files = [
 
 [[package]]
 name = "chemcloud"
-version = "0.10.1"
+version = "0.12.0"
 description = "Fast, secure, scalable quantum chemistry. A Python client for the the ChemCloud server."
 optional = false
-python-versions = "<4.0,>=3.8"
+python-versions = "<4.0,>=3.9"
 files = [
-    {file = "chemcloud-0.10.1-py3-none-any.whl", hash = "sha256:50877cdc4a5f96ee2caa9bfdf80704708fd40d07bf05c55dce072cb117257e0d"},
-    {file = "chemcloud-0.10.1.tar.gz", hash = "sha256:f0ae0d807cb89d957564329650696a25023eb76c9887f981d9ed1aae5354e83e"},
+    {file = "chemcloud-0.12.0-py3-none-any.whl", hash = "sha256:ec6534f180f648daa5bd336de300fd2ee586ef7b6a40725229da4ff6ef527690"},
+    {file = "chemcloud-0.12.0.tar.gz", hash = "sha256:48e1efade4e5f5abe702f257170b0834344dd91ede103711b26382c3399425ab"},
 ]
 
 [package.dependencies]
-httpx = ">=0.23.1,<0.24.0"
+httpx = ">=0.27,<0.28"
 pydantic = ">=2.0.0,<2.4.0 || >2.4.0"
 pydantic-settings = ">=2.0.3,<3.0.0"
-qcio = ">=0.10.1,<0.11.0"
-tomli = {version = ">=1.1.0", markers = "python_version < \"3.11\""}
+qcio = ">=0.11.0,<0.12.0"
+tomli = {version = ">=2.0,<3.0", markers = "python_version < \"3.11\""}
 tomli-w = ">=1.0.0,<2.0.0"
 
 [[package]]
@@ -1013,45 +1013,46 @@ files = [
 
 [[package]]
 name = "httpcore"
-version = "0.16.3"
+version = "1.0.5"
 description = "A minimal low-level HTTP client."
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "httpcore-0.16.3-py3-none-any.whl", hash = "sha256:da1fb708784a938aa084bde4feb8317056c55037247c787bd7e19eb2c2949dc0"},
-    {file = "httpcore-0.16.3.tar.gz", hash = "sha256:c5d6f04e2fc530f39e0c077e6a30caa53f1451096120f1f38b954afd0b17c0cb"},
+    {file = "httpcore-1.0.5-py3-none-any.whl", hash = "sha256:421f18bac248b25d310f3cacd198d55b8e6125c107797b609ff9b7a6ba7991b5"},
+    {file = "httpcore-1.0.5.tar.gz", hash = "sha256:34a38e2f9291467ee3b44e89dd52615370e152954ba21721378a87b2960f7a61"},
 ]
 
 [package.dependencies]
-anyio = ">=3.0,<5.0"
 certifi = "*"
 h11 = ">=0.13,<0.15"
-sniffio = "==1.*"
 
 [package.extras]
+asyncio = ["anyio (>=4.0,<5.0)"]
 http2 = ["h2 (>=3,<5)"]
 socks = ["socksio (==1.*)"]
+trio = ["trio (>=0.22.0,<0.26.0)"]
 
 [[package]]
 name = "httpx"
-version = "0.23.3"
+version = "0.27.0"
 description = "The next generation HTTP client."
 optional = false
-python-versions = ">=3.7"
+python-versions = ">=3.8"
 files = [
-    {file = "httpx-0.23.3-py3-none-any.whl", hash = "sha256:a211fcce9b1254ea24f0cd6af9869b3d29aba40154e947d2a07bb499b3e310d6"},
-    {file = "httpx-0.23.3.tar.gz", hash = "sha256:9818458eb565bb54898ccb9b8b251a28785dd4a55afbc23d0eb410754fe7d0f9"},
+    {file = "httpx-0.27.0-py3-none-any.whl", hash = "sha256:71d5465162c13681bff01ad59b2cc68dd838ea1f10e51574bac27103f00c91a5"},
+    {file = "httpx-0.27.0.tar.gz", hash = "sha256:a0cb88a46f32dc874e04ee956e4c2764aba2aa228f650b06788ba6bda2962ab5"},
 ]
 
 [package.dependencies]
+anyio = "*"
 certifi = "*"
-httpcore = ">=0.15.0,<0.17.0"
-rfc3986 = {version = ">=1.3,<2", extras = ["idna2008"]}
+httpcore = "==1.*"
+idna = "*"
 sniffio = "*"
 
 [package.extras]
 brotli = ["brotli", "brotlicffi"]
-cli = ["click (==8.*)", "pygments (==2.*)", "rich (>=10,<13)"]
+cli = ["click (==8.*)", "pygments (==2.*)", "rich (>=10,<14)"]
 http2 = ["h2 (>=3,<5)"]
 socks = ["socksio (==1.*)"]
 
@@ -3688,13 +3689,13 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "qcio"
-version = "0.10.5"
+version = "0.11.7"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcio-0.10.5-py3-none-any.whl", hash = "sha256:106ec6ab5cb3e7fe4c09d6f7755def7f8183e60def93bb14dcd7744e7d890b46"},
-    {file = "qcio-0.10.5.tar.gz", hash = "sha256:09895cc981746a6336e4790102d723bf94ace9f44389319e9d459c569ba9bf73"},
+    {file = "qcio-0.11.7-py3-none-any.whl", hash = "sha256:f8949b636a10a188d5d76b574f6f700cd4e13ed133352f93fd7bc04137b28867"},
+    {file = "qcio-0.11.7.tar.gz", hash = "sha256:65cd93d26986a5effc470445a1f5b518bd7f44c194a928ab1a9e34cc3a647422"},
 ]
 
 [package.dependencies]
@@ -3705,21 +3706,24 @@ toml = ">=0.10.2,<0.11.0"
 typing-extensions = ">=4.7.1,<5.0.0"
 
 [package.extras]
+all = ["ipython (>=8.0.0)", "matplotlib (>=3.0.0)", "openbabel-wheel (>=3.1.1.19,<4.0.0.0)", "py3Dmol (>=2.2.1)", "rdkit (>=2022.3.3)"]
+openbabel = ["openbabel-wheel (>=3.1.1.19,<4.0.0.0)"]
 rdkit = ["rdkit (>=2022.3.3)"]
+view = ["ipython (>=8.0.0)", "matplotlib (>=3.0.0)", "py3Dmol (>=2.2.1)"]
 
 [[package]]
 name = "qcop"
-version = "0.7.5"
+version = "0.8.0"
 description = "A package for operating Quantum Chemistry programs using qcio standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcop-0.7.5-py3-none-any.whl", hash = "sha256:fd56ebff1b5c21759f2a3de50dc9589f5b9b0b5e89fff472a4ef32a24314164b"},
-    {file = "qcop-0.7.5.tar.gz", hash = "sha256:e10709e05bb7c6af2fcaebfb96612a277c2facf18332f659c842551059e8ee2d"},
+    {file = "qcop-0.8.0-py3-none-any.whl", hash = "sha256:0070aefc5a559f2dafbdbb3ae765d8a5aeb648a044fecd30e2e0a00a46a4ff0b"},
+    {file = "qcop-0.8.0.tar.gz", hash = "sha256:0e25f5d6868abf5948f39f5ecfdce0cd4b689e0ddf8c4eb36f75e0e197c83ee3"},
 ]
 
 [package.dependencies]
-qcio = ">=0.10.2,<0.11.0"
+qcio = ">=0.11.0,<0.12.0"
 qcparse = ">=0.6.0,<0.7.0"
 
 [package.extras]
@@ -3959,23 +3963,6 @@ files = [
 
 [package.dependencies]
 six = "*"
-
-[[package]]
-name = "rfc3986"
-version = "1.5.0"
-description = "Validating URI References per RFC 3986"
-optional = false
-python-versions = "*"
-files = [
-    {file = "rfc3986-1.5.0-py2.py3-none-any.whl", hash = "sha256:a86d6e1f5b1dc238b218b012df0aa79409667bb209e58da56d0b94704e712a97"},
-    {file = "rfc3986-1.5.0.tar.gz", hash = "sha256:270aaf10d87d0d4e095063c65bf3ddbc6ee3d0b226328ce21e036f946e421835"},
-]
-
-[package.dependencies]
-idna = {version = "*", optional = true, markers = "extra == \"idna2008\""}
-
-[package.extras]
-idna2008 = ["idna"]
 
 [[package]]
 name = "rfc3986-validator"
@@ -5130,30 +5117,6 @@ files = [
 ]
 
 [[package]]
-name = "xtb"
-version = "22.1"
-description = "Python API for the extended tight-binding program"
-optional = false
-python-versions = ">=3.7"
-files = [
-    {file = "xtb-22.1-cp310-cp310-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:4baa584e7705f6dc3845bc5be2d1aef0c8e18fbc23aacf3c666c2fd8eb451516"},
-    {file = "xtb-22.1-cp311-cp311-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:943229d4e9665f7d8c63bf6461805bbea927b13b525ac6be7239461c6b2c6640"},
-    {file = "xtb-22.1-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:3bedd0c98161e8fc026c0ea067096a46ecba721a35ca1975962d2bcf4938cda6"},
-    {file = "xtb-22.1-cp38-cp38-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:f625b4f3539d7f3d232f69d1a21f977c39fe42b1024d82a6c76878b70575e336"},
-    {file = "xtb-22.1-cp39-cp39-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:622bc34e9f9ec295e5fb0bf4a556787e620eae8b2804197871edec5174309e1d"},
-    {file = "xtb-22.1.tar.gz", hash = "sha256:7a59e7b783fc6e8b7328f55211de681e535a83991b07c4bab73494063f5e9018"},
-]
-
-[package.dependencies]
-cffi = "*"
-numpy = "*"
-
-[package.extras]
-ase = ["ase"]
-qcschema = ["qcelemental"]
-test = ["ase", "pytest", "pytest-cov", "qcelemental"]
-
-[[package]]
 name = "zipp"
 version = "3.20.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -5171,4 +5134,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "37c9c591c6363b0a53f53528ed3ec003fa1808a5457d380dd6feb9f778b0724b"
+content-hash = "57ceef1c04ec3b7973ede120b488ebb28c150524a9dc14fcbe9c8bb0bacb90fe"
