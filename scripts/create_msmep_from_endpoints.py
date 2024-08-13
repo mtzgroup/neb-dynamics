@@ -255,8 +255,8 @@ def main():
 
     if args.nc != "node3d" and args.nc != "node3d_water":
         if args.tcin:
-            start.update_tc_parameters_from_inpfile(args.tcin)
-            end.update_tc_parameters_from_inpfile(args.tcin)
+            start = start.update_tc_parameters_from_inpfile(args.tcin)
+            end = end.update_tc_parameters_from_inpfile(args.tcin)
         else:
             method = "uwb97xd3"  # terachem
             basis = "def2-svp"
@@ -288,6 +288,7 @@ def main():
             print(end)
             assert start is not None and end is not None, "Geometry optimization failed"
 
+    print(start.tc_model_method, start.tc_model_basis, start.tc_kwds)
     traj = Trajectory([start, end]).run_geodesic(nimages=args.nimg)
 
     if args.nc == "node3d_tc_local":
