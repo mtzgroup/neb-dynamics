@@ -7,11 +7,62 @@ from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
-from neb_dynamics.engine import QCOPEngine, ThreeWellPotential, FlowerPotential
+from neb_dynamics.engines import QCOPEngine, ThreeWellPotential, FlowerPotential
 from neb_dynamics.nodes.node import XYNode
+from neb_dynamics.engines import Engine
 
 from qcio.models.inputs import ProgramInput
 
+import matplotlib.pyplot as plt
+from itertools import product
+from matplotlib.animation import FuncAnimation
+
+def animate_func(neb_obj: NEB, engine: Engine):
+    n_nodes = len(neb_obj.initial_chain.nodes)
+    en_func = engine._en_func
+    chain_traj = neb_obj.chain_trajectory
+    # plt.style.use("seaborn-pastel")
+
+    figsize = 5
+    s = 8
+
+    f, ax = plt.subplots(figsize=(1.618 * figsize, figsize))
+
+    min_val = -s
+    max_val = s
+
+    min_val = -4
+    max_val = 4
+
+    gridsize = 100
+    x = np.linspace(start=min_val, stop=max_val, num=gridsize)
+    h_flat_ref = np.array([en_func(pair) for pair in product(x, x)])
+    h = h_flat_ref.reshape(gridsize, gridsize).T
+    cs = plt.contourf(x, x, h)
+    _ = f.colorbar(cs, ax=ax)
+
+
+    line,  = ax.plot([], [], "o--", lw=1)
+
+    def animate(chain):
+
+        x = chain.coordinates[:, 0]
+        y = chain.coordinates[:, 1]
+
+
+        line.set_data(x, y)
+
+        return line,
+        # return (x for x in all_arrows)
+
+    anim = FuncAnimation(fig=f,func=animate,
+        frames=chain_traj,
+        blit=True,
+        repeat_delay=1000,
+        interval=200,
+    )
+    # anim.save(f'flower_nimages_{n_nodes}_k_{neb_obj.initial_chain.parameters.k}.gif')
+    plt.show()
 
 def test_engine():
     from neb_dynamics.chain import Chain
@@ -144,6 +195,7 @@ def test_2d_neb():
 
     ks = 0.1
     cni = ChainInputs(k=ks, delta_k=0, node_class=XYNode)
+<<<<<<< HEAD
     nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True,
                     max_steps=500, climb=False)
     chain = Chain(nodes=[XYNode(structure=xy)
@@ -159,6 +211,19 @@ def test_2d_neb():
     # n.optimize_chain()
     history = m.find_mep_multistep(chain)
     for obj in history.get_optimization_history()
+=======
+    nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True, max_steps=500, climb=False)
+    chain = Chain(nodes=[XYNode(structure=xy) for xy in coords], parameters=cni)
+    eng = ThreeWellPotential()
+    opt = VelocityProjectedOptimizer(timestep=0.01)
+    n = NEB(initial_chain=chain,
+            parameters=nbi,
+            optimizer=opt,
+            engine=eng)
+    n.optimize_chain()
+    animate_func(n, eng)
+
+>>>>>>> 654e572 (added an animation function to testall)
 
 
 if __name__ == "__main__":
