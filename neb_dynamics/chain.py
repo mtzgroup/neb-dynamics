@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
+from dataclasses import dataclass
 from typing import List, Union
 
 import matplotlib.pyplot as plt
@@ -44,17 +44,28 @@ class Chain:
         return self.coordinates[0].shape[0]
 
     @classmethod
-    def from_xyz(cls, fp: Union[Path, str], parameters: ChainInputs,
-                 charge: int = 0, spinmult: int = 1) -> Chain:
+    def from_xyz(
+        cls,
+        fp: Union[Path, str],
+        parameters: ChainInputs,
+        charge: int = 0,
+        spinmult: int = 1,
+    ) -> Chain:
         """
         Reads in a chain from an xyz file containing a list of structures.
         """
-        from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+        from neb_dynamics.qcio_structure_helpers import (
+            read_multiple_structure_from_file,
+        )
 
         fp = Path(fp)
 
-        nodes = [StructureNode(structure=struct) for struct in read_multiple_structure_from_file(
-            fp, charge=charge, spinmult=spinmult)]
+        nodes = [
+            StructureNode(structure=struct)
+            for struct in read_multiple_structure_from_file(
+                fp, charge=charge, spinmult=spinmult
+            )
+        ]
         chain = cls(nodes=nodes, parameters=parameters)
 
         energies_fp = fp.parent / Path(str(fp.stem) + ".energies")
@@ -93,6 +104,7 @@ class Chain:
     @property
     def _path_len_coords(self) -> np.array:
         import neb_dynamics.chainhelpers as ch
+
         if self.nodes[0].has_molecular_graph:
             coords = ch._get_mass_weighed_coords(self)
         else:
@@ -171,8 +183,7 @@ class Chain:
 
     def copy(self) -> Chain:
         list_of_nodes = [node.copy() for node in self.nodes]
-        chain_copy = Chain(nodes=list_of_nodes,
-                           parameters=self.parameters.copy())
+        chain_copy = Chain(nodes=list_of_nodes, parameters=self.parameters.copy())
         return chain_copy
 
     @property
@@ -183,8 +194,7 @@ class Chain:
     @property
     def energies(self) -> np.array:
         if not self._energies_already_computed:
-            raise EnergiesNotComputedError(
-                msg="Energies have not been computed.")
+            raise EnergiesNotComputedError(msg="Energies have not been computed.")
 
         out_ens = np.array([node.energy for node in self.nodes])
 
@@ -205,8 +215,7 @@ class Chain:
     @property
     def gradients(self) -> np.array:
         if not self._grads_already_computed:
-            raise GradientsNotComputedError(
-                msg="Gradients have note been computed")
+            raise GradientsNotComputedError(msg="Gradients have note been computed")
         grads = [node.gradient for node in self.nodes]
         return grads
 
@@ -222,16 +231,17 @@ class Chain:
     @property
     def ts_triplet_gspring_infnorm(self):
         import chainhelpers as ch
+
         ind_ts = self.energies[1:-1].argmax()
 
         _, gsprings = ch.pe_grads_spring_forces_nudged(self)
 
         if ind_ts == 0:
             triplet = gsprings[0:2]
-        elif ind_ts == len(self)-1:
-            triplet = gsprings[ind_ts-1:]
+        elif ind_ts == len(self) - 1:
+            triplet = gsprings[ind_ts - 1 :]
         else:
-            triplet = gsprings[ind_ts-1:ind_ts+2]
+            triplet = gsprings[ind_ts - 1 : ind_ts + 2]
         infnorms = [np.amax(abs(gspr)) for gspr in triplet]
         return max(infnorms)
 
@@ -239,6 +249,7 @@ class Chain:
     def rms_gperps(self):
         # imported here to avoid circular imports
         import neb_dynamics.chainhelpers as ch
+
         grads = ch.get_g_perps(self)
         rms_grads = []
         for grad in grads:
@@ -268,11 +279,12 @@ class Chain:
         returns the system symbols, if Node objects have
         attribute `symbols`. otherwise will raise an error.
         """
-        if hasattr(self.nodes[0], 'symbols'):
+        if hasattr(self.nodes[0], "symbols"):
             return self.nodes[0].symbols
         else:
             raise TypeError(
-                f"Node object {self.nodes[0]} does not have `symbols` attribute.")
+                f"Node object {self.nodes[0]} does not have `symbols` attribute."
+            )
 
     @property
     def energies_are_monotonic(self):
@@ -287,14 +299,13 @@ class Chain:
         grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
         grad_shape_path = fp.parent / Path(str(fp.stem) + "_grad_shapes.txt")
         np.savetxt(
-            grad_path, np.array(
-                [node.gradient for node in self.nodes]).flatten()
+            grad_path, np.array([node.gradient for node in self.nodes]).flatten()
         )
         np.savetxt(grad_shape_path, np.array(self.gradients).shape)
 
     def write_to_disk(self, fp: Path):
         fp = Path(fp)
-        xyz_arr = self.coordinates*BOHR_TO_ANGSTROMS
+        xyz_arr = self.coordinates * BOHR_TO_ANGSTROMS
         symbs = self.symbols
         write_xyz(filename=fp, atoms=symbs, coords=xyz_arr)
 
