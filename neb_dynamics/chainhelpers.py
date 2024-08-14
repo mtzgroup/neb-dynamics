@@ -316,6 +316,7 @@ def run_geodesic(chain: Chain, **kwargs):
 
 
 def create_friction_optimal_gi(chain: Chain, gi_inputs: GIInputs):
+    eng = QCOPEngine()
 
     frics = [0.0001, 0.001, 0.01, 0.1, 1]
     all_gis = [

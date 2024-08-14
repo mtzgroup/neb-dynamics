@@ -2,7 +2,7 @@ import sys
 from argparse import ArgumentParser
 from pathlib import Path
 
-from neb_dynamics.nodes.node import Node
+from neb_dynamics.nodes.node import StructureNode
 from qcio import Structure, ProgramInput
 
 from neb_dynamics.chain import Chain
@@ -230,6 +230,15 @@ def read_single_arguments():
         help="Which optimizer to use. Default is 'geometric'",
         default='geometric'
     )
+    parser.add_argument(
+        "-maxsteps",
+        "--maxsteps",
+        dest="maxsteps",
+        required=False,
+        type=int,
+        help="Maximum number of optimization steps per NEB run",
+        default=500
+    )
 
     return parser.parse_args()
 
@@ -241,7 +250,7 @@ def main():
     #          'node3d_tc_local': Node3D_TC_Local,
     #          # 'node3d_tcpb': Node3D_TC_TCPB,
     #          'node3d_water': Node3D_Water}
-    nodes = {'node3d': Node}
+    nodes = {'node3d': StructureNode}
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
 
@@ -258,13 +267,13 @@ def main():
     tol = args.tol
 
     fog = "node3d" in nodes.keys()
-    print(nodes.keys(), fog)
+    print(nodes.keys(), fog, start, end)
 
     cni = ChainInputs(
         k=0.1,
         delta_k=args.delk,
         node_class=nc,
-        friction_optimal_gi=True,
+        friction_optimal_gi=False,
         node_freezing=True,
     )
 
@@ -294,7 +303,7 @@ def main():
     sys.stdout.flush()
 
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
-    chain = Chain(nodes=[Node(start), Node(end)], parameters=cni)
+    chain = Chain(nodes=[StructureNode(structure=start), StructureNode(structure=end)], parameters=cni)
 
     if args.pif:
         program_input = ProgramInput.open(args.pif)

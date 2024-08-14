@@ -49,3 +49,6 @@ mkdocstrings = {extras = ["python"], version = "^0.25.1"}
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+create_msmep = "neb_dynamics.scripts.create_msmep_from_endpoints:main"
