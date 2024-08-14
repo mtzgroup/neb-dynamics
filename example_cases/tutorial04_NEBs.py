@@ -52,7 +52,7 @@ from neb_dynamics.Inputs import NEBInputs
 
 nbi = NEBInputs(v=True, tol=0.0001, ts_spring_thre=0.0001, climb=True)
 
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 opt = VelocityProjectedOptimizer(timestep=0.5)
 

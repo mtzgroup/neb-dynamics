@@ -10,11 +10,7 @@ from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB, NoneConvergedException
-# from neb_dynamics.nodes.Node3D_TC import Node3D_TC
-# from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local
-# from neb_dynamics.nodes.node3d_water import Node3D_Water
-# from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.engines import QCOPEngine
 
 

@@ -88,7 +88,7 @@ c.velocity
 
 import numpy as np
 
-from neb_dynamics.convergence_helpers import _check_rms_grad_converged
+from convergence_helpers import _check_rms_grad_converged
 
 ?_check_rms_grad_converged
 
@@ -226,7 +226,7 @@ tr.energies_and_gradients_tc()
 
 # +
 from neb_dynamics.TreeNode import TreeNode
-from chain import Chain
+from neb_dynamics.chain import Chain
 from nodes.node3d import Node3D
 from neb_dynamics.nodes.Node3D_TC import Node3D_TC
 from neb_dynamics.nodes.Node3D_TC_Local import Node3D_TC_Local

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 
-from dataclasses import dataclass, field
-from typing import Callable
-from neb_dynamics.Optimizer import Optimizer
+from dataclasses import dataclass
+from neb_dynamics.optimizers.optimizer import Optimizer
 from neb_dynamics.chain import Chain
 from neb_dynamics.errors import ElectronicStructureError
 

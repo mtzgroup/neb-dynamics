@@ -66,7 +66,7 @@ view.view(td)
 
 #
 
-res = 
+res =
 
 td.
 
@@ -77,7 +77,7 @@ from neb_dynamics.helper_functions import RMSD
 from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 from neb_dynamics.molecule import Molecule
-from neb_dynamics.TreeNode import TreeNode
+from treenode import TreeNode
 from neb_dynamics.pot import Pot
 
 import pandas as pd
@@ -785,9 +785,7 @@ def vis_nma(td, nma, dr=0.1):
 
 
 from neb_dynamics.NEB import NoneConvergedException
-from neb_dynamics.optimizers.BFGS import BFGS
-from neb_dynamics.optimizers.Linesearch import Linesearch
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer as VPO
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer as VPO
 
 from neb_dynamics.NEB import NEB
 
@@ -1023,7 +1021,7 @@ df['activation_ens'].argmax()
 
 # ### refinement
 
-from neb_dynamics.TreeNode import TreeNode
+from treenode import TreeNode
 from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 from nodes.node import Node

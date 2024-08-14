@@ -6,7 +6,7 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.engines import QCOPEngine, ThreeWellPotential, FlowerPotential
 from neb_dynamics.nodes.node import XYNode
 from neb_dynamics.engines import Engine

@@ -15,8 +15,8 @@ from neb_dynamics.engines import Engine
 from neb_dynamics.inputs import NEBInputs, ChainInputs, GIInputs
 
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.Optimizer import Optimizer
-from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
+from optimizers.optimizer import Optimizer
+from optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.errors import ElectronicStructureError
 
 
