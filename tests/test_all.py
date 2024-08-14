@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 from itertools import product
 from matplotlib.animation import FuncAnimation
 
+
 def animate_func(neb_obj: NEB, engine: Engine):
     n_nodes = len(neb_obj.initial_chain.nodes)
     en_func = engine._en_func
@@ -41,7 +42,6 @@ def animate_func(neb_obj: NEB, engine: Engine):
     cs = plt.contourf(x, x, h)
     _ = f.colorbar(cs, ax=ax)
 
-
     line,  = ax.plot([], [], "o--", lw=1)
 
     def animate(chain):
@@ -49,20 +49,20 @@ def animate_func(neb_obj: NEB, engine: Engine):
         x = chain.coordinates[:, 0]
         y = chain.coordinates[:, 1]
 
-
         line.set_data(x, y)
 
         return line,
         # return (x for x in all_arrows)
 
-    anim = FuncAnimation(fig=f,func=animate,
-        frames=chain_traj,
-        blit=True,
-        repeat_delay=1000,
-        interval=200,
-    )
+    anim = FuncAnimation(fig=f, func=animate,
+                         frames=chain_traj,
+                         blit=True,
+                         repeat_delay=1000,
+                         interval=200,
+                         )
     # anim.save(f'flower_nimages_{n_nodes}_k_{neb_obj.initial_chain.parameters.k}.gif')
     plt.show()
+
 
 def test_engine():
     from neb_dynamics.chain import Chain
@@ -212,9 +212,7 @@ def test_2d_neb():
 
 
 if __name__ == "__main__":
-    # test_tdstructure()
-    # test_trajectory()
     test_engine()
-    # test_neb()
+    test_neb()
     test_msmep()
     test_2d_neb()
