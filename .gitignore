@@ -36,3 +36,6 @@ site/assets/stylesheets/main.76a95c52.min.css.map
 site/assets/stylesheets/palette.06af60db.min.css
 site/assets/stylesheets/palette.06af60db.min.css.map
 site/search/search_index.json
+out_ASNEB
+.gitignore
+notebooks/msmep_playground.py
