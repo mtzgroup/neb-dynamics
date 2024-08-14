@@ -1,7 +1,7 @@
+from __future__ import annotations
 from dataclasses import dataclass, field
-from neb_dynamics.nodes.node import Node
-from neb_dynamics.nodes.node3d import Node3D
-from neb_dynamics.ChainBiaser import ChainBiaser
+from nodes.node import Node
+# from neb_dynamics.ChainBiaser import ChainBiaser
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 
@@ -25,7 +25,8 @@ class NEBInputs:
 
     `skip_identical_graphs`: whether to skip minimizations where endpoints have identical graphs
 
-    `early_stop_force_thre`: infinity norm of TS node early stop check threshold (default: 0.0 | i.e. no early stop check)
+    `early_stop_force_thre`: infinity norm of TS node early stop check threshold \
+        (default: 0.0 | i.e. no early stop check)
 
     `negative_steps_thre`: number of steps chain can oscillate until the step size is halved (default: 10)
 
@@ -35,7 +36,6 @@ class NEBInputs:
 
     `preopt_with_xtb`: whether to preconverge a chain using XTB (default: False)
     """
-
     tol: float = 0.001 * BOHR_TO_ANGSTROMS
     climb: bool = False
     en_thre: float = None
@@ -72,15 +72,15 @@ class NEBInputs:
             self.grad_thre = self.tol / 2
 
         if self.ts_grad_thre is None:
-            self.ts_grad_thre = self.tol * 5 / 2
+            self.ts_grad_thre = self.tol * 5/2
 
         if self.ts_spring_thre is None:
-            self.ts_spring_thre = self.tol * 5 / 2
+            self.ts_spring_thre = self.tol * 5/2
 
         if self.max_rms_grad_thre is None:
-            self.max_rms_grad_thre = self.tol * 5 / 2
+            self.max_rms_grad_thre = self.tol * 5/2
 
-    def copy(self):
+    def copy(self) -> NEBInputs:
         return NEBInputs(**self.__dict__)
 
 
@@ -108,11 +108,10 @@ class ChainInputs:
     `tc_model_basis`: 'method' parameter for electronic structure calculations
     `tc_kwds`: keyword arguments for electronic structure calculations
     """
-
     k: float = 0.1
     delta_k: float = 0.0
 
-    node_class: Node = Node3D
+    node_class: Node = Node
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
     friction_optimal_gi: bool = True
@@ -123,13 +122,17 @@ class ChainInputs:
     node_freezing: bool = True
     node_conf_en_thre: float = 0.5  # kcal/mol
 
+    tc_model_method: str = "b3lyp"
+    tc_model_basis: str = "6-31g"
+    tc_kwds: dict = field(default_factory=dict)
+
     def __post_init__(self):
         if self.do_chain_biasing and self.cb is None:
             raise ValueError(
                 "No chain biaser was inputted. Fix this or set 'do_chain_biasing' to False."
             )
 
-    def copy(self):
+    def copy(self) -> ChainInputs:
         return ChainInputs(**self.__dict__)
 
 
@@ -149,7 +152,6 @@ class GIInputs:
 
     `extra_kwds`: dictionary containing other keywords geodesic interpolation might use.
     """
-
     nimages: int = 15
     friction: float = 0.01
     nudge: float = 0.001

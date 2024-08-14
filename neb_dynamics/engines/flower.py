@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from numpy.typing import NDArray
 from typing import Union, List
-from neb_dynamics import Node, Chain, Engine
+from neb_dynamics import Node, Chain
+from neb_dynamics.engines.engine import Engine
 import numpy as np
 
 

@@ -7,10 +7,6 @@ from typing import List, Union
 import matplotlib.pyplot as plt
 import numpy as np
 
-
-# from retropaths.abinitio.trajectory import Trajectory
-# from neb_dynamics.trajectory import Trajectory
-# from neb_dynamics.tdstructure import TDStructure
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
 from neb_dynamics.geodesic_interpolation.fileio import write_xyz
 

@@ -66,7 +66,7 @@ def animate_func(neb_obj: NEB, engine: Engine):
 
 def test_engine():
     from neb_dynamics.chain import Chain
-    from neb_dynamics.engine import QCOPEngine
+    from neb_dynamics.engines import QCOPEngine
     c = Chain.from_xyz(
         "/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz", parameters=ChainInputs())
     eng = QCOPEngine(program_input=ProgramInput(
@@ -194,8 +194,7 @@ def test_2d_neb():
     coords[1:-1] += [-1, 1]
 
     ks = 0.1
-    cni = ChainInputs(k=ks, delta_k=0, node_class=XYNode)
-<<<<<<< HEAD
+    cni = ChainInputs(k=ks, delta_k=0, node_class=XYNode, use_geodesic_interpolation=False)
     nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True,
                     max_steps=500, climb=False)
     chain = Chain(nodes=[XYNode(structure=xy)
@@ -210,20 +209,6 @@ def test_2d_neb():
     #         engine=eng)
     # n.optimize_chain()
     history = m.find_mep_multistep(chain)
-    for obj in history.get_optimization_history()
-=======
-    nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True, max_steps=500, climb=False)
-    chain = Chain(nodes=[XYNode(structure=xy) for xy in coords], parameters=cni)
-    eng = ThreeWellPotential()
-    opt = VelocityProjectedOptimizer(timestep=0.01)
-    n = NEB(initial_chain=chain,
-            parameters=nbi,
-            optimizer=opt,
-            engine=eng)
-    n.optimize_chain()
-    animate_func(n, eng)
-
->>>>>>> 654e572 (added an animation function to testall)
 
 
 if __name__ == "__main__":
