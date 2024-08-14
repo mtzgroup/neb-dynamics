@@ -34,17 +34,6 @@ test = ["anyio[trio]", "coverage[toml] (>=7)", "exceptiongroup (>=1.2.0)", "hypo
 trio = ["trio (>=0.23)"]
 
 [[package]]
-name = "appdirs"
-version = "1.4.4"
-description = "A small Python module for determining appropriate platform-specific dirs, e.g. a \"user data dir\"."
-optional = false
-python-versions = "*"
-files = [
-    {file = "appdirs-1.4.4-py2.py3-none-any.whl", hash = "sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128"},
-    {file = "appdirs-1.4.4.tar.gz", hash = "sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41"},
-]
-
-[[package]]
 name = "appnope"
 version = "0.1.4"
 description = "Disable App Nap on macOS >= 10.9"
@@ -556,13 +545,13 @@ files = [
 
 [[package]]
 name = "chemcloud"
-version = "0.11.1"
+version = "0.12.0"
 description = "Fast, secure, scalable quantum chemistry. A Python client for the the ChemCloud server."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "chemcloud-0.11.1-py3-none-any.whl", hash = "sha256:7e164be64681d6ea9e5efd9ff798792545366125611632dddf892ee93202f7fb"},
-    {file = "chemcloud-0.11.1.tar.gz", hash = "sha256:ca55d95fa473b98e564314a2ed9a063a13b35305c6b84b1b09ff42a3e163b7d0"},
+    {file = "chemcloud-0.12.0-py3-none-any.whl", hash = "sha256:ec6534f180f648daa5bd336de300fd2ee586ef7b6a40725229da4ff6ef527690"},
+    {file = "chemcloud-0.12.0.tar.gz", hash = "sha256:48e1efade4e5f5abe702f257170b0834344dd91ede103711b26382c3399425ab"},
 ]
 
 [package.dependencies]
@@ -570,7 +559,7 @@ httpx = ">=0.27,<0.28"
 pydantic = ">=2.0.0,<2.4.0 || >2.4.0"
 pydantic-settings = ">=2.0.3,<3.0.0"
 qcio = ">=0.11.0,<0.12.0"
-tomli = {version = ">=1.1.0", markers = "python_version < \"3.11\""}
+tomli = {version = ">=2.0,<3.0", markers = "python_version < \"3.11\""}
 tomli-w = ">=1.0.0,<2.0.0"
 
 [[package]]
@@ -865,40 +854,6 @@ testing = ["covdefaults (>=2.3)", "coverage (>=7.3.2)", "diff-cover (>=8.0.1)", 
 typing = ["typing-extensions (>=4.8)"]
 
 [[package]]
-name = "flexcache"
-version = "0.3"
-description = "Saves and loads to the cache a transformed versions of a source object."
-optional = false
-python-versions = ">=3.9"
-files = [
-    {file = "flexcache-0.3-py3-none-any.whl", hash = "sha256:d43c9fea82336af6e0115e308d9d33a185390b8346a017564611f1466dcd2e32"},
-    {file = "flexcache-0.3.tar.gz", hash = "sha256:18743bd5a0621bfe2cf8d519e4c3bfdf57a269c15d1ced3fb4b64e0ff4600656"},
-]
-
-[package.dependencies]
-typing-extensions = "*"
-
-[package.extras]
-test = ["pytest", "pytest-cov", "pytest-mpl", "pytest-subtests"]
-
-[[package]]
-name = "flexparser"
-version = "0.3.1"
-description = "Parsing made fun ... using typing."
-optional = false
-python-versions = ">=3.9"
-files = [
-    {file = "flexparser-0.3.1-py3-none-any.whl", hash = "sha256:2e3e2936bec1f9277f777ef77297522087d96adb09624d4fe4240fd56885c013"},
-    {file = "flexparser-0.3.1.tar.gz", hash = "sha256:36f795d82e50f5c9ae2fde1c33f21f88922fdd67b7629550a3cc4d0b40a66856"},
-]
-
-[package.dependencies]
-typing-extensions = "*"
-
-[package.extras]
-test = ["pytest", "pytest-cov", "pytest-mpl", "pytest-subtests"]
-
-[[package]]
 name = "fonttools"
 version = "4.53.1"
 description = "Tools to manipulate font files"
@@ -1014,21 +969,6 @@ test-full = ["adlfs", "aiohttp (!=4.0.0a0,!=4.0.0a1)", "cloudpickle", "dask", "d
 tqdm = ["tqdm"]
 
 [[package]]
-name = "geometric"
-version = "1.0.2"
-description = "Geometry optimization for quantum chemistry"
-optional = false
-python-versions = "*"
-files = [
-    {file = "geometric-1.0.2.tar.gz", hash = "sha256:8d9989ca40a4d079d3e9f00c55bdd894c2b5d195d40d7508bf46ec61f8d46b1a"},
-]
-
-[package.dependencies]
-networkx = "*"
-numpy = ">=1.11"
-six = "*"
-
-[[package]]
 name = "ghp-import"
 version = "2.1.0"
 description = "Copy your docs directly to the gh-pages branch."
@@ -1137,17 +1077,17 @@ tqdm = ">=4.42.1"
 typing-extensions = ">=3.7.4.3"
 
 [package.extras]
-all = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "mypy (==1.5.1)", "numpy", "pytest (>=8.1.1,<8.2.2)", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-mock", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "ruff (>=0.5.0)", "soundfile", "types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)", "urllib3 (<2.0)"]
+all = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "mypy (==1.5.1)", "numpy", "pytest", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "ruff (>=0.3.0)", "soundfile", "types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)", "urllib3 (<2.0)"]
 cli = ["InquirerPy (==0.3.4)"]
-dev = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "mypy (==1.5.1)", "numpy", "pytest (>=8.1.1,<8.2.2)", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-mock", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "ruff (>=0.5.0)", "soundfile", "types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)", "urllib3 (<2.0)"]
+dev = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "mypy (==1.5.1)", "numpy", "pytest", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "ruff (>=0.3.0)", "soundfile", "types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)", "urllib3 (<2.0)"]
 fastai = ["fastai (>=2.4)", "fastcore (>=1.3.27)", "toml"]
 hf-transfer = ["hf-transfer (>=0.1.4)"]
 inference = ["aiohttp", "minijinja (>=1.0)"]
-quality = ["mypy (==1.5.1)", "ruff (>=0.5.0)"]
+quality = ["mypy (==1.5.1)", "ruff (>=0.3.0)"]
 tensorflow = ["graphviz", "pydot", "tensorflow"]
 tensorflow-testing = ["keras (<3.0)", "tensorflow"]
-testing = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "numpy", "pytest (>=8.1.1,<8.2.2)", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-mock", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "soundfile", "urllib3 (<2.0)"]
-torch = ["safetensors[torch]", "torch"]
+testing = ["InquirerPy (==0.3.4)", "Jinja2", "Pillow", "aiohttp", "fastapi", "gradio", "jedi", "minijinja (>=1.0)", "numpy", "pytest", "pytest-asyncio", "pytest-cov", "pytest-env", "pytest-rerunfailures", "pytest-vcr", "pytest-xdist", "soundfile", "urllib3 (<2.0)"]
+torch = ["safetensors", "torch"]
 typing = ["types-PyYAML", "types-requests", "types-simplejson", "types-toml", "types-tqdm", "types-urllib3", "typing-extensions (>=4.8.0)"]
 
 [[package]]
@@ -2326,8 +2266,8 @@ files = [
 [package.dependencies]
 numpy = [
     {version = ">=1.26.0", markers = "python_version >= \"3.12\""},
-    {version = ">1.20", markers = "python_version < \"3.10\""},
     {version = ">=1.21.2", markers = "python_version >= \"3.10\" and python_version < \"3.11\""},
+    {version = ">1.20", markers = "python_version < \"3.10\""},
     {version = ">=1.23.3", markers = "python_version >= \"3.11\" and python_version < \"3.12\""},
 ]
 
@@ -3053,35 +2993,6 @@ typing = ["typing-extensions"]
 xmp = ["defusedxml"]
 
 [[package]]
-name = "pint"
-version = "0.24.3"
-description = "Physical quantities module"
-optional = false
-python-versions = ">=3.9"
-files = [
-    {file = "Pint-0.24.3-py3-none-any.whl", hash = "sha256:d98667e46fd03a1b94694fbfa104ec30858684d8ab26952e2a348b48059089bb"},
-    {file = "pint-0.24.3.tar.gz", hash = "sha256:d54771093e8b94c4e0a35ac638c2444ddf3ef685652bab7675ffecfa0c5c5cdf"},
-]
-
-[package.dependencies]
-appdirs = ">=1.4.4"
-flexcache = ">=0.3"
-flexparser = ">=0.3"
-typing-extensions = "*"
-
-[package.extras]
-babel = ["babel (<=2.8)"]
-bench = ["pytest", "pytest-codspeed"]
-dask = ["dask"]
-mip = ["mip (>=1.13)"]
-numpy = ["numpy (>=1.23)"]
-pandas = ["pint-pandas (>=0.3)"]
-test = ["pytest", "pytest-benchmark", "pytest-cov", "pytest-mpl", "pytest-subtests"]
-testbase = ["pytest", "pytest-benchmark", "pytest-cov", "pytest-subtests"]
-uncertainties = ["uncertainties (>=3.1.6)"]
-xarray = ["xarray"]
-
-[[package]]
 name = "platformdirs"
 version = "4.2.2"
 description = "A small Python package for determining appropriate platform-specific dirs, e.g. a `user data dir`."
@@ -3178,17 +3089,6 @@ files = [
 
 [package.extras]
 tests = ["pytest"]
-
-[[package]]
-name = "py-cpuinfo"
-version = "9.0.0"
-description = "Get CPU info with pure Python"
-optional = false
-python-versions = "*"
-files = [
-    {file = "py-cpuinfo-9.0.0.tar.gz", hash = "sha256:3cdbbf3fac90dc6f118bfd64384f309edeadd902d7c8fb17f02ffa1fc3f49690"},
-    {file = "py_cpuinfo-9.0.0-py3-none-any.whl", hash = "sha256:859625bc251f64e21f077d099d4162689c762b5d6a4c3c97553d56241c9674d5"},
-]
 
 [[package]]
 name = "py3dmol"
@@ -3789,20 +3689,17 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "qcio"
-version = "0.10.3"
+version = "0.11.8"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcio-0.10.3-py3-none-any.whl", hash = "sha256:c5d0f3a8594245f0b4a4469649b01884cdf6ba7ae39f7088f5bff0fd98e78ad7"},
-    {file = "qcio-0.10.3.tar.gz", hash = "sha256:792ba79d28520abaea298af7e17cec6b7e27da109f1d5dd54325e92e2ae97a52"},
+    {file = "qcio-0.11.8-py3-none-any.whl", hash = "sha256:283fd23f41807cb4a7cce49bc31495f391583d42044afdc3502c1c0f618f2814"},
+    {file = "qcio-0.11.8.tar.gz", hash = "sha256:6f5703de389f5f62c86c0ac3e7be1288cb69b89e1bcfe184d121a9a88c3526f1"},
 ]
 
 [package.dependencies]
-ipython = {version = ">=8.0.0", optional = true, markers = "extra == \"view\""}
-matplotlib = {version = ">=3.0.0", optional = true, markers = "extra == \"view\""}
 numpy = ">=1.20,<2.0"
-py3Dmol = {version = ">=2.2.1", optional = true, markers = "extra == \"view\""}
 pydantic = ">=2.0.0,<2.0.1 || >2.0.1,<2.1.0 || >2.1.0,<3.0.0"
 pyyaml = ">=6.0,<7.0"
 toml = ">=0.10.2,<0.11.0"
@@ -5220,6 +5117,30 @@ files = [
 ]
 
 [[package]]
+name = "xtb"
+version = "22.1"
+description = "Python API for the extended tight-binding program"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "xtb-22.1-cp310-cp310-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:4baa584e7705f6dc3845bc5be2d1aef0c8e18fbc23aacf3c666c2fd8eb451516"},
+    {file = "xtb-22.1-cp311-cp311-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:943229d4e9665f7d8c63bf6461805bbea927b13b525ac6be7239461c6b2c6640"},
+    {file = "xtb-22.1-cp37-cp37m-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:3bedd0c98161e8fc026c0ea067096a46ecba721a35ca1975962d2bcf4938cda6"},
+    {file = "xtb-22.1-cp38-cp38-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:f625b4f3539d7f3d232f69d1a21f977c39fe42b1024d82a6c76878b70575e336"},
+    {file = "xtb-22.1-cp39-cp39-manylinux_2_12_x86_64.manylinux2010_x86_64.whl", hash = "sha256:622bc34e9f9ec295e5fb0bf4a556787e620eae8b2804197871edec5174309e1d"},
+    {file = "xtb-22.1.tar.gz", hash = "sha256:7a59e7b783fc6e8b7328f55211de681e535a83991b07c4bab73494063f5e9018"},
+]
+
+[package.dependencies]
+cffi = "*"
+numpy = "*"
+
+[package.extras]
+ase = ["ase"]
+qcschema = ["qcelemental"]
+test = ["ase", "pytest", "pytest-cov", "qcelemental"]
+
+[[package]]
 name = "zipp"
 version = "3.20.0"
 description = "Backport of pathlib-compatible object wrapper for zip files"
@@ -5237,4 +5158,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "65f9fd54f79049bed76480f2cdef3001849fc1b31bfe1d59feaf27b154fbb110"
+content-hash = "98127fee892d4d0d7e3cb95b7196c8f4da6f0e34892294672612712a92d04004"
