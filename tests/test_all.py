@@ -77,7 +77,7 @@ def test_engine():
     geom0_after = c[0].structure.geometry
     geom1_after = c[1].structure.geometry
 
-    assert np.array_equal(geom0_before and geom0_after) and np.array_equal(
+    assert np.array_equal(geom0_before, geom0_after) and np.array_equal(
         geom1_before, geom1_after), "Engine is overwriting structures of chain."
 
 
@@ -214,6 +214,7 @@ def test_2d_neb():
 if __name__ == "__main__":
     # test_tdstructure()
     # test_trajectory()
+    test_engine()
     # test_neb()
-    # test_msmep()
+    test_msmep()
     test_2d_neb()

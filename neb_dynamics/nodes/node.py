@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from qcio.models.structure import Structure
-from qcio.models.outputs import ProgramOutput
+from typing import Union
+
 import numpy as np
 from numpy.typing import NDArray
+from qcio.models.outputs import ProgramOutput
+from qcio.models.structure import Structure
+
+from neb_dynamics.errors import (EnergiesNotComputedError,
+                                 GradientsNotComputedError)
+from neb_dynamics.fakeoutputs import FakeQCIOOutput
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.qcio_structure_helpers import structure_to_molecule
-from neb_dynamics.errors import GradientsNotComputedError, EnergiesNotComputedError
-from abc import ABC, abstractmethod
 
 
 @dataclass
@@ -67,6 +72,7 @@ class XYNode(Node):
     structure: np.array = None
     converged: bool = False
     has_molecular_graph = False
+    _cached_result: FakeQCIOOutput = None
     _cached_energy: float = None
     _cached_gradient: NDArray = None
 
@@ -101,7 +107,7 @@ class StructureNode(Node):
     _cached_energy: float = None
     _cached_gradient: NDArray = None
 
-    _cached_result: ProgramOutput = None
+    _cached_result: Union[ProgramOutput, FakeQCIOOutput] = None
     graph: Molecule = None
 
     def __eq__(self, other: Node) -> bool:
@@ -128,6 +134,9 @@ class StructureNode(Node):
         """
         copy_node = self.copy()
         copy_node._cached_result = None
+        copy_node._cached_gradient = None
+        copy_node._cached_energy = None
+
         new_struct_dict = copy_node.structure.__dict__.copy()
         new_struct_dict["geometry"] = new_coords
         copy_node.structure = Structure(**new_struct_dict)

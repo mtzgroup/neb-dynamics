@@ -275,7 +275,11 @@ class NEB:
         will update the `_cached_energy` and `_cached_gradient` attributes in the chain
         nodes based on the input `gradients` and `energies`
         """
+        from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
         for node, grad, ene in zip(chain, gradients, energies):
+            res = FakeQCIOResults(energy=ene, gradient=grad)
+            outp = FakeQCIOOutput(results=res)
+            node._cached_result = outp
             node._cached_energy = ene
             node._cached_gradient = grad
 
@@ -289,10 +293,10 @@ class NEB:
         grad_step = ch.compute_NEB_gradient(chain)
         new_chain = self.optimizer.optimize_step(
             chain=chain, chain_gradients=grad_step)
-
         # need to copy the gradients from the converged nodes
         for new_node, old_node in zip(new_chain.nodes, chain.nodes):
             if old_node.converged:
+                new_node._cached_result = old_node._cached_result
                 new_node._cached_energy = old_node._cached_energy
                 new_node._cached_gradient = old_node._cached_gradient
 

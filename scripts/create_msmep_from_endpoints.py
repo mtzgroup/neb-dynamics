@@ -15,7 +15,7 @@ from neb_dynamics.neb import NEB, NoneConvergedException
 # from neb_dynamics.nodes.node3d_water import Node3D_Water
 # from neb_dynamics.nodes.Node3D_TC_TCPB import Node3D_TC_TCPB
 from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer
-from neb_dynamics.engine import QCOPEngine
+from neb_dynamics.engines import QCOPEngine
 
 
 def read_single_arguments():

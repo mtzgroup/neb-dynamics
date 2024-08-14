@@ -109,14 +109,14 @@ class QCOPEngine(Engine):
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:
-            return chain.gradients
+            return np.array([node.gradient for node in chain])
         except GradientsNotComputedError:
             node_list = self._run_calc(chain=chain, calctype="gradient")
             return np.array([node.gradient for node in node_list])
 
     def compute_energies(self, chain: Chain) -> NDArray:
         try:
-            return chain.energies
+            return np.array([node.energy for node in chain])
         except EnergiesNotComputedError:
             node_list = self._run_calc(chain=chain, calctype="energy")
             return np.array([node.energy for node in node_list])
@@ -137,7 +137,7 @@ class QCOPEngine(Engine):
         )
 
         output = self.compute_func(
-            self.geometry_optimizer, dpi, propagate_wfn=False, rm_scratch_dir=False
+            self.geometry_optimizer, dpi
         )
         return output
 
