@@ -50,7 +50,7 @@ def _is_conformer_identical(self: Node, other: Node,
         other_frags = split_structure_into_frags(other.structure)
         for frag_self, frag_other in zip(self_frags, other_frags):
             frag_dist, _ = align_geom(
-                refgeom=frag_self.coords, geom=frag_other.coords)
+                refgeom=frag_self.geometry, geom=frag_other.geometry)
             per_frag_dists.append(frag_dist)
     else:
         per_frag_dists.append(global_dist)

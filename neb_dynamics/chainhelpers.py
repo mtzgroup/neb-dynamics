@@ -197,7 +197,7 @@ def compute_NEB_gradient(chain: Chain) -> NDArray:
     and the spring gradient
     """
     pe_grads_nudged, spring_forces_nudged = pe_grads_spring_forces_nudged(
-        chain)
+        chain=chain)
 
     grads = (
         pe_grads_nudged - spring_forces_nudged

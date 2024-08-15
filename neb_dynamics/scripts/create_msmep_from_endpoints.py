@@ -385,7 +385,7 @@ def main():
             print(f">>> Made {tot_grad_calls} gradient calls in cleanup.")
 
     elif args.method == "neb":
-        n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer)
+        n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer, engine=eng)
         fp = Path(args.st)
         data_dir = fp.parent
         if args.name:
