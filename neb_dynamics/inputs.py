@@ -1,7 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
-from nodes.node import Node
-# from neb_dynamics.ChainBiaser import ChainBiaser
+from neb_dynamics.nodes.node import Node
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 

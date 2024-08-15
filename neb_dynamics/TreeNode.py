@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import networkx as nx
 import shutil
-from chain import Chain
+from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 

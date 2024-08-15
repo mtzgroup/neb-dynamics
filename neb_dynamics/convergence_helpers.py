@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 from typing import Tuple
-from chain import Chain
+from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import NEBInputs
 
 

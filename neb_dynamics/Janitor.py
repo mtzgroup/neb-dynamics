@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from chain import Chain
+from neb_dynamics.chain import Chain
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.neb import NEB
 from pathlib import Path

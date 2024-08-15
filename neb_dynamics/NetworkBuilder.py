@@ -10,7 +10,7 @@ import numpy as np
 import tqdm
 from scipy.signal import argrelmin
 
-from chain import Chain
+from neb_dynamics.chain import Chain
 from neb_dynamics.helper_functions import RMSD, pairwise
 from neb_dynamics.Inputs import ChainInputs, NetworkInputs
 from neb_dynamics.pot import Pot

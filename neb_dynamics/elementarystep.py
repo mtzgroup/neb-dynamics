@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple
 from neb_dynamics.chain import Chain
-from nodes.node import Node
+from neb_dynamics.nodes.node import Node
 import numpy as np
 from neb_dynamics.engines import Engine
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
