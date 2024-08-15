@@ -240,6 +240,16 @@ def read_single_arguments():
         default=500
     )
 
+    parser.add_argument(
+        "-step",
+        "--stepsize",
+        dest="stepsize",
+        required=False,
+        type=float,
+        help="default step size for optimizer",
+        default=1.0
+    )
+
     return parser.parse_args()
 
 
@@ -277,7 +287,7 @@ def main():
         node_freezing=True,
     )
 
-    optimizer = VelocityProjectedOptimizer(timestep=0.5, activation_tol=0.1)
+    optimizer = VelocityProjectedOptimizer(timestep=args.stepsize, activation_tol=0.1)
 
     nbi = NEBInputs(
         tol=tol,
@@ -327,15 +337,15 @@ def main():
                             exist for program {args.program}")
 
     eng = QCOPEngine(program_input=program_input, program=args.program, geometry_optimizer=args.geom_opt)
-
-    if args.method == "asneb":
-        m = MSMEP(
+    m = MSMEP(
             neb_inputs=nbi,
             chain_inputs=cni,
             gi_inputs=gii,
             optimizer=optimizer,
             engine=eng
         )
+    if args.method == "asneb":
+
 
         history = m.find_mep_multistep(chain)
 
@@ -385,7 +395,8 @@ def main():
             print(f">>> Made {tot_grad_calls} gradient calls in cleanup.")
 
     elif args.method == "neb":
-        n = NEB(initial_chain=chain, parameters=nbi, optimizer=optimizer, engine=eng)
+
+        n, elem_step_results = m.get_neb_chain(input_chain=chain)
         fp = Path(args.st)
         data_dir = fp.parent
         if args.name:

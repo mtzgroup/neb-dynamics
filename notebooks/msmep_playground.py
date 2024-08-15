@@ -1,84 +1,10 @@
-from qcio import Structure, view, ProgramInput
-
-import qcop
-
-td = Structure.from_smiles("COCO")
-
 # +
-from qcio import ProgramInput, Structure
 
-from qcop import compute, exceptions
-
-# Create the structure
-# Can also open a structure from a file
-# structure = Structure.open("path/to/h2o.xyz")
-structure = Structure(
-    symbols=["O", "H", "H"],
-    geometry=[  # type: ignore
-        [0.0, 0.0, 0.0],
-        [0.52421003, 1.68733646, 0.48074633],
-        [1.14668581, -0.45032174, -1.35474466],
-    ],
-)
-
-# Define the program input
-prog_input = ProgramInput(
-    structure=structure,
-    calctype="conformer_search",  # type: ignore
-    model={"method": "gfnff"},  # type: ignore
-    keywords={"calculation": {"level": [{"alpb": "acetonitrile"}]}},
-)
-
-# Run the calculation
-try:
-    # prog_output is instance of ProgramOutput
-    prog_output = compute(
-        "crest", prog_input, collect_files=True, collect_rotamers=False
-    )
-except exceptions.QCOPBaseError as e:
-    prog_output = e.program_output
-    pri nt(prog_output.stdout)  # or output.pstdout for short
-    print(f"Success: {prog_output.success}")  # False
-    print(prog_output.input_data)  # Input data used to generate the calculation
-    print(prog_output.provenance)  # Provenance of generated calculation
-    print(prog_output.traceback)  # or output.ptraceback for short
-    raise
-
-else:
-    # Check results
-    print(prog_output.stdout)  # or output.pstdout for short
-    print(f"Success: {prog_output.success}")  # True
-    print("output.results: ", prog_output.results)
-    print("output.results.conformer_energies:", prog_output.results.conformer_energies)
-    print(
-        "output.results.conformer_energies_relative:",
-        prog_output.results.conformer_energies_relative,
-    )
-    print(prog_output.input_data)  # Input data used to generate the calculation
-    print(prog_output.provenance)  # Provenance of generated calculation
-# -
-
-pi = ProgramInput(structure=td, model={'method': "GFN2XTB"}, calctype='conformer_search')
-
-res = qcop.compute('crest', pi)
-
-view.view(td)
-
-#
-
-res =
-
-td.
-
-# +
-from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.trajectory import Trajectory
 from neb_dynamics.helper_functions import RMSD
-from chain import Chain
-from neb_dynamics.Inputs import ChainInputs
+from neb_dynamics.chain import Chain
+from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.molecule import Molecule
-from treenode import TreeNode
-from neb_dynamics.pot import Pot
+from neb_dynamics.TreeNode import TreeNode
 
 import pandas as pd
 
@@ -107,26 +33,185 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import SmoothBivariateSpline
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+
+
+# +
+def mod_variable(var, all_rns, success_names):
+    ind = 0
+    mod_var = []
+    for i, rn in enumerate(all_rns):
+        if rn in success_names:
+            mod_var.append(var[ind])
+            ind+=1
+        else:
+            mod_var.append(None)
+
+    return mod_var
+
+def create_df(names, v=True, refinement_results=False):
+
+    do_refine = False
+    multi = []
+    elem = []
+    failed = []
+    skipped = []
+    n_steps = []
+    n_grad_calls = []
+    n_grad_calls_geoms = []
+
+    activation_ens = []
+
+    n_opt_steps = []
+    n_opt_splits = []
+
+    success_names = []
+
+    tsg_list = []
+    sys_size = []
+    xtb = True
+    for i, p in enumerate(names):
+
+        rn = p.parent.stem
+        if v: print(p)
+
+        try:
+            out = open(p.parent / f"out_{p.stem}").read().splitlines()
+            # if 'Traceback (most recent call last):' in out[:50] or 'Terminated' in out:
+            #     raise TypeError('failure')
+            if 'Warning! A chain has electronic structure errors.                         Returning an unoptimized chain...' in out:
+                raise FileNotFoundError('failure')
+
+            if refinement_results:
+                clean_fp = Path(str(p.resolve())+".xyz")
+                ref = Refiner()
+                ref_results = ref.read_leaves_from_disk(p)
+
+            else:
+                h = TreeNode.read_from_disk(p)
+                clean_fp = p.parent / (str(p.stem)+'_clean.xyz')
+
+            if clean_fp.exists():
+                try:
+                    out_chain = Chain.from_xyz(clean_fp, ChainInputs())
+
+                except:
+                    if v: print("\t\terror in energies. recomputing")
+                    tr = Trajectory.from_xyz(clean_fp)
+                    out_chain = Chain.from_traj(tr, ChainInputs())
+                    grads = out_chain.gradients
+                    if v: print(f"\t\twriting to {clean_fp}")
+                    out_chain.write_to_disk(clean_fp)
+
+
+                if not out_chain._energies_already_computed:
+                    if v: print("\t\terror in energies. recomputing")
+                    tr = Trajectory.from_xyz(clean_fp)
+                    out_chain = Chain.from_traj(tr, ChainInputs())
+                    grads = out_chain.gradients
+                    if v: print(f"\t\twriting to {clean_fp}")
+                    out_chain.write_to_disk(clean_fp)
+            elif not clean_fp.exists() and refinement_results:
+                print(clean_fp,' did not succeed')
+                raise FileNotFoundError("boo")
+            elif not clean_fp.exists() and not refinement_results:
+                out_chain = h.output_chain
+
+
+            es = len(out_chain)==12
+            if v: print('elem_step: ', es)
+            if refinement_results:
+                n_splits = sum([len(leaf.get_optimization_history()) for leaf in ref_results])
+                tot_steps = sum([len(leaf.data.chain_trajectory) for leaf in ref_results])
+                act_en = max([leaf.data.chain_trajectory[-1].get_eA_chain() for leaf in ref_results])
+
+            else:
+                if v: print([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
+                n_splits = len(h.get_optimization_history())
+                if v: print(sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()]))
+                tot_steps = sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
+                act_en = max([leaf.data.chain_trajectory[-2].get_eA_chain() for leaf in h.ordered_leaves])
+
+            n_opt_steps.append(tot_steps)
+            n_opt_splits.append(n_splits)
+
+
+            ng_line = [line for line in out if len(line)>3 and line[0]=='>']
+            if v: print(ng_line)
+            ng = sum([int(ngl.split()[2]) for ngl in ng_line])
+
+            ng_geomopt = [line for line in out if len(line)>3 and line[0]=='<']
+            ng_geomopt = sum([int(ngl.split()[2]) for ngl in ng_geomopt])
+            # ng = 69
+            if v: print(ng, ng_geomopt)
+
+            activation_ens.append(act_en)
+
+            tsg_list.append(out_chain.get_ts_guess())
+            sys_size.append(len(out_chain[0].coords))
+
+
+
+            if es:
+                elem.append(p)
+            else:
+                multi.append(p)
+
+
+            n = len(out_chain) / 12
+            n_steps.append((i,n))
+            success_names.append(rn)
+            n_grad_calls.append(ng)
+            n_grad_calls_geoms.append(ng_geomopt)
+
+        except FileNotFoundError as e:
+            if v: print(e)
+            failed.append(p)
+
+        except IndexError as e:
+            if v: print(e)
+            failed.append(p)
+
+#         except KeyboardInterrupt:
+#             skipped.append(p)
+
+
+        if v: print("")
+
+    import pandas as pd
+    df = pd.DataFrame()
+    df['reaction_name'] = [fp.split("/")[-1]for fp in all_rns]
+
+    df['success'] = [rn_succeeded(fp, success_names) for fp in all_rns]
+
+    df['n_grad_calls'] = mod_variable(n_grad_calls, all_rns, success_names)
+    if v: print(n_grad_calls)
+    if v: print(mod_variable(n_grad_calls, all_rns, success_names))
+
+    df['n_grad_calls_geoms'] = mod_variable(n_grad_calls_geoms, all_rns, success_names)
+
+    df["n_opt_splits"] = mod_variable(n_opt_splits, all_rns, success_names)
+    # df["n_opt_splits"] = [0 for rn in all_rns]
+
+    df['n_rxn_steps'] = mod_variable([x[1] for x in n_steps], all_rns, success_names)
+    # df['n_rxn_steps'] = [0 for rn in all_rns]
+
+    df['n_opt_steps'] = mod_variable(n_opt_steps, all_rns, success_names)
+
+    df['file_path'] = all_rns
+
+    df['activation_ens'] = mod_variable(activation_ens, all_rns, success_names)
+
+    df['activation_ens'].plot(kind='hist')
+
+    # df['n_opt_splits'].plot(kind='hist')
+    # print(success_names)
+
+    return df
 # -
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/start_opt_msmep/")
+names = [ p/'ASNEBPath("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures/").glob("*")]
 
-h.output_chain.plot_chain()
-
-h.ordered_leaves[0].data.plot_convergence_metrics(1)
-
-h.output_chain.plot_chain()
-h.output_chain.to_trajectory().draw();
-
-tsg = h.output_chain.get_ts_guess()
-
-tsg
-
-tsg_opt = tsg.xtb_sella_geom_optimization()
-
-tsg.energy_xtb()
-
-tsg_opt.energy_xtb()
+df = create_df(names)
 
 # # Database
 
@@ -785,7 +870,9 @@ def vis_nma(td, nma, dr=0.1):
 
 
 from neb_dynamics.NEB import NoneConvergedException
-from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer as VPO
+from neb_dynamics.optimizers.BFGS import BFGS
+from neb_dynamics.optimizers.Linesearch import Linesearch
+from neb_dynamics.optimizers.VPO import VelocityProjectedOptimizer as VPO
 
 from neb_dynamics.NEB import NEB
 
@@ -824,6 +911,7 @@ def rn_succeeded(name, success_names):
     return 0
 
 
+# +
 def mod_variable(var, all_rns, success_names):
     ind = 0
     mod_var = []
@@ -836,11 +924,8 @@ def mod_variable(var, all_rns, success_names):
 
     return mod_var
 
-
 from neb_dynamics.Refiner import Refiner
 
-
-# +
 def create_df(msmep_filename, v=True, refinement_results=False):
 
     do_refine = False
@@ -1021,7 +1106,7 @@ df['activation_ens'].argmax()
 
 # ### refinement
 
-from treenode import TreeNode
+from neb_dynamics.TreeNode import TreeNode
 from chain import Chain
 from neb_dynamics.Inputs import ChainInputs
 from nodes.node import Node
