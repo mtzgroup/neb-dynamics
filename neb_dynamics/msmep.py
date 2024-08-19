@@ -7,6 +7,7 @@ from typing import Tuple, List
 
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
+from neb_dynamics.elementarystep import check_if_elem_step
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.elementarystep import ElemStepResults
@@ -22,8 +23,8 @@ from neb_dynamics.errors import ElectronicStructureError
 
 @dataclass
 class MSMEP:
-    """Class for running autosplitting MEP minimizations.
-    """
+    """Class for running autosplitting MEP minimizations."""
+
     engine: Engine
     neb_inputs: NEBInputs = NEBInputs()
     chain_inputs: ChainInputs = ChainInputs()
@@ -46,10 +47,8 @@ class MSMEP:
             the root chain was split.
         """
         import neb_dynamics.chainhelpers as ch
-        if (
-            self.neb_inputs.skip_identical_graphs
-            and input_chain[0].has_molecular_graph
-        ):
+
+        if self.neb_inputs.skip_identical_graphs and input_chain[0].has_molecular_graph:
             if _is_connectivity_identical(input_chain[0], input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
                 return TreeNode(data=None, children=[], index=tree_node_index)
@@ -65,8 +64,7 @@ class MSMEP:
             root_neb_obj, elem_step_results = self.get_neb_chain(
                 input_chain=input_chain
             )
-            history = TreeNode(data=root_neb_obj,
-                               children=[], index=tree_node_index)
+            history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
 
             if elem_step_results.is_elem_step:
                 return history
@@ -75,11 +73,13 @@ class MSMEP:
                 # the last chain in the minimization
                 chain = root_neb_obj.chain_trajectory[-1]
                 sequence_of_chains = self.make_sequence_of_chains(
-                    chain=chain, split_method=elem_step_results.splitting_criterion,
-                    minimization_results=elem_step_results.minimization_results
+                    chain=chain,
+                    split_method=elem_step_results.splitting_criterion,
+                    minimization_results=elem_step_results.minimization_results,
                 )
                 print(
-                    f"Splitting chains based on: {elem_step_results.splitting_criterion}")
+                    f"Splitting chains based on: {elem_step_results.splitting_criterion}"
+                )
                 new_tree_node_index = tree_node_index + 1
                 for i, chain_frag in enumerate(sequence_of_chains, start=1):
                     print(f"On chain {i} of {len(sequence_of_chains)}...")
@@ -101,7 +101,9 @@ class MSMEP:
 
         if chain.parameters.use_geodesic_interpolation:
             if chain.parameters.friction_optimal_gi:
-                interpolation = ch.create_friction_optimal_gi(chain=chain, gi_inputs=self.gi_inputs.copy())
+                interpolation = ch.create_friction_optimal_gi(
+                    chain=chain, gi_inputs=self.gi_inputs.copy()
+                )
             else:
                 interpolation = ch.run_geodesic(
                     chain=chain,
@@ -116,9 +118,13 @@ class MSMEP:
         else:  # do a linear interpolation using numpy
             start_point = chain[0].coords
             end_point = chain[-1].coords
-            coords = np.linspace(start=start_point, stop=end_point,
-                                 num=self.gi_inputs.nimages)
-            nodes = [node.update_coords(c) for node, c in zip([chain.nodes[0]]*len(coords), coords)]
+            coords = np.linspace(
+                start=start_point, stop=end_point, num=self.gi_inputs.nimages
+            )
+            nodes = [
+                node.update_coords(c)
+                for node, c in zip([chain.nodes[0]] * len(coords), coords)
+            ]
             interpolation = Chain(nodes=nodes, parameters=self.chain_inputs)
 
         return interpolation
@@ -130,7 +136,9 @@ class MSMEP:
         input_chain.parameters = self.chain_inputs
         if len(input_chain) != self.gi_inputs.nimages:
             interpolation = self._create_interpolation(input_chain)
-            assert len(interpolation) == self.gi_inputs.nimages, f"Geodesic interpolation wrong length.\
+            assert (
+                len(interpolation) == self.gi_inputs.nimages
+            ), f"Geodesic interpolation wrong length.\
                  Requested: {self.gi_inputs.nimages}. Given: {len(interpolation)}"
 
         else:
@@ -145,7 +153,7 @@ class MSMEP:
             initial_chain=interpolation,
             parameters=self.neb_inputs.copy(),
             optimizer=self.optimizer.copy(),
-            engine=self.engine
+            engine=self.engine,
         )
         try:
             elem_step_results = n.optimize_chain()
@@ -157,7 +165,7 @@ class MSMEP:
                         Returning an unoptimized chain..."
             )
             out_chain = n.chain_trajectory[-1]
-            elem_step_results = out_chain.is_elem_step()
+            elem_step_results = check_if_elem_step(out_chain, engine=self.engine)
 
         except ElectronicStructureError as e:
             print(
@@ -167,10 +175,12 @@ class MSMEP:
             print(e)
             out_chain = n.chain_trajectory[-1]
             elem_step_results = ElemStepResults(
-                is_elem_step=True, is_concave=None,
+                is_elem_step=True,
+                is_concave=None,
                 splitting_criterion=None,
                 minimization_results=None,
-                number_grad_calls=0)
+                number_grad_calls=0,
+            )
 
         return n, elem_step_results
 
@@ -178,7 +188,7 @@ class MSMEP:
     def _make_chain_frag(self, chain: Chain, geom_pair, ind_pair):
         start_ind, end_ind = ind_pair
         opt_start, opt_end = geom_pair
-        chain_frag_nodes = chain.nodes[start_ind: end_ind + 1]
+        chain_frag_nodes = chain.nodes[start_ind : end_ind + 1]
         chain_frag = Chain(
             nodes=[opt_start] + chain_frag_nodes + [opt_end],
             parameters=chain.parameters,
@@ -196,13 +206,13 @@ class MSMEP:
         start_opt = chain[start].do_geometry_optimization()
         end_opt = chain[end].do_geometry_optimization()
 
-        chain_frag = Chain(nodes=[start_opt, end_opt],
-                           parameters=chain.parameters)
+        chain_frag = Chain(nodes=[start_opt, end_opt], parameters=chain.parameters)
 
         return chain_frag
 
     def _do_minima_based_split(self, chain: Chain, minimization_results: List[Node]):
         import neb_dynamics.chainhelpers as ch
+
         all_geometries = [chain[0]]
         all_geometries.extend(minimization_results)
         all_geometries.append(chain[-1])
@@ -221,7 +231,9 @@ class MSMEP:
 
         return chains
 
-    def _do_maxima_based_split(self, chain: Chain, minimization_results: List[Node]) -> List[Chain]:
+    def _do_maxima_based_split(
+        self, chain: Chain, minimization_results: List[Node]
+    ) -> List[Chain]:
         """
         Will take a chain that needs to be split based on 'maxima' criterion and outputs
         a list of Chains to be minimized.
@@ -256,7 +268,9 @@ class MSMEP:
 
         return chains_list
 
-    def make_sequence_of_chains(self, chain: Chain, split_method: str, minimization_results: List[Node]) -> List[Chain]:
+    def make_sequence_of_chains(
+        self, chain: Chain, split_method: str, minimization_results: List[Node]
+    ) -> List[Chain]:
         """
         Takes an input chain, `chain`, that needs to be split accordint to `split_method` ("minima", "maxima")
         Returns a list of Chain objects to be minimzed.

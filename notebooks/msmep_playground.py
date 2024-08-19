@@ -146,7 +146,6 @@ def create_df(names, v=True, refinement_results=False):
 
             activation_ens.append(act_en)
 
-            tsg_list.append(out_chain.get_ts_guess())
             sys_size.append(len(out_chain[0].coords))
 
 
@@ -209,7 +208,15 @@ def create_df(names, v=True, refinement_results=False):
     return df
 # -
 
-names = [ p/'ASNEBPath("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures/").glob("*")]
+names = [ p/'ASNEB_03_SIGYES' for p in Path("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures/").glob("*")]
+
+from neb_dynamics.TreeNode import TreeNode
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/ethan_es01/")
+
+h.data.plot_opt_history(0)
+
+h.output_chain.plot_chain()
 
 df = create_df(names)
 
