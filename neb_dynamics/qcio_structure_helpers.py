@@ -166,3 +166,11 @@ def structure_to_ase_atoms(structure: Structure):
         magmoms=[structure.multiplicity] + [0] * (len(pos) - 1),
     )
     return atoms
+
+
+def ase_atoms_to_structure(atoms: Atoms, charge: int = 0, multiplicity: int = 1):
+    symbols = atoms.symbols
+    positions_angstroms = atoms.positions
+    positions_bohr = positions_angstroms * ANGSTROM_TO_BOHR
+    structure = Structure(symbols=symbols, geometry=positions_bohr, charge=charge, multiplicity=multiplicity)
+    return structure

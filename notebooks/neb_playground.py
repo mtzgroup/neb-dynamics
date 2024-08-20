@@ -1,4 +1,13 @@
 # -*- coding: utf-8 -*-
+from neb_dynamics.TreeNode import TreeNode
+import neb_dynamics.chainhelpers as ch
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/dbg_superloose/")
+
+h.output_chain.plot_chain()
+
+ch.visualize_chain(h.output_chain)
+
 from neb_dynamics import QCOPEngine, Chain, StructureNode
 from qcio import Structure, ProgramInput
 import neb_dynamics.chainhelpers as ch
