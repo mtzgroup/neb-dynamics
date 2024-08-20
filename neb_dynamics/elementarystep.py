@@ -122,7 +122,7 @@ def is_approx_elem_step(chain: Chain, slope_thresh=0.1) -> Tuple[bool, int]:
         bool: whether chain seems to be an elementary step
     """
     if chain.energies_are_monotonic:
-        return True
+        return True, 0
 
     arg_max = np.argmax(chain.energies)
 
