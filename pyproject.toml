@@ -36,6 +36,7 @@ torch = ">=2.0.0, !=2.0.1, !=2.1.0"
 tqdm = "^4.66.4"
 sella = "^2.3.4"
 xtb = "^22.1"
+pygsm = {git = "https://github.com/ZimmermanGroup/pyGSM.git"}
 
 
 

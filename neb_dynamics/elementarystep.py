@@ -327,10 +327,6 @@ def pseudo_irc(chain: Chain, engine: Engine):
         p = p_traj[-1]
 
     except Exception as e:
-        import traceback
-
-        print(traceback.format_exc())
-        print(e)
         print("Error in geometry optimization. Pretending this is elementary chain.")
         return IRCResults(
             found_reactant=chain[0],

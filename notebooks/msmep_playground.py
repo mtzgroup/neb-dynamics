@@ -33,6 +33,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import SmoothBivariateSpline
 HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
+# -
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/dbg/")
+
+h.output_chain.plot_chain()
+
+from neb_dynamics.chainhelpers import visualize_chain
+
+visualize_chain(h.output_chain)
 
 
 # +

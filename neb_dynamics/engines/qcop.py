@@ -31,6 +31,20 @@ class QCOPEngine(Engine):
     geometry_optimizer: str = "geometric"
     compute_program: str = "qcop"
 
+    def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
+        try:
+            return np.array([node.gradient for node in chain])
+        except GradientsNotComputedError:
+            node_list = self._run_calc(chain=chain, calctype="gradient")
+            return np.array([node.gradient for node in node_list])
+
+    def compute_energies(self, chain: Chain) -> NDArray:
+        try:
+            return np.array([node.energy for node in chain])
+        except EnergiesNotComputedError:
+            node_list = self._run_calc(chain=chain, calctype="energy")
+            return np.array([node.energy for node in node_list])
+
     def compute_func(self, *args):
         if self.compute_program == "qcop":
             return qcop.compute(*args)
@@ -107,20 +121,6 @@ class QCOPEngine(Engine):
 
         return node_list
 
-    def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
-        try:
-            return np.array([node.gradient for node in chain])
-        except GradientsNotComputedError:
-            node_list = self._run_calc(chain=chain, calctype="gradient")
-            return np.array([node.gradient for node in node_list])
-
-    def compute_energies(self, chain: Chain) -> NDArray:
-        try:
-            return np.array([node.energy for node in chain])
-        except EnergiesNotComputedError:
-            node_list = self._run_calc(chain=chain, calctype="energy")
-            return np.array([node.energy for node in node_list])
-
     def _run_geom_opt_calc(self, structure: Structure):
         """
         this will return a ProgramOutput from qcio geom opt call.
@@ -136,9 +136,7 @@ class QCOPEngine(Engine):
             keywords={},
         )
 
-        output = self.compute_func(
-            self.geometry_optimizer, dpi
-        )
+        output = self.compute_func(self.geometry_optimizer, dpi)
         return output
 
     def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:
