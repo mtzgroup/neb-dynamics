@@ -168,7 +168,7 @@ def read_single_arguments():
         required=False,
         type=float,
         help="number of still steps until an early stop check",
-        default=500
+        default=500,
     )
 
     parser.add_argument(
@@ -178,7 +178,7 @@ def read_single_arguments():
         required=True,
         type=str,
         help="what electronic structure program to use",
-        default='xtb'
+        default="xtb",
     )
 
     parser.add_argument(
@@ -218,7 +218,7 @@ def read_single_arguments():
         required=False,
         type=str,
         help="file path to a ProgramInput file from qcio.",
-        default=None
+        default=None,
     )
 
     parser.add_argument(
@@ -228,7 +228,7 @@ def read_single_arguments():
         required=False,
         type=str,
         help="Which optimizer to use. Default is 'geometric'",
-        default='geometric'
+        default="geometric",
     )
     parser.add_argument(
         "-maxsteps",
@@ -237,7 +237,7 @@ def read_single_arguments():
         required=False,
         type=int,
         help="Maximum number of optimization steps per NEB run",
-        default=500
+        default=500,
     )
 
     parser.add_argument(
@@ -247,7 +247,7 @@ def read_single_arguments():
         required=False,
         type=float,
         help="default step size for optimizer",
-        default=1.0
+        default=1.0,
     )
 
     return parser.parse_args()
@@ -260,18 +260,18 @@ def main():
     #          'node3d_tc_local': Node3D_TC_Local,
     #          # 'node3d_tcpb': Node3D_TC_TCPB,
     #          'node3d_water': Node3D_Water}
-    nodes = {'node3d': StructureNode}
+    nodes = {"node3d": StructureNode}
     # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
 
     start = Structure.open(args.st)
     s_dict = start.model_dump()
-    s_dict['charge'], s_dict['multiplicity'] = args.c, args.s
+    s_dict["charge"], s_dict["multiplicity"] = args.c, args.s
     start = Structure(**s_dict)
 
     end = Structure.open(args.en)
     e_dict = end.model_dump()
-    e_dict['charge'], e_dict['multiplicity'] = args.c, args.s
+    e_dict["charge"], e_dict["multiplicity"] = args.c, args.s
     end = Structure(**e_dict)
 
     tol = args.tol
@@ -283,7 +283,7 @@ def main():
         k=0.1,
         delta_k=args.delk,
         node_class=nc,
-        friction_optimal_gi=False,
+        friction_optimal_gi=fog,
         node_freezing=True,
     )
 
@@ -293,39 +293,39 @@ def main():
         tol=tol,
         barrier_thre=0.1,  # kcalmol,
         climb=bool(args.climb),
-
         rms_grad_thre=tol,
-        max_rms_grad_thre=tol*2.5,
-        ts_grad_thre=tol*2.5,
-        ts_spring_thre=tol*1.5,
-
+        max_rms_grad_thre=tol * 2.5,
+        ts_grad_thre=tol * 2.5,
+        ts_spring_thre=tol * 1.5,
         v=1,
         max_steps=int(args.maxsteps),
         early_stop_chain_rms_thre=args.es_rms,
         early_stop_force_thre=args.es_ft,
         early_stop_still_steps_thre=args.es_ss,
         skip_identical_graphs=bool(args.sig),
-
-        preopt_with_xtb=bool(int(args.preopt))
+        preopt_with_xtb=bool(int(args.preopt)),
     )
     print(f"{args.preopt=}")
     print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
     sys.stdout.flush()
 
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
-    chain = Chain(nodes=[StructureNode(structure=start), StructureNode(structure=end)], parameters=cni)
+    chain = Chain(
+        nodes=[StructureNode(structure=start), StructureNode(structure=end)],
+        parameters=cni,
+    )
 
     if args.pif:
         program_input = ProgramInput.open(args.pif)
     else:
-        if args.program == 'xtb':
+        if args.program == "xtb":
             program_input = ProgramInput(
                 structure=start,
                 calctype="gradient",
                 model={"method": "GFN2xTB"},
                 keywords={},
             )
-        elif args.program == 'terachem':
+        elif args.program == "terachem":
             program_input = ProgramInput(
                 structure=start,
                 calctype="gradient",
@@ -333,19 +333,20 @@ def main():
                 keywords={},
             )
         else:
-            raise TypeError(f"Need to specify a program input file in -pif flag. No defaults \
-                            exist for program {args.program}")
+            raise TypeError(
+                f"Need to specify a program input file in -pif flag. No defaults \
+                            exist for program {args.program}"
+            )
 
-    eng = QCOPEngine(program_input=program_input, program=args.program, geometry_optimizer=args.geom_opt)
+    eng = QCOPEngine(
+        program_input=program_input,
+        program=args.program,
+        geometry_optimizer=args.geom_opt,
+    )
     m = MSMEP(
-            neb_inputs=nbi,
-            chain_inputs=cni,
-            gi_inputs=gii,
-            optimizer=optimizer,
-            engine=eng
-        )
+        neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer, engine=eng
+    )
     if args.method == "asneb":
-
 
         history = m.find_mep_multistep(chain)
 

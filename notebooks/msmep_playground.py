@@ -212,11 +212,11 @@ names = [ p/'ASNEB_03_SIGYES' for p in Path("/home/jdep/T3D_data/msmep_draft/ful
 
 from neb_dynamics.TreeNode import TreeNode
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/ethan_es01/")
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/ladderane_rct_msmep//")
 
 h.data.plot_opt_history(0)
 
-h.output_chain.plot_chain()
+visualize_chain(h.output_chain)
 
 df = create_df(names)
 

@@ -1,6 +1,7 @@
 """
 this whole module needs to be revamped and integrated with the qcio results objects probably.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -17,6 +18,7 @@ class ElemStepResults:
     """
     Object to build report on minimization from elementary step checks.
     """
+
     is_elem_step: bool
     is_concave: bool
     splitting_criterion: str
@@ -30,6 +32,7 @@ class ConcavityResults:
     Stores results on concavity checks (i.e. whether chain has a "dip" that could be\
         a new minimum)
     """
+
     is_concave: bool
     minimization_results: list[Node]
     number_grad_calls: int
@@ -41,8 +44,8 @@ class ConcavityResults:
 
 @dataclass
 class IRCResults:
-    """Stores results on (pseudo)IRC checks
-    """
+    """Stores results on (pseudo)IRC checks"""
+
     found_reactant: Node
     found_product: Node
     number_grad_calls: int
@@ -65,7 +68,7 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
             is_concave=True,
             splitting_criterion=None,
             minimization_results=None,
-            number_grad_calls=0
+            number_grad_calls=0,
         )
 
     concavity_results = _chain_is_concave(chain=inp_chain, engine=engine)
@@ -75,13 +78,14 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
         return ElemStepResults(
             is_elem_step=False,
             is_concave=concavity_results.is_concave,
-            splitting_criterion='minima',
+            splitting_criterion="minima",
             minimization_results=concavity_results.minimization_results,
-            number_grad_calls=n_geom_opt_grad_calls
+            number_grad_calls=n_geom_opt_grad_calls,
         )
 
     crude_irc_passed, ngc_approx_elem_step = is_approx_elem_step(
-        chain=inp_chain, engine=engine)
+        chain=inp_chain, engine=engine
+    )
     n_geom_opt_grad_calls += ngc_approx_elem_step
 
     if crude_irc_passed:
@@ -90,7 +94,7 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
             is_concave=concavity_results.is_concave,
             splitting_criterion=None,
             minimization_results=[inp_chain[0], inp_chain[-1]],
-            number_grad_calls=n_geom_opt_grad_calls
+            number_grad_calls=n_geom_opt_grad_calls,
         )
 
     pseu_irc_results = pseudo_irc(chain=inp_chain, engine=engine)
@@ -102,16 +106,21 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
 
     elem_step = True if minimizing_gives_endpoints else False
 
-    return ElemStepResults(is_elem_step=elem_step,
-                           is_concave=concavity_results.is_concave,
-                           splitting_criterion='maxima',
-                           minimization_results=[
-                               pseu_irc_results.found_reactant, pseu_irc_results.found_product],
-                           number_grad_calls=n_geom_opt_grad_calls
-                           )
+    return ElemStepResults(
+        is_elem_step=elem_step,
+        is_concave=concavity_results.is_concave,
+        splitting_criterion="maxima",
+        minimization_results=[
+            pseu_irc_results.found_reactant,
+            pseu_irc_results.found_product,
+        ],
+        number_grad_calls=n_geom_opt_grad_calls,
+    )
 
 
-def is_approx_elem_step(chain: Chain, engine: Engine, slope_thresh=0.1) -> Tuple[bool, int]:
+def is_approx_elem_step(
+    chain: Chain, engine: Engine, slope_thresh=0.1
+) -> Tuple[bool, int]:
     """Will do at most 50 steepest descent steps  on geometries neighboring the transition state guess
     and check whether they are approaching the chain endpoints. If function returns False, the geoms
     will be fully optimized.
@@ -131,24 +140,31 @@ def is_approx_elem_step(chain: Chain, engine: Engine, slope_thresh=0.1) -> Tuple
 
     arg_max = np.argmax(chain.energies)
 
-    r_passes_opt, r_traj = _converges_to_an_endpoints(chain=chain,
-                                                      engine=engine,
-                                                      node_index=(arg_max - 1), direction=-1,
-                                                      slope_thresh=slope_thresh)
-    p_passes_opt, p_traj = _converges_to_an_endpoints(chain=chain,
-                                                      engine=engine,
-                                                      node_index=(arg_max + 1), direction=+1,
-                                                      slope_thresh=slope_thresh)
-
+    try:
+        r_passes_opt, r_traj = _converges_to_an_endpoints(
+            chain=chain,
+            engine=engine,
+            node_index=(arg_max - 1),
+            direction=-1,
+            slope_thresh=slope_thresh,
+        )
+        p_passes_opt, p_traj = _converges_to_an_endpoints(
+            chain=chain,
+            engine=engine,
+            node_index=(arg_max + 1),
+            direction=+1,
+            slope_thresh=slope_thresh,
+        )
+    except Exception:
+        print("Error in geometry optimization. Pretending elementary step.")
+        return True, 0
     nodes_have_graph = chain.nodes[0].has_molecular_graph
     # if we have molecular graphs to work with, make sure the connectivities are
     # isomorphic to each other. Otherwise, we will decide only based on distance.
     # (which is bad!!)
     if nodes_have_graph:
-        r_passes = r_passes_opt and _is_connectivity_identical(
-            r_traj[-1], chain[0])
-        p_passes = p_passes_opt and _is_connectivity_identical(
-            p_traj[-1], chain[-1])
+        r_passes = r_passes_opt and _is_connectivity_identical(r_traj[-1], chain[0])
+        p_passes = p_passes_opt and _is_connectivity_identical(p_traj[-1], chain[-1])
     else:
         r_passes = r_passes_opt
         p_passes = p_passes_opt
@@ -161,8 +177,7 @@ def is_approx_elem_step(chain: Chain, engine: Engine, slope_thresh=0.1) -> Tuple
 
 
 def _converges_to_an_endpoints(
-        chain, node_index, direction, engine: Engine, slope_thresh=0.01, max_grad_calls=50
-
+    chain, node_index, direction, engine: Engine, slope_thresh=0.01, max_grad_calls=50
 ) -> Tuple[bool, List[Node]]:
     """helper function to `is_approx_elem_step`. Actually carries out the minimizations.
 
@@ -182,11 +197,17 @@ def _converges_to_an_endpoints(
     done = False
     total_traj = [chain[node_index]]
     while not done:
-        traj = engine.steepest_descent(node=total_traj[-1], max_steps=5)
-        total_traj.extend(traj)
+        try:
+            traj = engine.steepest_descent(node=total_traj[-1], max_steps=5)
+            total_traj.extend(traj)
+        except Exception:
+            print("Error in geometry optimizations. Pretending elementary step.")
+            return True
 
-        distances = [_distances_to_refs(ref1=chain[0], ref2=chain[-1],
-                                        raw_node=n) for n in total_traj]
+        distances = [
+            _distances_to_refs(ref1=chain[0], ref2=chain[-1], raw_node=n)
+            for n in total_traj
+        ]
 
         slopes_to_ref1 = distances[-1][0] - distances[0][0]
         slopes_to_ref2 = distances[-1][1] - distances[0][1]
@@ -197,7 +218,7 @@ def _converges_to_an_endpoints(
         slopes_to_ref1, slopes_to_ref2
 
         done = slope1_conv and slope2_conv
-        if len(total_traj)-1 >= max_grad_calls:
+        if len(total_traj) - 1 >= max_grad_calls:
             done = True
     if direction == -1:
         return slopes_to_ref1 < 0 and slopes_to_ref2 > 0, total_traj
@@ -223,7 +244,7 @@ def _run_geom_opt(node: Node, engine: Engine):
     try:
         opt_traj = engine.compute_geometry_optimization(node)
     except AttributeError:
-        opt_traj = engine.steepest_descent(node, max_steps=500, ss=.001)
+        opt_traj = engine.steepest_descent(node, max_steps=500, ss=0.001)
 
     return opt_traj
 
@@ -233,6 +254,7 @@ def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
     will assess+categorize the presence of minima on the chain.
     """
     import neb_dynamics.chainhelpers as ch
+
     n_grad_calls = 0
     ind_minima = ch._get_ind_minima(chain=chain)
     minima_present = len(ind_minima) != 0
@@ -245,11 +267,10 @@ def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
                 n_grad_calls += len(opt_traj)
                 opt = opt_traj[-1]
                 opt_results.append(opt)
-                minimas_is_r_or_p.append(
-                    opt == chain[0] or opt == chain[-1]
-                )
+                minimas_is_r_or_p.append(opt == chain[0] or opt == chain[-1])
         except Exception as e:
             import traceback
+
             print(traceback.format_exc())
             print(
                 f"Error in geometry optimization: {e}. Pretending this is an elem step."
@@ -258,26 +279,26 @@ def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
             return ConcavityResults(
                 is_concave=True,
                 minimization_results=[chain[0], chain[-1]],
-                number_grad_calls=n_grad_calls
+                number_grad_calls=n_grad_calls,
             )
 
         if all(minimas_is_r_or_p):
             return ConcavityResults(
                 is_concave=True,
                 minimization_results=[chain[0], chain[-1]],
-                number_grad_calls=n_grad_calls
+                number_grad_calls=n_grad_calls,
             )
         else:
             return ConcavityResults(
                 is_concave=False,
                 minimization_results=opt_results,
-                number_grad_calls=n_grad_calls
+                number_grad_calls=n_grad_calls,
             )
     else:
         return ConcavityResults(
             is_concave=True,
             minimization_results=[chain[0], chain[-1]],
-            number_grad_calls=n_grad_calls
+            number_grad_calls=n_grad_calls,
         )
 
 
@@ -285,13 +306,11 @@ def pseudo_irc(chain: Chain, engine: Engine):
     n_grad_calls = 0
     arg_max = np.argmax(chain.energies)
 
-    if (
-        arg_max == len(chain) - 1 or arg_max == 0
-    ):  # monotonically changing function,
+    if arg_max == len(chain) - 1 or arg_max == 0:  # monotonically changing function,
         return IRCResults(
             found_reactant=chain[0],
-            found_product=chain[len(chain)-1],
-            number_grad_calls=n_grad_calls
+            found_product=chain[len(chain) - 1],
+            number_grad_calls=n_grad_calls,
         )
 
     try:
@@ -309,15 +328,14 @@ def pseudo_irc(chain: Chain, engine: Engine):
 
     except Exception as e:
         import traceback
+
         print(traceback.format_exc())
         print(e)
-        print(
-            "Error in geometry optimization. Pretending this is elementary chain."
-        )
+        print("Error in geometry optimization. Pretending this is elementary chain.")
         return IRCResults(
             found_reactant=chain[0],
-            found_product=chain[len(chain)-1],
-            number_grad_calls=n_grad_calls
+            found_product=chain[len(chain) - 1],
+            number_grad_calls=n_grad_calls,
         )
 
     return IRCResults(found_reactant=r, found_product=p, number_grad_calls=n_grad_calls)

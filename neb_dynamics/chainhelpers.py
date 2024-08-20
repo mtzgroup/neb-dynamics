@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 from numpy.typing import NDArray
+from qcop.exceptions import ExternalProgramError
 from qcio.view import generate_structure_html
 from scipy.signal import argrelextrema
 
@@ -18,6 +19,7 @@ from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
 from neb_dynamics.helper_functions import get_mass
 from neb_dynamics.inputs import ChainInputs, GIInputs
+from neb_dynamics.engines.qcop import QCOPEngine
 from neb_dynamics.helper_functions import (
     linear_distance,
     qRMSD_distance,
@@ -102,10 +104,12 @@ def _get_mass_weighed_coords(chain: Chain):
 
 def iter_triplets(chain: Chain) -> list[list[Node]]:
     for i in range(1, len(chain.nodes) - 1):
-        yield chain.nodes[i - 1: i + 2]
+        yield chain.nodes[i - 1 : i + 2]
 
 
-def neighs_grad_func(chain: Chain, prev_node: Node, current_node: Node, next_node: Node):
+def neighs_grad_func(
+    chain: Chain, prev_node: Node, current_node: Node, next_node: Node
+):
     vec_tan_path = _create_tangent_path(
         prev_node=prev_node, current_node=current_node, next_node=next_node
     )
@@ -120,8 +124,7 @@ def neighs_grad_func(chain: Chain, prev_node: Node, current_node: Node, next_nod
         pe_grad[2, :1] = 0  # this atom can only move in a plane
 
     if current_node.do_climb:
-        pe_along_path_const = np.dot(
-            pe_grad.flatten(), unit_tan_path.flatten())
+        pe_along_path_const = np.dot(pe_grad.flatten(), unit_tan_path.flatten())
         pe_along_path = pe_along_path_const * unit_tan_path
 
         climbing_grad = 2 * pe_along_path
@@ -179,13 +182,16 @@ def get_g_perps(chain: Chain) -> NDArray:
 
 
 def _k_between_nodes(
-    node0: Node, node1: Node, e_ref: float, k_max: float, e_max: float,
-    parameters: ChainInputs
+    node0: Node,
+    node1: Node,
+    e_ref: float,
+    k_max: float,
+    e_max: float,
+    parameters: ChainInputs,
 ):
     e_i = max(node1.energy, node0.energy)
     if e_i > e_ref:
-        new_k = k_max - parameters.delta_k * \
-            ((e_max - e_i) / (e_max - e_ref))
+        new_k = k_max - parameters.delta_k * ((e_max - e_i) / (e_max - e_ref))
     elif e_i <= e_ref:
         new_k = k_max - parameters.delta_k
     return new_k
@@ -196,17 +202,15 @@ def compute_NEB_gradient(chain: Chain) -> NDArray:
     will return the sum of the perpendicular gradient
     and the spring gradient
     """
-    pe_grads_nudged, spring_forces_nudged = pe_grads_spring_forces_nudged(
-        chain=chain)
+    pe_grads_nudged, spring_forces_nudged = pe_grads_spring_forces_nudged(chain=chain)
 
-    grads = (
-        pe_grads_nudged - spring_forces_nudged
-    )
+    grads = pe_grads_nudged - spring_forces_nudged
 
     # endpoints have 0 gradient because we freeze them
     if len(grads) == 0:
         print(
-            f"WTAF: \n\n{chain.gradients=}\n\n{pe_grads_nudged=}\n\n{spring_forces_nudged=}")
+            f"WTAF: \n\n{chain.gradients=}\n\n{pe_grads_nudged=}\n\n{spring_forces_nudged=}"
+        )
     zero = np.zeros_like(grads[0])
     grads = np.insert(grads, 0, zero, axis=0)
     grads = np.insert(grads, len(grads), zero, axis=0)
@@ -250,13 +254,8 @@ def get_force_spring_nudged(
     unit_tan_path: np.array,
 ):
     parameters = chain.parameters
-    k_max = (
-        max(parameters.k)
-        if hasattr(parameters.k, "__iter__")
-        else parameters.k
-    )
-    e_ref = max(chain.nodes[0].energy,
-                chain.nodes[len(chain.nodes) - 1].energy)
+    k_max = max(parameters.k) if hasattr(parameters.k, "__iter__") else parameters.k
+    e_ref = max(chain.nodes[0].energy, chain.nodes[len(chain.nodes) - 1].energy)
     e_max = max(chain.energies)
 
     k01 = _k_between_nodes(
@@ -265,7 +264,7 @@ def get_force_spring_nudged(
         e_ref=e_ref,
         k_max=k_max,
         e_max=e_max,
-        parameters=parameters
+        parameters=parameters,
     )
 
     k12 = _k_between_nodes(
@@ -274,7 +273,7 @@ def get_force_spring_nudged(
         e_ref=e_ref,
         k_max=k_max,
         e_max=e_max,
-        parameters=parameters
+        parameters=parameters,
     )
 
     force_spring = k12 * np.linalg.norm(
@@ -315,9 +314,23 @@ def run_geodesic(chain: Chain, **kwargs):
     return chain_copy
 
 
+def _update_cache(self, chain: Chain, gradients: NDArray, energies: NDArray) -> None:
+    """
+    will update the `_cached_energy` and `_cached_gradient` attributes in the chain
+    nodes based on the input `gradients` and `energies`
+    """
+    from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
+
+    for node, grad, ene in zip(chain, gradients, energies):
+        res = FakeQCIOResults(energy=ene, gradient=grad)
+        outp = FakeQCIOOutput(results=res)
+        node._cached_result = outp
+        node._cached_energy = ene
+        node._cached_gradient = grad
+
+
 def create_friction_optimal_gi(chain: Chain, gi_inputs: GIInputs):
     eng = QCOPEngine()
-
     frics = [0.0001, 0.001, 0.01, 0.1, 1]
     all_gis = [
         run_geodesic(
@@ -332,8 +345,9 @@ def create_friction_optimal_gi(chain: Chain, gi_inputs: GIInputs):
     eAs = []
     for gi in all_gis:
         try:
-            eAs.append(max(gi.get_eA_chain()))
-        except TypeError:
+            _ = eng.compute_energies(gi)
+            eAs.append(gi.get_eA_chain())
+        except ExternalProgramError:
             eAs.append(10000000)
     ind_best = np.argmin(eAs)
     gi = all_gis[ind_best]
@@ -346,7 +360,7 @@ def _calculate_chain_distances(chain_traj: List[Chain]):
         if i == 0:
             continue
 
-        prev_chain = chain_traj[i-1]
+        prev_chain = chain_traj[i - 1]
         dist = prev_chain._distance_to_chain(chain)
         distances.append(dist)
     return np.array(distances)
@@ -367,7 +381,7 @@ def extend_by_n_frames(list_obj: List, n: int = 2):
     orig_list = list_obj
     new_list = []
     for value in orig_list:
-        new_list.extend([value]*n)
+        new_list.extend([value] * n)
 
     return new_list
 
@@ -381,8 +395,7 @@ def _animate_structure_list(structure_list):
 
 
 def animate_chain_trajectory(
-    chain_traj, min_y=-100, max_y=100,
-    max_x=1.1, min_x=-0.1, norm_path_len=True
+    chain_traj, min_y=-100, max_y=100, max_x=1.1, min_x=-0.1, norm_path_len=True
 ):
 
     figsize = 5
@@ -404,13 +417,18 @@ def animate_chain_trajectory(
         line.set_color("skyblue")
         return
 
-    ani = FuncAnimation(
-        fig, animate, frames=chain_traj)
+    ani = FuncAnimation(fig, animate, frames=chain_traj)
     return HTML(ani.to_jshtml())
 
 
-def generate_neb_plot(chain: List[Node], ind_node, figsize=(6.4, 4.8), grid=True, markersize=20,
-                      title='Energies across chain') -> str:
+def generate_neb_plot(
+    chain: List[Node],
+    ind_node,
+    figsize=(6.4, 4.8),
+    grid=True,
+    markersize=20,
+    title="Energies across chain",
+) -> str:
     """
     generate plot of chain
     """
@@ -420,15 +438,21 @@ def generate_neb_plot(chain: List[Node], ind_node, figsize=(6.4, 4.8), grid=True
     color = "tab:blue"
     ax1.set_xlabel("Path length")
     ax1.set_ylabel("Relative energies (kcal/mol)", color=color)
-    markercolors = ['green']*len(chain)
-    markersizes = [markersize]*len(chain)
+    markercolors = ["green"] * len(chain)
+    markersizes = [markersize] * len(chain)
 
-    markercolors[ind_node] = 'gold'
-    markersizes[ind_node] = markersize+50
+    markercolors[ind_node] = "gold"
+    markersizes[ind_node] = markersize + 50
 
-    ax1.plot(path_length(chain=chain), energies, color='green')
-    ax1.scatter(path_length(chain=chain), energies, label="Energy", marker="o", color=markercolors,
-                s=markersizes)
+    ax1.plot(path_length(chain=chain), energies, color="green")
+    ax1.scatter(
+        path_length(chain=chain),
+        energies,
+        label="Energy",
+        marker="o",
+        color=markercolors,
+        s=markersizes,
+    )
 
     ax1.tick_params(axis="y", labelcolor=color)
     plt.title(title, pad=20)
@@ -457,7 +481,9 @@ def path_length(chain: List[Node]) -> np.array:
     elif isinstance(chain[0], XYNode):
         molecular_system = False
     else:
-        raise NotImplementedError(f"Cannot compute path length for node type: {type(chain[0])}")
+        raise NotImplementedError(
+            f"Cannot compute path length for node type: {type(chain[0])}"
+        )
 
     if molecular_system:
         coords = _get_mass_weighed_coords(chain)
@@ -469,7 +495,9 @@ def path_length(chain: List[Node]) -> np.array:
         if i == len(coords) - 1:
             continue
         next_frame = coords[i + 1]
-        distance = _path_len_dist_func(frame_coords, next_frame, molecular_system=molecular_system)
+        distance = _path_len_dist_func(
+            frame_coords, next_frame, molecular_system=molecular_system
+        )
         cum_sums.append(cum_sums[-1] + distance)
 
     cum_sums = np.array(cum_sums)
@@ -483,20 +511,22 @@ def _energies_kcalmol(chain: List[Node]):
     in kcal/mol, where the first energy will be set to 0.
     """
     enes = np.array([node.energy for node in chain])
-    return (enes-enes[0])*627.5
+    return (enes - enes[0]) * 627.5
 
 
 def visualize_chain(chain: List[StructureNode]):
     """
     returns an interactive visualizer for a chain
     """
+
     def wrap(frame):
         final_html = []
         image_base64 = generate_neb_plot(chain, ind_node=frame)
         structure_html = generate_structure_html(chain[frame].structure)
         img_html = (
             f'<img src="data:image/png;base64,{image_base64}" alt="Energy Optimization by '
-            'Cycle" style="width: 100%; max-width: 600px;">')
+            'Cycle" style="width: 100%; max-width: 600px;">'
+        )
 
         final_html.append(
             f"""
