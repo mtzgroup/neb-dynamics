@@ -20,6 +20,8 @@ from neb_dynamics.optimizers.optimizer import Optimizer
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.errors import ElectronicStructureError
 
+PATH_METHODS = ['NEB']
+
 
 @dataclass
 class MSMEP:
@@ -61,7 +63,7 @@ class MSMEP:
             return TreeNode(data=None, children=[], index=tree_node_index)
 
         try:
-            root_neb_obj, elem_step_results = self.get_neb_chain(
+            root_neb_obj, elem_step_results = self.minimize_chain(
                 input_chain=input_chain
             )
             history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
@@ -129,7 +131,8 @@ class MSMEP:
 
         return interpolation
 
-    def get_neb_chain(self, input_chain: Chain) -> Tuple[NEB, ElemStepResults]:
+    def minimize_chain(self, input_chain: Chain, method: str = 'NEB') -> Tuple[NEB, ElemStepResults]:
+        assert method in PATH_METHODS, f"Invalid path method: {method}. Allowed are: {PATH_METHODS}"
 
         # make sure the chain parameters are reset
         # if they come from a converged chain
@@ -144,12 +147,23 @@ class MSMEP:
         else:
             interpolation = input_chain
 
-        print("Running NEB calculation...")
+        print("Running path minimization...")
+        if method.upper() == 'NEB':
+            print("Using in-house NEB optimizer")
+            sys.stdout.flush()
+            path_minimizer = NEB
 
-        print("Using in-house NEB optimizer")
-        sys.stdout.flush()
+            n = NEB(
+                initial_chain=interpolation,
+                parameters=self.neb_inputs.copy(),
+                optimizer=self.optimizer.copy(),
+                engine=self.engine,
+            )
+        elif method.upper() == "GSM":
+            print("Using pyGSM optimizer")
+            path_minimizer = PYGSM
 
-        n = NEB(
+        n = path_minimizer(
             initial_chain=interpolation,
             parameters=self.neb_inputs.copy(),
             optimizer=self.optimizer.copy(),
@@ -188,7 +202,7 @@ class MSMEP:
     def _make_chain_frag(self, chain: Chain, geom_pair, ind_pair):
         start_ind, end_ind = ind_pair
         opt_start, opt_end = geom_pair
-        chain_frag_nodes = chain.nodes[start_ind : end_ind + 1]
+        chain_frag_nodes = chain.nodes[start_ind: end_ind + 1]
         chain_frag = Chain(
             nodes=[opt_start] + chain_frag_nodes + [opt_end],
             parameters=chain.parameters,

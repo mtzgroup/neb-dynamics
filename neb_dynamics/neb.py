@@ -23,6 +23,7 @@ from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from convergence_helpers import chain_converged
 from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
 import neb_dynamics.chainhelpers as ch
+from abc import ABC, abstractmethod
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
@@ -30,9 +31,15 @@ ob_log_handler.SetOutputLevel(0)
 VELOCITY_SCALING = 0.3
 ACTIVATION_TOL = 100
 
+@dataclass
+class PathMinimizer(ABC):
+    @abstractmethod
+    def optimize_chain(self) -> ElemStepResults:
+        ...
+
 
 @dataclass
-class NEB:
+class NEB(PathMinimizer):
     """
     Class for running, storing, and visualizing nudged elastic band minimizations.
     Main functions to use are:

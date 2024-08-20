@@ -397,7 +397,7 @@ def main():
 
     elif args.method == "neb":
 
-        n, elem_step_results = m.get_neb_chain(input_chain=chain)
+        n, elem_step_results = m.minimize_chain(input_chain=chain)
         fp = Path(args.st)
         data_dir = fp.parent
         if args.name:
