@@ -59,6 +59,7 @@ class NEBInputs:
     v: bool = False
 
     preopt_with_xtb: bool = False
+    pygsm_kwds: dict = field(default_factory=dict)
 
     def __post_init__(self):
         if self.en_thre is None:

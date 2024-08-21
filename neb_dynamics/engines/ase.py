@@ -7,13 +7,20 @@ from ase.calculators.calculator import Calculator
 from ase.units import Hartree
 from numpy.typing import NDArray
 from qcio.constants import ANGSTROM_TO_BOHR
-from qcio_structure_helpers import structure_to_ase_atoms
+from qcio_structure_helpers import structure_to_ase_atoms, ase_atoms_to_structure
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines import Engine
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
 from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 from neb_dynamics.nodes.node import StructureNode
+
+from ase.optimize.optimize import Optimizer
+from ase.optimize.lbfgs import LBFGS
+from ase.io import Trajectory
+
+from pathlib import Path
+import tempfile
 
 
 @dataclass
@@ -29,6 +36,7 @@ class ASEEngine(Engine):
     """
 
     calculator: Calculator
+    ase_optimizer: Optimizer = LBFGS
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:
@@ -80,12 +88,17 @@ class ASEEngine(Engine):
             else:
                 all_results.append(non_frozen_results.pop(0))
 
-        for node, result in zip(node_list, all_results):
+        self._update_cache(node_list=node_list, results=all_results)
+        return node_list
+
+    def _update_cache(self, node_list, results):
+        """
+        inplace update of cached results
+        """
+        for node, result in zip(node_list, results):
             node._cached_result = result
             node._cached_energy = result.results.energy
             node._cached_gradient = result.results.gradient
-
-        return node_list
 
     def compute_func(self, atoms: Atoms):
         ene_ev = self.calculator.get_potential_energy(atoms=atoms)  # eV
@@ -97,3 +110,37 @@ class ASEEngine(Engine):
 
         res = FakeQCIOResults(energy=ene, gradient=grad)
         return FakeQCIOOutput(results=res)
+
+    def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:
+        """
+        Computes a geometry optimization using ASE calculation and optimizer
+        """
+        atoms = structure_to_ase_atoms(node.structure)
+        atoms.set_calculator(self.calculator)
+        tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
+
+        optimizer = self.ase_optimizer(atoms=atoms, logfile=None, trajectory=tmp.name)  # ASE doing geometry optimizations inplace
+        optimizer.run(fmax=0.01)
+
+        # 'atoms' variable is now updated
+        charge = node.structure.charge
+        multiplicity = node.structure.multiplicity
+
+        aT = Trajectory(tmp.name)
+        traj_list = []
+        for i, _ in enumerate(aT):
+            traj_list.append(
+                ase_atoms_to_structure(atoms=aT[i], charge=charge, multiplicity=multiplicity)
+            )
+
+        energies = [obj.get_potential_energy() for obj in aT]
+        gradients = [-1*obj.get_forces() for obj in aT]
+        all_results = []
+        for ene, grad in zip(energies, gradients):
+            res = FakeQCIOResults(energy=ene, gradient=grad)
+            out = FakeQCIOOutput(results=res)
+            all_results.append(out)
+        Path(tmp.name).unlink()
+        node_list = [StructureNode(structure=struct) for struct in traj_list]
+        self._update_cache(node_list=node_list, results=all_results)
+        return node_list

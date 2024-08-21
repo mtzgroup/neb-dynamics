@@ -11,7 +11,7 @@ from neb_dynamics.elementarystep import check_if_elem_step
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.elementarystep import ElemStepResults
-from neb_dynamics.neb import NEB, NoneConvergedException
+from neb_dynamics.neb import NEB, PYGSM, NoneConvergedException
 from neb_dynamics.engines import Engine
 from neb_dynamics.inputs import NEBInputs, ChainInputs, GIInputs
 
@@ -20,7 +20,7 @@ from neb_dynamics.optimizers.optimizer import Optimizer
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.errors import ElectronicStructureError
 
-PATH_METHODS = ['NEB']
+PATH_METHODS = ['NEB', 'PYGSM']
 
 
 @dataclass
@@ -33,6 +33,7 @@ class MSMEP:
     gi_inputs: GIInputs = GIInputs()
 
     optimizer: Optimizer = VelocityProjectedOptimizer()
+    path_min_method: str = 'NEB'
 
     def find_mep_multistep(self, input_chain: Chain, tree_node_index=0) -> TreeNode:
         """Will take a chain as an input and run NEB minimizations until it exits out.
@@ -131,8 +132,8 @@ class MSMEP:
 
         return interpolation
 
-    def minimize_chain(self, input_chain: Chain, method: str = 'NEB') -> Tuple[NEB, ElemStepResults]:
-        assert method in PATH_METHODS, f"Invalid path method: {method}. Allowed are: {PATH_METHODS}"
+    def minimize_chain(self, input_chain: Chain) -> Tuple[NEB, ElemStepResults]:
+        assert self.path_min_method.upper() in PATH_METHODS, f"Invalid path method: {self.path_min_method}. Allowed are: {PATH_METHODS}"
 
         # make sure the chain parameters are reset
         # if they come from a converged chain
@@ -148,10 +149,9 @@ class MSMEP:
             interpolation = input_chain
 
         print("Running path minimization...")
-        if method.upper() == 'NEB':
+        if self.path_min_method.upper() == 'NEB':
             print("Using in-house NEB optimizer")
             sys.stdout.flush()
-            path_minimizer = NEB
 
             n = NEB(
                 initial_chain=interpolation,
@@ -159,16 +159,14 @@ class MSMEP:
                 optimizer=self.optimizer.copy(),
                 engine=self.engine,
             )
-        elif method.upper() == "GSM":
-            print("Using pyGSM optimizer")
-            path_minimizer = PYGSM
+        elif self.path_min_method.upper() == "PYGSM":
+            print("Using PYGSM optimizer")
+            n = PYGSM(
+                initial_chain=interpolation,
+                engine=self.engine,
+                pygsm_kwds=self.neb_inputs.pygsm_kwds
+            )
 
-        n = path_minimizer(
-            initial_chain=interpolation,
-            parameters=self.neb_inputs.copy(),
-            optimizer=self.optimizer.copy(),
-            engine=self.engine,
-        )
         try:
             elem_step_results = n.optimize_chain()
             out_chain = n.optimized

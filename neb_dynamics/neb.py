@@ -2,34 +2,38 @@ from __future__ import annotations
 
 import shutil
 import sys
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Tuple
-from numpy.typing import NDArray
 from pathlib import Path
+from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-
-from openbabel import pybel
-
-from neb_dynamics.chain import Chain
-from neb_dynamics.errors import NoneConvergedException, ElectronicStructureError
-from qcop.exceptions import ExternalProgramError
-from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
-from neb_dynamics.optimizers.optimizer import Optimizer
-from neb_dynamics.engines import Engine
-from neb_dynamics.nodes.node import Node
-from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from convergence_helpers import chain_converged
-from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
+from numpy.typing import NDArray
+from openbabel import pybel
+from qcop.exceptions import ExternalProgramError
+
 import neb_dynamics.chainhelpers as ch
-from abc import ABC, abstractmethod
+from neb_dynamics.chain import Chain
+from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
+from neb_dynamics.engines import Engine
+from neb_dynamics.engines.ase import ASEEngine
+from neb_dynamics.errors import (ElectronicStructureError,
+                                 NoneConvergedException)
+from neb_dynamics.gsm_helper import minimal_wrapper_de_gsm, gsm_to_ase_atoms
+from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
+from neb_dynamics.nodes.node import StructureNode, Node
+from neb_dynamics.optimizers.optimizer import Optimizer
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
+from neb_dynamics.qcio_structure_helpers import structure_to_ase_atoms, ase_atoms_to_structure
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
 
 VELOCITY_SCALING = 0.3
 ACTIVATION_TOL = 100
+
 
 @dataclass
 class PathMinimizer(ABC):
@@ -647,3 +651,35 @@ class NEB(PathMinimizer):
             engine=engine,
         )
         return n
+
+
+@dataclass
+class PYGSM(PathMinimizer):
+    initial_chain: Chain
+    engine: ASEEngine  # incompatible with other Engines right now
+    chain_trajectory: list[Chain] = field(default_factory=list)
+    pygsm_kwds: dict = field(default_factory=dict)
+
+    def optimize_chain(self) -> ElemStepResults:
+        start = self.initial_chain[0]
+        end = self.initial_chain[-1]
+        start_ase = structure_to_ase_atoms(start.structure)
+        end_ase = structure_to_ase_atoms(end.structure)
+
+        gsm = minimal_wrapper_de_gsm(
+            atoms_reactant=start_ase, atoms_product=end_ase,
+            num_nodes=len(self.initial_chain),
+            calculator=self.engine.calculator,
+            **self.pygsm_kwds)
+
+        ase_frames, ase_ts = gsm_to_ase_atoms(gsm=gsm)
+        charge = self.initial_chain[0].structure.charge
+        multiplicity = self.initial_chain[0].structure.multiplicity
+        frames = [ase_atoms_to_structure(atoms=frame, charge=charge, multiplicity=multiplicity)
+                  for frame in ase_frames]
+        nodes = [StructureNode(structure=struct) for struct in frames]
+        out_chain = Chain(nodes=nodes, parameters=self.initial_chain.parameters.copy())
+        self.engine.compute_energies(out_chain)
+        self.chain_trajectory.append(out_chain)
+        self.optimized = out_chain
+        return check_if_elem_step(out_chain, engine=self.engine)
