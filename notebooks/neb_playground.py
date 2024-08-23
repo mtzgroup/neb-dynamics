@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
+from ase.optimize.mdmin import MDMin
+
 from neb_dynamics.TreeNode import TreeNode
 import neb_dynamics.chainhelpers as ch
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/dbg_superloose/")
-
-h.output_chain.plot_chain()
+h = TreeNode.read_from_disk("/home/jdep/debug/foobar/")
 
 ch.visualize_chain(h.output_chain)
 

@@ -132,6 +132,16 @@ def read_single_arguments():
     )
 
     parser.add_argument(
+        "-eng",
+        "--engine",
+        dest="eng",
+        required=True,
+        type=str,
+        help="What engine to use. E.g. 'qcop' or 'ase'",
+    )
+
+
+    parser.add_argument(
         "-es_ft",
         "--early_stop_ft",
         dest="es_ft",
@@ -265,13 +275,7 @@ def read_single_arguments():
 
 def main():
     args = read_single_arguments()
-
-    # nodes = {'node3d': Node3D, 'node3d_tc': Node3D_TC,
-    #          'node3d_tc_local': Node3D_TC_Local,
-    #          # 'node3d_tcpb': Node3D_TC_TCPB,
-    #          'node3d_water': Node3D_Water}
     nodes = {"node3d": StructureNode}
-    # nodes = {"node3d": Node3D, "node3d_tc": Node3D_TC}
     nc = nodes[args.nc]
 
     start = Structure.open(args.st)
@@ -351,22 +355,30 @@ def main():
                             exist for program {args.program}"
             )
 
-    eng = QCOPEngine(
-        program_input=program_input,
-        program=args.program,
-        geometry_optimizer=args.geom_opt,
-    )
+    if args.eng == 'qcop':
+        print("Using QCOPEngine")
+        eng = QCOPEngine(
+            program_input=program_input,
+            program=args.program,
+            geometry_optimizer=args.geom_opt,
+        )
+    elif args.eng == 'ase':
+        print("Using ASEEngine")
+        assert args.program == 'xtb', f"Invalid 'progam' {args.program}. It is not yet supported. This will likely change."
+        from xtb.ase.calculator import XTB
+        calc = XTB(method="GFN2-xTB")
+        eng = ASEEngine(calculator=calc,
+        )
+
     if 'neb' in args.method:
         pmm = 'neb'
     elif 'pygsm' in args.method:
         print("WARNING: PYGSM is *very* experimental for now. Engines other than ASEEngine not yet supported. Must manually change calculator if you want something that is not XTB. This  *will* change.")
         pmm = 'pygsm'
-        assert args.program == 'xtb', f"Invalid 'progam' {args.program}. It is not yet supported. This will likely change."
-        from xtb.ase.calculator import XTB
-        calc = XTB(method="GFN2-xTB")
-        eng = ASEEngine(calculator=calc)
-        
-    
+        assert args.eng == 'ase', "PYGMS currently only works with ASE calculator."
+
+
+
     m = MSMEP(
         neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer, engine=eng,
         path_min_method=pmm

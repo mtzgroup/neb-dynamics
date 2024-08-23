@@ -17,12 +17,24 @@ from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import update_node_cache
 
 from ase.optimize.optimize import Optimizer
-from ase.optimize.lbfgs import LBFGS
+from ase.optimize.lbfgs import LBFGS, LBFGSLineSearch
+from ase.optimize.bfgs import BFGS
+from ase.optimize.fire import FIRE
+from ase.optimize.mdmin import MDMin
+
+
 from ase.io import Trajectory
 
 from pathlib import Path
 import tempfile
 
+AVAIL_OPTS = {
+    'LBFGS': LBFGS,
+    "BFGS": BFGS,
+    "FIRE": FIRE,
+    "LBFGSLineSearch": LBFGSLineSearch,
+    "MDMin": MDMin,
+}
 
 @dataclass
 class ASEEngine(Engine):
@@ -37,7 +49,15 @@ class ASEEngine(Engine):
     """
 
     calculator: Calculator
-    ase_optimizer: Optimizer = LBFGS
+    ase_optimizer: Optimizer = None
+    ase_opt_str: str = "LBFGS"
+
+    def __post_init__(self):
+        if self.ase_optimizer is None:
+            assert self.ase_opt_str is not None and self.ase_opt_str in AVAIL_OPTS.keys(), f"Must input either an ase optimizer or a string name for an\
+             available optimizer: {AVAIL_OPTS.keys()}"
+
+            self.ase_optimizer = AVAIL_OPTS[self.ase_opt_str]
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:

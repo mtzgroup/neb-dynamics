@@ -392,7 +392,7 @@ def _animate_structure_list(structure_list):
     """
     animates a list of qcio structure objects
     """
-    structure_html = generate_structure_html(structure_list)
+    structure_html = generate_structure_viewer_html(structure_list)
     return display(HTML(structure_html))
 
 
@@ -524,7 +524,7 @@ def visualize_chain(chain: List[StructureNode]):
     def wrap(frame):
         final_html = []
         image_base64 = generate_neb_plot(chain, ind_node=frame)
-        structure_html = generate_structure_html(chain[frame].structure)
+        structure_html = generate_structure_viewer_html(chain[frame].structure)
         img_html = (
             f'<img src="data:image/png;base64,{image_base64}" alt="Energy Optimization by '
             'Cycle" style="width: 100%; max-width: 600px;">'
