@@ -7,7 +7,7 @@ from ase.calculators.calculator import Calculator
 from ase.units import Hartree
 from numpy.typing import NDArray
 from qcio.constants import ANGSTROM_TO_BOHR
-from qcio_structure_helpers import structure_to_ase_atoms, ase_atoms_to_structure
+from neb_dynamics.qcio_structure_helpers import structure_to_ase_atoms, ase_atoms_to_structure
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine

@@ -9,7 +9,7 @@ from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
-from convergence_helpers import chain_converged
+from neb_dynamics.convergence_helpers import chain_converged
 from numpy.typing import NDArray
 from openbabel import pybel
 from qcop.exceptions import ExternalProgramError

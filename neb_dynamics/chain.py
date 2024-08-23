@@ -226,7 +226,7 @@ class Chain:
 
     @property
     def ts_triplet_gspring_infnorm(self):
-        import chainhelpers as ch
+        import neb_dynamics.chainhelpers as ch
 
         ind_ts = self.energies[1:-1].argmax()
 
