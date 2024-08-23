@@ -5,6 +5,7 @@ from numpy.typing import NDArray
 from typing import Union, List
 from neb_dynamics import Node, Chain
 from neb_dynamics.engines.engine import Engine
+from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 import numpy as np
 
 

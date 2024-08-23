@@ -14,6 +14,7 @@ from neb_dynamics.engines import Engine
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
 from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 from neb_dynamics.nodes.node import StructureNode
+from neb_dynamics.nodes.nodehelpers import update_node_cache
 
 from ase.optimize.optimize import Optimizer
 from ase.optimize.lbfgs import LBFGS
@@ -88,17 +89,9 @@ class ASEEngine(Engine):
             else:
                 all_results.append(non_frozen_results.pop(0))
 
-        self._update_cache(node_list=node_list, results=all_results)
+        update_node_cache(node_list=node_list, results=all_results)
         return node_list
 
-    def _update_cache(self, node_list, results):
-        """
-        inplace update of cached results
-        """
-        for node, result in zip(node_list, results):
-            node._cached_result = result
-            node._cached_energy = result.results.energy
-            node._cached_gradient = result.results.gradient
 
     def compute_func(self, atoms: Atoms):
         ene_ev = self.calculator.get_potential_energy(atoms=atoms)  # eV
@@ -142,5 +135,5 @@ class ASEEngine(Engine):
             all_results.append(out)
         Path(tmp.name).unlink()
         node_list = [StructureNode(structure=struct) for struct in traj_list]
-        self._update_cache(node_list=node_list, results=all_results)
+        update_node_cache(node_list=node_list, results=all_results)
         return node_list

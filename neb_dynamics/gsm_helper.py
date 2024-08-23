@@ -64,29 +64,48 @@ def minimal_wrapper_de_gsm(
     for bond in topology_product.edges():
         if bond in topology_reactant.edges() or (bond[1], bond[0]) in topology_reactant.edges():
             continue
-        print(" Adding bond {} to reactant topology".format(bond))
+        # print(" Adding bond {} to reactant topology".format(bond))
         if bond[0] > bond[1]:
             topology_reactant.add_edge(bond[0], bond[1])
         else:
             topology_reactant.add_edge(bond[1], bond[0])
+
+    # # primitive internal coordinates
+    # prim_reactant = PrimitiveInternalCoordinates.from_options(
+    #     xyz=atoms_reactant.get_positions(),
+    #     atoms=elements,
+    #     topology=topology_reactant,
+    #     connect=coordinate_type == "DLC",
+    #     addtr=coordinate_type == "TRIC",
+    #     addcart=coordinate_type == "HDLC",
+    # )
+
+    # prim_product = PrimitiveInternalCoordinates.from_options(
+    #     xyz=atoms_product.get_positions(),
+    #     atoms=elements,
+    #     topology=topology_product,
+    #     connect=coordinate_type == "DLC",
+    #     addtr=coordinate_type == "TRIC",
+    #     addcart=coordinate_type == "HDLC",
+    # )
 
     # primitive internal coordinates
     prim_reactant = PrimitiveInternalCoordinates.from_options(
         xyz=atoms_reactant.get_positions(),
         atoms=elements,
         topology=topology_reactant,
-        connect=coordinate_type == "DLC",
-        addtr=coordinate_type == "TRIC",
-        addcart=coordinate_type == "HDLC",
+        connect=False,
+        addtr=False,
+        addcart=True,
     )
 
     prim_product = PrimitiveInternalCoordinates.from_options(
         xyz=atoms_product.get_positions(),
         atoms=elements,
         topology=topology_product,
-        connect=coordinate_type == "DLC",
-        addtr=coordinate_type == "TRIC",
-        addcart=coordinate_type == "HDLC",
+        connect=False,
+        addtr=False,
+        addcart=True,
     )
 
     # add product coords to reactant coords
@@ -96,9 +115,9 @@ def minimal_wrapper_de_gsm(
     deloc_coords_reactant = DelocalizedInternalCoordinates.from_options(
         xyz=atoms_reactant.get_positions(),
         atoms=elements,
-        connect=coordinate_type == "DLC",
-        addtr=coordinate_type == "TRIC",
-        addcart=coordinate_type == "HDLC",
+        connect=False,
+        addtr=False,
+        addcart=True,
         primitives=prim_reactant
     )
 
@@ -154,7 +173,7 @@ def minimal_wrapper_de_gsm(
 
     # optimize reactant and product if needed
     if not fixed_reactant:
-        nifty.printcool("REACTANT GEOMETRY NOT FIXED!!! OPTIMIZING")
+        # nifty.printcool("REACTANT GEOMETRY NOT FIXED!!! OPTIMIZING")
         path = os.path.join(os.getcwd(), 'scratch', f"{ID:03}", "0")
         optimizer_object.optimize(
             molecule=molecule_reactant,
@@ -163,7 +182,7 @@ def minimal_wrapper_de_gsm(
             path=path
         )
     if not fixed_product:
-        nifty.printcool("PRODUCT GEOMETRY NOT FIXED!!! OPTIMIZING")
+        # nifty.printcool("PRODUCT GEOMETRY NOT FIXED!!! OPTIMIZING")
         path = os.path.join(os.getcwd(), 'scratch', f"{ID:03}", str(num_nodes - 1))
         optimizer_object.optimize(
             molecule=molecule_product,

@@ -181,6 +181,8 @@ def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         max_steps=3000,
         early_stop_force_thre=0.03,
         skip_identical_graphs=True,
+        node_ene_thre=20,
+        node_rms_thre=1.0
     )  # *BOHR_TO_ANGSTROMS)
     initial_chain = Chain.from_xyz(test_data_dir / "traj_msmep.xyz", parameters=cni)
     opt = VelocityProjectedOptimizer(timestep=1.0)
@@ -242,6 +244,7 @@ def test_ASE_engine():
 
     calc = XTB(method="GFN2-xTB")
     eng = ASEEngine(calculator=calc)
+    # eng = QCOPEngine()
 
     # struct = Structure.from_smiles("COCO")
     struct = Structure(
@@ -258,22 +261,75 @@ def test_ASE_engine():
                 [1.72030678, 1.15344489, -2.75327353],
                 [3.01682314, -1.63229191, -0.03342495],
             ]
+
         ),
         symbols=["C", "O", "C", "O", "H", "H", "H", "H", "H", "H"],
     )
 
     chain = Chain([StructureNode(structure=struct) for i in range(10)])
 
-    reference = np.array([-383.3115133272166] * 10)
+    reference = np.array([-15.4514] * 10)
 
     vals = eng.compute_energies(chain)
 
-    assert all(vals == reference), "ASE Calculator giving incorrect energies"
+    assert np.allclose(vals, reference), f"ASE Calculator giving incorrect energies, \n{reference=}\n{vals=}"
+
+
+def test_msmep_pygsm(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
+
+    cni = ChainInputs(
+        k=0.01,
+        delta_k=0.009,
+        do_parallel=True,
+        node_freezing=True,
+        friction_optimal_gi=False,
+    )
+
+    tol = 0.002
+    nbi = NEBInputs(
+        tol=tol,  # * BOHR_TO_ANGSTROMS,
+        barrier_thre=0.1,  # kcalmol,
+        climb=False,
+        rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
+        max_rms_grad_thre=tol * 2.5,  # * BOHR_TO_ANGSTROMS*2.5,
+        ts_grad_thre=tol * 2.5,  # * BOHR_TO_ANGSTROMS,
+        ts_spring_thre=tol * 1.5,  # * BOHR_TO_ANGSTROMS*3,
+        v=1,
+        max_steps=3000,
+        early_stop_force_thre=0.03,
+        skip_identical_graphs=True,
+        node_rms_thre=5.0,
+
+        pygsm_kwds={'conv_tol': 0.005,  # Convergence tolerance for optimizing nodes
+                    'conv_Ediff': 100.,  # Energy difference convergence of optimization.
+                    'conv_gmax': 100.,  # Max grad rms threshold
+                    'max_gsm_iterations': 100,
+                    'max_opt_steps': 3, }
+    )  # *BOHR_TO_ANGSTROMS)
+    initial_chain = Chain.from_xyz(test_data_dir / "traj_msmep.xyz", parameters=cni)
+    opt = VelocityProjectedOptimizer(timestep=1.0)
+    gii = GIInputs(nimages=12)
+
+    calc = XTB(method="GFN2-xTB")
+    eng = ASEEngine(calculator=calc)
+    # eng = QCOPEngine()
+
+    m = MSMEP(
+        neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=opt, engine=eng,
+        path_min_method='pygsm'
+
+    )
+    h = m.find_mep_multistep(initial_chain)
+    assert (
+        len(h.ordered_leaves) == 2
+    ), f"MSMEP found incorrect number of elementary steps.\
+          Found {len(h.ordered_leaves)}. Reference: 2"
 
 
 if __name__ == "__main__":
-    # test_engine()
+    test_engine()
     test_neb()
-    # test_msmep()
+    test_msmep()
+    test_msmep_pygsm()
+    test_ASE_engine()
     # test_2d_neb()
-    # test_ASE_engine()

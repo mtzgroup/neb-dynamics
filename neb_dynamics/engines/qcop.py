@@ -15,6 +15,7 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
 from neb_dynamics.nodes.node import StructureNode
+from neb_dynamics.nodes.nodehelpers import update_node_cache
 from neb_dynamics.qcio_structure_helpers import _change_prog_input_property
 
 AVAIL_PROGRAMS = ["qcop", "chemcloud"]
@@ -114,11 +115,7 @@ class QCOPEngine(Engine):
             else:
                 all_results.append(non_frozen_results.pop(0))
 
-        for node, result in zip(node_list, all_results):
-            node._cached_result = result
-            node._cached_energy = result.results.energy
-            node._cached_gradient = result.results.gradient
-
+        update_node_cache(node_list=node_list, results=all_results)
         return node_list
 
     def _run_geom_opt_calc(self, structure: Structure):

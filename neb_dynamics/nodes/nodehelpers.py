@@ -1,5 +1,5 @@
 import numpy as np
-from neb_dynamics.nodes.node import Node
+from neb_dynamics.nodes.node import Node, XYNode
 from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 
@@ -7,13 +7,13 @@ from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 def is_identical(self: Node, other: Node,
                  *,
                  global_rmsd_cutoff: float = 20.0,
-                 fragment_rmsd_cutoff: float = 0.5,
+                 fragment_rmsd_cutoff: float = 1.0,
                  kcal_mol_cutoff: float = 1.0) -> bool:
     """
     computes whether two nodes are identical.
     if nodes have computable molecular graphs, will check that
     they are isomorphic to each other + that their distances are
-    within a threshold (default: 0.5 Anstroms) and their enegies
+    within a threshold (default: 1.0 Bohr) and their enegies
     are within a windos (default: 1.0 kcal/mol).
     otherwise, will only check distances.
     """
@@ -39,19 +39,26 @@ def _is_conformer_identical(self: Node, other: Node,
                             fragment_rmsd_cutoff: float = 0.5,
                             kcal_mol_cutoff: float = 1.0) -> bool:
 
-    global_dist, aligned_geometry = align_geom(
-        refgeom=other.coords, geom=self.coords)
+    print("\n\tVerifying if two geometries are identical.")
+    if isinstance(self, XYNode):
+        global_dist = np.linalg.norm(other.coords-self.coords)
+    else:
+        global_dist, aligned_geometry = align_geom(
+            refgeom=other.coords, geom=self.coords)
+
     per_frag_dists = []
     if self.has_molecular_graph:
         if not _is_connectivity_identical(self, other):
+            print("\t\tGraphs differed. Not identical.")
             return False
-
+        print("\t\tGraphs identical. Checking distances...")
         self_frags = split_structure_into_frags(self.structure)
         other_frags = split_structure_into_frags(other.structure)
         for frag_self, frag_other in zip(self_frags, other_frags):
             frag_dist, _ = align_geom(
                 refgeom=frag_self.geometry, geom=frag_other.geometry)
             per_frag_dists.append(frag_dist)
+            print(f"\t\t\tfrag dist: {frag_dist}")
     else:
         per_frag_dists.append(global_dist)
 
@@ -63,6 +70,7 @@ def _is_conformer_identical(self: Node, other: Node,
     rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
     energies_identical = en_delta < kcal_mol_cutoff
 
+    print(f"\t\t{rmsd_identical=} {energies_identical=} {en_delta=}")
     if rmsd_identical and energies_identical:
         return True
     else:
@@ -79,3 +87,13 @@ def _is_connectivity_identical(self: Node, other: Node) -> bool:
         other.graph.remove_Hs()
     )
     return connectivity_identical
+
+
+def update_node_cache(node_list, results):
+    """
+    inplace update of cached results
+    """
+    for node, result in zip(node_list, results):
+        node._cached_result = result
+        node._cached_energy = result.results.energy
+        node._cached_gradient = result.results.gradient

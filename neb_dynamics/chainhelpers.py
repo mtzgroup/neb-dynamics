@@ -330,6 +330,7 @@ def _update_cache(self, chain: Chain, gradients: NDArray, energies: NDArray) -> 
 
 
 def create_friction_optimal_gi(chain: Chain, gi_inputs: GIInputs):
+    print("GI: Optimizing friction parameter")
     eng = QCOPEngine()
     frics = [0.0001, 0.001, 0.01, 0.1, 1]
     all_gis = [
@@ -351,6 +352,7 @@ def create_friction_optimal_gi(chain: Chain, gi_inputs: GIInputs):
             eAs.append(10000000)
     ind_best = np.argmin(eAs)
     gi = all_gis[ind_best]
+    print(f"GI: Chose friction: {frics[ind_best]}")
     return gi
 
 

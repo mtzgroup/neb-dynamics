@@ -52,6 +52,9 @@ class NEBInputs:
     early_stop_corr_thre: float = 10.0
     early_stop_still_steps_thre: int = 100
 
+    node_rms_thre: float = 1.0  # Bohr
+    node_ene_thre: float = 1.0  # kcal/mol
+
     negative_steps_thre: int = 10
 
     max_steps: float = 1000

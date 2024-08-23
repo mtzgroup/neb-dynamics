@@ -33,7 +33,7 @@ class Engine(ABC):
 
     def steepest_descent(self, node: Node, ss=1, max_steps=10,
                          ene_thre: float = 1e-6, grad_thre: float = 1e-4) -> list[Node]:
-        print("************\n\n\n\nRUNNING STEEPEST DESCENT\n\n\n\nn***********")
+        # print("************\n\n\n\nRUNNING STEEPEST DESCENT\n\n\n\nn***********")
         history = []
         last_node = node.copy()
         # make sure the node isn't frozen so it returns a gradient

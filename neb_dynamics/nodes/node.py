@@ -110,11 +110,6 @@ class StructureNode(Node):
     _cached_result: Union[ProgramOutput, FakeQCIOOutput] = None
     graph: Molecule = None
 
-    def __eq__(self, other: Node) -> bool:
-        from neb_dynamics.nodes.nodehelpers import is_identical
-
-        return is_identical(self, other)
-
     def __post_init__(self):
         self.graph = structure_to_molecule(self.structure)
         if self._cached_result is not None:

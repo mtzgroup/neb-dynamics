@@ -132,16 +132,6 @@ def read_single_arguments():
     )
 
     parser.add_argument(
-        "-mr",
-        "--maxima_recyling",
-        dest="mr",
-        required=False,
-        type=int,
-        help="whether to use maxima recyling",
-        default=0,
-    )
-
-    parser.add_argument(
         "-es_ft",
         "--early_stop_ft",
         dest="es_ft",
@@ -250,6 +240,26 @@ def read_single_arguments():
         default=1.0,
     )
 
+    parser.add_argument(
+        "-node_rms_thre",
+        "--node_rms_threshold",
+        dest="node_rms_thre",
+        required=False,
+        type=float,
+        help="default distance for nodes being identical (Bohr) if they\
+            have identical graphs",
+        default=1.0)
+
+    parser.add_argument(
+        "-node_ene_thre",
+        "--node_ene_threshold",
+        dest="node_ene_thre",
+        required=False,
+        type=float,
+        help="default energy difference for nodes being identical (kcal/mol)\
+            if they have identical graphs",
+        default=1.0)
+
     return parser.parse_args()
 
 
@@ -304,6 +314,9 @@ def main():
         early_stop_still_steps_thre=args.es_ss,
         skip_identical_graphs=bool(args.sig),
         preopt_with_xtb=bool(int(args.preopt)),
+
+        node_rms_thre=float(args.node_rms_thre),
+        node_ene_thre=float(args.node_ene_thre)
     )
     print(f"{args.preopt=}")
     print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
