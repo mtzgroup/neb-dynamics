@@ -12,6 +12,7 @@ from neb_dynamics.elementarystep import check_if_elem_step
 from neb_dynamics.chain import Chain
 from neb_dynamics.elementarystep import ElemStepResults
 from neb_dynamics.neb import NEB, PYGSM, NoneConvergedException
+from neb_dynamics.nodes.nodehelpers import is_identical
 from neb_dynamics.engines import Engine
 from neb_dynamics.inputs import NEBInputs, ChainInputs, GIInputs
 
@@ -59,7 +60,11 @@ class MSMEP:
         ch._reset_node_convergence(input_chain)
         self.engine.compute_gradients(input_chain)
 
-        if input_chain[0] == input_chain[-1]:
+
+        if is_identical(self=input_chain[0],
+                        other=input_chain[-1],
+                        fragment_rmsd_cutoff=self.neb_inputs.node_rms_thre,
+                        kcal_mol_cutoff=self.neb_inputs.node_ene_thre):
             print("Endpoints are identical. Returning nothing")
             return TreeNode(data=None, children=[], index=tree_node_index)
 
