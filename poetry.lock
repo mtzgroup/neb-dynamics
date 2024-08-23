@@ -3458,9 +3458,9 @@ test = ["pytest (>=6.1.2)", "pytest-runner"]
 
 [package.source]
 type = "git"
-url = "https://github.com/ZimmermanGroup/pyGSM.git"
+url = "https://github.com/jandestrada/pyGSM.git"
 reference = "HEAD"
-resolved_reference = "295dc46db57373828e310373496ffac2e815dbf3"
+resolved_reference = "212df9c24cdcb9c1e148a10e84979f531df0b40d"
 
 [[package]]
 name = "pymdown-extensions"
@@ -5563,4 +5563,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "f69c7b98ef34d99742296d1291f1e1ee00163921c7e6a3088adbdf88bc474e9f"
+content-hash = "966f139c571406174f70ff5a8a31cc175d60402bfa2745f0d0861c97b15ca07a"
