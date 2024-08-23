@@ -10,7 +10,7 @@ from qcio.constants import ANGSTROM_TO_BOHR
 from qcio_structure_helpers import structure_to_ase_atoms, ase_atoms_to_structure
 
 from neb_dynamics.chain import Chain
-from neb_dynamics.engines import Engine
+from neb_dynamics.engines.engine import Engine
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
 from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 from neb_dynamics.nodes.node import StructureNode

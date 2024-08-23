@@ -9,9 +9,9 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.msmep import MSMEP
-from neb_dynamics.neb import NEB, NoneConvergedException
+from neb_dynamics.neb import NEB, NoneConvergedException, PYGSM
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
-from neb_dynamics.engines import QCOPEngine
+from neb_dynamics.engines import QCOPEngine, ASEEngine
 
 
 def read_single_arguments():
@@ -356,10 +356,22 @@ def main():
         program=args.program,
         geometry_optimizer=args.geom_opt,
     )
+    if 'neb' in args.method:
+        pmm = 'neb'
+    elif 'pygsm' in args.method:
+        print("WARNING: PYGSM is *very* experimental for now. Engines other than ASEEngine not yet supported. Must manually change calculator if you want something that is not XTB. This  *will* change.")
+        pmm = 'pygsm'
+        assert args.program == 'xtb', f"Invalid 'progam' {args.program}. It is not yet supported. This will likely change."
+        from xtb.ase.calculator import XTB
+        calc = XTB(method="GFN2-xTB")
+        eng = ASEEngine(calculator=calc)
+        
+    
     m = MSMEP(
-        neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer, engine=eng
+        neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer, engine=eng,
+        path_min_method=pmm
     )
-    if args.method == "asneb":
+    if args.method in ['asneb', 'aspygsm']:
 
         history = m.find_mep_multistep(chain)
 
@@ -408,7 +420,7 @@ def main():
             tot_grad_calls = j.get_n_grad_calls()
             print(f">>> Made {tot_grad_calls} gradient calls in cleanup.")
 
-    elif args.method == "neb":
+    elif args.method in ["neb",'pygsm']:
 
         n, elem_step_results = m.minimize_chain(input_chain=chain)
         fp = Path(args.st)
