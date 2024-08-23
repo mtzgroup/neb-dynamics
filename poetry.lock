@@ -1067,6 +1067,21 @@ test-full = ["adlfs", "aiohttp (!=4.0.0a0,!=4.0.0a1)", "cloudpickle", "dask", "d
 tqdm = ["tqdm"]
 
 [[package]]
+name = "geometric"
+version = "1.0.2"
+description = "Geometry optimization for quantum chemistry"
+optional = false
+python-versions = "*"
+files = [
+    {file = "geometric-1.0.2.tar.gz", hash = "sha256:8d9989ca40a4d079d3e9f00c55bdd894c2b5d195d40d7508bf46ec61f8d46b1a"},
+]
+
+[package.dependencies]
+networkx = "*"
+numpy = ">=1.11"
+six = "*"
+
+[[package]]
 name = "ghp-import"
 version = "2.1.0"
 description = "Copy your docs directly to the gh-pages branch."
@@ -5563,4 +5578,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "966f139c571406174f70ff5a8a31cc175d60402bfa2745f0d0861c97b15ca07a"
+content-hash = "c345b2b1c66f79e50a3b342de0181721890695867d5e322ee3b30944f6b30991"
