@@ -1,225 +1,56 @@
-# +
+from neb_dynamics.helper_functions import _create_df
+from pathlib import Path
 
-from neb_dynamics.helper_functions import RMSD
-from neb_dynamics.chain import Chain
-from neb_dynamics.inputs import ChainInputs
-from neb_dynamics.molecule import Molecule
 from neb_dynamics.TreeNode import TreeNode
 
-import pandas as pd
+from neb_dynamics.chain import Chain
+from neb_dynamics.inputs import ChainInputs
+import neb_dynamics.chainhelpers as ch
 
-import numpy as np
-import matplotlib.pyplot as plt
-import contextlib, os
+chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/NEB_12nodes_neb.xyz" ,ChainInputs())
 
-from pathlib import Path
-import subprocess
-from itertools import product
-import itertools
-from dataclasses import dataclass
-from IPython.core.display import HTML
-import networkx as nx
+chain.plot_chain()
 
-from mpl_toolkits.mplot3d import Axes3D
+ch.visualize_chain(chain)
 
-import matplotlib.patches as mpatches
+rns = Path("/home/jdep/T3D_data/msmep_draft/comparisons1/structures/").glob("*")
+
+names = [rn / "ASNEB_03_NOSIG_NOMR" for rn in rns]
+
+data = []
+for name in names:
+    print(name)
+    try:
+        h = TreeNode.read_from_disk(name)
+        leaf_gis = [leaf.data.optimized.get_eA_chain() for leaf in h.ordered_leaves]
+        init_gi = h.data.initial_chain.get_eA_chain()
+        data.append((init_gi, leaf_gis))
+    except FileNotFoundError:
+        data.append((None, None))
 
 
-from sklearn.gaussian_process.kernels import DotProduct, WhiteKernel, RBF, ConstantKernel
+stats = [0, 0]
+for init_gi, leaf_gi in data:
+    if init_gi is None:
+        continue
+        
+    max_leaf_gi = max(leaf_gi)
+    
+    if len(leaf_gi) > 1:
+        if init_gi > max_leaf_gi:
+            stats[1] += 1
+        else:
+            stats[0] += 1
 
+stats
 
-
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.interpolate import SmoothBivariateSpline
-HTML('<script src="//d3js.org/d3.v3.min.js"></script>')
-# -
-
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/dbg/")
-
-h.output_chain.plot_chain()
-
-from neb_dynamics.chainhelpers import visualize_chain
-
-visualize_chain(h.output_chain)
-
+data[0]
 
 # +
-def mod_variable(var, all_rns, success_names):
-    ind = 0
-    mod_var = []
-    for i, rn in enumerate(all_rns):
-        if rn in success_names:
-            mod_var.append(var[ind])
-            ind+=1
-        else:
-            mod_var.append(None)
-
-    return mod_var
-
-def create_df(names, v=True, refinement_results=False):
-
-    do_refine = False
-    multi = []
-    elem = []
-    failed = []
-    skipped = []
-    n_steps = []
-    n_grad_calls = []
-    n_grad_calls_geoms = []
-
-    activation_ens = []
-
-    n_opt_steps = []
-    n_opt_splits = []
-
-    success_names = []
-
-    tsg_list = []
-    sys_size = []
-    xtb = True
-    for i, p in enumerate(names):
-
-        rn = p.parent.stem
-        if v: print(p)
-
-        try:
-            out = open(p.parent / f"out_{p.stem}").read().splitlines()
-            # if 'Traceback (most recent call last):' in out[:50] or 'Terminated' in out:
-            #     raise TypeError('failure')
-            if 'Warning! A chain has electronic structure errors.                         Returning an unoptimized chain...' in out:
-                raise FileNotFoundError('failure')
-
-            if refinement_results:
-                clean_fp = Path(str(p.resolve())+".xyz")
-                ref = Refiner()
-                ref_results = ref.read_leaves_from_disk(p)
-
-            else:
-                h = TreeNode.read_from_disk(p)
-                clean_fp = p.parent / (str(p.stem)+'_clean.xyz')
-
-            if clean_fp.exists():
-                try:
-                    out_chain = Chain.from_xyz(clean_fp, ChainInputs())
-
-                except:
-                    if v: print("\t\terror in energies. recomputing")
-                    tr = Trajectory.from_xyz(clean_fp)
-                    out_chain = Chain.from_traj(tr, ChainInputs())
-                    grads = out_chain.gradients
-                    if v: print(f"\t\twriting to {clean_fp}")
-                    out_chain.write_to_disk(clean_fp)
-
-
-                if not out_chain._energies_already_computed:
-                    if v: print("\t\terror in energies. recomputing")
-                    tr = Trajectory.from_xyz(clean_fp)
-                    out_chain = Chain.from_traj(tr, ChainInputs())
-                    grads = out_chain.gradients
-                    if v: print(f"\t\twriting to {clean_fp}")
-                    out_chain.write_to_disk(clean_fp)
-            elif not clean_fp.exists() and refinement_results:
-                print(clean_fp,' did not succeed')
-                raise FileNotFoundError("boo")
-            elif not clean_fp.exists() and not refinement_results:
-                out_chain = h.output_chain
-
-
-            es = len(out_chain)==12
-            if v: print('elem_step: ', es)
-            if refinement_results:
-                n_splits = sum([len(leaf.get_optimization_history()) for leaf in ref_results])
-                tot_steps = sum([len(leaf.data.chain_trajectory) for leaf in ref_results])
-                act_en = max([leaf.data.chain_trajectory[-1].get_eA_chain() for leaf in ref_results])
-
-            else:
-                if v: print([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
-                n_splits = len(h.get_optimization_history())
-                if v: print(sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()]))
-                tot_steps = sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
-                act_en = max([leaf.data.chain_trajectory[-2].get_eA_chain() for leaf in h.ordered_leaves])
-
-            n_opt_steps.append(tot_steps)
-            n_opt_splits.append(n_splits)
-
-
-            ng_line = [line for line in out if len(line)>3 and line[0]=='>']
-            if v: print(ng_line)
-            ng = sum([int(ngl.split()[2]) for ngl in ng_line])
-
-            ng_geomopt = [line for line in out if len(line)>3 and line[0]=='<']
-            ng_geomopt = sum([int(ngl.split()[2]) for ngl in ng_geomopt])
-            # ng = 69
-            if v: print(ng, ng_geomopt)
-
-            activation_ens.append(act_en)
-
-            sys_size.append(len(out_chain[0].coords))
-
-
-
-            if es:
-                elem.append(p)
-            else:
-                multi.append(p)
-
-
-            n = len(out_chain) / 12
-            n_steps.append((i,n))
-            success_names.append(rn)
-            n_grad_calls.append(ng)
-            n_grad_calls_geoms.append(ng_geomopt)
-
-        except FileNotFoundError as e:
-            if v: print(e)
-            failed.append(p)
-
-        except IndexError as e:
-            if v: print(e)
-            failed.append(p)
-
-#         except KeyboardInterrupt:
-#             skipped.append(p)
-
-
-        if v: print("")
-
-    import pandas as pd
-    df = pd.DataFrame()
-    df['reaction_name'] = [fp.split("/")[-1]for fp in all_rns]
-
-    df['success'] = [rn_succeeded(fp, success_names) for fp in all_rns]
-
-    df['n_grad_calls'] = mod_variable(n_grad_calls, all_rns, success_names)
-    if v: print(n_grad_calls)
-    if v: print(mod_variable(n_grad_calls, all_rns, success_names))
-
-    df['n_grad_calls_geoms'] = mod_variable(n_grad_calls_geoms, all_rns, success_names)
-
-    df["n_opt_splits"] = mod_variable(n_opt_splits, all_rns, success_names)
-    # df["n_opt_splits"] = [0 for rn in all_rns]
-
-    df['n_rxn_steps'] = mod_variable([x[1] for x in n_steps], all_rns, success_names)
-    # df['n_rxn_steps'] = [0 for rn in all_rns]
-
-    df['n_opt_steps'] = mod_variable(n_opt_steps, all_rns, success_names)
-
-    df['file_path'] = all_rns
-
-    df['activation_ens'] = mod_variable(activation_ens, all_rns, success_names)
-
-    df['activation_ens'].plot(kind='hist')
-
-    # df['n_opt_splits'].plot(kind='hist')
-    # print(success_names)
-
-    return df
+# df = _create_df(names)
 # -
 
 names = [ p/'ASNEB_03_SIGYES' for p in Path("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures/").glob("*")]
-
-from neb_dynamics.TreeNode import TreeNode
 
 h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/ladderane_rct_msmep//")
 

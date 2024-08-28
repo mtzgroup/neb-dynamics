@@ -122,10 +122,6 @@ class ChainInputs:
     node_freezing: bool = True
     node_conf_en_thre: float = 0.5  # kcal/mol
 
-    tc_model_method: str = "b3lyp"
-    tc_model_basis: str = "6-31g"
-    tc_kwds: dict = field(default_factory=dict)
-
     def copy(self) -> ChainInputs:
         return ChainInputs(**self.__dict__)
 

@@ -12,6 +12,7 @@ from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB, NoneConvergedException, PYGSM
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.engines import QCOPEngine, ASEEngine
+from neb_dynamics.helper_functions import _load_info_from_tcin
 
 
 def read_single_arguments():
@@ -222,6 +223,16 @@ def read_single_arguments():
     )
 
     parser.add_argument(
+        "-tcin",
+        "--terachem_input",
+        dest="tcin",
+        required=False,
+        type=str,
+        help="file path to a Terachem input file.",
+        default=None,
+    )
+
+    parser.add_argument(
         "-geom_opt",
         "--geometry_optimization",
         dest="geom_opt",
@@ -326,13 +337,18 @@ def main():
     print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
     sys.stdout.flush()
 
-    gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
-    chain = Chain(
-        nodes=[StructureNode(structure=start), StructureNode(structure=end)],
-        parameters=cni,
-    )
 
-    if args.pif:
+    if args.tcin:
+        print("Warning! Directly inserting TC input files may be deleted\
+        in future versions. using --program_input_file is preferred.")
+        method, basis, charge, spinmult, inp_kwds = _load_info_from_tcin(args.tcin)
+        program_input = ProgramInput(
+                structure=start,
+                calctype="gradient",
+                model={"method": method, 'basis': basis},
+                keywords=inp_kwds,
+            )
+    elif args.pif:
         program_input = ProgramInput.open(args.pif)
     else:
         if args.program == "xtb":
@@ -361,7 +377,17 @@ def main():
             program_input=program_input,
             program=args.program,
             geometry_optimizer=args.geom_opt,
+            compute_program='qcop'
         )
+    elif args.eng == 'chemcloud':
+        print("Using QCOPEngine")
+        eng = QCOPEngine(
+            program_input=program_input,
+            program=args.program,
+            geometry_optimizer=args.geom_opt,
+            compute_program='chemcloud'
+        )
+
     elif args.eng == 'ase':
         print("Using ASEEngine")
         assert args.program == 'xtb', f"Invalid 'progam' {args.program}. It is not yet supported. This will likely change."
@@ -378,12 +404,28 @@ def main():
         assert args.eng == 'ase', "PYGMS currently only works with ASE calculator."
 
 
+    if args.min_ends:
+        start_tr = eng.compute_geometry_optimization(StructureNode(structure=start))
+        start_node = start_tr[-1]
+        end_tr = eng.compute_geometry_optimization(StructureNode(structure=end))
+        end_node = end_tr[-1]
+    else:
+        start_node = StructureNode(structure=start)
+        end_node = StructureNode(structure=end)
 
+
+    print(f"{args.method=}")
+    gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
+    chain = Chain(
+        nodes=[start_node, end_node],
+        parameters=cni,
+    )
     m = MSMEP(
         neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer, engine=eng,
         path_min_method=pmm
     )
-    if args.method in ['asneb', 'aspygsm']:
+    if "as" in args.method:
+        print("RUNNING AUTOSPLITTING")
 
         history = m.find_mep_multistep(chain)
 
@@ -433,6 +475,7 @@ def main():
             print(f">>> Made {tot_grad_calls} gradient calls in cleanup.")
 
     elif args.method in ["neb",'pygsm']:
+        print("RUNNING REGULAR NEB")
 
         n, elem_step_results = m.minimize_chain(input_chain=chain)
         fp = Path(args.st)
@@ -443,13 +486,7 @@ def main():
         else:
             filename = data_dir / f"{fp.stem}_neb.xyz"
 
-        try:
-            n.optimize_chain()
-
-            n.write_to_disk(data_dir / f"{filename}", write_history=True)
-        except NoneConvergedException as e:
-            e.obj.write_to_disk(data_dir / f"{filename}", write_history=True)
-
+        n.write_to_disk(filename)
         tot_grad_calls = n.grad_calls_made
         print(f">>> Made {tot_grad_calls} gradient calls total.")
 

@@ -30,6 +30,7 @@ def minimal_wrapper_de_gsm(
         max_gsm_iterations=10,
         max_opt_steps=3,  # 20 for SE-GSM
 ):
+    coordinate_type = "TRIC"
     # optimizer
     optimizer_method = "eigenvector_follow"  # OR "lbfgs"
     line_search = 'NoLineSearch'  # OR: 'backtrack'
@@ -38,8 +39,6 @@ def minimal_wrapper_de_gsm(
     step_size_cap = 0.1  # DMAX in the other wrapper
 
     # molecule
-    coordinate_type = "TRIC"
-
     lot = ASELoT.from_options(calculator,
                               geom=[[x.symbol, *x.position] for x in atoms_reactant])
 
@@ -115,11 +114,19 @@ def minimal_wrapper_de_gsm(
     deloc_coords_reactant = DelocalizedInternalCoordinates.from_options(
         xyz=atoms_reactant.get_positions(),
         atoms=elements,
-        connect=False,
-        addtr=False,
-        addcart=True,
+        connect=coordinate_type == "DLC",
+        addtr=coordinate_type == "TRIC",
+        addcart=coordinate_type == "HDLC",
         primitives=prim_reactant
     )
+    # deloc_coords_reactant = DelocalizedInternalCoordinates.from_options(
+    #     xyz=atoms_reactant.get_positions(),
+    #     atoms=elements,
+    #     connect=False,
+    #     addtr=False,
+    #     addcart=True,
+    #     primitives=prim_reactant
+    # )
 
     # Molecules
     from_hessian = optimizer_method == "eigenvector_follow"
@@ -168,7 +175,7 @@ def minimal_wrapper_de_gsm(
         ID=ID,
         print_level=0,
         mp_cores=1,  # parallelism not tested yet with the ASE calculators
-        interp_method="DLC",
+        interp_method="Geodesic",
     )
 
     # optimize reactant and product if needed

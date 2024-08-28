@@ -15,6 +15,7 @@ import scipy.sparse.linalg
 from openbabel import openbabel
 from pysmiles import write_smiles
 from rdkit import Chem
+from typing import List
 
 from neb_dynamics.elements import ElementData
 
@@ -445,3 +446,173 @@ def _calculate_chain_distances(chain_traj):
     return np.array(distances)
 
 
+def _create_df(filenames: List[Path], v=True, refinement_results=False):
+    from neb_dynamics.TreeNode import TreeNode
+    do_refine = False
+    multi = []
+    elem = []
+    failed = []
+    skipped = []
+    n_steps = []
+    n_grad_calls = []
+    n_grad_calls_geoms = []
+
+    activation_ens = []
+
+    n_opt_steps = []
+    n_opt_splits = []
+
+    success_names = []
+
+    tsg_list = []
+    sys_size = []
+    xtb = True
+    for i, p in enumerate(filenames):
+        rn = p.parent.stem
+        if v: print(p)
+
+        try:
+            out = open(p.parent / f"out_{p.stem}").read().splitlines()
+            # if 'Traceback (most recent call last):' in out[:50] or 'Terminated' in out:
+            #     raise TypeError('failure')
+            if 'Warning! A chain has electronic structure errors.                         Returning an unoptimized chain...' in out:
+                raise FileNotFoundError('failure')
+
+            if refinement_results:
+                clean_fp = Path(str(p.resolve())+".xyz")
+                ref = Refiner()
+                ref_results = ref.read_leaves_from_disk(p)
+
+            else:
+                h = TreeNode.read_from_disk(p)
+                clean_fp = p.parent / (str(p.stem)+'_clean.xyz')
+
+            if clean_fp.exists():
+                try:
+                    out_chain = Chain.from_xyz(clean_fp, ChainInputs())
+
+                except:
+                    if v: print("\t\terror in energies. recomputing")
+                    tr = Trajectory.from_xyz(clean_fp)
+                    out_chain = Chain.from_traj(tr, ChainInputs())
+                    grads = out_chain.gradients
+                    if v: print(f"\t\twriting to {clean_fp}")
+                    out_chain.write_to_disk(clean_fp)
+
+
+                if not out_chain._energies_already_computed:
+                    if v: print("\t\terror in energies. recomputing")
+                    tr = Trajectory.from_xyz(clean_fp)
+                    out_chain = Chain.from_traj(tr, ChainInputs())
+                    grads = out_chain.gradients
+                    if v: print(f"\t\twriting to {clean_fp}")
+                    out_chain.write_to_disk(clean_fp)
+            elif not clean_fp.exists() and refinement_results:
+                print(clean_fp,' did not succeed')
+                raise FileNotFoundError("boo")
+            elif not clean_fp.exists() and not refinement_results:
+                out_chain = h.output_chain
+
+
+            es = len(out_chain)==12
+            if v: print('elem_step: ', es)
+            if refinement_results:
+                n_splits = sum([len(leaf.get_optimization_history()) for leaf in ref_results])
+                tot_steps = sum([len(leaf.data.chain_trajectory) for leaf in ref_results])
+                act_en = max([leaf.data.chain_trajectory[-1].get_eA_chain() for leaf in ref_results])
+
+            else:
+                if v: print([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
+                n_splits = len(h.get_optimization_history())
+                if v: print(sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()]))
+                tot_steps = sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
+                act_en = max([leaf.data.chain_trajectory[-2].get_eA_chain() for leaf in h.ordered_leaves])
+
+            n_opt_steps.append(tot_steps)
+            n_opt_splits.append(n_splits)
+
+
+            ng_line = [line for line in out if len(line)>3 and line[0]=='>']
+            if v: print(ng_line)
+            ng = sum([int(ngl.split()[2]) for ngl in ng_line])
+
+            ng_geomopt = [line for line in out if len(line)>3 and line[0]=='<']
+            ng_geomopt = sum([int(ngl.split()[2]) for ngl in ng_geomopt])
+            # ng = 69
+            if v: print(ng, ng_geomopt)
+
+            activation_ens.append(act_en)
+            sys_size.append(len(out_chain[0].coords))
+
+
+
+            if es:
+                elem.append(p)
+            else:
+                multi.append(p)
+
+
+            n = len(out_chain) / 12
+            n_steps.append((i,n))
+            success_names.append(rn)
+            n_grad_calls.append(ng)
+            n_grad_calls_geoms.append(ng_geomopt)
+
+        except FileNotFoundError as e:
+            if v: print(e)
+            failed.append(p)
+
+        except IndexError as e:
+            if v: print(e)
+            failed.append(p)
+
+#         except KeyboardInterrupt:
+#             skipped.append(p)
+
+
+        if v: print("")
+
+    import pandas as pd
+    df = pd.DataFrame()
+    all_rns = [fp.parent.stem for fp in filenames]
+    df['reaction_name'] = all_rns
+
+    df['success'] = [fp.parent.stem in success_names for fp in filenames]
+
+    df['n_grad_calls'] = _mod_variable(n_grad_calls, all_rns, success_names)
+    if v: print(n_grad_calls)
+    if v: print(_mod_variable(n_grad_calls, all_rns, success_names))
+
+    df['n_grad_calls_geoms'] = _mod_variable(n_grad_calls_geoms, all_rns, success_names)
+
+    df["n_opt_splits"] = _mod_variable(n_opt_splits, all_rns, success_names)
+    # df["n_opt_splits"] = [0 for rn in all_rns]
+
+    df['n_rxn_steps'] = _mod_variable([x[1] for x in n_steps], all_rns, success_names)
+    # df['n_rxn_steps'] = [0 for rn in all_rns]
+
+    df['n_opt_steps'] = _mod_variable(n_opt_steps, all_rns, success_names)
+
+    df['file_path'] = all_rns
+
+    df['activation_ens'] = _mod_variable(activation_ens, all_rns, success_names)
+
+    df['activation_ens'].plot(kind='hist')
+
+    # df['n_opt_splits'].plot(kind='hist')
+    # print(success_names)
+
+    return df
+
+
+def _mod_variable(var, all_rns, success_names):
+    ind = 0
+    mod_var = []
+    for i, rn in enumerate(all_rns):
+        if rn in success_names:
+            mod_var.append(var[ind])
+            ind+=1
+        else:
+            mod_var.append(None)
+
+    return mod_var
