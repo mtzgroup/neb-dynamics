@@ -1,12 +1,19 @@
 # -*- coding: utf-8 -*-
+# +
 from neb_dynamics.chain import Chain
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.TreeNode import TreeNode
 
+from neb_dynamics.inputs import NEBInputs, ChainInputs, GIInputs
+from neb_dynamics.msmep import MSMEP
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
-# +
-# ch.visualize_chain(h.data.initial_chain)
+import matplotlib.pyplot as plt
+
+from scipy.signal import argrelmin
+
+
 # -
 
 def update_chain_dynamics(chain: Chain, engine, dt, mass=1.0) -> Chain:
@@ -14,7 +21,7 @@ def update_chain_dynamics(chain: Chain, engine, dt, mass=1.0) -> Chain:
 
     grads = engine.compute_gradients(chain)
     grads[0] = np.zeros_like(grads[0])
-    grads[-1] = np.zeros_like(grads[0])
+    # grads[-1] = np.zeros_like(grads[0])
     enes = engine.compute_energies(chain)
 
     new_vel = chain.velocity
@@ -39,9 +46,6 @@ def update_chain_dynamics(chain: Chain, engine, dt, mass=1.0) -> Chain:
     return new_chain
 
 
-from qcop.exceptions import ExternalProgramError
-
-
 def run_dynamics(chain, max_steps, engine, dt=0.1):
     """
     Runs dynamics on the chain.
@@ -52,8 +56,10 @@ def run_dynamics(chain, max_steps, engine, dt=0.1):
     while nsteps < max_steps + 1:            
         try:
             new_chain = update_chain_dynamics(chain=chain_previous, engine=engine, dt=dt)
-        except ExternalProgramError:
-            raise ElectronicStructureError(msg="QCOP failed.")
+        except Exception:
+            print("Electronic structure error")
+            return ct
+            # raise ElectronicStructureError(msg="QCOP failed.")
 
         max_rms_grad_val = np.amax(new_chain.rms_gperps)
         ind_ts_guess = np.argmax(new_chain.energies)
@@ -72,15 +78,18 @@ def run_dynamics(chain, max_steps, engine, dt=0.1):
         chain_previous = new_chain
     return chain_trajectory
 
+from qcop.exceptions import ExternalProgramError
+
 from neb_dynamics.engines import QCOPEngine, ASEEngine
 import numpy as np
 
 from xtb.ase.calculator import XTB
 
-h = TreeNode.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/Wittig/debug_msmep/')
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Claisen-Rearrangement/debug2_msmep/")
 
-vel_dim = 5.0
+vel_dim = 10.0
 chain = h.data.initial_chain
+# chain = ch.run_geodesic(chain, nimages=40)
 # chain = h.output_chain
 initial_vel = np.random.random(size=len(chain.coordinates.flatten()))
 initial_vel = initial_vel.reshape(chain.coordinates.shape) / np.linalg.norm(initial_vel)
@@ -90,17 +99,88 @@ for node in chain:
     node._cached_gradient = None
     node._cached_result = None
 
-chain.parameters.k = 0.0
+chain.parameters.k = 0.01
 chain.parameters.delta_k=0.0
 
 eng = ASEEngine(calculator=XTB())
 
-ct = run_dynamics(chain=chain, max_steps=500, engine=eng, dt=0.01)
 
-ch.plot_opt_history(ct, do_3d=True)
 
-ch.visualize_chain(ct[150])
-# out_tr = eng.compute_geometry_optimization(ct[-1][3])
+nbi = NEBInputs(v=True, early_stop_force_thre=0.01, skip_identical_graphs=True)
+cni = ChainInputs(friction_optimal_gi=False)
+gii = GIInputs(nimages=15)
+opt = VelocityProjectedOptimizer()
+m = MSMEP(engine=eng, neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
+
+init_guess_tr = run_dynamics(chain, max_steps=1000, dt=0.005, engine=eng)
+
+ch.plot_opt_history(init_guess_tr, 1)
+
+
+# +
+def chain_energy(chain):
+    # return sum(chain.energies)
+    return np.linalg.norm(ch.compute_NEB_gradient(chain))
+
+enes = [chain_energy(c) for c in init_guess_tr]
+
+
+
+inds_mins, = argrelmin(np.array(enes))
+
+plt.plot(enes)
+print(inds_mins)
+# -
+
+ch.visualize_chain(init_guess_tr[559])
+
+init_guess = init_guess_tr[-1]
+
+h = m.find_mep_multistep(init_guess)
+
+ch.visualize_chain(h.output_chain)
+
+# ### notes: 
+# * 'dt' is path length dependent
+# * TotalChainEnergy is a bad objective function cause you can cheat by having all nodes be in a single well
+
+out_tr = eng.compute_geometry_optimization(h.output_chain[-1])
+
+ch.visualize_chain(out_tr)
+
+all_results = []
+
+
+
+def _reset_chain(chain):
+    for node in chain:
+        node._cached_gradient = None
+        node._cached_result = None
+        node._cached_energy = None
+
+
+orig_init = h.data.initial_chain
+_reset_chain(orig_init)
+
+for init_guess in [ct[ind] for ind in inds_mins]:
+    _reset_chain(init_guess)
+    history = m.find_mep_multistep(init_guess)
+    all_results.append(history)
+
+len(all_results)
+
+ch.visualize_chain(all_results[0].output_chain)
+
+eng2 = ASEEngine(calculator=XTB(), ase_opt_str='LBFGS')
+
+out_tr[-1].structure.save("/home/jdep/T3D_data/ladderane/dynamics_attempt/end_preclaisen.xyz")
+
+ct[-1][0].structure.save("/home/jdep/T3D_data/ladderane/dynamics_attempt/start.xyz")
+
+# out_tr = eng.compute_geometry_optimization(ct[-1][30])
+out_tr = eng2.compute_geometry_optimization(ct[-1][32])
+
+len(out_tr)
 
 # +
 # ch.visualize_chain(out_tr)
@@ -112,9 +192,9 @@ m = MSMEP(engine=eng)
 
 history = m.find_mep_multistep(input_chain=ct[-1])
 
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/pygsm/")
 
-
-
+ch.visualize_chain(h.output_chain)
 
 
 

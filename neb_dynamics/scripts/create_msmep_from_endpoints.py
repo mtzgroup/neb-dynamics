@@ -394,6 +394,7 @@ def main():
         from xtb.ase.calculator import XTB
         calc = XTB(method="GFN2-xTB")
         eng = ASEEngine(calculator=calc,
+        ase_opt_str=args.geom_opt
         )
 
     if 'neb' in args.method:
@@ -430,13 +431,6 @@ def main():
         history = m.find_mep_multistep(chain)
 
         leaves_nebs = [obj for obj in history.get_optimization_history() if obj]
-        tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
-        geom_grad_calls = sum([obj.geom_grad_calls_made for obj in leaves_nebs])
-        print(f">>> Made {tot_grad_calls} gradient calls total.")
-        print(
-            f"<<< Made {geom_grad_calls} gradient for geometry\
-               optimizations."
-        )
         fp = Path(args.st)
         data_dir = fp.parent
 
@@ -450,6 +444,14 @@ def main():
 
         history.output_chain.write_to_disk(filename)
         history.write_to_disk(foldername)
+
+        tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
+        geom_grad_calls = sum([obj.geom_grad_calls_made for obj in leaves_nebs])
+        print(f">>> Made {tot_grad_calls} gradient calls total.")
+        print(
+            f"<<< Made {geom_grad_calls} gradient for geometry\
+               optimizations."
+        )
 
         if args.dc:
             op = data_dir / f"{filename.stem}_cleanups"

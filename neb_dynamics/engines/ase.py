@@ -11,7 +11,7 @@ from neb_dynamics.qcio_structure_helpers import structure_to_ase_atoms, ase_atom
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
-from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
+from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError, ElectronicStructureError
 from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import update_node_cache
@@ -114,15 +114,18 @@ class ASEEngine(Engine):
 
 
     def compute_func(self, atoms: Atoms):
-        ene_ev = self.calculator.get_potential_energy(atoms=atoms)  # eV
-        ene = ene_ev / Hartree  # Hartree
+        try:
+            ene_ev = self.calculator.get_potential_energy(atoms=atoms)  # eV
+            ene = ene_ev / Hartree  # Hartree
 
-        # ASE outputs the negative gradient
-        grad_ev_ang = self.calculator.get_forces(atoms=atoms) * (-1)  # eV / Angstroms
-        grad = (grad_ev_ang / ANGSTROM_TO_BOHR) / Hartree  # Hartree / Bohr
+            # ASE outputs the negative gradient
+            grad_ev_ang = self.calculator.get_forces(atoms=atoms) * (-1)  # eV / Angstroms
+            grad = (grad_ev_ang / ANGSTROM_TO_BOHR) / Hartree  # Hartree / Bohr
 
-        res = FakeQCIOResults(energy=ene, gradient=grad)
-        return FakeQCIOOutput(results=res)
+            res = FakeQCIOResults(energy=ene, gradient=grad)
+            return FakeQCIOOutput(results=res)
+        except Exception:
+            raise ElectronicStructureError(msg='Electronic structure failed.')
 
     def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:
         """
@@ -133,7 +136,10 @@ class ASEEngine(Engine):
         tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
 
         optimizer = self.ase_optimizer(atoms=atoms, logfile=None, trajectory=tmp.name)  # ASE doing geometry optimizations inplace
-        optimizer.run(fmax=0.01)
+        try:
+            optimizer.run(fmax=0.01)
+        except Exception:
+            raise ElectronicStructureError(msg='Electronic structure failed.')
 
         # 'atoms' variable is now updated
         charge = node.structure.charge
