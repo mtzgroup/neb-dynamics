@@ -108,7 +108,6 @@ class ASEEngine(Engine):
                 all_results.append(node_list[i]._cached_result)
             else:
                 all_results.append(non_frozen_results.pop(0))
-
         update_node_cache(node_list=node_list, results=all_results)
         return node_list
 
@@ -152,8 +151,8 @@ class ASEEngine(Engine):
                 ase_atoms_to_structure(atoms=aT[i], charge=charge, multiplicity=multiplicity)
             )
 
-        energies = [obj.get_potential_energy() for obj in aT]
-        gradients = [-1*obj.get_forces() for obj in aT]
+        energies = [obj.get_potential_energy()/ Hartree  for obj in aT]
+        gradients = [(-1*obj.get_forces()/ANGSTROM_TO_BOHR) for obj in aT]
         all_results = []
         for ene, grad in zip(energies, gradients):
             res = FakeQCIOResults(energy=ene, gradient=grad)

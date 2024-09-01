@@ -91,13 +91,17 @@ def _get_ind_maxima(chain):
         ind_maxima = int(maxima_indices)
     return ind_maxima
 
-
-def _get_mass_weighed_coords(chain: Chain):
-    coords = np.array([node.coords for node in chain])
+def _get_mass_weights(chain: Chain):
     symbols = chain[0].symbols
 
     weights = np.array([np.sqrt(get_mass(s)) for s in symbols])
     weights = weights / sum(weights)
+    return weights
+
+
+def _get_mass_weighed_coords(chain: Chain):
+    weights = _get_mass_weights(chain)
+    coords = chain.coordinates
     mass_weighed_coords = coords * weights.reshape(-1, 1)
     return mass_weighed_coords
 
