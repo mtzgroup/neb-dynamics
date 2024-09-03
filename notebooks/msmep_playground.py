@@ -1,3 +1,7 @@
+import pandas as pd
+
+df = pd.read_csv("/home/jdep/T3D_data/msmep_draft/msmep_reaction_successes.csv")
+
 from neb_dynamics.helper_functions import _create_df
 from pathlib import Path
 
@@ -13,7 +17,7 @@ chain.plot_chain()
 
 ch.visualize_chain(chain)
 
-rns = Path("/home/jdep/T3D_data/msmep_draft/comparisons1/structures/").glob("*")
+rns = Path("/home/jdep/T3D_data/msmep_draft//structures/").glob("*")
 
 names = [rn / "ASNEB_03_NOSIG_NOMR" for rn in rns]
 
@@ -62,6 +66,9 @@ df = create_df(names)
 
 # # Database
 
+from pathlib import Path
+from neb_dynamics.TreeNode import TreeNode
+
 # +
 
 IGNORING_RXNS = ['Aza-Grob-Fragmentation-X-Bromine', 'Bamberger-Rearrangement']
@@ -90,14 +97,36 @@ nosig_nomrs_dfs = [subset_to_multi_step_rns(pd.read_csv(f"/home/jdep/T3D_data/ms
 for df in nosig_nomrs_dfs:
     df['TOTAL_GRAD_CALLS'] = df['n_grad_calls']+df['n_grad_calls_geoms']
 
+from neb_dynamics.helper_functions import _create_df
+
+import os
+
+names = [fp for fp in Path("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/results_asneb").glob("*") if os.path.isdir(fp)]
+
+df = _create_df(filenames=names)
+
+df
+
+
 true_ms = []
-for fp in nosig_nomrs_dfs[-1][nosig_nomrs_dfs[-1]['n_rxn_steps']>1]['file_path']:
+# for fp in nosig_nomrs_dfs[-1][nosig_nomrs_dfs[-1]['n_rxn_steps']>1]['file_path']:
+for fp in df['n_rxn_steps']>1]['file_path']:
     p = Path(fp)/'ASNEB_003_yesSIG'
     h = TreeNode.read_from_disk(p)
     if len(h.ordered_leaves) > 1:
         true_ms.append(fp)
 
 true_ms_names = [st.split("/")[-1] for st in true_ms]
+
+# +
+out_fp = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo_multistep.txt", 'w+')
+
+for line in true_ms:
+    out_fp.write(line+"\n") 
+out_fp.close()
+# -
+
+len(true_ms_names)
 
 nosig_nomrs_dfs = [subset_to_multi_step_rns(pd.read_csv(f"/home/jdep/T3D_data/msmep_draft/comparisons/dataset_results_{label}_nosig_nomr.csv").dropna(),
                                            by_list=true_ms_names ) for label in ['5','1','05','03','01','005','0']]

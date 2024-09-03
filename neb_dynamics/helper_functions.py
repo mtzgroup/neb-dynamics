@@ -472,7 +472,8 @@ def _create_df(filenames: List[Path], v=True, refinement_results=False):
         if v: print(p)
 
         try:
-            out = open(p.parent / f"out_{p.stem}").read().splitlines()
+            # out = open(p.parent / f"out_{p.stem}").read().splitlines()
+            out = open(p.parent / f"{p.stem}_out").read().splitlines()
             # if 'Traceback (most recent call last):' in out[:50] or 'Terminated' in out:
             #     raise TypeError('failure')
             if 'Warning! A chain has electronic structure errors.                         Returning an unoptimized chain...' in out:

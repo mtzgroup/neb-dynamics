@@ -185,50 +185,49 @@ from xtb.ase.calculator import XTB
 
 h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Claisen-Rearrangement/debug2_msmep/")
 
-ref_chain = h.output_chain
+ALL_DYNAMICS = []
 
-ref_chain = h.output_chain.copy()
-ref_chain.nodes = [ref_chain[0], ref_chain.get_ts_node(), ref_chain[-1]]
-bias = ChainBiaser(reference_chains=[ref_chain], amplitude=1)
+N_STARTS = 10
 
-# %%time
-bias.grad_chain_bias(h.data.initial_chain)
+for i in range(N_STARTS):
+    vel_dim = 5.0
+    chain = h.data.initial_chain
+    # chain = ch.run_geodesic(chain, nimages=40)
+    # chain = h.output_chain
+    mass_weights = ch._get_mass_weights(chain)
+    initial_vel = np.random.random(size=len(chain.coordinates.flatten()))
+    
+    initial_vel = initial_vel.reshape(chain.coordinates.shape) #
+    initial_vel = initial_vel * mass_weights.reshape(-1, 1)
+    initial_vel = initial_vel / np.linalg.norm(initial_vel)
+    
+    
+    chain.velocity = initial_vel*vel_dim
+    for node in chain:
+        node.converged = False
+        node._cached_energy = None
+        node._cached_gradient = None
+        node._cached_result = None
+    
+    chain.parameters.k = 0.01
+    chain.parameters.delta_k=0.0
+    
+    eng = ASEEngine(calculator=XTB())
+    # eng = QCOPEngine()
+    
+    nbi = NEBInputs(v=True, early_stop_force_thre=0.03, skip_identical_graphs=False, node_rms_thre=5, node_ene_thre=1)
+    cni = ChainInputs(friction_optimal_gi=False, k=0.1, delta_k=0.09)
+    gii = GIInputs(nimages=len(h.data.initial_chain))
+    opt = VelocityProjectedOptimizer()
+    m = MSMEP(engine=eng, neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
+    
+    # init_guess_tr = run_dynamics(chain, max_steps=500, dt=0.005, engine=eng, biaser=bias, neb_inputs=nbi)
+    init_guess_tr = run_dynamics(chain, max_steps=1000, dt=0.005, engine=eng, biaser=None, neb_inputs=nbi)
+    ALL_DYNAMICS.append(init_guess_tr)
 
-# +
-vel_dim = 5.0
-chain = h.data.initial_chain
-# chain = ch.run_geodesic(chain, nimages=40)
-# chain = h.output_chain
-mass_weights = ch._get_mass_weights(chain)
-initial_vel = np.random.random(size=len(chain.coordinates.flatten()))
+ch.plot_opt_history(ALL_DYNAMICS[2], 1)
 
-initial_vel = initial_vel.reshape(chain.coordinates.shape) #
-initial_vel = initial_vel * mass_weights.reshape(-1, 1)
-initial_vel = initial_vel / np.linalg.norm(initial_vel)
-
-
-chain.velocity = initial_vel*vel_dim
-for node in chain:
-    node.converged = False
-    node._cached_energy = None
-    node._cached_gradient = None
-    node._cached_result = None
-# -
-
-chain.parameters.k = 0.01
-chain.parameters.delta_k=0.0
-
-eng = ASEEngine(calculator=XTB())
-# eng = QCOPEngine()
-
-nbi = NEBInputs(v=True, early_stop_force_thre=0.03, skip_identical_graphs=False, node_rms_thre=5, node_ene_thre=1e10)
-cni = ChainInputs(friction_optimal_gi=False, k=0.1, delta_k=0.09)
-gii = GIInputs(nimages=len(h.data.initial_chain))
-opt = VelocityProjectedOptimizer()
-m = MSMEP(engine=eng, neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii)
-
-# init_guess_tr = run_dynamics(chain, max_steps=500, dt=0.005, engine=eng, biaser=bias, neb_inputs=nbi)
-init_guess_tr = run_dynamics(chain, max_steps=1000, dt=0.005, engine=eng, biaser=None, neb_inputs=nbi)
+all_init_guesses = []
 
 
 # +
@@ -236,32 +235,32 @@ def chain_energy(chain):
     # return sum(chain.energies)
     return np.linalg.norm(ch.compute_NEB_gradient(chain))
 
-enes = [chain_energy(c) for c in init_guess_tr]
-
-
-
-inds_mins, = argrelmin(np.array(enes))
-
-plt.plot(enes)
-print(inds_mins)
-
-# +
-# ch.visualize_chain(init_guess_tr[inds_mins[1]])
-# ch.visualize_chain(init_guess_tr[909])
-
-# +
-init_c = init_guess_tr[inds_mins[0]].copy()
-for node in init_c:
-    node.converged = False
-    node._cached_energy = None
-    node._cached_gradient = None
-    node._cached_result = None
-
-eng.compute_gradients(init_c)
-history0 = m.find_mep_multistep(init_c)
+f, ax = plt.subplots()
+for tr in ALL_DYNAMICS:
+    enes = [chain_energy(c) for c in tr]
+    
+    
+    
+    inds_mins, = argrelmin(np.array(enes))
+    for ind in inds_mins:
+        all_init_guesses.append(tr[ind])
+    
+    plt.plot(enes)
+plt.show()
 # -
 
-history1 = m.find_mep_multistep(init_guess_tr[inds_mins[1]])
+ch.visualize_chain(all_init_guesses[2])
+
+all_histories = []
+for init_c in all_init_guesses:
+    all_histories.append(m.find_mep_multistep(init_c))
+
+# +
+
+len(all_histories)
+# -
+
+ch.visualize_chain(all_histories[8].output_chain)
 
 from qcio import view
 
@@ -422,7 +421,7 @@ def create_submission_scripts(
     submission_dir: Path,
     reference_dir: Path,
     reference_start_name: str = 'start.xyz',
-    reference_end_name: str = 'start.xyz',
+    reference_end_name: str = 'end.xyz',
     prog: str = 'xtb',
     eng: str = 'qcop',
     sig: int = 1,
@@ -475,18 +474,69 @@ def create_submission_scripts(
 ref_dir = Path("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures")
 all_rns = [p.stem for p in ref_dir.glob("*")]
 
+import os
+
 # rn = '1-2-Amide-Phthalamide-Synthesis'
+rns_to_submit = []
 for rn in all_rns:
-    create_submission_scripts(
-        out_dir=Path('/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/results_asneb'),
-        out_name=rn,
-        submission_dir=Path('/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/submissions_dir'), 
-        reference_dir=Path(f'/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures/{rn}'),
-        reference_start_name='start_raw.xyz', reference_end_name='end_raw.xyz',
-        nrt=10, net=10
-    )
+    out_dir = Path('/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/results_asneb')
+    if (out_dir/f'{rn}_out').exists():
+        continue
+    else:
+        # print(rn)
+        rns_to_submit.append(Path('/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/submissions_dir')/rn)
+        create_submission_scripts(
+            out_dir=Path('/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/results_asneb'),
+            out_name=rn,
+            submission_dir=Path('/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/submissions_dir'), 
+            reference_dir=Path(f'/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures/{rn}'),
+            reference_start_name='start_raw.xyz', reference_end_name='end_raw.xyz',
+            nrt=10, net=10
+        )
+        
+
+from neb_dynamics.TreeNode import TreeNode
 
 
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/results_asneb/Alkyne-Addition-Acidification-Bromine")
+
+
+import neb_dynamics.chainhelpers as ch
+from neb_dynamics.elementarystep import check_if_elem_step
+
+ch.visualize_chain(h.output_chain)
+
+from neb_dynamics.engines import QCOPEngine
+
+eng = QCOPEngine()
+
+output = check_if_elem_step(h.output_chain, engine=eng)
+
+output.minimization_results[0].energy
+
+from neb_dynamics.nodes.nodehelpers import is_identical
+
+is_identical(h.output_chain[-1], output.minimization_results[-1])
+
+
+
+# ?h.output_chain[-1].__eq__
+
+view.view(*[node.structure for node in output.minimization_results])
+
+view.view(output.minimization_results[0].structure, h.output_chain[0].structure)
+
+# +
+
+output.minimization_results[0] == 
+
+# +
+
+from qcio import view
+# -
+
+for rn in rns_to_submit:
+    os.system(f'sbatch {str(rn.resolve())}')
 
 
 

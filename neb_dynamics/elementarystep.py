@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import List, Tuple
 from neb_dynamics.chain import Chain
 from neb_dynamics.nodes.node import Node
+from neb_dynamics.nodes.nodehelpers import is_identical
 import numpy as np
 from neb_dynamics.engines import Engine
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
@@ -100,8 +101,8 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     pseu_irc_results = pseudo_irc(chain=inp_chain, engine=engine)
     n_geom_opt_grad_calls += pseu_irc_results.number_grad_calls
 
-    found_r = pseu_irc_results.found_reactant == chain[0]
-    found_p = pseu_irc_results.found_product == chain[-1]
+    found_r = is_identical(pseu_irc_results.found_reactant, chain[0])
+    found_p = is_identical(pseu_irc_results.found_product,  chain[-1])
     minimizing_gives_endpoints = found_r and found_p
 
     elem_step = True if minimizing_gives_endpoints else False
