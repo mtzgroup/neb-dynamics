@@ -178,7 +178,7 @@ def is_approx_elem_step(
 
 
 def _converges_to_an_endpoints(
-    chain, node_index, direction, engine: Engine, slope_thresh=0.01, max_grad_calls=50
+    chain, node_index, direction, engine: Engine, slope_thresh: float, max_grad_calls=50
 ) -> Tuple[bool, List[Node]]:
     """helper function to `is_approx_elem_step`. Actually carries out the minimizations.
 

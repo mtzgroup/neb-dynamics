@@ -281,6 +281,15 @@ def read_single_arguments():
             if they have identical graphs",
         default=1.0)
 
+    parser.add_argument(
+        "-fog",
+        "--friction_optimal_gi",
+        dest="fog",
+        required=False,
+        type=int,
+        help="whether to use XTB to optimize friction parameter in geodesic interpolation",
+        default=1)
+
     return parser.parse_args()
 
 
@@ -301,7 +310,7 @@ def main():
 
     tol = args.tol
 
-    fog = "node3d" in nodes.keys()
+    fog = args.fog
     print(nodes.keys(), fog, start, end)
 
     cni = ChainInputs(
@@ -333,9 +342,7 @@ def main():
         node_rms_thre=float(args.node_rms_thre),
         node_ene_thre=float(args.node_ene_thre)
     )
-    print(f"{args.preopt=}")
-    print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}")
-    sys.stdout.flush()
+
 
 
     if args.tcin:
@@ -414,8 +421,10 @@ def main():
         start_node = StructureNode(structure=start)
         end_node = StructureNode(structure=end)
 
-
+    print(f"{args.preopt=}")
+    print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}\nEngine: {eng}")
     print(f"{args.method=}")
+    sys.stdout.flush()
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
     chain = Chain(
         nodes=[start_node, end_node],

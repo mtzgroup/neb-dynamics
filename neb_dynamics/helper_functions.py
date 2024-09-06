@@ -446,7 +446,7 @@ def _calculate_chain_distances(chain_traj):
     return np.array(distances)
 
 
-def _create_df(filenames: List[Path], v=True, refinement_results=False):
+def _create_df(filenames: List[Path], v=True, refinement_results=False, out_at_beginning_name: bool = False):
     from neb_dynamics.TreeNode import TreeNode
     do_refine = False
     multi = []
@@ -472,8 +472,10 @@ def _create_df(filenames: List[Path], v=True, refinement_results=False):
         if v: print(p)
 
         try:
-            # out = open(p.parent / f"out_{p.stem}").read().splitlines()
-            out = open(p.parent / f"{p.stem}_out").read().splitlines()
+            if out_at_beginning_name:
+                out = open(p.parent / f"out_{p.stem}").read().splitlines()
+            else:
+                out = open(p.parent / f"{p.stem}_out").read().splitlines()
             # if 'Traceback (most recent call last):' in out[:50] or 'Terminated' in out:
             #     raise TypeError('failure')
             if 'Warning! A chain has electronic structure errors.                         Returning an unoptimized chain...' in out:

@@ -438,7 +438,11 @@ def generate_neb_plot(
     """
     generate plot of chain
     """
-    energies = _energies_kcalmol(chain)
+    try:
+        energies = _energies_kcalmol(chain)
+    except:
+        print("Cannot plot energies.")
+        return ""
 
     fig, ax1 = plt.subplots(figsize=figsize)
     color = "tab:blue"

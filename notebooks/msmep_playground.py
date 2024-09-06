@@ -1,21 +1,90 @@
-import pandas as pd
+from neb_dynamics.TreeNode import TreeNode
+import neb_dynamics.chainhelpers as ch
+from neb_dynamics.engines import QCOPEngine
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Claisen-Rearrangement-Aromatic/")
+
+h.output_chain.energies
+
+from qcio import ProgramInput, Structure
+
+pi = ProgramInput(structure=Structure.from_smiles("O"),
+                  model={'method':'uwb97xd3','basis':'def2-svp'},
+                  calctype='energy')
+eng = QCOPEngine(program_input=pi)
+
+from neb_dynamics.elementarystep import check_if_elem_step
+
+output = check_if_elem_step(h.output_chain, engine=eng)
+
+ch.visualize_chain(h.output_chain)
 
 df = pd.read_csv("/home/jdep/T3D_data/msmep_draft/msmep_reaction_successes.csv")
 
 from neb_dynamics.helper_functions import _create_df
 from pathlib import Path
 
+names = [fp / 'ASNEB_03_NOSIG_NOMR' for fp in Path("/home/jdep/T3D_data/msmep_draft/comparisons/structures").glob("*")]
+
+# +
+
+df = _create_df(names, out_at_beginning_name=True)
+# -
+
+len(df.dropna())
+
+data_dir = names[0].parent.parent
+tree_name = names[0].stem
+
+multi = df[df['n_rxn_steps']>1.0]['reaction_name']
+
+from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
+
+# +
+true_ms = []
+
+for rn in multi:
+    h = TreeNode.read_from_disk(data_dir / rn / tree_name)
+    effective_len_nodes = 0
+    for leaf in h.ordered_leaves:
+        if _is_connectivity_identical(leaf.data.initial_chain[0], leaf.data.initial_chain[-1]):
+            continue
+        else:
+            effective_len_nodes+=1
+
+    if effective_len_nodes >= 2:
+        true_ms.append(rn)
+    
+# -
+
+data_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/")
+
+# +
+f = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo_multistep.txt","w+")
+
+for line in true_ms :
+    f.write(f"{str(data_dir/line)}\n")
+f.close()
+# -
+
+true_ms
+
+import neb_dynamics.chainhelpers as ch
+
+rn = true_ms[21]
+print(rn)
+path = f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/ASNEB_03_yesSIG"
+h = TreeNode.read_from_disk(path)
+
+ch.visualize_chain(h.output_chain)
+
+len(true_ms)
+
 from neb_dynamics.TreeNode import TreeNode
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs
 import neb_dynamics.chainhelpers as ch
-
-chain = Chain.from_xyz("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Wittig/NEB_12nodes_neb.xyz" ,ChainInputs())
-
-chain.plot_chain()
-
-ch.visualize_chain(chain)
 
 rns = Path("/home/jdep/T3D_data/msmep_draft//structures/").glob("*")
 
@@ -101,16 +170,9 @@ from neb_dynamics.helper_functions import _create_df
 
 import os
 
-names = [fp for fp in Path("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/results_asneb").glob("*") if os.path.isdir(fp)]
-
-df = _create_df(filenames=names)
-
-df
-
-
 true_ms = []
-# for fp in nosig_nomrs_dfs[-1][nosig_nomrs_dfs[-1]['n_rxn_steps']>1]['file_path']:
-for fp in df['n_rxn_steps']>1]['file_path']:
+for fp in nosig_nomrs_dfs[-1][nosig_nomrs_dfs[-1]['n_rxn_steps']>1]['file_path']:
+# for fp in df['n_rxn_steps']>1]['file_path']:
     p = Path(fp)/'ASNEB_003_yesSIG'
     h = TreeNode.read_from_disk(p)
     if len(h.ordered_leaves) > 1:
@@ -173,6 +235,8 @@ print_stats(df_neb)
 df = nosig_nomrs_dfs[3]
 
 df.iloc[13]
+
+
 
 # +
 fs=18

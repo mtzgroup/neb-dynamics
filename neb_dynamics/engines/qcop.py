@@ -102,6 +102,8 @@ class QCOPEngine(Engine):
             iterables = [(self.program, inp) for inp in non_frozen_prog_inps]
             with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
                 non_frozen_results = list(executor.map(helper, iterables))
+        if self.compute_program == 'chemcloud':
+            non_frozen_results = self.compute_func(self.program, non_frozen_prog_inps)
         else:
             non_frozen_results = [
                 self.compute_func(self.program, pi) for pi in non_frozen_prog_inps
