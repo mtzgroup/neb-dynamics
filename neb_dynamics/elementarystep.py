@@ -11,7 +11,7 @@ from neb_dynamics.nodes.node import Node
 from neb_dynamics.nodes.nodehelpers import is_identical
 import numpy as np
 from neb_dynamics.engines import Engine
-from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
+from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, is_identical
 
 
 @dataclass
@@ -101,8 +101,12 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     pseu_irc_results = pseudo_irc(chain=inp_chain, engine=engine)
     n_geom_opt_grad_calls += pseu_irc_results.number_grad_calls
 
-    found_r = is_identical(pseu_irc_results.found_reactant, chain[0])
-    found_p = is_identical(pseu_irc_results.found_product,  chain[-1])
+    found_r = is_identical(pseu_irc_results.found_reactant, chain[0],
+                        fragment_rmsd_cutoff=inp_chain.parameters.node_rms_thre,
+                        kcal_mol_cutoff=inp_chain.parameters.node_ene_thre)
+    found_p = is_identical(pseu_irc_results.found_product,  chain[-1],
+                        fragment_rmsd_cutoff=inp_chain.parameters.node_rms_thre,
+                        kcal_mol_cutoff=inp_chain.parameters.node_ene_thre)
     minimizing_gives_endpoints = found_r and found_p
 
     elem_step = True if minimizing_gives_endpoints else False
@@ -156,8 +160,13 @@ def is_approx_elem_step(
             direction=+1,
             slope_thresh=slope_thresh,
         )
-    except Exception:
-        print("Error in geometry optimization. Pretending elementary step.")
+    except Exception as e:
+        import traceback
+
+        print(traceback.format_exc())
+        print(
+            f"Error in geometry optimization: {e}. Pretending this is an elem step."
+        )
         return True, 0
     nodes_have_graph = chain.nodes[0].has_molecular_graph
     # if we have molecular graphs to work with, make sure the connectivities are
@@ -201,8 +210,13 @@ def _converges_to_an_endpoints(
         try:
             traj = engine.steepest_descent(node=total_traj[-1], max_steps=5)
             total_traj.extend(traj)
-        except Exception:
-            print("Error in geometry optimizations. Pretending elementary step.")
+        except Exception as e:
+            import traceback
+
+            print(traceback.format_exc())
+            print(
+                f"Error in geometry optimization: {e}. Pretending this is an elem step."
+            )
             return True
 
         distances = [
@@ -268,7 +282,13 @@ def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
                 n_grad_calls += len(opt_traj)
                 opt = opt_traj[-1]
                 opt_results.append(opt)
-                minimas_is_r_or_p.append(opt == chain[0] or opt == chain[-1])
+                is_r = is_identical(opt, chain[0],
+                        fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
+                        kcal_mol_cutoff=chain.parameters.node_ene_thre)
+                is_p = is_identical(opt, chain[-1],
+                        fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
+                        kcal_mol_cutoff=chain.parameters.node_ene_thre)
+                minimas_is_r_or_p.append(is_r or is_p)
         except Exception as e:
             import traceback
 
@@ -328,7 +348,12 @@ def pseudo_irc(chain: Chain, engine: Engine):
         p = p_traj[-1]
 
     except Exception as e:
-        print("Error in geometry optimization. Pretending this is elementary chain.")
+        import traceback
+
+        print(traceback.format_exc())
+        print(
+            f"Error in geometry optimization: {e}. Pretending this is an elem step."
+        )
         return IRCResults(
             found_reactant=chain[0],
             found_product=chain[len(chain) - 1],

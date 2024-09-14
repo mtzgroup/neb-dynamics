@@ -141,7 +141,6 @@ def read_single_arguments():
         help="What engine to use. E.g. 'qcop' or 'ase'",
     )
 
-
     parser.add_argument(
         "-es_ft",
         "--early_stop_ft",
@@ -269,7 +268,8 @@ def read_single_arguments():
         type=float,
         help="default distance for nodes being identical (Bohr) if they\
             have identical graphs",
-        default=1.0)
+        default=1.0,
+    )
 
     parser.add_argument(
         "-node_ene_thre",
@@ -279,7 +279,8 @@ def read_single_arguments():
         type=float,
         help="default energy difference for nodes being identical (kcal/mol)\
             if they have identical graphs",
-        default=1.0)
+        default=1.0,
+    )
 
     parser.add_argument(
         "-fog",
@@ -288,7 +289,8 @@ def read_single_arguments():
         required=False,
         type=int,
         help="whether to use XTB to optimize friction parameter in geodesic interpolation",
-        default=1)
+        default=1,
+    )
 
     return parser.parse_args()
 
@@ -319,6 +321,8 @@ def main():
         node_class=nc,
         friction_optimal_gi=fog,
         node_freezing=True,
+        node_rms_thre=float(args.node_rms_thre),
+        node_ene_thre=float(args.node_ene_thre),
     )
 
     optimizer = VelocityProjectedOptimizer(timestep=args.stepsize, activation_tol=0.1)
@@ -338,23 +342,20 @@ def main():
         early_stop_still_steps_thre=args.es_ss,
         skip_identical_graphs=bool(args.sig),
         preopt_with_xtb=bool(int(args.preopt)),
-
-        node_rms_thre=float(args.node_rms_thre),
-        node_ene_thre=float(args.node_ene_thre)
     )
 
-
-
     if args.tcin:
-        print("Warning! Directly inserting TC input files may be deleted\
-        in future versions. using --program_input_file is preferred.")
+        print(
+            "Warning! Directly inserting TC input files may be deleted\
+        in future versions. using --program_input_file is preferred."
+        )
         method, basis, charge, spinmult, inp_kwds = _load_info_from_tcin(args.tcin)
         program_input = ProgramInput(
-                structure=start,
-                calctype="gradient",
-                model={"method": method, 'basis': basis},
-                keywords=inp_kwds,
-            )
+            structure=start,
+            calctype="gradient",
+            model={"method": method, "basis": basis},
+            keywords=inp_kwds,
+        )
     elif args.pif:
         program_input = ProgramInput.open(args.pif)
     else:
@@ -378,51 +379,61 @@ def main():
                             exist for program {args.program}"
             )
 
-    if args.eng == 'qcop':
+    if args.eng == "qcop":
         print("Using QCOPEngine")
         eng = QCOPEngine(
             program_input=program_input,
             program=args.program,
             geometry_optimizer=args.geom_opt,
-            compute_program='qcop'
+            compute_program="qcop",
         )
-    elif args.eng == 'chemcloud':
+    elif args.eng == "chemcloud":
         print("Using QCOPEngine")
         eng = QCOPEngine(
             program_input=program_input,
             program=args.program,
             geometry_optimizer=args.geom_opt,
-            compute_program='chemcloud'
+            compute_program="chemcloud",
         )
 
-    elif args.eng == 'ase':
+    elif args.eng == "ase":
         print("Using ASEEngine")
-        assert args.program == 'xtb', f"Invalid 'progam' {args.program}. It is not yet supported. This will likely change."
+        assert (
+            args.program == "xtb"
+        ), f"Invalid 'progam' {args.program}. It is not yet supported. This will likely change."
         from xtb.ase.calculator import XTB
-        calc = XTB(method="GFN2-xTB")
-        eng = ASEEngine(calculator=calc,
-        ase_opt_str=args.geom_opt
+        from xtb.utils import get_solvent, Solvent
+
+        calc = XTB(method="GFN2-xTB", solvent="water")
+        eng = ASEEngine(calculator=calc, ase_opt_str=args.geom_opt)
+
+    if "fneb" in args.method:
+        pmm = "fneb"
+
+    elif "neb" in args.method:
+        pmm = "neb"
+
+    elif "pygsm" in args.method:
+        print(
+            "WARNING: PYGSM is *very* experimental for now. Engines other than ASEEngine not yet supported. Must manually change calculator if you want something that is not XTB. This  *will* change."
         )
-
-    if 'neb' in args.method:
-        pmm = 'neb'
-    elif 'pygsm' in args.method:
-        print("WARNING: PYGSM is *very* experimental for now. Engines other than ASEEngine not yet supported. Must manually change calculator if you want something that is not XTB. This  *will* change.")
-        pmm = 'pygsm'
-        assert args.eng == 'ase', "PYGMS currently only works with ASE calculator."
-
+        pmm = "pygsm"
+        assert args.eng == "ase", "PYGMS currently only works with ASE calculator."
 
     if args.min_ends:
+        print("Minimizing input endpoints...")
         start_tr = eng.compute_geometry_optimization(StructureNode(structure=start))
         start_node = start_tr[-1]
         end_tr = eng.compute_geometry_optimization(StructureNode(structure=end))
         end_node = end_tr[-1]
+        print("Done!")
     else:
         start_node = StructureNode(structure=start)
         end_node = StructureNode(structure=end)
 
-    print(f"{args.preopt=}")
-    print(f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}\nEngine: {eng}")
+    print(
+        f"NEBinputs: {nbi}\nChainInputs: {cni}\nOptimizer: {optimizer}\nEngine: {eng}"
+    )
     print(f"{args.method=}")
     sys.stdout.flush()
     gii = GIInputs(nimages=args.nimg, extra_kwds={"sweep": False})
@@ -431,13 +442,17 @@ def main():
         parameters=cni,
     )
     m = MSMEP(
-        neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=optimizer, engine=eng,
-        path_min_method=pmm
+        neb_inputs=nbi,
+        chain_inputs=cni,
+        gi_inputs=gii,
+        optimizer=optimizer,
+        engine=eng,
+        path_min_method=pmm,
     )
     if "as" in args.method:
         print("RUNNING AUTOSPLITTING")
 
-        history = m.find_mep_multistep(chain)
+        history = m.run_recursive_minimize(chain)
 
         leaves_nebs = [obj for obj in history.get_optimization_history() if obj]
         fp = Path(args.st)
@@ -485,7 +500,7 @@ def main():
             tot_grad_calls = j.get_n_grad_calls()
             print(f">>> Made {tot_grad_calls} gradient calls in cleanup.")
 
-    elif args.method in ["neb",'pygsm']:
+    elif args.method in ["fneb", "neb", "pygsm"]:
         print("RUNNING REGULAR NEB")
 
         n, elem_step_results = m.minimize_chain(input_chain=chain)

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Tuple, Union
 
 import numpy as np
-from openbabel import openbabel
+from openbabel import openbabel, pybel
 from qcio.models.inputs import ProgramInput
 from qcio.models.structure import Structure
 from ase import Atoms
@@ -17,7 +17,10 @@ from neb_dynamics.geodesic_interpolation.fileio import read_xyz
 from neb_dynamics.helper_functions import (
     bond_ord_number_to_string,
     from_number_to_element,
+    atomic_number_to_symbol,
 )
+from neb_dynamics.elements import symbol_to_atomic_number
+
 from neb_dynamics.molecule import Molecule
 
 
@@ -137,6 +140,83 @@ def load_obmol_from_fp(fp: Path) -> openbabel.OBMol:
     obconversion.ReadFile(obmol, str(fp.resolve()))
 
     return obmol
+
+
+def molecule_to_structure(rp_mol: Molecule, charge: int = 0, spinmult: int = 1):
+
+    """Instantiate object from `Molecule` object. see [link](https://mtzgroup.github.io/neb-dynamics/molecule/)
+
+    Args:
+        rp_mol (Molecule): Molecule object to build Structure from
+        charge (int, optional): charge of molecule. Defaults to 0.
+        spinmult (int, optional): spin multiplicity of molecule. Defaults to 1.
+
+    """
+
+    d = {"single": 1, "double": 2, "triple": 3, "aromatic": 1.5}
+
+    obmol = openbabel.OBMol()
+
+    for i, _ in enumerate(rp_mol.nodes):
+
+        node = rp_mol.nodes[i]
+
+        atom_symbol = node["element"]
+
+        atom_number = symbol_to_atomic_number(atom_symbol)
+        atom = openbabel.OBAtom()
+        atom.SetVector(0, 0, 0)
+        atom.SetAtomicNum(atom_number)
+        atom.SetFormalCharge(node["charge"])
+        atom.SetId(i + 1)
+        obmol.AddAtom(atom)
+
+    for rp_atom1_id, rp_atom2_id in rp_mol.edges:
+        atom1_id = rp_atom1_id
+        atom2_id = rp_atom2_id
+        if type(atom1_id) is np.int64:
+            atom1_id = int(atom1_id)
+        if type(atom2_id) is np.int64:
+            atom2_id = int(atom2_id)
+
+        atom1 = obmol.GetAtom(atom1_id + 1)
+        atom2 = obmol.GetAtom(atom2_id + 1)
+
+        bond = openbabel.OBBond()
+        bond.SetBegin(atom1)
+        bond.SetEnd(atom2)
+
+        bond_order = rp_mol.edges[(rp_atom1_id, rp_atom2_id)]["bond_order"]
+        if d[bond_order] == 1.5:  # i.e., if an aromatic bond
+            bond.SetAromatic(True)
+            bond.SetBondOrder(4)
+        else:
+            bond.SetBondOrder(d[bond_order])
+
+        obmol.AddBond(bond)
+
+    arg = pybel.Molecule(obmol)
+    arg.make3D()
+    arg.localopt("uff", steps=2000)
+    arg.localopt("gaff", steps=2000)
+    arg.localopt("mmff94", steps=2000)
+
+    xyz_list = []
+    atom_nums = []
+    for atom in openbabel.OBMolAtomIter(arg.OBMol):
+        x = atom.GetX()
+        y = atom.GetY()
+        z = atom.GetZ()
+        atom_nums.append(atom.GetAtomicNum())
+        xyz_list.append([x, y, z])
+    xyz = np.array(xyz_list)
+    symbols = [atomic_number_to_symbol(n) for n in atom_nums]
+    geometry = xyz*ANGSTROM_TO_BOHR
+
+    structure = Structure(geometry=geometry, symbols=symbols, charge=charge, multiplicity=spinmult)
+
+    return structure
+
 
 
 def _change_prog_input_property(

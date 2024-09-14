@@ -2,23 +2,6 @@ from neb_dynamics.TreeNode import TreeNode
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.engines import QCOPEngine
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Claisen-Rearrangement-Aromatic/")
-
-h.output_chain.energies
-
-from qcio import ProgramInput, Structure
-
-pi = ProgramInput(structure=Structure.from_smiles("O"),
-                  model={'method':'uwb97xd3','basis':'def2-svp'},
-                  calctype='energy')
-eng = QCOPEngine(program_input=pi)
-
-from neb_dynamics.elementarystep import check_if_elem_step
-
-output = check_if_elem_step(h.output_chain, engine=eng)
-
-ch.visualize_chain(h.output_chain)
-
 df = pd.read_csv("/home/jdep/T3D_data/msmep_draft/msmep_reaction_successes.csv")
 
 from neb_dynamics.helper_functions import _create_df

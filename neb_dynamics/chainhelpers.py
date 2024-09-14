@@ -91,11 +91,12 @@ def _get_ind_maxima(chain):
         ind_maxima = int(maxima_indices)
     return ind_maxima
 
-def _get_mass_weights(chain: Chain):
+def _get_mass_weights(chain: Chain, normalize_weights=True):
     symbols = chain[0].symbols
 
     weights = np.array([np.sqrt(get_mass(s)) for s in symbols])
-    weights = weights / sum(weights)
+    if normalize_weights:
+        weights = weights / sum(weights)
     return weights
 
 

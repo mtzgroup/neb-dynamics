@@ -10,6 +10,8 @@ from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
 from neb_dynamics.elementarystep import check_if_elem_step
 
 from neb_dynamics.chain import Chain
+import neb_dynamics.chainhelpers as ch
+from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 from neb_dynamics.elementarystep import ElemStepResults
 from neb_dynamics.neb import NEB, PYGSM, NoneConvergedException
 from neb_dynamics.nodes.nodehelpers import is_identical
@@ -21,7 +23,13 @@ from neb_dynamics.optimizers.optimizer import Optimizer
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.errors import ElectronicStructureError
 
-PATH_METHODS = ['NEB', 'PYGSM']
+from neb_dynamics.pathminimizers.pathminimizer import PathMinimizer
+from neb_dynamics.pathminimizers.fneb import FreezingNEB
+
+import traceback
+
+
+PATH_METHODS = ["NEB", "PYGSM", "FNEB"]
 
 
 @dataclass
@@ -34,9 +42,19 @@ class MSMEP:
     gi_inputs: GIInputs = GIInputs()
 
     optimizer: Optimizer = VelocityProjectedOptimizer()
-    path_min_method: str = 'NEB'
+    path_min_method: str = "NEB"
+    path_minimizer: PathMinimizer = None
 
-    def find_mep_multistep(self, input_chain: Chain, tree_node_index=0) -> TreeNode:
+    def __post_init__(self):
+        assert (
+            self.path_min_method or self.path_minimizer is not None
+        ), "Need to input a path_min_method or path minimizer"
+        if self.path_minimizer is None:
+            assert (
+                self.path_min_method.upper() in PATH_METHODS
+            ), f"Invalid path method: {self.path_min_method}. Allowed are: {PATH_METHODS}"
+
+    def run_recursive_minimize(self, input_chain: Chain, tree_node_index=0) -> TreeNode:
         """Will take a chain as an input and run NEB minimizations until it exits out.
         NEB can exit due to the chain being converged, the chain needing to be split,
         or the maximum number of alloted steps being met.
@@ -60,16 +78,17 @@ class MSMEP:
         ch._reset_node_convergence(input_chain)
         self.engine.compute_gradients(input_chain)
 
-
-        if is_identical(self=input_chain[0],
-                        other=input_chain[-1],
-                        fragment_rmsd_cutoff=self.neb_inputs.node_rms_thre,
-                        kcal_mol_cutoff=self.neb_inputs.node_ene_thre):
+        if is_identical(
+            self=input_chain[0],
+            other=input_chain[-1],
+            fragment_rmsd_cutoff=input_chain.parameters.node_rms_thre,
+            kcal_mol_cutoff=input_chain.parameters.node_ene_thre,
+        ):
             print("Endpoints are identical. Returning nothing")
             return TreeNode(data=None, children=[], index=tree_node_index)
 
         try:
-            root_neb_obj, elem_step_results = self.minimize_chain(
+            root_neb_obj, elem_step_results = self.run_minimize_chain(
                 input_chain=input_chain
             )
             history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
@@ -91,7 +110,7 @@ class MSMEP:
                 new_tree_node_index = tree_node_index + 1
                 for i, chain_frag in enumerate(sequence_of_chains, start=1):
                     print(f"On chain {i} of {len(sequence_of_chains)}...")
-                    out_history = self.find_mep_multistep(
+                    out_history = self.run_recursive_minimize(
                         chain_frag, tree_node_index=new_tree_node_index
                     )
 
@@ -137,8 +156,40 @@ class MSMEP:
 
         return interpolation
 
-    def minimize_chain(self, input_chain: Chain) -> Tuple[NEB, ElemStepResults]:
-        assert self.path_min_method.upper() in PATH_METHODS, f"Invalid path method: {self.path_min_method}. Allowed are: {PATH_METHODS}"
+    def _construct_path_minimizer(self, initial_chain: Chain):
+        if self.path_min_method.upper() == "NEB":
+
+            print("Using in-house NEB optimizer")
+            sys.stdout.flush()
+
+            n = NEB(
+                initial_chain=initial_chain,
+                parameters=self.neb_inputs.copy(),
+                optimizer=self.optimizer.copy(),
+                engine=self.engine,
+            )
+        elif self.path_min_method.upper() == "PYGSM":
+            print("Using PYGSM optimizer")
+            n = PYGSM(
+                initial_chain=initial_chain,
+                engine=self.engine,
+                pygsm_kwds=self.neb_inputs.pygsm_kwds,
+            )
+
+        elif self.path_min_method.upper() == "FNEB":
+            print("Using Freezing NEB optimizer")
+            n = FreezingNEB(
+                initial_chain=initial_chain,
+                engine=self.engine,
+                fneb_kwds=self.neb_inputs.fneb_kwds,
+            )
+
+        else:
+            n = self.path_minimizer(initial_chain=initial_chain, engine=self.engine)
+
+        return n
+
+    def run_minimize_chain(self, input_chain: Chain) -> Tuple[NEB, ElemStepResults]:
 
         # make sure the chain parameters are reset
         # if they come from a converged chain
@@ -154,29 +205,15 @@ class MSMEP:
             interpolation = input_chain
 
         print("Running path minimization...")
-        if self.path_min_method.upper() == 'NEB':
-            print("Using in-house NEB optimizer")
-            sys.stdout.flush()
-
-            n = NEB(
-                initial_chain=interpolation,
-                parameters=self.neb_inputs.copy(),
-                optimizer=self.optimizer.copy(),
-                engine=self.engine,
-            )
-        elif self.path_min_method.upper() == "PYGSM":
-            print("Using PYGSM optimizer")
-            n = PYGSM(
-                initial_chain=interpolation,
-                engine=self.engine,
-                pygsm_kwds=self.neb_inputs.pygsm_kwds
-            )
 
         try:
+            n = self._construct_path_minimizer(initial_chain=interpolation)
             elem_step_results = n.optimize_chain()
             out_chain = n.optimized
 
         except NoneConvergedException:
+            print(traceback.format_exc())
+
             print(
                 "\nWarning! A chain did not converge.\
                         Returning an unoptimized chain..."
@@ -185,6 +222,8 @@ class MSMEP:
             elem_step_results = check_if_elem_step(out_chain, engine=self.engine)
 
         except ElectronicStructureError as e:
+            print(traceback.format_exc())
+
             print(
                 "\nWarning! A chain has electronic structure errors. \
                     Returning an unoptimized chain..."
@@ -201,11 +240,107 @@ class MSMEP:
 
         return n, elem_step_results
 
+    def _update_chain_dynamics(
+        self,
+        chain: Chain,
+        engine,
+        dt,
+        temperature: float,
+        mass=1.0,
+        biaser: ChainBiaser = None,
+    ) -> Chain:
+        import neb_dynamics.chainhelpers as ch
+
+        # R = 0.008314 / 627.5  # Hartree/mol.K
+        R = 1  # i'm not even sure what R means in this world.
+        _ = engine.compute_gradients(chain)
+        grads = ch.compute_NEB_gradient(chain)
+
+        new_vel = chain.velocity
+        current_temperature = (
+            np.dot(new_vel.flatten(), new_vel.flatten()) * mass / (3 * R)
+        )
+        thermostating_scaling = np.sqrt(temperature / current_temperature)
+        new_vel *= thermostating_scaling
+
+        new_vel += 0.5 * -1 * grads * dt / mass
+        # print("/n", thermostating_scaling, current_temperature)
+
+        position = chain.coordinates
+        ref_start = position[0]
+        ref_end = position[-1]
+        new_position = position + new_vel * dt
+        if biaser:
+            grad_bias = biaser.grad_chain_bias(chain)
+            # energy_weights = chain.energies_kcalmol[1:-1]
+            new_position[1:-1] -= grad_bias
+        new_position[0] = ref_start
+        new_position[-1] = ref_end
+        new_chain = chain.copy()
+        new_nodes = []
+        for coords, node in zip(new_position, new_chain):
+            new_nodes.append(node.update_coords(coords))
+        new_chain.nodes = new_nodes
+
+        grads = engine.compute_gradients(new_chain)
+        grads[0] = np.zeros_like(grads[0])
+        grads[-1] = np.zeros_like(grads[0])
+        new_vel += 0.5 * -1 * grads * dt / mass
+        new_chain.velocity = new_vel
+
+        return new_chain
+
+    def run_dynamics(
+        self,
+        chain: Chain,
+        max_steps: int,
+        dt=0.1,
+        biaser: ChainBiaser = None,
+        temperature: float = 300.0,  # K
+    ):
+        """
+        Runs dynamics on the chain.
+        """
+        chain_trajectory = [chain]
+        nsteps = 1
+        chain_previous = chain
+        img_weight = sum(ch._get_mass_weights(chain, False))
+        chain_weight = img_weight * len(chain)
+        while nsteps < max_steps + 1:
+            try:
+                new_chain = self._update_chain_dynamics(
+                    chain=chain_previous,
+                    engine=self.engine,
+                    dt=dt,
+                    biaser=biaser,
+                    mass=chain_weight,
+                    temperature=temperature,
+                )
+            except Exception:
+                print(traceback.format_exc())
+                print("Electronic structure error")
+                return chain_trajectory
+
+            max_rms_grad_val = np.amax(new_chain.rms_gperps)
+            ind_ts_guess = np.argmax(new_chain.energies)
+            ts_guess_grad = np.amax(np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
+
+            print(
+                f"step {nsteps} // argmax(|TS gperp|) {np.amax(np.abs(ts_guess_grad))} // \
+                    max rms grad {max_rms_grad_val} // armax(|TS_triplet_gsprings|) \
+                        {new_chain.ts_triplet_gspring_infnorm} // temperature={np.linalg.norm(new_chain.velocity)}//{' '*20}",
+                end="\r",
+            )
+            chain_trajectory.append(new_chain)
+            nsteps += 1
+            chain_previous = new_chain
+        return chain_trajectory
+
     # def _make_chain_frag(self, chain: Chain, pair_of_inds):
     def _make_chain_frag(self, chain: Chain, geom_pair, ind_pair):
         start_ind, end_ind = ind_pair
         opt_start, opt_end = geom_pair
-        chain_frag_nodes = chain.nodes[start_ind: end_ind + 1]
+        chain_frag_nodes = chain.nodes[start_ind : end_ind + 1]
         chain_frag = Chain(
             nodes=[opt_start] + chain_frag_nodes + [opt_end],
             parameters=chain.parameters,

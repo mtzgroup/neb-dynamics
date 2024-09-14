@@ -7,11 +7,18 @@ from ase.calculators.calculator import Calculator
 from ase.units import Hartree
 from numpy.typing import NDArray
 from qcio.constants import ANGSTROM_TO_BOHR
-from neb_dynamics.qcio_structure_helpers import structure_to_ase_atoms, ase_atoms_to_structure
+from neb_dynamics.qcio_structure_helpers import (
+    structure_to_ase_atoms,
+    ase_atoms_to_structure,
+)
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
-from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError, ElectronicStructureError
+from neb_dynamics.errors import (
+    EnergiesNotComputedError,
+    GradientsNotComputedError,
+    ElectronicStructureError,
+)
 from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import update_node_cache
@@ -29,12 +36,13 @@ from pathlib import Path
 import tempfile
 
 AVAIL_OPTS = {
-    'LBFGS': LBFGS,
+    "LBFGS": LBFGS,
     "BFGS": BFGS,
     "FIRE": FIRE,
     "LBFGSLineSearch": LBFGSLineSearch,
     "MDMin": MDMin,
 }
+
 
 @dataclass
 class ASEEngine(Engine):
@@ -54,7 +62,9 @@ class ASEEngine(Engine):
 
     def __post_init__(self):
         if self.ase_optimizer is None:
-            assert self.ase_opt_str is not None and self.ase_opt_str in AVAIL_OPTS.keys(), f"Must input either an ase optimizer or a string name for an\
+            assert (
+                self.ase_opt_str is not None and self.ase_opt_str in AVAIL_OPTS.keys()
+            ), f"Must input either an ase optimizer or a string name for an\
              available optimizer: {AVAIL_OPTS.keys()}"
 
             self.ase_optimizer = AVAIL_OPTS[self.ase_opt_str]
@@ -91,8 +101,10 @@ class ASEEngine(Engine):
                 f"Input needs to be a Chain or a List. You input a: {type(chain)}"
             )
 
-        # now create program inputs for each geometry that is not frozen
-        inds_frozen = [i for i, node in enumerate(node_list) if node.converged]
+        # now create program inputs for each geometry that is not frozen or already computes
+        inds_frozen = [
+            i for i, node in enumerate(node_list) if node._cached_energy is not None
+        ]
         all_ase_atoms = [structure_to_ase_atoms(node.structure) for node in node_list]
         non_frozen_ase_atoms = [
             atoms for i, atoms in enumerate(all_ase_atoms) if i not in inds_frozen
@@ -111,20 +123,21 @@ class ASEEngine(Engine):
         update_node_cache(node_list=node_list, results=all_results)
         return node_list
 
-
     def compute_func(self, atoms: Atoms):
         try:
             ene_ev = self.calculator.get_potential_energy(atoms=atoms)  # eV
             ene = ene_ev / Hartree  # Hartree
 
             # ASE outputs the negative gradient
-            grad_ev_ang = self.calculator.get_forces(atoms=atoms) * (-1)  # eV / Angstroms
+            grad_ev_ang = self.calculator.get_forces(atoms=atoms) * (
+                -1
+            )  # eV / Angstroms
             grad = (grad_ev_ang / ANGSTROM_TO_BOHR) / Hartree  # Hartree / Bohr
 
             res = FakeQCIOResults(energy=ene, gradient=grad)
             return FakeQCIOOutput(results=res)
         except Exception:
-            raise ElectronicStructureError(msg='Electronic structure failed.')
+            raise ElectronicStructureError(msg="Electronic structure failed.")
 
     def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:
         """
@@ -134,11 +147,13 @@ class ASEEngine(Engine):
         atoms.set_calculator(self.calculator)
         tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
 
-        optimizer = self.ase_optimizer(atoms=atoms, logfile=None, trajectory=tmp.name)  # ASE doing geometry optimizations inplace
+        optimizer = self.ase_optimizer(
+            atoms=atoms, logfile=None, trajectory=tmp.name
+        )  # ASE doing geometry optimizations inplace
         try:
             optimizer.run(fmax=0.01)
         except Exception:
-            raise ElectronicStructureError(msg='Electronic structure failed.')
+            raise ElectronicStructureError(msg="Electronic structure failed.")
 
         # 'atoms' variable is now updated
         charge = node.structure.charge
@@ -148,11 +163,13 @@ class ASEEngine(Engine):
         traj_list = []
         for i, _ in enumerate(aT):
             traj_list.append(
-                ase_atoms_to_structure(atoms=aT[i], charge=charge, multiplicity=multiplicity)
+                ase_atoms_to_structure(
+                    atoms=aT[i], charge=charge, multiplicity=multiplicity
+                )
             )
 
-        energies = [obj.get_potential_energy()/ Hartree  for obj in aT]
-        gradients = [(-1*obj.get_forces()/ANGSTROM_TO_BOHR) for obj in aT]
+        energies = [obj.get_potential_energy() / Hartree for obj in aT]
+        gradients = [(-1 * obj.get_forces() / ANGSTROM_TO_BOHR) for obj in aT]
         all_results = []
         for ene, grad in zip(energies, gradients):
             res = FakeQCIOResults(energy=ene, gradient=grad)

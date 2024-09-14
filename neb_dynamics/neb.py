@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import shutil
 import sys
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Tuple
@@ -19,116 +17,23 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
 from neb_dynamics.engines import Engine
 from neb_dynamics.engines.ase import ASEEngine
-from neb_dynamics.errors import (ElectronicStructureError,
-                                 NoneConvergedException)
+from neb_dynamics.errors import ElectronicStructureError, NoneConvergedException
 from neb_dynamics.gsm_helper import minimal_wrapper_de_gsm, gsm_to_ase_atoms
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.nodes.node import StructureNode, Node
 from neb_dynamics.optimizers.optimizer import Optimizer
+from neb_dynamics.pathminimizers.pathminimizer import PathMinimizer
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
-from neb_dynamics.qcio_structure_helpers import structure_to_ase_atoms, ase_atoms_to_structure
+from neb_dynamics.qcio_structure_helpers import (
+    structure_to_ase_atoms,
+    ase_atoms_to_structure,
+)
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
 
 VELOCITY_SCALING = 0.3
 ACTIVATION_TOL = 100
-
-
-@dataclass
-class PathMinimizer(ABC):
-    @abstractmethod
-    def optimize_chain(self) -> ElemStepResults:
-        ...
-
-    def plot_opt_history(self, do_3d=False):
-
-        s = 8
-        fs = 18
-
-        if do_3d:
-            all_chains = self.chain_trajectory
-
-            ens = np.array([c.energies - c.energies[0] for c in all_chains])
-            all_integrated_path_lengths = np.array(
-                [c.integrated_path_length for c in all_chains]
-            )
-            opt_step = np.array(list(range(len(all_chains))))
-            s = 7
-            fs = 18
-            ax = plt.figure(figsize=(1.16 * s, s)).add_subplot(projection="3d")
-
-            # Plot a sin curve using the x and y axes.
-            x = opt_step
-            ys = all_integrated_path_lengths
-            zs = ens
-            for i, (xind, y) in enumerate(zip(x, ys)):
-                if i < len(ys) - 1:
-                    ax.plot(
-                        [xind] * len(y),
-                        y,
-                        "o-",
-                        zs=zs[i],
-                        color="gray",
-                        markersize=3,
-                        alpha=0.1,
-                    )
-                else:
-                    ax.plot(
-                        [xind] * len(y), y, "o-", zs=zs[i], color="blue", markersize=3
-                    )
-            ax.grid(False)
-
-            ax.set_xlabel("optimization step", fontsize=fs)
-            ax.set_ylabel("integrated path length", fontsize=fs)
-            ax.set_zlabel("energy (hartrees)", fontsize=fs)
-
-            # Customize the view angle so it's easier to see that the scatter points lie
-            # on the plane y=0
-            ax.view_init(elev=20.0, azim=-45)
-            plt.tight_layout()
-            plt.show()
-
-        else:
-            f, ax = plt.subplots(figsize=(1.16 * s, s))
-
-            for i, chain in enumerate(self.chain_trajectory):
-                if i == len(self.chain_trajectory) - 1:
-                    plt.plot(
-                        chain.integrated_path_length, chain.energies, "o-", alpha=1
-                    )
-                else:
-                    plt.plot(
-                        chain.integrated_path_length,
-                        chain.energies,
-                        "o-",
-                        alpha=0.1,
-                        color="gray",
-                    )
-
-            plt.xlabel("Integrated path length", fontsize=fs)
-
-            plt.ylabel("Energy (kcal/mol)", fontsize=fs)
-            plt.xticks(fontsize=fs)
-            plt.yticks(fontsize=fs)
-            plt.show()
-
-    def write_to_disk(self, fp: Path, write_history=True):
-        # write output chain
-        self.chain_trajectory[-1].write_to_disk(fp)
-
-        if write_history:
-            out_folder = fp.resolve().parent / (fp.stem + "_history")
-
-            if out_folder.exists():
-                shutil.rmtree(out_folder)
-
-            if not out_folder.exists():
-                out_folder.mkdir()
-
-            for i, chain in enumerate(self.chain_trajectory):
-                fp = out_folder / f"traj_{i}.xyz"
-                chain.write_to_disk(fp)
 
 
 @dataclass
@@ -209,7 +114,7 @@ class NEB(PathMinimizer):
         ind_ts_guess = np.argmax(chain.energies)
         ts_guess_grad = np.amax(np.abs(ch.get_g_perps(chain)[ind_ts_guess]))
 
-        if ts_guess_grad <= self.parameters.early_stop_force_thre:
+        if ts_guess_grad < self.parameters.early_stop_force_thre:
 
             new_params = self.parameters.copy()
             new_params.early_stop_force_thre = 0.0
@@ -481,8 +386,6 @@ class NEB(PathMinimizer):
         plt.xlabel("Optimization step", fontsize=fs)
         plt.show()
 
-
-
     def plot_convergence_metrics(self, do_indiv=False):
         ct = self.chain_trajectory
 
@@ -672,16 +575,22 @@ class PYGSM(PathMinimizer):
         end_ase = structure_to_ase_atoms(end.structure)
 
         gsm = minimal_wrapper_de_gsm(
-            atoms_reactant=start_ase, atoms_product=end_ase,
+            atoms_reactant=start_ase,
+            atoms_product=end_ase,
             num_nodes=len(self.initial_chain),
             calculator=self.engine.calculator,
-            **self.pygsm_kwds)
+            **self.pygsm_kwds,
+        )
 
         ase_frames, ase_ts = gsm_to_ase_atoms(gsm=gsm)
         charge = self.initial_chain[0].structure.charge
         multiplicity = self.initial_chain[0].structure.multiplicity
-        frames = [ase_atoms_to_structure(atoms=frame, charge=charge, multiplicity=multiplicity)
-                  for frame in ase_frames]
+        frames = [
+            ase_atoms_to_structure(
+                atoms=frame, charge=charge, multiplicity=multiplicity
+            )
+            for frame in ase_frames
+        ]
         nodes = [StructureNode(structure=struct) for struct in frames]
         out_chain = Chain(nodes=nodes, parameters=self.initial_chain.parameters.copy())
         self.engine.compute_energies(out_chain)
