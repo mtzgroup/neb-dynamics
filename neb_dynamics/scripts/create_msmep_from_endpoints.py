@@ -461,6 +461,12 @@ def main():
         engine=eng,
         path_min_method=pmm,
     )
+
+    from openbabel import openbabel
+
+    ob_log_handler = openbabel.OBMessageHandler()
+    ob_log_handler.SetOutputLevel(0)
+
     if "as" in args.method:
         print("RUNNING AUTOSPLITTING")
 

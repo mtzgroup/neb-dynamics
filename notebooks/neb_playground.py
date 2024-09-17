@@ -1,9 +1,18 @@
 # -*- coding: utf-8 -*-
+# # Redo inptus
 
+from qcio import DualProgramInput, Structure
 
-
-
-
+struct = Structure.from_smiles("COCO")
+dpi = DualProgramInput(
+    calctype = "neb",
+    structure = struct, # this probably would have to be ignored
+    keywords = {"recursive": True},  # Optional
+    subprogram = "xtb",
+    subprogram_args = {
+        'model':{"method": "GFN2-XTB", "basis": "GFN2-XTB"},
+        'keywords':{}}  # Optional}
+)
 
 from pathlib import Path
 
