@@ -23,16 +23,20 @@ class FreezingNEB(PathMinimizer):
     fneb_kwds: dict = field(default_factory=dict)
 
     def __post_init__(self):
-        if not bool(self.fneb_kwds):
-            fneb_kwds = {
-                "stepsize": 0.5,
-                "ngradcalls": 5,
-                "max_cycles": 500,
-                "path_resolution": 1 / 10,  # BOHR,
-                "max_atom_displacement": 0.1,
-                "early_stop_scaling": 3,
-            }
-            self.fneb_kwds = fneb_kwds
+        fneb_kwds_defaults = {
+            "stepsize": 0.5,
+            "ngradcalls": 3,
+            "max_cycles": 500,
+            "path_resolution": 1 / 10,  # BOHR,
+            "max_atom_displacement": 0.1,
+            "early_stop_scaling": 3,
+            "use_geodesic_tangent": False,
+            "dist_err": 0.5,
+        }
+        for key, val in self.fneb_kwds.items():
+            fneb_kwds_defaults[key] = val
+        self.fneb_kwds = fneb_kwds_defaults
+
         self.parameters = SimpleNamespace(**self.fneb_kwds)
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
@@ -44,13 +48,17 @@ class FreezingNEB(PathMinimizer):
         will run freezing string on chain.
         dr --> the requested path resolution in Bohr
         """
+        # print(f"START: {self.grad_calls_made}")
         chain = self.initial_chain.copy()
+        ch._reset_cache(chain=chain)
         chain.nodes = [
             chain.nodes[0],
             chain.nodes[-1],
         ]  # need to make sure I only use the endpoints
         self.engine.compute_energies(chain)
+        # print(chain.energies, self.engine)
         self.grad_calls_made += 2
+        # print(f"PROG: {self.grad_calls_made}")
         self.chain_trajectory = [chain]
 
         converged = False
@@ -70,8 +78,6 @@ class FreezingNEB(PathMinimizer):
 
             # minimize nodes
             print("\tminimizing nodes")
-            self.engine.compute_energies(grown_chain)
-            self.grad_calls_made += 2  # only two new geometries needed to be computed
             min_chain = self.minimize_nodes(
                 chain=grown_chain, node_tangents=node_tangents
             )
@@ -109,7 +115,10 @@ class FreezingNEB(PathMinimizer):
         d, _ = RMSD(node.coords, opposite_node.coords)
         s, _ = RMSD(node.coords, prev_node.coords)
         # print(d, d0, s, d0 + 0.5*s, curr_iter_ene, prev_iter_ene)
-        return d > self.d0 + 0.5 * s or curr_iter_ene > prev_iter_ene
+        distance_exceeded = d > self.d0 + 0.5 * s
+        energy_exceeded = curr_iter_ene > prev_iter_ene
+        print(f"{distance_exceeded=} {energy_exceeded=}")
+        return distance_exceeded or energy_exceeded
 
     def _min_node(
         self,
@@ -128,7 +137,8 @@ class FreezingNEB(PathMinimizer):
         node1 = raw_chain[node1_ind]
         node2 = raw_chain[node2_ind]
         converged = False
-        nsteps = 0
+        nsteps = 1  # we already made one gradient call when growing the node.
+
         while not converged and nsteps < ngradcalls:
             try:
                 node1_ind, node2_ind = self._get_innermost_nodes_inds(raw_chain)
@@ -141,11 +151,12 @@ class FreezingNEB(PathMinimizer):
                 prev_iter_ene = node_to_opt.energy
                 print(f"{prev_iter_ene=}")
 
-                # tangent = node2.coords - node1.coords
+                if tangent is None:
+                    tangent = node2.coords - node1.coords
                 unit_tan = tangent / np.linalg.norm(tangent)
 
-                grad1 = self.engine.compute_gradients([node_to_opt])
-                self.grad_calls_made += 1
+                # grad1 = self.engine.compute_gradients([node_to_opt])
+                grad1 = node_to_opt.gradient
                 gperp1 = ch.get_nudged_pe_grad(unit_tangent=unit_tan, gradient=grad1)
 
                 direction = -1 * gperp1 * ss
@@ -160,6 +171,7 @@ class FreezingNEB(PathMinimizer):
                 new_node1_coords = node_to_opt.coords + direction_scaled
                 new_node1 = node_to_opt.update_coords(new_node1_coords)
                 self.engine.compute_energies([new_node1])
+                # print(f"PROG: {self.grad_calls_made}")
                 self.grad_calls_made += 1
 
                 converged = self._check_nodes_converged(
@@ -180,6 +192,7 @@ class FreezingNEB(PathMinimizer):
 
     def minimize_nodes(self, chain: Chain, node_tangents: list):
         raw_chain = chain.copy()
+        # return raw_chain
         chain_opt1 = self._min_node(
             raw_chain,
             tangent=node_tangents[0],
@@ -220,23 +233,59 @@ class FreezingNEB(PathMinimizer):
     def grow_nodes(self, chain: Chain, dr: float):
         sub_chain = self._get_innermost_nodes(chain)
 
+        sweep = True
         found_nodes = False
         nimg = 10
-        interpolated = ch.run_geodesic(sub_chain, nimages=nimg, sweep=True)
+        # interpolated = ch.run_geodesic(sub_chain, nimages=nimg, sweep=sweep)
+        # interpolation_1 = interpolated.copy()
+        # interpolation_1.nodes = interpolation_1.nodes[:2]
+        # interpolation_2 = interpolated.copy()
+        # interpolation_2.nodes = interpolation_2.nodes[-2:]
+
         final_node1 = None
         final_node1_tan = None
         final_node2 = None
         final_node2_tan = None
+
         while not found_nodes:
-            print(f"***trying with {nimg=}")
+            print(f"\t\t***trying with {nimg=}")
+            interpolated = ch.run_geodesic(sub_chain, nimages=nimg, sweep=sweep)
             sys.stdout.flush()
-            interpolated = ch.run_geodesic(interpolated, nimages=nimg)
-            node1, tan1 = self._select_node_at_dist(
-                chain=interpolated, dist=dr, direction=1, dist_err=0.1
-            )
-            node2, tan2 = self._select_node_at_dist(
-                chain=interpolated, dist=dr, direction=-1, dist_err=0.1
-            )
+
+            if not final_node1:
+                # # interpolation_1.nodes = interpolation_1.nodes[
+                # #     : int(len(interpolation_1) / 2)
+                # # ]
+                # interpolation_1.nodes = interpolation_1.nodes[:2]
+                # interpolation_1 = ch.run_geodesic(
+                #     interpolation_1, nimages=nimg, sweep=sweep
+                # )
+                node1, tan1 = self._select_node_at_dist(
+                    # chain=interpolation_1,
+                    chain=interpolated,
+                    dist=dr,
+                    direction=1,
+                    dist_err=self.parameters.dist_err
+                    * self.parameters.path_resolution
+                    * self.d0,
+                )
+            if not final_node2:
+                # interpolation_2.nodes = interpolation_2.nodes[
+                #     : int(len(interpolation_2) / 2)
+                # ]
+                # interpolation_2.nodes = interpolation_2.nodes[-2:]
+                # interpolation_2 = ch.run_geodesic(
+                #     interpolation_2, nimages=nimg, sweep=sweep
+                # )
+                node2, tan2 = self._select_node_at_dist(
+                    # chain=interpolation_2,
+                    chain=interpolated,
+                    dist=dr,
+                    direction=-1,
+                    dist_err=self.parameters.dist_err
+                    * self.parameters.path_resolution
+                    * self.d0,
+                )
             if node1:
                 final_node1 = node1
                 final_node1_tan = tan1
@@ -266,6 +315,9 @@ class FreezingNEB(PathMinimizer):
         dist --> the requested distance where you want the nodes
         direction --> whether to go forward (1) or backwards (-1). if forward, will pick the requested node
                     to the first node. if backwards, will pick the requested node to the last node
+
+
+        write recuersively midpoint geodesic finding node thing so that you keep recycling onlky half the grodesic trajectory every time you remake it
         """
         input_chain = chain.copy()
         if direction == -1:
@@ -278,18 +330,28 @@ class FreezingNEB(PathMinimizer):
         for i, node in enumerate(input_chain.nodes[1:-1], start=1):
             curr_dist, _ = RMSD(start_node.coords, node.coords)
             curr_dist_err = np.abs(curr_dist - dist)
+            print(f"\t{curr_dist_err=} vs {dist_err=}")
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
                 best_node = node
                 best_dist_err = curr_dist_err
                 prev_node = input_chain.nodes[i - 1]
                 next_node = input_chain.nodes[i + 1]
-                self.engine.compute_energies([prev_node, node, next_node])
-                self.grad_calls_made += 3
-                best_node_tangent = ch._create_tangent_path(
-                    prev_node=prev_node,
-                    current_node=node,
-                    next_node=next_node,
-                )
+                if self.parameters.use_geodesic_tangent:
+                    self.engine.compute_energies([prev_node, node, next_node])
+                    self.grad_calls_made += 3
+                    # print(f"PROG: {self.grad_calls_made}")
+                    best_node_tangent = ch._create_tangent_path(
+                        prev_node=prev_node,
+                        current_node=node,
+                        next_node=next_node,
+                    )
+                else:
+                    self.engine.compute_energies([node])
+                    # print(f"PROG: {self.grad_calls_made}")
+                    self.grad_calls_made += 1
+                    best_node_tangent = None
+
+                break
 
         return best_node, best_node_tangent
 

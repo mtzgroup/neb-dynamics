@@ -26,7 +26,7 @@ class QCOPEngine(Engine):
     program_input: ProgramInput = ProgramInput(
         structure=Structure.from_smiles("C"),
         model={"method": "GFN2xTB"},
-        calctype="energy",
+        calctype="gradient",
     )
     program: str = "xtb"
     geometry_optimizer: str = "geometric"
@@ -43,7 +43,9 @@ class QCOPEngine(Engine):
         try:
             return np.array([node.energy for node in chain])
         except EnergiesNotComputedError:
-            node_list = self._run_calc(chain=chain, calctype="energy")
+            node_list = self._run_calc(
+                chain=chain, calctype="gradient"
+            )  # need the gradients to be cached anyway
             return np.array([node.energy for node in node_list])
 
     def compute_func(self, *args):
@@ -103,15 +105,18 @@ class QCOPEngine(Engine):
             with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
                 non_frozen_results = list(executor.map(helper, iterables))
 
-        if self.compute_program == 'chemcloud':
+        if self.compute_program == "chemcloud":
             ### the following hack is implemented until chemcloud can accept single-length lists.
             if len(non_frozen_prog_inps) == 1:
                 non_frozen_prog_inps = non_frozen_prog_inps[0]
-                non_frozen_results = self.compute_func(self.program, non_frozen_prog_inps)
+                non_frozen_results = self.compute_func(
+                    self.program, non_frozen_prog_inps
+                )
                 non_frozen_results = [non_frozen_results]
             else:
-                non_frozen_results = self.compute_func(self.program, non_frozen_prog_inps)
-
+                non_frozen_results = self.compute_func(
+                    self.program, non_frozen_prog_inps
+                )
 
         else:
             non_frozen_results = [
@@ -133,18 +138,33 @@ class QCOPEngine(Engine):
         """
         this will return a ProgramOutput from qcio geom opt call.
         """
-        dpi = DualProgramInput(
-            calctype="optimization",  # type: ignore
-            structure=structure,
-            subprogram=self.program,
-            subprogram_args={
-                "model": self.program_input.model,
-                "keywords": self.program_input.keywords,
-            },
-            keywords={},
-        )
+        if "terachem" not in self.program:
+            dpi = DualProgramInput(
+                calctype="optimization",  # type: ignore
+                structure=structure,
+                subprogram=self.program,
+                subprogram_args={
+                    "model": self.program_input.model,
+                    "keywords": self.program_input.keywords,
+                },
+                keywords={},
+            )
 
-        output = self.compute_func(self.geometry_optimizer, dpi)
+            output = self.compute_func(self.geometry_optimizer, dpi)
+
+        else:
+            prog_input = ProgramInput(
+                structure=structure,
+                # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
+                calctype="optimization",  # type: ignore
+                model=self.program_input.model,
+                keywords={
+                    "purify": "no",
+                    "new_minimizer": "yes",
+                },  # new_minimizer yes is required
+            )
+            output = self.compute_func("terachem", prog_input)
+
         return output
 
     def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:

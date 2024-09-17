@@ -13,6 +13,7 @@ from neb_dynamics.neb import NEB, NoneConvergedException, PYGSM
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.engines import QCOPEngine, ASEEngine
 from neb_dynamics.helper_functions import _load_info_from_tcin
+import time
 
 
 def read_single_arguments():
@@ -296,6 +297,7 @@ def read_single_arguments():
 
 
 def main():
+    start_time = time.time()
     args = read_single_arguments()
     nodes = {"node3d": StructureNode}
     nc = nodes[args.nc]
@@ -342,6 +344,15 @@ def main():
         early_stop_still_steps_thre=args.es_ss,
         skip_identical_graphs=bool(args.sig),
         preopt_with_xtb=bool(int(args.preopt)),
+        fneb_kwds={
+            "stepsize": args.stepsize,
+            "ngradcalls": 3,
+            "max_cycles": args.maxsteps,
+            "path_resolution": 1 / 10,  # BOHR,
+            "max_atom_displacement": 0.1,
+            "early_stop_scaling": args.es_ft,
+            "dist_err": 0.5,
+        },
     )
 
     if args.tcin:
@@ -366,7 +377,7 @@ def main():
                 model={"method": "GFN2xTB"},
                 keywords={},
             )
-        elif args.program == "terachem":
+        elif "terachem" in args.program:
             program_input = ProgramInput(
                 structure=start,
                 calctype="gradient",
@@ -402,7 +413,8 @@ def main():
             args.program == "xtb"
         ), f"Invalid 'progam' {args.program}. It is not yet supported. This will likely change."
         from xtb.ase.calculator import XTB
-        from xtb.utils import get_solvent, Solvent
+
+        # from xtb.utils import get_solvent, Solvent
 
         calc = XTB(method="GFN2-xTB", solvent="water")
         eng = ASEEngine(calculator=calc, ase_opt_str=args.geom_opt)
@@ -465,7 +477,7 @@ def main():
         else:
             foldername = data_dir / f"{fp.stem}_msmep"
             filename = data_dir / f"{fp.stem}_msmep.xyz"
-
+        end_time = time.time()
         history.output_chain.write_to_disk(filename)
         history.write_to_disk(foldername)
 
@@ -501,9 +513,9 @@ def main():
             print(f">>> Made {tot_grad_calls} gradient calls in cleanup.")
 
     elif args.method in ["fneb", "neb", "pygsm"]:
-        print("RUNNING REGULAR NEB")
+        print(f"RUNNING REGULAR {args.method.upper()}")
 
-        n, elem_step_results = m.minimize_chain(input_chain=chain)
+        n, elem_step_results = m.run_minimize_chain(input_chain=chain)
         fp = Path(args.st)
         data_dir = fp.parent
         if args.name:
@@ -511,13 +523,15 @@ def main():
 
         else:
             filename = data_dir / f"{fp.stem}_neb.xyz"
-
+        end_time = time.time()
         n.write_to_disk(filename)
         tot_grad_calls = n.grad_calls_made
         print(f">>> Made {tot_grad_calls} gradient calls total.")
 
     else:
         raise ValueError("Incorrect input method. Use 'asneb' or 'neb'")
+
+    print(f"***Walltime: {end_time - start_time} s")
 
 
 if __name__ == "__main__":

@@ -3947,35 +3947,35 @@ view = ["ipython (>=8.0.0)", "matplotlib (>=3.0.0)", "py3Dmol (>=2.2.1)"]
 
 [[package]]
 name = "qcop"
-version = "0.8.1"
+version = "0.9.1"
 description = "A package for operating Quantum Chemistry programs using qcio standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 optional = false
-python-versions = "<4.0,>=3.8"
+python-versions = "<4.0,>=3.9"
 files = [
-    {file = "qcop-0.8.1-py3-none-any.whl", hash = "sha256:b49545d7f2d53692e94d33d27ae59b437436f729413478805f7709a607948559"},
-    {file = "qcop-0.8.1.tar.gz", hash = "sha256:cdd854f9b619b459df604a2c6198f3874722828538975883805d8aeff4e57fa2"},
+    {file = "qcop-0.9.1-py3-none-any.whl", hash = "sha256:adf287bf84d26de3829c81f332ad0183379d4036a3e4d5a322ec8b0b0cda198e"},
+    {file = "qcop-0.9.1.tar.gz", hash = "sha256:4a3a3b8a514f135e1213331edb4f0243356720fa7bc22953206cf40263255e37"},
 ]
 
 [package.dependencies]
 qcio = ">=0.11.8,<0.12.0"
-qcparse = ">=0.6.2,<0.7.0"
+qcparse = ">=0.6.3,<0.7.0"
 tomli-w = ">=1.0.0,<2.0.0"
 
 [package.extras]
-all = ["geometric (>=1.0.1,<2.0.0)", "qcelemental (>=0.26.0,<0.27.0)", "qcengine (>=0.27.0,<0.28.0)", "xtb (>=22.1,<23.0)"]
+all = ["geometric (>=1.0.1,<2.0.0)", "qcelemental (>=0.26.0,<0.27.0)", "qcengine (>=0.27.0,<0.28.0)", "tcpb (>=0.14.1,<0.15.0)", "xtb (>=22.1,<23.0)"]
 geometric = ["geometric (>=1.0.1,<2.0.0)"]
 qcengine = ["qcelemental (>=0.26.0,<0.27.0)", "qcengine (>=0.27.0,<0.28.0)"]
 xtb = ["xtb (>=22.1,<23.0)"]
 
 [[package]]
 name = "qcparse"
-version = "0.6.2"
+version = "0.6.3"
 description = "A package for parsing Quantum Chemistry program file outputs into structured qcio data objects."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcparse-0.6.2-py3-none-any.whl", hash = "sha256:4cbb8f48596ff34a43211596546fce9fba26b1c1d7fb403e4a1d3c2f0b4b7110"},
-    {file = "qcparse-0.6.2.tar.gz", hash = "sha256:a490f2c5ea15c1361b292e0fb5a0c8106e371d807252f6be7ad34c7cca1b49e1"},
+    {file = "qcparse-0.6.3-py3-none-any.whl", hash = "sha256:b568c312ad5f96372b0fc2b1855a50e2eca911bc5793c1ecc863893be789e376"},
+    {file = "qcparse-0.6.3.tar.gz", hash = "sha256:c29eee4e6481fd5af2c45ec413d5ad45a69aacb6c6dbed9a46291fcf6aa1a763"},
 ]
 
 [package.dependencies]
@@ -5578,4 +5578,4 @@ test = ["big-O", "importlib-resources", "jaraco.functools", "jaraco.itertools", 
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.9"
-content-hash = "c345b2b1c66f79e50a3b342de0181721890695867d5e322ee3b30944f6b30991"
+content-hash = "979852efd6c671b438d78a9199e1fdae7e8c9fa334dfcebc337e6b39868a66f7"
