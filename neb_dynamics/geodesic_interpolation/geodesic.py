@@ -3,7 +3,6 @@ metric to find geodesics directly in Cartesian, to avoid feasibility problems as
 with redundant internals.
 """
 
-
 import numpy as np
 from scipy.optimize import least_squares
 
