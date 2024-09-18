@@ -32,6 +32,7 @@ class FreezingNEB(PathMinimizer):
             "early_stop_scaling": 3,
             "use_geodesic_tangent": False,
             "dist_err": 0.5,
+            "min_images": 4,
         }
         for key, val in self.fneb_kwds.items():
             fneb_kwds_defaults[key] = val
@@ -65,6 +66,10 @@ class FreezingNEB(PathMinimizer):
         d0, _ = RMSD(node1.coords, node2.coords)
 
         self.dinitial = d0
+        self.parameters.path_resolution = min(
+            self.dinitial / self.parameters.min_images, self.parameters.path_resolution
+        )
+
         converged = False
         nsteps = 0
 
@@ -75,7 +80,7 @@ class FreezingNEB(PathMinimizer):
             node1, node2 = self._get_innermost_nodes(chain)
             d0, _ = RMSD(node1.coords, node2.coords)
             grown_chain, node_tangents = self.grow_nodes(
-                chain, dr=self.parameters.path_resolution * d0
+                chain, dr=self.parameters.path_resolution
             )
 
             # minimize nodes
@@ -88,7 +93,7 @@ class FreezingNEB(PathMinimizer):
             # check convergence
             print("\tchecking convergence")
             converged, inner_bead_distance = self.chain_converged(min_chain)
-            dr = self.parameters.path_resolution * d0
+            dr = self.parameters.path_resolution
             if inner_bead_distance <= self.parameters.early_stop_scaling * dr:
                 new_params = SimpleNamespace(**self.fneb_kwds)
                 new_params.early_stop_scaling = 0.0
@@ -271,9 +276,7 @@ class FreezingNEB(PathMinimizer):
                     chain=interpolated,
                     dist=dr,
                     direction=1,
-                    dist_err=self.parameters.dist_err
-                    * self.parameters.path_resolution
-                    * self.dinitial,
+                    dist_err=self.parameters.dist_err * self.parameters.path_resolution,
                 )
             if not final_node2:
                 # interpolation_2.nodes = interpolation_2.nodes[
@@ -288,9 +291,7 @@ class FreezingNEB(PathMinimizer):
                     chain=interpolated,
                     dist=dr,
                     direction=-1,
-                    dist_err=self.parameters.dist_err
-                    * self.parameters.path_resolution
-                    * self.dinitial,
+                    dist_err=self.parameters.dist_err * self.parameters.path_resolution,
                 )
             if node1:
                 final_node1 = node1
@@ -362,7 +363,7 @@ class FreezingNEB(PathMinimizer):
         return best_node, best_node_tangent
 
     def chain_converged(self, chain: Chain):
-        dr = self.parameters.path_resolution * self.dinitial
+        dr = self.parameters.path_resolution
         node1, node2 = self._get_innermost_nodes(chain)
         dist, _ = RMSD(node1.coords, node2.coords)
         print(f"distance between innermost nodes {dist}")

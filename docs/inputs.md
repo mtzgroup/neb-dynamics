@@ -1,1 +1,1 @@
-::: neb_dynamics.Inputs
+::: neb_dynamics.inputs

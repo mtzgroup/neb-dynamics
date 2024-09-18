@@ -1,1 +1,1 @@
-::: neb_dynamics.NEB.NEB
+::: neb_dynamics.neb.NEB
