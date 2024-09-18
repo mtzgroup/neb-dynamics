@@ -312,21 +312,32 @@ def get_nudged_pe_grad(unit_tangent: np.array, gradient: np.array):
     return pe_grad_nudged
 
 
-def run_geodesic(chain: Chain, **kwargs):
-    xyz_coords = run_geodesic_py((chain.symbols, chain.coordinates), **kwargs)
-    chain_copy = chain.copy()
-    pseudo_node = chain_copy[0]
+def gi_path_to_chain(xyz_coords: np.array, parameters: ChainInputs, symbols: list):
+    from qcio import Structure
+
     new_nodes = []
     for new_coords in xyz_coords:
-        new_nodes.append(pseudo_node.update_coords(new_coords=new_coords))
-    chain_copy.nodes = new_nodes
+        struct = Structure(geometry=new_coords, symbols=symbols)
+        node = StructureNode(structure=struct)
+        new_nodes.append(node)
+    chain_copy = Chain(nodes=new_nodes, parameters=parameters)
     return chain_copy
 
 
-def calculate_geodesic_distance(node1: StructureNode, node2: StructureNode, nimages=12):
+def run_geodesic(chain: Chain, **kwargs):
+    xyz_coords = run_geodesic_py((chain.symbols, chain.coordinates), **kwargs)
+    chain_copy = gi_path_to_chain(
+        xyz_coords=xyz_coords, parameters=chain.parameters.copy(), symbols=chain.symbols
+    )
+    return chain_copy
+
+
+def calculate_geodesic_distance(
+    node1: StructureNode, node2: StructureNode, nimages=12, nudge=0.1
+):
     smoother = run_geodesic_get_smoother(
         input_object=[node1.symbols, [node1.coords, node2.coords]],
-        nudge=0,
+        nudge=nudge,
         nimages=nimages,
     )
     return smoother.length

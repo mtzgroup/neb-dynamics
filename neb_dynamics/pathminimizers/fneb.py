@@ -3,6 +3,8 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from neb_dynamics.geodesic_interpolation.geodesic import Geodesic
+
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
@@ -274,39 +276,37 @@ class FreezingNEB(PathMinimizer):
         final_node2_tan = None
 
         while not found_nodes:
-            # print(f"\t\t***trying with {nimg=}")
-            interpolated = ch.run_geodesic(sub_chain, nimages=nimg, sweep=sweep)
+            print(f"\t\t***trying with {nimg=}")
+            smoother = ch.run_geodesic_get_smoother(
+                input_object=[
+                    sub_chain[0].symbols,
+                    [sub_chain[0].coords, sub_chain[-1].coords],
+                ],
+                nimages=nimg,
+                sweep=sweep,
+            )
+            interpolated = ch.gi_path_to_chain(
+                xyz_coords=smoother.path,
+                parameters=sub_chain.parameters.copy(),
+                symbols=sub_chain.symbols,
+            )
             sys.stdout.flush()
 
             if not final_node1:
-                # # interpolation_1.nodes = interpolation_1.nodes[
-                # #     : int(len(interpolation_1) / 2)
-                # # ]
-                # interpolation_1.nodes = interpolation_1.nodes[:2]
-                # interpolation_1 = ch.run_geodesic(
-                #     interpolation_1, nimages=nimg, sweep=sweep
-                # )
                 node1, tan1 = self._select_node_at_dist(
-                    # chain=interpolation_1,
                     chain=interpolated,
                     dist=dr,
                     direction=1,
                     dist_err=self.parameters.dist_err * self.parameters.path_resolution,
+                    smoother=smoother,
                 )
             if not final_node2:
-                # interpolation_2.nodes = interpolation_2.nodes[
-                #     : int(len(interpolation_2) / 2)
-                # ]
-                # interpolation_2.nodes = interpolation_2.nodes[-2:]
-                # interpolation_2 = ch.run_geodesic(
-                #     interpolation_2, nimages=nimg, sweep=sweep
-                # )
                 node2, tan2 = self._select_node_at_dist(
-                    # chain=interpolation_2,
                     chain=interpolated,
                     dist=dr,
                     direction=-1,
                     dist_err=self.parameters.dist_err * self.parameters.path_resolution,
+                    smoother=smoother,
                 )
             if node1:
                 final_node1 = node1
@@ -329,7 +329,12 @@ class FreezingNEB(PathMinimizer):
         return grown_chain, [final_node1_tan, final_node2_tan]
 
     def _select_node_at_dist(
-        self, chain: Chain, dist: float, direction: int, dist_err: float = 0.1
+        self,
+        chain: Chain,
+        dist: float,
+        direction: int,
+        smoother: Geodesic,
+        dist_err: float = 0.1,
     ):
         """
         will iterate through chain and select the node that is 'dist' away up to 'dist_err'
@@ -338,8 +343,6 @@ class FreezingNEB(PathMinimizer):
         direction --> whether to go forward (1) or backwards (-1). if forward, will pick the requested node
                     to the first node. if backwards, will pick the requested node to the last node
 
-
-        write recuersively midpoint geodesic finding node thing so that you keep recycling onlky half the grodesic trajectory every time you remake it
         """
         input_chain = chain.copy()
         if direction == -1:
@@ -350,9 +353,13 @@ class FreezingNEB(PathMinimizer):
         best_dist_err = 10000.0
         best_node_tangent = None
         for i, node in enumerate(input_chain.nodes[1:-1], start=1):
-            curr_dist = self._distance_function(node1=start_node, node2=node)
+            if self.parameters.distance_metric.upper() == "GEODESIC":
+                smoother.compute_disps(start=1, end=i + 1)
+                curr_dist = smoother.length
+            else:
+                curr_dist = self._distance_function(node1=start_node, node2=node)
             curr_dist_err = np.abs(curr_dist - dist)
-            # print(f"\t{curr_dist_err=} vs {dist_err=}")
+            print(f"\t{curr_dist_err=} vs {dist_err=}")
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
                 best_node = node
                 best_dist_err = curr_dist_err
