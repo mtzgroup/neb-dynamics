@@ -310,7 +310,7 @@ class Geodesic(object):
         return self.path
 
 
-def run_geodesic_py(
+def run_geodesic_get_smoother(
     input_object,
     tol=2e-3,
     nudge=0.1,
@@ -325,7 +325,8 @@ def run_geodesic_py(
     nimages=5,
     min_neighbors=4,
 ):
-    from .interpolation import redistribute
+    from neb_dynamics.geodesic_interpolation.interpolation import redistribute
+    from neb_dynamics.geodesic_interpolation.geodesic import Geodesic
 
     # Read the initial geometries.
     symbols, X = input_object
@@ -348,6 +349,8 @@ def run_geodesic_py(
         friction=friction,
         min_neighbors=min_neighbors,
     )
+    # return smoother
+
     if sweep is None:
         sweep = len(symbols) > 35
     try:
@@ -361,5 +364,38 @@ def run_geodesic_py(
         # Save the smoothed path to output file.  try block is to ensure output is saved if one ^C the
         # process, or there is an error
 
-        return smoother.path
+        return smoother
         # write_xyz(output, symbols, smoother.path)
+
+
+def run_geodesic_py(
+    input_object,
+    tol=2e-3,
+    nudge=0.1,
+    ntries=1,
+    scaling=1.7,
+    dist_cutoff=3,
+    friction=1e-2,
+    sweep=None,
+    maxiter=15,
+    microiter=20,
+    reconstruct=None,
+    nimages=5,
+    min_neighbors=4,
+):
+    smoother = run_geodesic_get_smoother(
+        input_object=input_object,
+        tol=tol,
+        nudge=nudge,
+        ntries=ntries,
+        scaling=scaling,
+        dist_cutoff=dist_cutoff,
+        friction=friction,
+        sweep=sweep,
+        maxiter=maxiter,
+        microiter=microiter,
+        reconstruct=reconstruct,
+        nimages=nimages,
+        min_neighbors=min_neighbors,
+    )
+    return smoother.path

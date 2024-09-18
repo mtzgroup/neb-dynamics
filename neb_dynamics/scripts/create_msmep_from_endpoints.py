@@ -352,6 +352,7 @@ def main():
             "max_atom_displacement": 0.1,
             "early_stop_scaling": args.es_ft,
             "dist_err": 0.5,
+            "distance_metric": "geodesic",
         },
     )
 

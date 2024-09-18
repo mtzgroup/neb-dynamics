@@ -16,7 +16,10 @@ from scipy.signal import argrelextrema
 from neb_dynamics.chain import Chain
 from neb_dynamics.nodes.node import StructureNode, Node, XYNode
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
-from neb_dynamics.geodesic_interpolation.geodesic import run_geodesic_py
+from neb_dynamics.geodesic_interpolation.geodesic import (
+    run_geodesic_py,
+    run_geodesic_get_smoother,
+)
 from neb_dynamics.helper_functions import get_mass
 from neb_dynamics.inputs import ChainInputs, GIInputs
 from neb_dynamics.engines.qcop import QCOPEngine
@@ -318,6 +321,15 @@ def run_geodesic(chain: Chain, **kwargs):
         new_nodes.append(pseudo_node.update_coords(new_coords=new_coords))
     chain_copy.nodes = new_nodes
     return chain_copy
+
+
+def calculate_geodesic_distance(node1: StructureNode, node2: StructureNode, nimages=12):
+    smoother = run_geodesic_get_smoother(
+        input_object=[node1.symbols, [node1.coords, node2.coords]],
+        nudge=0,
+        nimages=nimages,
+    )
+    return smoother.length
 
 
 def _update_cache(self, chain: Chain, gradients: NDArray, energies: NDArray) -> None:

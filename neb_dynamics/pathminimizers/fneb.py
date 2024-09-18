@@ -6,6 +6,7 @@ import numpy as np
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
+from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.pathminimizers.pathminimizer import PathMinimizer
 from neb_dynamics.elementarystep import check_if_elem_step
@@ -13,6 +14,8 @@ from neb_dynamics.elementarystep import check_if_elem_step
 import traceback
 
 import sys
+
+DISTANCE_METRICS = ["GEODESIC", "RMSD"]
 
 
 @dataclass
@@ -33,6 +36,7 @@ class FreezingNEB(PathMinimizer):
             "use_geodesic_tangent": False,
             "dist_err": 0.5,
             "min_images": 4,
+            "distance_metric": "RMSD",
         }
         for key, val in self.fneb_kwds.items():
             fneb_kwds_defaults[key] = val
@@ -41,6 +45,16 @@ class FreezingNEB(PathMinimizer):
         self.parameters = SimpleNamespace(**self.fneb_kwds)
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
+
+    def _distance_function(self, node1: StructureNode, node2: StructureNode):
+        if self.parameters.distance_metric.upper() == "RMSD":
+            return RMSD(node1.coords, node2.coords)[0]
+        elif self.parameters.distance_metric.upper() == "GEODESIC":
+            return ch.calculate_geodesic_distance(node1, node2)
+        else:
+            raise ValueError(
+                f"Invalid distance metric: {self.parameters.distance_metric}. Use one of {DISTANCE_METRICS}"
+            )
 
     def optimize_chain(
         self,
@@ -63,12 +77,13 @@ class FreezingNEB(PathMinimizer):
         self.chain_trajectory = [chain]
 
         node1, node2 = self._get_innermost_nodes(chain)
-        d0, _ = RMSD(node1.coords, node2.coords)
+        d0 = self._distance_function(node1, node2)
 
         self.dinitial = d0
         self.parameters.path_resolution = min(
             self.dinitial / self.parameters.min_images, self.parameters.path_resolution
         )
+        print(f"Using path resolution of: {self.parameters.path_resolution}")
 
         converged = False
         nsteps = 0
@@ -78,7 +93,7 @@ class FreezingNEB(PathMinimizer):
             # grow nodes
             print("\tgrowing nodes")
             node1, node2 = self._get_innermost_nodes(chain)
-            d0, _ = RMSD(node1.coords, node2.coords)
+            d0 = self._distance_function(node1, node2)
             grown_chain, node_tangents = self.grow_nodes(
                 chain, dr=self.parameters.path_resolution
             )
@@ -119,8 +134,8 @@ class FreezingNEB(PathMinimizer):
         self, node, prev_node, opposite_node, prev_iter_ene: float, d0
     ):
         curr_iter_ene = node.energy
-        d, _ = RMSD(node.coords, opposite_node.coords)
-        s, _ = RMSD(node.coords, prev_node.coords)
+        d = self._distance_function(node, opposite_node)
+        s = self._distance_function(node, prev_node)
         # print(d, d0, s, d0 + 0.5*s, curr_iter_ene, prev_iter_ene)
         distance_exceeded = d > d0 + 0.5 * s
         energy_exceeded = curr_iter_ene > prev_iter_ene
@@ -259,7 +274,7 @@ class FreezingNEB(PathMinimizer):
         final_node2_tan = None
 
         while not found_nodes:
-            print(f"\t\t***trying with {nimg=}")
+            # print(f"\t\t***trying with {nimg=}")
             interpolated = ch.run_geodesic(sub_chain, nimages=nimg, sweep=sweep)
             sys.stdout.flush()
 
@@ -335,9 +350,9 @@ class FreezingNEB(PathMinimizer):
         best_dist_err = 10000.0
         best_node_tangent = None
         for i, node in enumerate(input_chain.nodes[1:-1], start=1):
-            curr_dist, _ = RMSD(start_node.coords, node.coords)
+            curr_dist = self._distance_function(node1=start_node, node2=node)
             curr_dist_err = np.abs(curr_dist - dist)
-            print(f"\t{curr_dist_err=} vs {dist_err=}")
+            # print(f"\t{curr_dist_err=} vs {dist_err=}")
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
                 best_node = node
                 best_dist_err = curr_dist_err
@@ -365,7 +380,7 @@ class FreezingNEB(PathMinimizer):
     def chain_converged(self, chain: Chain):
         dr = self.parameters.path_resolution
         node1, node2 = self._get_innermost_nodes(chain)
-        dist, _ = RMSD(node1.coords, node2.coords)
+        dist = self._distance_function(node1, node2)
         print(f"distance between innermost nodes {dist}")
         if dist <= dr:
             result = True
