@@ -10,13 +10,11 @@
         <meta name="author" content="Jan Estrada Pabón">
       
       
-        <link rel="canonical" href="https://mtzgroup.github.io/neb-dynamics/Tutorial/">
+        <link rel="canonical" href="https://mtzgroup.github.io/neb-dynamics/tutorial/">
       
       
-        <link rel="prev" href="..">
+        <link rel="prev" href="../neb/">
       
-      
-        <link rel="next" href="../elementarystep/">
       
       
       <link rel="icon" href="../assets/images/favicon.png">
@@ -262,90 +260,6 @@
       
   
   
-    
-  
-  
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  <span class="md-ellipsis">
-    Tutorial
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
-        
-  
-  <span class="md-ellipsis">
-    Tutorial
-  </span>
-  
-
-      </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#running-neb-using-terachem-in-chemcloud" class="md-nav__link">
-    <span class="md-ellipsis">
-      Running NEB using TeraChem in ChemCloud
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Running NEB using TeraChem in ChemCloud">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#create-endpoints" class="md-nav__link">
-    <span class="md-ellipsis">
-      Create endpoints
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
-    </li>
-  
-
-    
-      
-      
-  
-  
   
   
     <li class="md-nav__item">
@@ -402,6 +316,36 @@
   
 
     
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Tutorial
+  </span>
+  
+
+      </a>
+      
+    </li>
+  
+
+    
   </ul>
 </nav>
                   </div>
@@ -422,38 +366,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#running-neb-using-terachem-in-chemcloud" class="md-nav__link">
-    <span class="md-ellipsis">
-      Running NEB using TeraChem in ChemCloud
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Running NEB using TeraChem in ChemCloud">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#create-endpoints" class="md-nav__link">
-    <span class="md-ellipsis">
-      Create endpoints
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -472,81 +384,78 @@
 
 <h1 id="tutorial">Tutorial<a class="headerlink" href="#tutorial" title="Permanent link">🔗</a></h1>
 <p>This tutorial references <a href="https://mtzgroup.github.io/neb-dynamics/inputs">ChainInputs</a>, <a href="inputs">NEBInputs</a>,<a href="https://mtzgroup.github.io/neb-dynamics/chain/">Chain</a>, <a href="https://mtzgroup.github.io/neb-dynamics/trajectory/">Trajectory</a>, <a href="https://mtzgroup.github.io/neb-dynamics/tdstructure/">TDStructure</a>, <a href="https://mtzgroup.github.io/neb-dynamics/neb/">NEB</a> and <a href="https://mtzgroup.github.io/neb-dynamics/vpo">VelocityProjectedOptimizer</a></p>
-<h2 id="running-neb-using-terachem-in-chemcloud">Running NEB using TeraChem in ChemCloud<a class="headerlink" href="#running-neb-using-terachem-in-chemcloud" title="Permanent link">🔗</a></h2>
-<h3 id="create-endpoints">Create endpoints<a class="headerlink" href="#create-endpoints" title="Permanent link">🔗</a></h3>
-<div class="highlight"><pre><span></span><code>
-</code></pre></div>
 <div class="highlight"><pre><span></span><code><span class="c1"># Running our first NEB calculation. Naturally, we are going to calculate a pi-bond torsion.</span>
 
 <span class="c1"># # 1. Create initial guess</span>
 <span class="c1">#</span>
-<span class="c1"># ### We will create endpoints as we did the previous tutorials.</span>
+<span class="c1"># ### We will create geometrics using QCIO, then instantiate our nodes</span>
 
-<span class="kn">from</span> <span class="nn">neb_dynamics.tdstructure</span> <span class="kn">import</span> <span class="n">TDStructure</span>
-<span class="kn">from</span> <span class="nn">neb_dynamics.trajectory</span> <span class="kn">import</span> <span class="n">Trajectory</span>
+<span class="kn">from</span> <span class="nn">qcio</span> <span class="kn">import</span> <span class="n">Structure</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics</span> <span class="kn">import</span> <span class="n">StructureNode</span>
 
-<span class="n">start</span> <span class="o">=</span> <span class="n">TDStructure</span><span class="o">.</span><span class="n">from_smiles</span><span class="p">(</span><span class="s2">&quot;C=C&quot;</span><span class="p">)</span>
-<span class="n">end</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-
+<span class="n">start</span> <span class="o">=</span> <span class="n">Structure</span><span class="o">.</span><span class="n">from_smiles</span><span class="p">(</span><span class="s2">&quot;C=C&quot;</span><span class="p">)</span>
 <span class="c1"># we can also load in a structure from a file path with:</span>
-<span class="c1"># start = TDStructure.from_xyz(&quot;/path/to/file.xyz&quot;)</span>
-<span class="n">end_coords</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">coords</span>
+<span class="c1"># start = Structure.open(&quot;/path/to/file.xyz&quot;)</span>
+
+<span class="n">start_node</span> <span class="o">=</span> <span class="n">StructureNode</span><span class="p">(</span><span class="n">structure</span><span class="o">=</span><span class="n">start</span><span class="p">)</span>
+
+<span class="n">end_node</span> <span class="o">=</span> <span class="n">start_node</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+<span class="n">end_coords</span> <span class="o">=</span> <span class="n">end_node</span><span class="o">.</span><span class="n">coords</span>
 <span class="n">end_coords_swapped</span> <span class="o">=</span> <span class="n">end_coords</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">],:]</span> <span class="c1"># We have swapped the indices of two hydrogens</span>
-<span class="n">end</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">update_coords</span><span class="p">(</span><span class="n">end_coords_swapped</span><span class="p">)</span>
-<span class="c1"># we can also load in a structure from a file path with:</span>
-<span class="c1"># end = TDStructure.from_xyz(&quot;/path/to/file.xyz&quot;)</span>
+<span class="n">end_node</span> <span class="o">=</span> <span class="n">end_node</span><span class="o">.</span><span class="n">update_coords</span><span class="p">(</span><span class="n">end_coords_swapped</span><span class="p">)</span>
 
 <span class="c1"># ### Now we need to optimize them to our desired level of theory</span>
 
-<span class="n">start_opt</span> <span class="o">=</span> <span class="n">start</span><span class="o">.</span><span class="n">xtb_geom_optimization</span><span class="p">()</span>
-<span class="c1"># start_opt = start.tc_geom_optimization() # use this one if you want to run TeraChem in ChemCloud</span>
-<span class="n">end_opt</span> <span class="o">=</span> <span class="n">end</span><span class="o">.</span><span class="n">xtb_geom_optimization</span><span class="p">()</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics</span> <span class="kn">import</span> <span class="n">QCOPEngine</span><span class="p">,</span> <span class="n">ASEEngine</span>
+
+
+<span class="kn">from</span> <span class="nn">xtb.ase.calculator</span> <span class="kn">import</span> <span class="n">XTB</span>
+
+<span class="n">calc</span> <span class="o">=</span> <span class="n">XTB</span><span class="p">()</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">ASEEngine</span><span class="p">(</span><span class="n">calculator</span><span class="o">=</span><span class="n">calc</span><span class="p">)</span> <span class="c1">#QCOPEngine() # Also have ASEEngine if you want to run with ASE calculators</span>
+<span class="c1"># QCOPEngine will default to using XTB</span>
+
+<span class="n">start_opt</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">start_node</span><span class="p">)</span>
+<span class="n">end_opt</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">end_node</span><span class="p">)</span>
 <span class="c1"># end_opt = end.tc_geom_optimization() # use this one if you want to run TeraChem in ChemCloud</span>
 
 <span class="c1"># ### Now we need to interpolate between our endpoints</span>
 
-<span class="n">tr</span> <span class="o">=</span> <span class="n">Trajectory</span><span class="p">([</span><span class="n">start_opt</span><span class="p">,</span> <span class="n">end_opt</span><span class="p">])</span><span class="o">.</span><span class="n">run_geodesic</span><span class="p">(</span><span class="n">nimages</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+<span class="kn">import</span> <span class="nn">neb_dynamics.chainhelpers</span> <span class="k">as</span> <span class="nn">ch</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.inputs</span> <span class="kn">import</span> <span class="n">ChainInputs</span>
 
-<span class="c1"># ### Finally, let&#39;s create our Chain object</span>
-
-<span class="kn">from</span> <span class="nn">chain</span> <span class="kn">import</span> <span class="n">Chain</span>
-<span class="kn">from</span> <span class="nn">neb_dynamics.Inputs</span> <span class="kn">import</span> <span class="n">ChainInputs</span>
-
-<span class="n">cni</span> <span class="o">=</span> <span class="n">ChainInputs</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">delta_k</span><span class="o">=</span><span class="mf">0.09</span><span class="p">)</span>
-<span class="n">initial_chain</span> <span class="o">=</span> <span class="n">Chain</span><span class="o">.</span><span class="n">from_traj</span><span class="p">(</span><span class="n">tr</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">cni</span><span class="p">)</span>
+<span class="n">cni</span> <span class="o">=</span> <span class="n">ChainInputs</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">delta_k</span><span class="o">=</span><span class="mf">0.09</span><span class="p">)</span> <span class="c1"># energy weighted spring constants</span>
+<span class="c1"># see: https://pubs.acs.org/doi/10.1021/acs.jctc.1c00462</span>
+<span class="n">initial_chain</span> <span class="o">=</span> <span class="n">ch</span><span class="o">.</span><span class="n">run_geodesic</span><span class="p">([</span><span class="n">start_node</span><span class="p">,</span> <span class="n">end_node</span><span class="p">],</span> <span class="n">chain_inputs</span><span class="o">=</span><span class="n">cni</span><span class="p">,</span> <span class="n">nimages</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
 
 <span class="c1"># # 2. Let&#39;s set up our NEB optimization</span>
 
-<span class="kn">from</span> <span class="nn">neb_dynamics.NEB</span> <span class="kn">import</span> <span class="n">NEB</span>
-<span class="kn">from</span> <span class="nn">neb_dynamics.Inputs</span> <span class="kn">import</span> <span class="n">NEBInputs</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.inputs</span> <span class="kn">import</span> <span class="n">NEBInputs</span>
 
 <span class="c1"># NEB</span>
 
-<span class="c1"># The NEB object takes in 3 parameters:</span>
+<span class="c1"># The NEB object takes in 4 parameters:</span>
 <span class="c1"># * initial_chain: our initial guess chain object to optimize</span>
 <span class="c1"># * parameters: an NEBInputs object containing the parameters for NEB optimization and convergence</span>
 <span class="c1"># * optimizer: the optimizer to use. We suggest you use `VelocityProjectedOptimizer` from</span>
 <span class="c1">#             `neb_dynamics.optimizer.VPO`</span>
+<span class="c1"># * engine: defines the electronic structure engine to be used</span>
 
-<span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">0.0001</span><span class="p">,</span> <span class="n">ts_spring_thre</span><span class="o">=</span><span class="mf">0.0001</span><span class="p">,</span> <span class="n">climb</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
 <span class="kn">from</span> <span class="nn">neb_dynamics.optimizers.vpo</span> <span class="kn">import</span> <span class="n">VelocityProjectedOptimizer</span>
 
 <span class="n">opt</span> <span class="o">=</span> <span class="n">VelocityProjectedOptimizer</span><span class="p">(</span><span class="n">timestep</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
 
-<span class="n">n</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">initial_chain</span><span class="o">=</span><span class="n">initial_chain</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">=</span><span class="n">opt</span><span class="p">)</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">initial_chain</span><span class="o">=</span><span class="n">initial_chain</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">=</span><span class="n">opt</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="n">eng</span><span class="p">)</span>
 
-<span class="n">_</span> <span class="o">=</span> <span class="n">n</span><span class="o">.</span><span class="n">optimize_chain</span><span class="p">()</span>
+<span class="n">elem_step_results</span> <span class="o">=</span> <span class="n">n</span><span class="o">.</span><span class="n">optimize_chain</span><span class="p">()</span>
 
 <span class="n">n</span><span class="o">.</span><span class="n">plot_opt_history</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 
-<span class="nb">print</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">optimized</span><span class="o">.</span><span class="n">get_ts_guess</span><span class="p">()</span><span class="o">.</span><span class="n">coords</span><span class="p">)</span>
+<span class="n">ch</span><span class="o">.</span><span class="n">visualize_chain</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">optimized</span><span class="p">)</span>
 </code></pre></div>
-<!-- ```python
-
-```
-
-::: neb_dynamics.Chain.Chain -->
 
 
 
