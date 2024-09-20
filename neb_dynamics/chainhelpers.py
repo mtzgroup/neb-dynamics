@@ -3,7 +3,7 @@ from IPython.display import display, HTML
 import base64
 import io
 
-from typing import List
+from typing import List, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -312,22 +312,40 @@ def get_nudged_pe_grad(unit_tangent: np.array, gradient: np.array):
     return pe_grad_nudged
 
 
-def gi_path_to_chain(xyz_coords: np.array, parameters: ChainInputs, symbols: list):
+def gi_path_to_chain(
+    xyz_coords: np.array, parameters: ChainInputs, symbols: list, charge=0, spinmult=1
+):
     from qcio import Structure
 
     new_nodes = []
     for new_coords in xyz_coords:
-        struct = Structure(geometry=new_coords, symbols=symbols)
+        struct = Structure(
+            geometry=new_coords, symbols=symbols, charge=charge, multiplicity=spinmult
+        )
         node = StructureNode(structure=struct)
         new_nodes.append(node)
     chain_copy = Chain(nodes=new_nodes, parameters=parameters)
     return chain_copy
 
 
-def run_geodesic(chain: Chain, **kwargs):
-    xyz_coords = run_geodesic_py((chain.symbols, chain.coordinates), **kwargs)
+def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, **kwargs):
+    if isinstance(chain, list) and chain_inputs is None:
+        print(
+            "Warning! You input a list of nodes to interpolate and no ChainInputs. Will use defaults ChainInputs"
+        )
+        chain_inputs = ChainInputs()
+    elif isinstance(chain, Chain):
+        chain_inputs = chain.parameters
+    coords = np.array([node.coords for node in chain])
+    xyz_coords = run_geodesic_py((chain[0].symbols, coords), **kwargs)
+    charge = chain[0].structure.charge
+    spinmult = chain[0].structure.multiplicity
     chain_copy = gi_path_to_chain(
-        xyz_coords=xyz_coords, parameters=chain.parameters.copy(), symbols=chain.symbols
+        xyz_coords=xyz_coords,
+        parameters=chain_inputs.copy(),
+        symbols=chain[0].symbols,
+        charge=charge,
+        spinmult=spinmult,
     )
     return chain_copy
 

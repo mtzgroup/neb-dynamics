@@ -143,7 +143,6 @@ def load_obmol_from_fp(fp: Path) -> openbabel.OBMol:
 
 
 def molecule_to_structure(rp_mol: Molecule, charge: int = 0, spinmult: int = 1):
-
     """Instantiate object from `Molecule` object. see [link](https://mtzgroup.github.io/neb-dynamics/molecule/)
 
     Args:
@@ -197,6 +196,7 @@ def molecule_to_structure(rp_mol: Molecule, charge: int = 0, spinmult: int = 1):
 
     arg = pybel.Molecule(obmol)
     arg.make3D()
+    arg.localopt("mmff94", steps=2000)
     arg.localopt("uff", steps=2000)
     arg.localopt("gaff", steps=2000)
     arg.localopt("mmff94", steps=2000)
@@ -211,12 +211,13 @@ def molecule_to_structure(rp_mol: Molecule, charge: int = 0, spinmult: int = 1):
         xyz_list.append([x, y, z])
     xyz = np.array(xyz_list)
     symbols = [atomic_number_to_symbol(n) for n in atom_nums]
-    geometry = xyz*ANGSTROM_TO_BOHR
+    geometry = xyz * ANGSTROM_TO_BOHR
 
-    structure = Structure(geometry=geometry, symbols=symbols, charge=charge, multiplicity=spinmult)
+    structure = Structure(
+        geometry=geometry, symbols=symbols, charge=charge, multiplicity=spinmult
+    )
 
     return structure
-
 
 
 def _change_prog_input_property(
@@ -252,5 +253,10 @@ def ase_atoms_to_structure(atoms: Atoms, charge: int = 0, multiplicity: int = 1)
     symbols = atoms.symbols
     positions_angstroms = atoms.positions
     positions_bohr = positions_angstroms * ANGSTROM_TO_BOHR
-    structure = Structure(symbols=symbols, geometry=positions_bohr, charge=charge, multiplicity=multiplicity)
+    structure = Structure(
+        symbols=symbols,
+        geometry=positions_bohr,
+        charge=charge,
+        multiplicity=multiplicity,
+    )
     return structure

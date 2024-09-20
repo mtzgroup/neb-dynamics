@@ -135,7 +135,7 @@ def update_node_cache(node_list, results):
         node._cached_gradient = result.results.gradient
 
 
-def create_pairs_from_smiles(smi1: str, smi2: str, charge=0, spinmult=1):
+def create_pairs_from_smiles(smi1: str, smi2: str, spinmult=1):
     rxnsmi = f"{smi1}>>{smi2}"
     rxn_mapper = RXNMapper()
     rxn = [rxnsmi]
@@ -147,7 +147,7 @@ def create_pairs_from_smiles(smi1: str, smi2: str, charge=0, spinmult=1):
     p = Molecule.from_mapped_smiles(p_smi)
 
     td_r, td_p = (
-        molecule_to_structure(r, charge=charge, spinmult=spinmult),
-        molecule_to_structure(p, charge=charge, spinmult=spinmult),
+        molecule_to_structure(r, charge=r.charge, spinmult=spinmult),
+        molecule_to_structure(p, charge=p.charge, spinmult=spinmult),
     )
     return td_r, td_p

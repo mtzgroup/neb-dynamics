@@ -351,7 +351,7 @@ def main():
             "path_resolution": 0.1,  # BOHR,
             "max_atom_displacement": 0.1,
             "early_stop_scaling": args.es_ft,
-            "dist_err": 0.5,
+            "dist_err": 1 / 10,
             "distance_metric": "geodesic",
         },
     )

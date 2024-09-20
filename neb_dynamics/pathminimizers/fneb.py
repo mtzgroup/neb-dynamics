@@ -292,7 +292,7 @@ class FreezingNEB(PathMinimizer):
             )
             sys.stdout.flush()
 
-            if not final_node1:
+            if not final_node1 or not final_node2:
                 node1, tan1 = self._select_node_at_dist(
                     chain=interpolated,
                     dist=dr,
@@ -300,7 +300,7 @@ class FreezingNEB(PathMinimizer):
                     dist_err=self.parameters.dist_err * self.parameters.path_resolution,
                     smoother=smoother,
                 )
-            if not final_node2:
+                # if not final_node2:
                 node2, tan2 = self._select_node_at_dist(
                     chain=interpolated,
                     dist=dr,
@@ -321,6 +321,9 @@ class FreezingNEB(PathMinimizer):
             else:
                 nimg += 5
 
+        self.engine.compute_energies([final_node2, final_node1])
+        self.grad_calls_made += 2
+
         grown_chain = chain.copy()
         insert_index = int(len(grown_chain) / 2)
         grown_chain.nodes.insert(insert_index, final_node2)
@@ -333,7 +336,7 @@ class FreezingNEB(PathMinimizer):
         chain: Chain,
         dist: float,
         direction: int,
-        smoother: Geodesic,
+        smoother: Geodesic = None,
         dist_err: float = 0.1,
     ):
         """
@@ -354,30 +357,44 @@ class FreezingNEB(PathMinimizer):
         best_node_tangent = None
         for i, node in enumerate(input_chain.nodes[1:-1], start=1):
             if self.parameters.distance_metric.upper() == "GEODESIC":
-                smoother.compute_disps(start=1, end=i + 1)
+                if direction == -1:
+                    start = len(smoother.path) - i
+                    end = -1
+
+                    smoother.compute_disps(start=start, end=end)
+                    curr_dist = smoother.length
+
+                    print(
+                        f"{start=} || {end=} || {curr_dist=} || curr_dist_err={np.abs(curr_dist - dist)} || {dist_err=}"
+                    )
+                elif direction == 1:
+                    start = 1
+                    end = i + 1
+
+                smoother.compute_disps(start=start, end=end)
                 curr_dist = smoother.length
             else:
                 curr_dist = self._distance_function(node1=start_node, node2=node)
             curr_dist_err = np.abs(curr_dist - dist)
-            print(f"\t{curr_dist_err=} vs {dist_err=}")
+            # print(
+            #     f"\t{curr_dist_err=} vs {dist_err=} || {start=} {end=} || {direction=}"
+            # )
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
                 best_node = node
                 best_dist_err = curr_dist_err
-                prev_node = input_chain.nodes[i - 1]
-                next_node = input_chain.nodes[i + 1]
+                # prev_node = input_chain.nodes[i - 1]
+                # next_node = input_chain.nodes[i + 1]
                 if self.parameters.use_geodesic_tangent:
-                    self.engine.compute_energies([prev_node, node, next_node])
-                    self.grad_calls_made += 3
-                    # print(f"PROG: {self.grad_calls_made}")
-                    best_node_tangent = ch._create_tangent_path(
-                        prev_node=prev_node,
-                        current_node=node,
-                        next_node=next_node,
-                    )
+                    raise NotImplementedError("Not done yet.")
+                    # self.engine.compute_energies([prev_node, node, next_node])
+                    # self.grad_calls_made += 3
+                    # best_node_tangent = ch._create_tangent_path(
+                    #     prev_node=prev_node,
+                    #     current_node=node,
+                    #     next_node=next_node,
+                    # )
                 else:
-                    self.engine.compute_energies([node])
-                    # print(f"PROG: {self.grad_calls_made}")
-                    self.grad_calls_made += 1
+
                     best_node_tangent = None
 
                 break
