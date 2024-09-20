@@ -386,7 +386,7 @@
 <p>This tutorial references <a href="https://mtzgroup.github.io/neb-dynamics/inputs">ChainInputs</a>, <a href="../inputs/">NEBInputs</a>,<a href="https://mtzgroup.github.io/neb-dynamics/chain/">Chain</a>, <a href="https://mtzgroup.github.io/neb-dynamics/trajectory/">Trajectory</a>, <a href="https://mtzgroup.github.io/neb-dynamics/tdstructure/">TDStructure</a>, <a href="https://mtzgroup.github.io/neb-dynamics/neb/">NEB</a> and <a href="https://mtzgroup.github.io/neb-dynamics/vpo">VelocityProjectedOptimizer</a></p>
 <h1 id="running-our-first-neb-calculation-we-are-going-to-calculate-a-pi-bond-torsion">Running our first NEB calculation. We are going to calculate a pi-bond torsion.<a class="headerlink" href="#running-our-first-neb-calculation-we-are-going-to-calculate-a-pi-bond-torsion" title="Permanent link">🔗</a></h1>
 <h2 id="1-create-initial-guess">1. Create initial guess<a class="headerlink" href="#1-create-initial-guess" title="Permanent link">🔗</a></h2>
-<h4 id="we-will-create-geometrics-using-qcio-then-instantiate-our-nodes">We will create geometrics using QCIO, then instantiate our nodes<a class="headerlink" href="#we-will-create-geometrics-using-qcio-then-instantiate-our-nodes" title="Permanent link">🔗</a></h4>
+<h3 id="we-will-create-geometrics-using-qcio-then-instantiate-our-nodes">We will create geometrics using QCIO, then instantiate our nodes<a class="headerlink" href="#we-will-create-geometrics-using-qcio-then-instantiate-our-nodes" title="Permanent link">🔗</a></h3>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">qcio</span> <span class="kn">import</span> <span class="n">Structure</span>
 <span class="kn">from</span> <span class="nn">neb_dynamics</span> <span class="kn">import</span> <span class="n">StructureNode</span>
 
@@ -423,11 +423,11 @@
 <h2 id="2-lets-set-up-our-neb-optimization">2. Let's set up our NEB optimization<a class="headerlink" href="#2-lets-set-up-our-neb-optimization" title="Permanent link">🔗</a></h2>
 <h3 id="the-neb-object-takes-in-4-parameters">The NEB object takes in 4 parameters:<a class="headerlink" href="#the-neb-object-takes-in-4-parameters" title="Permanent link">🔗</a></h3>
 <ul>
-<li>initial_chain: our initial guess chain object to optimize</li>
-<li>parameters: an NEBInputs object containing the parameters for NEB optimization and convergence</li>
-<li>optimizer: the optimizer to use. We suggest you use <code>VelocityProjectedOptimizer</code> from
+<li><code>initial_chain</code>: our initial guess chain object to optimize</li>
+<li><code>parameters</code>: an NEBInputs object containing the parameters for NEB optimization and convergence</li>
+<li><code>optimizer</code>: the optimizer to use. We suggest you use <code>VelocityProjectedOptimizer</code> from
             <code>neb_dynamics.optimizer.VPO</code></li>
-<li>engine: defines the electronic structure engine to be used
+<li><code>engine</code>: defines the electronic structure engine to be used
 <div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">neb_dynamics.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
 <span class="kn">from</span> <span class="nn">neb_dynamics.inputs</span> <span class="kn">import</span> <span class="n">NEBInputs</span>
 
