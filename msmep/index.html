@@ -405,9 +405,46 @@
 
 
 <h1 id="msmep">msmep<a class="headerlink" href="#msmep" title="Permanent link">🔗</a></h1>
-<p>The following tutorial shows how to use the Multi Step Minimum Energy Path (MSMEP) object.
-<div class="highlight"><pre><span></span><code><span class="p">:::</span> <span class="n">notebooks</span><span class="o">/</span><span class="n">example_cases</span><span class="o">/</span><span class="n">neb_tutorial</span><span class="o">.</span><span class="n">py</span>
-</code></pre></div></p>
+<p>The following tutorial shows how to use the Multi Step Minimum Energy Path (MSMEP) object, as well as how to generate a minimum energy path starting with only two smiles strings. </p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">neb_dynamics</span> <span class="kn">import</span> <span class="n">QCOPEngine</span><span class="p">,</span> <span class="n">ASEEngine</span><span class="p">,</span> <span class="n">MSMEP</span><span class="p">,</span> <span class="n">StructureNode</span><span class="p">,</span> <span class="n">NEBInputs</span>
+<span class="kn">import</span> <span class="nn">neb_dynamics.chainhelpers</span> <span class="k">as</span> <span class="nn">ch</span>
+<span class="kn">from</span> <span class="nn">xtb.ase.calculator</span> <span class="kn">import</span> <span class="n">XTB</span>
+<span class="kn">from</span> <span class="nn">neb_dynamics.nodes.nodehelpers</span> <span class="kn">import</span> <span class="n">create_pairs_from_smiles</span>
+
+<span class="c1"># this is a very challenging pair. will take a long time. </span>
+<span class="c1"># smi1 = &#39;C=O.C=[P+](c1ccccc1)(c2ccccc2)c3ccccc3&#39;</span>
+<span class="c1"># smi2 = &#39;C=C.O=P(c1ccccc1)(c2ccccc2)c3ccccc3&#39;</span>
+
+<span class="c1"># this is an SN2 reaction</span>
+<span class="n">smi1</span> <span class="o">=</span> <span class="s1">&#39;CBr.[OH-]&#39;</span>
+<span class="n">smi2</span> <span class="o">=</span> <span class="s1">&#39;CO.[Br-]&#39;</span>
+<span class="n">start</span><span class="p">,</span> <span class="n">end</span> <span class="o">=</span> <span class="n">create_pairs_from_smiles</span><span class="p">(</span><span class="n">smi1</span><span class="p">,</span> <span class="n">smi2</span><span class="p">)</span> <span class="c1"># uses IBM RXNMapper to get an atom-atom index map.</span>
+<span class="c1"># -</span>
+
+<span class="n">calc</span> <span class="o">=</span> <span class="n">XTB</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="s2">&quot;GFN2-xTB&quot;</span><span class="p">,</span> <span class="n">solvent</span><span class="o">=</span><span class="s2">&quot;water&quot;</span><span class="p">)</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">ASEEngine</span><span class="p">(</span><span class="n">calculator</span><span class="o">=</span><span class="n">calc</span><span class="p">)</span>
+<span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="n">m</span> <span class="o">=</span> <span class="n">MSMEP</span><span class="p">(</span><span class="n">engine</span><span class="o">=</span><span class="n">eng</span><span class="p">,</span> <span class="n">path_min_method</span><span class="o">=</span><span class="s1">&#39;neb&#39;</span><span class="p">)</span>
+
+<span class="n">start_opt_traj</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">StructureNode</span><span class="p">(</span><span class="n">structure</span><span class="o">=</span><span class="n">start</span><span class="p">))</span>
+<span class="n">start_node</span> <span class="o">=</span> <span class="n">start_opt_traj</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">end_opt_traj</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">StructureNode</span><span class="p">(</span><span class="n">structure</span><span class="o">=</span><span class="n">end</span><span class="p">))</span>
+<span class="n">end_node</span> <span class="o">=</span> <span class="n">end_opt_traj</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="kn">from</span> <span class="nn">qcio</span> <span class="kn">import</span> <span class="n">view</span>
+
+<span class="c1"># initial_chain = ch.run_geodesic([start_node, end_node], nimages=15)</span>
+<span class="n">initial_chain</span> <span class="o">=</span> <span class="n">ch</span><span class="o">.</span><span class="n">run_geodesic</span><span class="p">([</span><span class="n">start_opt_traj</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">end_opt_traj</span><span class="p">[</span><span class="mi">0</span><span class="p">]],</span> <span class="n">nimages</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+
+
+<span class="n">path_min_obj</span><span class="p">,</span> <span class="n">elem_step_result</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">run_minimize_chain</span><span class="p">(</span><span class="n">initial_chain</span><span class="p">)</span>
+
+<span class="c1"># ch.visualize_chain(path_min_obj.optimized)</span>
+
+<span class="n">history</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">run_recursive_minimize</span><span class="p">(</span><span class="n">initial_chain</span><span class="p">)</span>
+
+<span class="n">ch</span><span class="o">.</span><span class="n">visualize_chain</span><span class="p">(</span><span class="n">history</span><span class="o">.</span><span class="n">output_chain</span><span class="p">)</span>
+</code></pre></div>
 
 
 
