@@ -5,6 +5,11 @@ from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 
 @dataclass
+class PathMinInputs:
+    keywords: dict = field(default_factory=dict)
+
+
+@dataclass
 class NEBInputs:
     """
     Object containing inputs relating to NEB convergence.
