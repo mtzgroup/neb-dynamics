@@ -12,63 +12,72 @@ calc = XTB()
 eng = ASEEngine(calculator=calc)
 m = MSMEP(engine=eng, path_min_method='fneb', chain_inputs=cni, neb_inputs=nbi)
 
-start, end = create_pairs_from_smiles(smi1="C(C=C)OC=C", smi2="C=CCCC=O")
+start, end = create_pairs_from_smiles(smi1="C=CC(C)C=CC=C", smi2="C=C(C)C=CCC=C")
 # -
 
-
-end.symbols
 
 from qcio import view, Structure
 
-inds_orig = list(range(len(start.geometry)))
 
 # +
+def change_indices(structure: Structure, inds: dict):
+    original = structure.geometry
+    new = original.copy()
+    for key, val in inds.items():
+        new[key] = original[val]
 
-inds_orig
 
-# +
-inds_correct = inds_orig.copy()
-inds_correct[0] = 2
-inds_correct[2] = 0
-
-inds_correct[6] = 9
-inds_correct[7] = 10
-
-inds_correct[10] = 7
-inds_correct[9] = 6
-
-inds_correct[11] = 13
-inds_correct[13] = 11
+    new_structure = Structure(symbols=structure.symbols, geometry=new, multiplicity=structure.multiplicity, charge=structure.charge)
+    return new_structure
+    
 
 
 # -
 
-geom = end.geometry.copy()
-new_symbs = []
-for i_correct, i_orig in zip(inds_correct, inds_orig):
-    geom[i_orig] = end.geometry[i_correct]
-    new_symbs.append(end.symbols[i_correct])
+import retropaths.helper_functions as hf
+from retropaths.molecules.molecule import  Molecule
+# from neb_dynamics.molecule import Molecule
+
+rxns = hf.pload("/home/jdep/retropaths/data/reactions.p")
+
+mol = Molecule.from_smiles('C=CCOC=C')
 
 
-end2 = Structure(geometry=geom, symbols=new_symbs)
+rn = rxns['Claisen-Rearrangement']
+
+mol2 = rn.apply_forward(mol)[0]
+
+from neb_dynamics.qcio_structure_helpers import molecule_to_structure
+
+start = molecule_to_structure(mol)
+end = molecule_to_structure(mol2)
 
 start_node = StructureNode(structure=start)
 end_node = StructureNode(structure=end)
 
-end_node2 = StructureNode(structure=end2)
-
 from neb_dynamics import GIInputs, ChainInputs
+import neb_dynamics.chainhelpers as ch
 
-gi = ch.create_friction_optimal_gi([start_node, end_node2], GIInputs(nimages=10), ChainInputs())
+# gi = ch.create_friction_optimal_gi([start_node, end_node], GIInputs(nimages=10), ChainInputs())
+gi = ch.run_geodesic([start_node, end_node], nimages=12, chain_inputs=ChainInputs())
 
-gi1 = ch.create_friction_optimal_gi([start_node, end_node], GIInputs(nimages=10), ChainInputs())
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 
-eng.compute_energies(gi2)
+from neb_dynamics import QCOPEngine
 
-gi2 = ch.create_friction_optimal_gi([start_node, end_node2], GIInputs(nimages=10), ChainInputs())
+eng= QCOPEngine()
 
-# +
-# ch.visualize_chain(gi)
+eng.compute_energies(gi)
+
+from neb_dynamics import ASEEngine, MSMEP
+from xtb.ase.calculator import XTB
+
+calc = XTB()
+eng = ASEEngine(calculator=XTB())
+
+m = MSMEP(path_min_method='fneb', engine=eng)
+
+out = m.run_recursive_minimize(gi)
 
 # +
 

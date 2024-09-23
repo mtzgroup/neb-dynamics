@@ -337,7 +337,7 @@ def main():
             "stepsize": args.stepsize,
             "ngradcalls": 3,
             "max_cycles": args.maxsteps,
-            "path_resolution": 0.5,  # BOHR,
+            "path_resolution": 0.25,  # BOHR,
             "max_atom_displacement": 0.1,
             "early_stop_scaling": args.es_ft,
             "dist_err": 1 / 10,
@@ -408,6 +408,9 @@ def main():
 
         calc = XTB(method="GFN2-xTB", solvent="water")
         eng = ASEEngine(calculator=calc, ase_opt_str=args.geom_opt)
+
+    else:
+        raise ValueError(f"Invdalid engine: {args.eng}")
 
     if "fneb" in args.method:
         pmm = "fneb"

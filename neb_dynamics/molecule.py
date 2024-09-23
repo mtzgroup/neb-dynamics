@@ -681,6 +681,26 @@ class Molecule(nx.Graph):
         return m
 
     @classmethod
+    def from_smiles(cls, smi: str, name: str = "") -> Molecule:
+        """creates a molecule object from a smiles string
+
+
+        Args:
+            smi (str): the SMILES string
+            name (str, optional): The common name of the molecule. Defaults to ''.
+
+        Raises:
+            ValueError: when the smiles is not valid
+
+        Returns:
+            Molecule: a retropath molecule object
+        """
+
+        rdmol = Chem.MolFromSmiles(smi)
+        new_mol = cls.from_rdmol(rdmol, smi, name)
+        return new_mol
+
+    @classmethod
     def from_mapped_smiles(cls, smi, name=None):
         """
         creates a molecule object from a smiles string, X, or if X is a path, the smiles string it points to
