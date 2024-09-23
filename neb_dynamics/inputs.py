@@ -5,11 +5,6 @@ from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 
 @dataclass
-class PathMinInputs:
-    keywords: dict = field(default_factory=dict)
-
-
-@dataclass
 class NEBInputs:
     """
     Object containing inputs relating to NEB convergence.
@@ -186,3 +181,26 @@ class NetworkInputs:
     CREST_temp: float = 298.15  # Kelvin
     CREST_ewin: float = 6.0  # kcal/mol
     # crest inputs for conformer generation. Incomplete list.
+
+
+@dataclass
+class PathMinInputs:
+    keywords: dict = field(default_factory=dict)
+
+    NEB_DEFAULTS = NEBInputs().__dict__
+
+    def __post_init__(self):
+        assert (
+            "method" in self.keywords.keys()
+        ), "Need to specify path minimization method in keywords"
+
+        if self.keywords["method"].upper() == "NEB":
+            neb_inputs = self.NEB_DEFAULTS.copy()
+            for k, v in self.keywords.items():
+                if k == "method":
+                    continue
+                else:
+                    neb_inputs[k] = v
+
+            for k, v in neb_inputs.items():
+                setattr(self, k, v)
