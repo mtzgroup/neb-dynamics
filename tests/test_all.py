@@ -75,7 +75,7 @@ def test_engine():
     from neb_dynamics.engines import QCOPEngine
 
     c = Chain.from_xyz(
-        "/home/jdep/T3D_data/AutoMG_v0/msmep_results/results_pair149_msmep.xyz",
+        "/home/jdep/neb_dynamics/tests/test_msmep_results/node_0.xyz",
         parameters=ChainInputs(),
     )
     eng = QCOPEngine(
@@ -387,10 +387,10 @@ def test_msmep_fneb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests"))
 
 
 if __name__ == "__main__":
-    # test_engine()
-    # test_neb()
+    test_engine()
+    test_neb()
     test_msmep()
-    # test_msmep_pygsm()
+    test_msmep_pygsm()
     test_msmep_fneb()
-    # test_ASE_engine()
+    test_ASE_engine()
     # test_2d_neb()
