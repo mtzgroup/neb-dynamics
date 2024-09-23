@@ -1,5 +1,173 @@
 # -*- coding: utf-8 -*-
-# # Redo inptus
+# +
+from neb_dynamics import MSMEP, ASEEngine, StructureNode, Chain, NEBInputs, ChainInputs
+from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
+
+from xtb.ase.calculator import XTB
+
+nbi = NEBInputs(v=True, fneb_kwds={'early_stop_scaling':10})
+cni = ChainInputs(friction_optimal_gi=False)
+
+calc = XTB()
+eng = ASEEngine(calculator=calc)
+m = MSMEP(engine=eng, path_min_method='fneb', chain_inputs=cni, neb_inputs=nbi)
+
+start, end = create_pairs_from_smiles(smi1="C(C=C)OC=C", smi2="C=CCCC=O")
+# -
+
+
+end.symbols
+
+from qcio import view, Structure
+
+inds_orig = list(range(len(start.geometry)))
+
+# +
+
+inds_orig
+
+# +
+inds_correct = inds_orig.copy()
+inds_correct[0] = 2
+inds_correct[2] = 0
+
+inds_correct[6] = 9
+inds_correct[7] = 10
+
+inds_correct[10] = 7
+inds_correct[9] = 6
+
+inds_correct[11] = 13
+inds_correct[13] = 11
+
+
+# -
+
+geom = end.geometry.copy()
+new_symbs = []
+for i_correct, i_orig in zip(inds_correct, inds_orig):
+    geom[i_orig] = end.geometry[i_correct]
+    new_symbs.append(end.symbols[i_correct])
+
+
+end2 = Structure(geometry=geom, symbols=new_symbs)
+
+start_node = StructureNode(structure=start)
+end_node = StructureNode(structure=end)
+
+end_node2 = StructureNode(structure=end2)
+
+from neb_dynamics import GIInputs, ChainInputs
+
+gi = ch.create_friction_optimal_gi([start_node, end_node2], GIInputs(nimages=10), ChainInputs())
+
+gi1 = ch.create_friction_optimal_gi([start_node, end_node], GIInputs(nimages=10), ChainInputs())
+
+eng.compute_energies(gi2)
+
+gi2 = ch.create_friction_optimal_gi([start_node, end_node2], GIInputs(nimages=10), ChainInputs())
+
+# +
+# ch.visualize_chain(gi)
+
+# +
+
+# ch.calculate_geodesic_distance(start_node, end_node)
+
+# +
+# ch.calculate_geodesic_distance(start_node, end_node2)
+
+# +
+# history = m.run_recursive_minimize(input_chain=gi)
+# -
+
+import neb_dynamics.chainhelpers as ch
+
+# +
+# ch.visualize_chain(history.output_chain)
+# -
+
+from neb_dynamics.TreeNode import TreeNode
+from qcio import DualProgramInput
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/fneb_draft/wittig/asfneb_geo_hf/")
+
+h.output_chain.plot_chain(dist_func='geodesic')
+
+tsg1 = h.ordered_leaves[0].data.optimized.get_ts_node()
+
+tsg2 = h.ordered_leaves[1].data.optimized.get_ts_node()
+
+
+def load_qchem_result(path_dir):
+    
+    path_dir = Path(path_dir)
+    path_string = path_dir / 'stringfile.txt'
+    structs = read_multiple_structure_from_file(path_string)
+    nodes = [StructureNode(structure=s) for s in structs]
+    enes_file = path_dir / 'Vfile.txt'
+    enes_data = open(enes_file).read().splitlines()[1:]
+    enes = [float(line.split()[-2]) for line in enes_data]
+    for node, ene in zip(nodes, enes):
+        node._cached_energy = ene
+    chain = Chain(nodes=nodes) 
+    return chain
+
+
+# +
+
+from pathlib import Path
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+# -
+
+qchem = load_qchem_result("/home/jdep/T3D_data/fneb_draft/wittig/fsm.files/")
+
+# +
+
+tsg3 = qchem.get_ts_node()
+# -
+
+dpi1 = DualProgramInput(structure=tsg1.structure, 
+                       keywords={'max_iter':500},
+                       subprogram='terachem',
+                       subprogram_args={'model':{'method':'hf','basis':'6-31g'}}, 
+                       calctype='transition_state')
+
+dpi2 = DualProgramInput(structure=tsg2.structure, 
+                       keywords={'max_iter':500},
+                       subprogram='terachem',
+                       subprogram_args={'model':{'method':'hf','basis':'6-31g'}}, 
+                       calctype='transition_state')
+
+dpi3 = DualProgramInput(structure=tsg3.structure, 
+                       keywords={'max_iter':500},
+                       subprogram='terachem',
+                       subprogram_args={'model':{'method':'hf','basis':'6-31g'}}, 
+                       calctype='transition_state')
+
+from chemcloud import CCClient
+
+client = CCClient()
+
+future_res = client.compute('geometric', [dpi1, dpi2])
+
+future_res2 = client.compute('geometric', dpi3)
+
+output2 = future_res2.get()
+
+output = future_res.get()
+
+output[0].return_result.save("/home/jdep/T3D_data/fneb_draft/wittig/irc/ts1_asfneb.xyz")
+
+output[1].return_result.save("/home/jdep/T3D_data/fneb_draft/wittig/irc/ts2_asfneb.xyz")
+
+view.view(output[0].return_result, output[1].return_result, output[2].return_result)
+
+view.view(output[0].return_result, output[1].return_result, output2.return_result)
+
+view.view(dpi3.structure)
+
+from pathlib import Path
 
 from qcio import DualProgramInput, Structure
 
@@ -29,12 +197,14 @@ def create_submission_scripts(
     sig: int = 1,
     nrt: float = 1,  # node rms threshold
     net: float = 1,  # node ene threshold
-    tcin_fp: str = None
+    tcin_fp: str = None,
+    es_ft: float = 0.03,
+    met: str = "asneb"
     
     ):
 
-    if out_name is None:
-        out_name = reference_start_name.stem
+    # if out_name is None:
+    #     out_name = reference_start_name.stem
     template = [
     "#!/bin/bash",
     "",
@@ -61,6 +231,8 @@ def create_submission_scripts(
     end_fp = reference_dir / reference_end_name
     
     out_fp = out_dir / out_name
+    print(out_fp)
+
 
     if tcin_fp:
         tcin = f"-tcin {tcin_fp}"
@@ -69,7 +241,7 @@ def create_submission_scripts(
     
     cmd = f"/home/jdep/.cache/pypoetry/virtualenvs/neb-dynamics-G7__rX26-py3.9/bin/python /home/jdep/neb_dynamics/neb_dynamics/scripts/create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.002 \
         -sig {sig} -nimg 12 -min_ends 1 \
-        -es_ft 0.03 -name {out_fp} -prog {prog} -eng {eng} -node_rms_thre {nrt} -node_ene_thre {net} {tcin} &> {out_fp}_out "
+        -es_ft {es_ft} -name {out_fp} -prog {prog} -eng {eng} -node_rms_thre {nrt} -met {met} -node_ene_thre {net} {tcin} &> {out_fp}_out "
     
     new_template = template.copy()
     new_template[-1] = cmd
@@ -78,52 +250,6 @@ def create_submission_scripts(
         submission_dir / out_name , "w+"
     ) as f:
         f.write("\n".join(new_template))
-
-
-def create_bs_submission(
-    out_dir: Path,
-    out_name: str, 
-    submission_dir: Path,
-    reference_dir: Path,
-    reference_start_name: str = 'start.xyz',
-    reference_end_name: str = 'end.xyz',
-    prog: str = 'xtb',
-    eng: str = 'qcop',
-    sig: int = 1,
-    nrt: float = 1,  # node rms threshold
-    net: float = 1,  # node ene threshold
-    tcin_fp: str = None
-    
-    ):
-
-    if out_name is None:
-        out_name = reference_start_name.stem
-    template = [
-    "",
-    ]
-    
-    start_fp = reference_dir / reference_start_name
-    end_fp = reference_dir / reference_end_name
-    
-    out_fp = out_dir / out_name
-
-    if tcin_fp:
-        tcin = f"-tcin {tcin_fp}"
-    else:
-        tcin = ""
-    
-    cmd = f"/home/jdep/.cache/pypoetry/virtualenvs/neb-dynamics-G7__rX26-py3.9/bin/python /home/jdep/neb_dynamics/neb_dynamics/scripts/create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.002 \
-        -sig {sig} -nimg 12 -min_ends 1 \
-        -es_ft 0.03 -name {out_fp} -prog {prog} -eng {eng} -node_rms_thre {nrt} -node_ene_thre {net} {tcin} &> {out_fp}_out &\n"
-    
-    new_template = template.copy()
-    new_template[-1] = cmd
-    
-    with open(
-        submission_dir / out_name , "w+"
-    ) as f:
-        f.write("\n".join(new_template))
-
 
 # ref_dir = Path("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures")
 ref_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures")
@@ -145,14 +271,16 @@ for rn in all_rns:
     rns_to_submit.append(Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/submissions_dir')/rn)
     create_submission_scripts(
         out_dir=Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb'),
-        out_name=rn,
+        out_name=rn+"_asfneb",
         submission_dir=Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/submissions_dir'), 
         reference_dir=Path(f'/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}'),
         reference_start_name='start_xtb.xyz', reference_end_name='end_xtb.xyz',
         eng='qcop',
         prog='terachem',
         tcin_fp='/home/jdep/T3D_data/msmep_draft/comparisons_dft/tc.in',
-        nrt=1, net=1)
+        es_ft=10,
+        met='asfneb',
+        nrt=1, net=5)
     
     # create_bs_submission(
     #     out_dir=Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb'),

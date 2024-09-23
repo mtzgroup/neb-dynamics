@@ -39,6 +39,7 @@ class FreezingNEB(PathMinimizer):
             "dist_err": 0.5,
             "min_images": 4,
             "distance_metric": "RMSD",
+            "verbosity": 1,
         }
         for key, val in self.fneb_kwds.items():
             fneb_kwds_defaults[key] = val
@@ -141,7 +142,8 @@ class FreezingNEB(PathMinimizer):
         # print(d, d0, s, d0 + 0.5*s, curr_iter_ene, prev_iter_ene)
         distance_exceeded = d > d0 + 0.5 * s
         energy_exceeded = curr_iter_ene > prev_iter_ene
-        print(f"{distance_exceeded=} {energy_exceeded=}")
+        if self.parameters.verbosity > 1:
+            print(f"{distance_exceeded=} {energy_exceeded=}")
         return distance_exceeded or energy_exceeded
 
     def _min_node(
@@ -174,7 +176,8 @@ class FreezingNEB(PathMinimizer):
                 node_to_opt_ind = [node1_ind, node2_ind][ind_node]
 
                 prev_iter_ene = node_to_opt.energy
-                print(f"{prev_iter_ene=}")
+                if self.parameters.verbosity > 1:
+                    print(f"{prev_iter_ene=}")
 
                 if tangent is None:
                     tangent = node2.coords - node1.coords
@@ -276,7 +279,8 @@ class FreezingNEB(PathMinimizer):
         final_node2_tan = None
 
         while not found_nodes:
-            print(f"\t\t***trying with {nimg=}")
+            if self.parameters.verbosity > 1:
+                print(f"\t\t***trying with {nimg=}")
             smoother = ch.run_geodesic_get_smoother(
                 input_object=[
                     sub_chain[0].symbols,
@@ -361,12 +365,6 @@ class FreezingNEB(PathMinimizer):
                     start = len(smoother.path) - i
                     end = -1
 
-                    smoother.compute_disps(start=start, end=end)
-                    curr_dist = smoother.length
-
-                    print(
-                        f"{start=} || {end=} || {curr_dist=} || curr_dist_err={np.abs(curr_dist - dist)} || {dist_err=}"
-                    )
                 elif direction == 1:
                     start = 1
                     end = i + 1
@@ -376,9 +374,8 @@ class FreezingNEB(PathMinimizer):
             else:
                 curr_dist = self._distance_function(node1=start_node, node2=node)
             curr_dist_err = np.abs(curr_dist - dist)
-            # print(
-            #     f"\t{curr_dist_err=} vs {dist_err=} || {start=} {end=} || {direction=}"
-            # )
+            if self.parameters.verbosity > 1:
+                print(f"\t{curr_dist_err=} vs {dist_err=} || {direction=}")
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
                 best_node = node
                 best_dist_err = curr_dist_err

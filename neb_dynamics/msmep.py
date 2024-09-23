@@ -81,8 +81,8 @@ class MSMEP:
         if is_identical(
             self=input_chain[0],
             other=input_chain[-1],
-            fragment_rmsd_cutoff=input_chain.parameters.node_rms_thre,
-            kcal_mol_cutoff=input_chain.parameters.node_ene_thre,
+            fragment_rmsd_cutoff=self.chain_inputs.node_rms_thre,
+            kcal_mol_cutoff=self.chain_inputs.node_ene_thre,
         ):
             print("Endpoints are identical. Returning nothing")
             return TreeNode(data=None, children=[], index=tree_node_index)
@@ -126,14 +126,17 @@ class MSMEP:
     def _create_interpolation(self, chain: Chain):
         import neb_dynamics.chainhelpers as ch
 
-        if chain.parameters.use_geodesic_interpolation:
-            if chain.parameters.friction_optimal_gi:
+        if self.chain_inputs.use_geodesic_interpolation:
+            if self.chain_inputs.friction_optimal_gi:
                 interpolation = ch.create_friction_optimal_gi(
-                    chain=chain, gi_inputs=self.gi_inputs.copy()
+                    chain=chain,
+                    gi_inputs=self.gi_inputs.copy(),
+                    chain_inputs=self.chain_inputs.copy(),
                 )
             else:
                 interpolation = ch.run_geodesic(
                     chain=chain,
+                    chain_inputs=self.chain_inputs.copy(),
                     nimages=self.gi_inputs.nimages,
                     friction=self.gi_inputs.friction,
                     nudge=self.gi_inputs.nudge,
@@ -152,7 +155,7 @@ class MSMEP:
                 node.update_coords(c)
                 for node, c in zip([chain.nodes[0]] * len(coords), coords)
             ]
-            interpolation = Chain(nodes=nodes, parameters=self.chain_inputs)
+            interpolation = Chain(nodes=nodes, parameters=self.chain_inputs.copy())
 
         return interpolation
 
@@ -193,9 +196,10 @@ class MSMEP:
 
         # make sure the chain parameters are reset
         # if they come from a converged chain
-        input_chain.parameters = self.chain_inputs
         if len(input_chain) != self.gi_inputs.nimages:
-            interpolation = self._create_interpolation(input_chain)
+            interpolation = self._create_interpolation(
+                input_chain,
+            )
             assert (
                 len(interpolation) == self.gi_inputs.nimages
             ), f"Geodesic interpolation wrong length.\
@@ -343,7 +347,7 @@ class MSMEP:
         chain_frag_nodes = chain.nodes[start_ind : end_ind + 1]
         chain_frag = Chain(
             nodes=[opt_start] + chain_frag_nodes + [opt_end],
-            parameters=chain.parameters,
+            parameters=self.chain_inputs.copy(),
         )
         # opt_start = chain[start].do_geometry_optimization()
         # opt_end = chain[end].do_geometry_optimization()
@@ -358,7 +362,9 @@ class MSMEP:
         start_opt = chain[start].do_geometry_optimization()
         end_opt = chain[end].do_geometry_optimization()
 
-        chain_frag = Chain(nodes=[start_opt, end_opt], parameters=chain.parameters)
+        chain_frag = Chain(
+            nodes=[start_opt, end_opt], parameters=self.chain_inputs.copy()
+        )
 
         return chain_frag
 

@@ -25,6 +25,63 @@ def read_single_arguments():
     parser = ArgumentParser(description=description_string)
 
     parser.add_argument(
+        "-st",
+        "--start",
+        dest="st",
+        required=True,
+        type=str,
+        help="path to the first xyz structure",
+    )
+
+    parser.add_argument(
+        "-en",
+        "--end",
+        dest="en",
+        required=True,
+        type=str,
+        help="path to the final xyz structure",
+    )
+
+    parser.add_argument(
+        "-met",
+        "--method",
+        dest="method",
+        required=False,
+        type=str,
+        help="what type of NEB to use. options: [neb, fneb, pygsm, asneb, asfneb, aspygsm]",
+        default="asneb",
+    )
+
+    parser.add_argument(
+        "-eng",
+        "--engine",
+        dest="eng",
+        required=True,
+        type=str,
+        help="What electornic structure engine to use. E.g. 'qcop', 'ase', or 'chemcloud'",
+    )
+
+    parser.add_argument(
+        "-prog",
+        "--program",
+        dest="program",
+        required=True,
+        type=str,
+        help="what electronic structure program to use",
+        default="xtb",
+    )
+
+    parser.add_argument(
+        "-es_ft",
+        "--early_stop_ft",
+        dest="es_ft",
+        required=False,
+        type=float,
+        help="force threshold for early stopping",
+        default=0.03,
+    )
+
+    parser.add_argument(
         "-c", "--charge", dest="c", type=int, default=0, help="total charge of system"
     )
 
@@ -63,24 +120,6 @@ def read_single_arguments():
         default="node3d",
         help="what node type to use. options are: node3d, \
             node3d_tc, node3d_tc_local, node3d_tcpb",
-    )
-
-    parser.add_argument(
-        "-st",
-        "--start",
-        dest="st",
-        required=True,
-        type=str,
-        help="path to the first xyz structure",
-    )
-
-    parser.add_argument(
-        "-en",
-        "--end",
-        dest="en",
-        required=True,
-        type=str,
-        help="path to the final xyz structure",
     )
 
     parser.add_argument(
@@ -124,65 +163,6 @@ def read_single_arguments():
     )
 
     parser.add_argument(
-        "-climb",
-        "--do_climb",
-        dest="climb",
-        required=False,
-        type=int,
-        help="whether to use cNEB",
-        default=0,
-    )
-
-    parser.add_argument(
-        "-eng",
-        "--engine",
-        dest="eng",
-        required=True,
-        type=str,
-        help="What engine to use. E.g. 'qcop' or 'ase'",
-    )
-
-    parser.add_argument(
-        "-es_ft",
-        "--early_stop_ft",
-        dest="es_ft",
-        required=False,
-        type=float,
-        help="force threshold for early stopping",
-        default=0.03,
-    )
-
-    parser.add_argument(
-        "-es_rms",
-        "--early_stop_rms",
-        dest="es_rms",
-        required=False,
-        type=float,
-        help="chain RMS threshold for early stopping",
-        default=1,
-    )
-
-    parser.add_argument(
-        "-es_ss",
-        "--early_stop_still_steps",
-        dest="es_ss",
-        required=False,
-        type=float,
-        help="number of still steps until an early stop check",
-        default=500,
-    )
-
-    parser.add_argument(
-        "-prog",
-        "--program",
-        dest="program",
-        required=True,
-        type=str,
-        help="what electronic structure program to use",
-        default="xtb",
-    )
-
-    parser.add_argument(
         "-preopt",
         "--preopt_with_xtb",
         dest="preopt",
@@ -190,16 +170,6 @@ def read_single_arguments():
         type=int,
         help="whether to preconverge chains using xtb",
         default=0,
-    )
-
-    parser.add_argument(
-        "-met",
-        "--method",
-        dest="method",
-        required=False,
-        type=str,
-        help="what type of NEB to use. options: [asneb, neb]",
-        default="asneb",
     )
 
     parser.add_argument(
@@ -238,16 +208,17 @@ def read_single_arguments():
         dest="geom_opt",
         required=False,
         type=str,
-        help="Which optimizer to use. Default is 'geometric'",
+        help="Which optimizer to use. Default is 'geometric'. When using ASE as an engine, can also use 'LBFGS','LBFGSLineSearch','BFGS','FIRE' and more.",
         default="geometric",
     )
+
     parser.add_argument(
         "-maxsteps",
         "--maxsteps",
         dest="maxsteps",
         required=False,
         type=int,
-        help="Maximum number of optimization steps per NEB run",
+        help="Maximum number of optimization steps per path minimization run",
         default=500,
     )
 
@@ -293,6 +264,17 @@ def read_single_arguments():
         default=1,
     )
 
+    parser.add_argument(
+        "-smi",
+        "--input_smiles",
+        dest="smi",
+        required=False,
+        type=int,
+        help="whether -st and -en inputs are smiles. If so, will use RXNMapper to get an atomic mapping and \
+            create the structures.",
+        default=False,
+    )
+
     return parser.parse_args()
 
 
@@ -302,12 +284,21 @@ def main():
     nodes = {"node3d": StructureNode}
     nc = nodes[args.nc]
 
-    start = Structure.open(args.st)
+    if args.smi:
+        from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
+
+        print(
+            "WARNING: Using RXNMapper to create atomic mapping. Carefully check output to see how labels\
+                 affected reaction path."
+        )
+        start, end = create_pairs_from_smiles(smi1=args.st, smi2=args.en)
+    else:
+        start = Structure.open(args.st)
+        end = Structure.open(args.en)
     s_dict = start.model_dump()
     s_dict["charge"], s_dict["multiplicity"] = args.c, args.s
     start = Structure(**s_dict)
 
-    end = Structure.open(args.en)
     e_dict = end.model_dump()
     e_dict["charge"], e_dict["multiplicity"] = args.c, args.s
     end = Structure(**e_dict)
@@ -332,23 +323,21 @@ def main():
     nbi = NEBInputs(
         tol=tol,
         barrier_thre=0.1,  # kcalmol,
-        climb=bool(args.climb),
+        climb=0,  # not supporting this right now.
         rms_grad_thre=tol,
         max_rms_grad_thre=tol * 2.5,
         ts_grad_thre=tol * 2.5,
         ts_spring_thre=tol * 1.5,
         v=1,
         max_steps=int(args.maxsteps),
-        early_stop_chain_rms_thre=args.es_rms,
         early_stop_force_thre=args.es_ft,
-        early_stop_still_steps_thre=args.es_ss,
         skip_identical_graphs=bool(args.sig),
         preopt_with_xtb=bool(int(args.preopt)),
         fneb_kwds={
             "stepsize": args.stepsize,
             "ngradcalls": 3,
             "max_cycles": args.maxsteps,
-            "path_resolution": 0.1,  # BOHR,
+            "path_resolution": 0.5,  # BOHR,
             "max_atom_displacement": 0.1,
             "early_stop_scaling": args.es_ft,
             "dist_err": 1 / 10,

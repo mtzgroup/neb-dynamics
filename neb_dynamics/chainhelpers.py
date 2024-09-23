@@ -353,6 +353,10 @@ def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, **
 def calculate_geodesic_distance(
     node1: StructureNode, node2: StructureNode, nimages=12, nudge=0.1
 ):
+    from neb_dynamics.helper_functions import RMSD
+
+    rmsd_dist, _ = RMSD(node1.coords, node2.coords)
+    nudge = min(rmsd_dist, nudge)
     smoother = run_geodesic_get_smoother(
         input_object=[node1.symbols, [node1.coords, node2.coords]],
         nudge=nudge,
@@ -376,7 +380,9 @@ def _update_cache(self, chain: Chain, gradients: NDArray, energies: NDArray) -> 
         node._cached_gradient = grad
 
 
-def create_friction_optimal_gi(chain: Chain, gi_inputs: GIInputs):
+def create_friction_optimal_gi(
+    chain: Chain, gi_inputs: GIInputs, chain_inputs: ChainInputs()
+):
     print("GI: Optimizing friction parameter")
     eng = QCOPEngine()
     frics = [0.0001, 0.001, 0.01, 0.1, 1]
@@ -386,6 +392,7 @@ def create_friction_optimal_gi(chain: Chain, gi_inputs: GIInputs):
             nimages=gi_inputs.nimages,
             friction=fric,
             nudge=gi_inputs.nudge,
+            chain_inputs=chain_inputs,
             **gi_inputs.extra_kwds,
         )
         for fric in frics
