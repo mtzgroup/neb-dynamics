@@ -1,6 +1,20 @@
 # -*- coding: utf-8 -*-
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.neb import NEB
+import neb_dynamics.chainhelpers as ch
+
+
+h = TreeNode.read_from_disk("/tmp/wtf")
+
+h.output_chain[10].structure.to_smiles(), h.output_chain[17].structure.to_smiles()
+
+# +
+
+ch.visualize_chain(h.output_chain)
+# -
+
+h.output_chain.plot_chain()
+
 
 
 h = TreeNode.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Wittig')
