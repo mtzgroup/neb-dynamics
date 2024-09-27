@@ -236,7 +236,7 @@ def test_2d_neb():
     #         optimizer=opt,
     #         engine=eng)
     # n.optimize_chain()
-    history = m.find_mep_multistep(chain)
+    history = m.run_recursive_minimize(chain)
     raise NotImplementedError()
 
 
@@ -394,6 +394,6 @@ if __name__ == "__main__":
     # test_neb()
     # test_msmep()
     # test_msmep_pygsm()
-    test_msmep_fneb()
-    test_ASE_engine()
-    # test_2d_neb()
+    # test_msmep_fneb()
+    # test_ASE_engine()
+    test_2d_neb()

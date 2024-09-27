@@ -8,10 +8,7 @@ h = TreeNode.read_from_disk("/tmp/wtf")
 
 h.output_chain[10].structure.to_smiles(), h.output_chain[17].structure.to_smiles()
 
-# +
-
 ch.visualize_chain(h.output_chain)
-# -
 
 h.output_chain.plot_chain()
 

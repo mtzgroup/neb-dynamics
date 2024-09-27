@@ -6,6 +6,8 @@ from typing import Union, List
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines import Engine
+from neb_dynamics.nodes.nodehelpers import update_node_cache
+
 import numpy as np
 
 
@@ -28,18 +30,34 @@ class ThreeWellPotential(Engine):
         dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
         return np.array([dx, dy])
 
-    def compute_energies(self, chain: Union[Chain, List[Node]]) -> NDArray:
+    def _compute_ene_grads(self, chain: Union[Chain, List[Node]]):
         if isinstance(chain, Chain):
-            return np.array([self._en_func(xy) for xy in chain.coordinates])
+            ene_grad_tuple = [
+                (self._en_func(xy), self._grad_func(xy)) for xy in chain.coordinates
+            ]
         elif isinstance(chain, List):
-            return np.array([self._en_func(xy.structure) for xy in chain])
+            ene_grad_tuple = [
+                (self._en_func(xy.structure), self._grad_func(xy.structure))
+                for xy in chain
+            ]
         else:
             raise ValueError(f"Unsupported type {type(chain)}")
 
+        return ene_grad_tuple
+
+    def compute_energies(self, chain: Union[Chain, List[Node]]) -> NDArray:
+
+        ene_grad_tuple = self._compute_ene_grads(chain)
+        for node, tup in zip(chain, ene_grad_tuple):
+            node._cached_energy = tup[0]
+            node._cached_gradient = tup[1]
+
+        return np.array([t[0] for t in ene_grad_tuple])
+
     def compute_gradients(self, chain: Union[Chain, List[Node]]) -> NDArray:
-        if isinstance(chain, Chain):
-            return np.array([self._grad_func(xy) for xy in chain.coordinates])
-        elif isinstance(chain, List):
-            return np.array([self._grad_func(xy.structure) for xy in chain])
-        else:
-            raise ValueError(f"Unsupported type {type(chain)}")
+        ene_grad_tuple = self._compute_ene_grads(chain)
+        for node, tup in zip(chain, ene_grad_tuple):
+            node._cached_energy = tup[0]
+            node._cached_gradient = tup[1]
+
+        return np.array([t[1] for t in ene_grad_tuple])
