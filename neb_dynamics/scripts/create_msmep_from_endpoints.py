@@ -9,7 +9,6 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.Janitor import Janitor
 from neb_dynamics.msmep import MSMEP
-from neb_dynamics.neb import NEB, NoneConvergedException, PYGSM
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.engines import QCOPEngine, ASEEngine
 from neb_dynamics.helper_functions import _load_info_from_tcin
@@ -337,11 +336,13 @@ def main():
             "stepsize": args.stepsize,
             "ngradcalls": 3,
             "max_cycles": args.maxsteps,
-            "path_resolution": 0.25,  # BOHR,
+            "path_resolution": 1 / 20,  # BOHR,
             "max_atom_displacement": 0.1,
             "early_stop_scaling": args.es_ft,
             "dist_err": 1 / 10,
             "distance_metric": "geodesic",
+            "use_geodesic_tangent": True,
+            "verbosity": 1,
         },
     )
 

@@ -6,20 +6,30 @@ from functools import cached_property
 import matplotlib.pyplot as plt
 import numpy as np
 
-from neb_dynamics.NEB import NoneConvergedException
-from neb_dynamics.nodes.Node import Node
+from neb_dynamics.errors import NoneConvergedException
+from neb_dynamics.nodes.node import Node
+from neb_dynamics.engines.engine import Engine
 
 
 @dataclass
 class TS_PRFO:
     initial_node: Node
-    max_nsteps: int = 2000
+    engine: Engine
+    max_nsteps: int = 20
     dr: float = 0.1
     grad_thre: float = 1e-6
 
     max_step_size: float = 1.0
 
     traj = []
+
+    def __post_init__(self):
+        print(
+            "Warning! PRFO implementation is extremely experimental. Not suggested you use it."
+        )
+        assert hasattr(
+            self.engine, "compute_hessian"
+        ), "Engine needs to have the method `compute_hessian` to run PRFO"
 
     @property
     def ts(self):
@@ -55,8 +65,8 @@ class TS_PRFO:
         return lambda_p
 
     def prfo_step(self, node):
-        grad = node.gradient
-        H = node.hessian
+        grad = self.engine.compute_gradients([node])[0]
+        H = self.engine.compute_hessian(node)
         H_evals, H_evecs = np.linalg.eigh(H)
         orig_dim = grad.shape
         grad_reshaped = grad.reshape(-1, 1)
@@ -110,7 +120,7 @@ class TS_PRFO:
             new_point = start_node.coords + direction * self.dr
             new_node = start_node.copy()
             new_node = new_node.update_coords(new_point)
-
+            self.engine.compute_energies([new_node])
             grad_mag = np.linalg.norm(new_node.gradient)
             converged = grad_mag <= self.grad_thre
 
@@ -146,7 +156,7 @@ class TS_PRFO:
         y = x.reshape(-1, 1)
 
         h = en_func([x, y])
-        cs = plt.contourf(x, x, h, levels=10)
+        _ = plt.contourf(x, x, h, levels=10)
         # _ = f.colorbar(cs)
 
         plt.plot(

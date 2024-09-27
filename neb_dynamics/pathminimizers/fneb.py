@@ -266,7 +266,7 @@ class FreezingNEB(PathMinimizer):
 
         sweep = True
         found_nodes = False
-        nimg = 10
+        nimg = 100
         # interpolated = ch.run_geodesic(sub_chain, nimages=nimg, sweep=sweep)
         # interpolation_1 = interpolated.copy()
         # interpolation_1.nodes = interpolation_1.nodes[:2]
@@ -323,7 +323,7 @@ class FreezingNEB(PathMinimizer):
             if final_node1 and final_node2:
                 found_nodes = True
             else:
-                nimg += 5
+                nimg += 50
 
         self.engine.compute_energies([final_node2, final_node1])
         self.grad_calls_made += 2
@@ -379,12 +379,15 @@ class FreezingNEB(PathMinimizer):
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
                 best_node = node
                 best_dist_err = curr_dist_err
-                # prev_node = input_chain.nodes[i - 1]
-                # next_node = input_chain.nodes[i + 1]
+                prev_node = input_chain.nodes[i - 1]
+                next_node = input_chain.nodes[i + 1]
                 if self.parameters.use_geodesic_tangent:
-                    raise NotImplementedError("Not done yet.")
+                    # raise NotImplementedError("Not done yet.")
                     # self.engine.compute_energies([prev_node, node, next_node])
                     # self.grad_calls_made += 3
+                    tau_plus = next_node.coords - node.coords
+                    tau_minus = node.coords - prev_node.coords
+                    best_node_tangent = (tau_plus + tau_minus) / 2
                     # best_node_tangent = ch._create_tangent_path(
                     #     prev_node=prev_node,
                     #     current_node=node,

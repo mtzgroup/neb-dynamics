@@ -1,96 +1,15 @@
 # -*- coding: utf-8 -*-
-# +
-from neb_dynamics import MSMEP, ASEEngine, StructureNode, Chain, NEBInputs, ChainInputs
-from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
-
-from xtb.ase.calculator import XTB
-
-nbi = NEBInputs(v=True, fneb_kwds={'early_stop_scaling':10})
-cni = ChainInputs(friction_optimal_gi=False)
-
-calc = XTB()
-eng = ASEEngine(calculator=calc)
-m = MSMEP(engine=eng, path_min_method='fneb', chain_inputs=cni, neb_inputs=nbi)
-
-start, end = create_pairs_from_smiles(smi1="C=CC(C)C=CC=C", smi2="C=C(C)C=CCC=C")
-# -
+from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.neb import NEB
 
 
-from qcio import view, Structure
-
-
-# +
-def change_indices(structure: Structure, inds: dict):
-    original = structure.geometry
-    new = original.copy()
-    for key, val in inds.items():
-        new[key] = original[val]
-
-
-    new_structure = Structure(symbols=structure.symbols, geometry=new, multiplicity=structure.multiplicity, charge=structure.charge)
-    return new_structure
-    
-
-
-# -
-
-import retropaths.helper_functions as hf
-from retropaths.molecules.molecule import  Molecule
-# from neb_dynamics.molecule import Molecule
-
-rxns = hf.pload("/home/jdep/retropaths/data/reactions.p")
-
-mol = Molecule.from_smiles('C=CCOC=C')
-
-
-rn = rxns['Claisen-Rearrangement']
-
-mol2 = rn.apply_forward(mol)[0]
-
-from neb_dynamics.qcio_structure_helpers import molecule_to_structure
-
-start = molecule_to_structure(mol)
-end = molecule_to_structure(mol2)
-
-start_node = StructureNode(structure=start)
-end_node = StructureNode(structure=end)
-
-from neb_dynamics import GIInputs, ChainInputs
-import neb_dynamics.chainhelpers as ch
-
-# gi = ch.create_friction_optimal_gi([start_node, end_node], GIInputs(nimages=10), ChainInputs())
-gi = ch.run_geodesic([start_node, end_node], nimages=12, chain_inputs=ChainInputs())
-
-from neb_dynamics.qcio_structure_helpers import structure_to_molecule
-
-from neb_dynamics import QCOPEngine
-
-eng= QCOPEngine()
-
-eng.compute_energies(gi)
-
-from neb_dynamics import ASEEngine, MSMEP
-from xtb.ase.calculator import XTB
-
-calc = XTB()
-eng = ASEEngine(calculator=XTB())
-
-m = MSMEP(path_min_method='fneb', engine=eng)
-
-out = m.run_recursive_minimize(gi)
-
-# +
-
-# ch.calculate_geodesic_distance(start_node, end_node)
-
-# +
-# ch.calculate_geodesic_distance(start_node, end_node2)
-
-# +
-# history = m.run_recursive_minimize(input_chain=gi)
-# -
+h = TreeNode.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Wittig')
+neb = NEB.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_neb/Wittig24_neb')
 
 import neb_dynamics.chainhelpers as ch
+
+# ch.visualize_chain(h.output_chain)
+ch.visualize_chain(neb.optimized)
 
 # +
 # ch.visualize_chain(history.output_chain)
@@ -99,13 +18,50 @@ import neb_dynamics.chainhelpers as ch
 from neb_dynamics.TreeNode import TreeNode
 from qcio import DualProgramInput
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/fneb_draft/wittig/asfneb_geo_hf/")
+# +
+# h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Claisen-Rearrangement-Aromatic/")
+fneb = NEB.read_from_disk("/home/jdep/debug/wittig/db_neb/")
+fneb2 = NEB.read_from_disk("/home/jdep/debug/wittig/db2_neb/")
+fneb3 = NEB.read_from_disk("/home/jdep/debug/wittig/db3_neb/")
 
-h.output_chain.plot_chain(dist_func='geodesic')
+fneb4 = NEB.read_from_disk("/home/jdep/debug/wittig/db_nogitan_neb/")
+fneb5 = NEB.read_from_disk("/home/jdep/debug/wittig/db_nogitan2_neb/")
+# -
+
+fneb = NEB.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Beckmann-Rearrangement/db4_neb.xyz")
+asfneb = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Beckmann-Rearrangement/asdb/")
+# asneb = TreeNode.read_from_disk("/home/jdep/debug/qchem/cope/db4")
+
+ch.plot_opt_history(asfneb.ordered_leaves[1].data.chain_trajectory)
+
+ch.visualize_chain(asfneb.output_chain)
+
+# +
+# view.view(fneb.optimized[0].structure, fneb.optimized[-1].structure, show_indices=True)
+
+# +
+# 118 ++ 1000ish
+# -
+
+# ch.visualize_chain(fneb.optimized)
+ch.visualize_chain(asfneb.output_chain)
+
+plt.plot(fneb.optimized.energies_kcalmol, 'o-'
+
+# ch.visualize_chain(fneb.optimized)
+# ch.visualize_chain(fneb2.optimized)
+# ch.visualize_chain(fneb3.optimized)
+ch.visualize_chain(fneb3.optimized)
 
 tsg1 = h.ordered_leaves[0].data.optimized.get_ts_node()
 
 tsg2 = h.ordered_leaves[1].data.optimized.get_ts_node()
+
+from neb_dynamics.neb import NEB
+
+fneb = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/hardexample1/fneb_geo_dft_neb.xyz")
+
+ch.visualize_chain(fneb.optimized)
 
 
 def load_qchem_result(path_dir):
@@ -217,10 +173,11 @@ def create_submission_scripts(
     template = [
     "#!/bin/bash",
     "",
-    "#SBATCH -t 24:00:00",
+    # "#SBATCH -t 24:00:00",
+    "#SBATCH -t 12:00:00",
     "#SBATCH -J asneb",
-    "#SBATCH -p gpuq",
-    # "#SBATCH --qos=gpu",
+    # "#SBATCH -p gpuq",
+    "#SBATCH --qos=gpu_short",
     "#SBATCH --gres=gpu:1",
     "",
     "work_dir=$PWD",
@@ -229,6 +186,7 @@ def create_submission_scripts(
     "",
     "# Load modules",
     "ml TeraChem",
+    "terachem -s 11111 || true &",
     "source /home/jdep/.bashrc",
     "source activate neb",
     "export OMP_NUM_THREADS=1",
@@ -280,16 +238,28 @@ for rn in all_rns:
     rns_to_submit.append(Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/submissions_dir')/rn)
     create_submission_scripts(
         out_dir=Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb'),
-        out_name=rn+"_asfneb",
+        out_name=rn,
         submission_dir=Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/submissions_dir'), 
         reference_dir=Path(f'/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}'),
         reference_start_name='start_xtb.xyz', reference_end_name='end_xtb.xyz',
         eng='qcop',
-        prog='terachem',
+        prog='terachem-pbs',
         tcin_fp='/home/jdep/T3D_data/msmep_draft/comparisons_dft/tc.in',
-        es_ft=10,
-        met='asfneb',
-        nrt=1, net=5)
+        es_ft=0.03,
+        met='asneb',
+        nrt=1, net=1)
+    # create_submission_scripts(
+    #     out_dir=Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb'),
+    #     out_name=rn+"_asfneb",
+    #     submission_dir=Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/submissions_dir'), 
+    #     reference_dir=Path(f'/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/{rn}'),
+    #     reference_start_name='start_xtb.xyz', reference_end_name='end_xtb.xyz',
+    #     eng='qcop',
+    #     prog='terachem',
+    #     tcin_fp='/home/jdep/T3D_data/msmep_draft/comparisons_dft/tc.in',
+    #     es_ft=10,
+    #     met='asfneb',
+    #     nrt=1, net=5)
     
     # create_bs_submission(
     #     out_dir=Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb'),

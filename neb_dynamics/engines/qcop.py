@@ -106,7 +106,7 @@ class QCOPEngine(Engine):
                 non_frozen_results = list(executor.map(helper, iterables))
 
         if self.compute_program == "chemcloud":
-            ### the following hack is implemented until chemcloud can accept single-length lists.
+            # the following hack is implemented until chemcloud can accept single-length lists.
             if len(non_frozen_prog_inps) == 1:
                 non_frozen_prog_inps = non_frozen_prog_inps[0]
                 non_frozen_results = self.compute_func(
@@ -166,6 +166,28 @@ class QCOPEngine(Engine):
             output = self.compute_func("terachem", prog_input)
 
         return output
+
+    def compute_hessian(self, node: StructureNode):
+        from chemcloud import CCClient
+
+        prog = self.program
+        if "terachem" in self.program:
+            prog = "terachem"
+
+        dpi = DualProgramInput(
+            calctype="hessian",  # type: ignore
+            structure=node.structure,
+            subprogram=prog,
+            subprogram_args={
+                "model": self.program_input.model,
+                "keywords": self.program_input.keywords,
+            },
+            keywords={},
+        )
+        client = CCClient()
+        fres = client.compute("bigchem", dpi)
+        output = fres.get()
+        return output.return_result
 
     def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:
         """
