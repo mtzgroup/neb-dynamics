@@ -435,7 +435,7 @@ class FreezingNEB(PathMinimizer):
         node1, node2 = self._get_innermost_nodes(chain)
         dist = self._distance_function(node1, node2)
         print(f"distance between innermost nodes {dist}")
-        if dist <= dr + self.parameters.dist_err:
+        if dist <= dr + (self.parameters.dist_err * self.parameters.path_resolution):
             result = True
         else:
             result = False
