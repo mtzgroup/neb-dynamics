@@ -17,7 +17,7 @@ import traceback
 
 import sys
 
-DISTANCE_METRICS = ["GEODESIC", "RMSD"]
+DISTANCE_METRICS = ["GEODESIC", "RMSD", "LINEAR"]
 
 
 @dataclass
@@ -54,6 +54,8 @@ class FreezingNEB(PathMinimizer):
             return RMSD(node1.coords, node2.coords)[0]
         elif self.parameters.distance_metric.upper() == "GEODESIC":
             return ch.calculate_geodesic_distance(node1, node2)
+        elif self.parameters.distance_metric.upper() == "LINEAR":
+            return np.linalg.norm(node1.coords - node2.coords)
         else:
             raise ValueError(
                 f"Invalid distance metric: {self.parameters.distance_metric}. Use one of {DISTANCE_METRICS}"
@@ -100,13 +102,14 @@ class FreezingNEB(PathMinimizer):
             grown_chain, node_tangents = self.grow_nodes(
                 chain, dr=self.parameters.path_resolution
             )
+            self.chain_trajectory.append(grown_chain.copy())
 
             # minimize nodes
             print("\tminimizing nodes")
             min_chain = self.minimize_nodes(
                 chain=grown_chain, node_tangents=node_tangents, d0=d0
             )
-            self.chain_trajectory.append(min_chain)
+            self.chain_trajectory.append(min_chain.copy())
 
             # check convergence
             print("\tchecking convergence")
@@ -192,9 +195,14 @@ class FreezingNEB(PathMinimizer):
                 for i_atom, vector in enumerate(direction):
                     length = np.linalg.norm(vector)
                     if length > max_atom_displacement:
-                        direction_scaled[i_atom, :] = (
-                            vector / length
-                        ) * max_atom_displacement
+                        if len(direction.shape) > 1:
+                            direction_scaled[i_atom, :] = (
+                                vector / length
+                            ) * max_atom_displacement
+                        else:
+                            direction_scaled[i_atom] = (
+                                vector / length
+                            ) * max_atom_displacement
 
                 new_node1_coords = node_to_opt.coords + direction_scaled
                 new_node1 = node_to_opt.update_coords(new_node1_coords)
@@ -202,21 +210,30 @@ class FreezingNEB(PathMinimizer):
                 # print(f"PROG: {self.grad_calls_made}")
                 self.grad_calls_made += 1
 
+                prev_node_ind = node_to_opt_ind
+                if ind_node == 0:
+                    prev_node_ind -= 1
+                    opp_node = node2
+                elif ind_node == 1:
+                    prev_node_ind += 1
+                    opp_node = node1
+
+                raw_chain.nodes[node_to_opt_ind] = new_node1
+                self.chain_trajectory.append(raw_chain.copy())
+                nsteps += 1
+
                 converged = self._check_nodes_converged(
                     node=new_node1,
-                    prev_node=raw_chain[node1_ind - 1],
-                    opposite_node=node2,
+                    prev_node=raw_chain[prev_node_ind],
+                    opposite_node=opp_node,
                     prev_iter_ene=prev_iter_ene,
                     d0=d0,
                 )
 
-                raw_chain.nodes[node_to_opt_ind] = new_node1
-                nsteps += 1
-
             except Exception:
                 print(traceback.format_exc())
                 return raw_chain
-
+        print(f"\t converged in {nsteps}")
         return raw_chain
 
     def minimize_nodes(self, chain: Chain, node_tangents: list, d0):
@@ -279,51 +296,63 @@ class FreezingNEB(PathMinimizer):
         final_node2_tan = None
 
         while not found_nodes:
-            if self.parameters.verbosity > 1:
-                print(f"\t\t***trying with {nimg=}")
-            smoother = ch.run_geodesic_get_smoother(
-                input_object=[
-                    sub_chain[0].symbols,
-                    [sub_chain[0].coords, sub_chain[-1].coords],
-                ],
-                nimages=nimg,
-                sweep=sweep,
-            )
-            interpolated = ch.gi_path_to_chain(
-                xyz_coords=smoother.path,
-                parameters=sub_chain.parameters.copy(),
-                symbols=sub_chain.symbols,
-            )
-            sys.stdout.flush()
-
-            if not final_node1 or not final_node2:
-                node1, tan1 = self._select_node_at_dist(
-                    chain=interpolated,
-                    dist=dr,
-                    direction=1,
-                    dist_err=self.parameters.dist_err * self.parameters.path_resolution,
-                    smoother=smoother,
-                )
-                # if not final_node2:
-                node2, tan2 = self._select_node_at_dist(
-                    chain=interpolated,
-                    dist=dr,
-                    direction=-1,
-                    dist_err=self.parameters.dist_err * self.parameters.path_resolution,
-                    smoother=smoother,
-                )
-            if node1:
-                final_node1 = node1
-                final_node1_tan = tan1
-
-            if node2:
-                final_node2 = node2
-                final_node2_tan = tan2
-
-            if final_node1 and final_node2:
+            if self.parameters.distance_metric.upper() == "LINEAR":
+                node1, node2 = sub_chain[0].coords, sub_chain[1].coords
+                direction = (node2 - node1) / np.linalg.norm((node2 - node1))
+                new_node1 = node1 + direction * dr
+                new_node2 = node2 - direction * dr
+                final_node1 = sub_chain[0].update_coords(new_node1)
+                final_node2 = sub_chain[1].update_coords(new_node2)
                 found_nodes = True
+
             else:
-                nimg += 50
+                if self.parameters.verbosity > 1:
+                    print(f"\t\t***trying with {nimg=}")
+                smoother = ch.run_geodesic_get_smoother(
+                    input_object=[
+                        sub_chain[0].symbols,
+                        [sub_chain[0].coords, sub_chain[-1].coords],
+                    ],
+                    nimages=nimg,
+                    sweep=sweep,
+                )
+                interpolated = ch.gi_path_to_chain(
+                    xyz_coords=smoother.path,
+                    parameters=sub_chain.parameters.copy(),
+                    symbols=sub_chain.symbols,
+                )
+                sys.stdout.flush()
+
+                if not final_node1 or not final_node2:
+                    node1, tan1 = self._select_node_at_dist(
+                        chain=interpolated,
+                        dist=dr,
+                        direction=1,
+                        dist_err=self.parameters.dist_err
+                        * self.parameters.path_resolution,
+                        smoother=smoother,
+                    )
+                    # if not final_node2:
+                    node2, tan2 = self._select_node_at_dist(
+                        chain=interpolated,
+                        dist=dr,
+                        direction=-1,
+                        dist_err=self.parameters.dist_err
+                        * self.parameters.path_resolution,
+                        smoother=smoother,
+                    )
+                if node1:
+                    final_node1 = node1
+                    final_node1_tan = tan1
+
+                if node2:
+                    final_node2 = node2
+                    final_node2_tan = tan2
+
+                if final_node1 and final_node2:
+                    found_nodes = True
+                else:
+                    nimg += 50
 
         self.engine.compute_energies([final_node2, final_node1])
         self.grad_calls_made += 2
@@ -406,7 +435,7 @@ class FreezingNEB(PathMinimizer):
         node1, node2 = self._get_innermost_nodes(chain)
         dist = self._distance_function(node1, node2)
         print(f"distance between innermost nodes {dist}")
-        if dist <= dr:
+        if dist <= dr + self.parameters.dist_err:
             result = True
         else:
             result = False
