@@ -283,17 +283,19 @@ class FreezingNEB(PathMinimizer):
 
         sweep = True
         found_nodes = False
+        add_two_nodes = True
         nimg = 100
-        # interpolated = ch.run_geodesic(sub_chain, nimages=nimg, sweep=sweep)
-        # interpolation_1 = interpolated.copy()
-        # interpolation_1.nodes = interpolation_1.nodes[:2]
-        # interpolation_2 = interpolated.copy()
-        # interpolation_2.nodes = interpolation_2.nodes[-2:]
 
         final_node1 = None
         final_node1_tan = None
         final_node2 = None
         final_node2_tan = None
+
+        if (
+            self._distance_function(sub_chain[0], sub_chain[1])
+            <= 2 * self.parameters.path_resolution
+        ):
+            add_two_nodes = False
 
         while not found_nodes:
             if self.parameters.distance_metric.upper() == "LINEAR":
@@ -332,24 +334,27 @@ class FreezingNEB(PathMinimizer):
                         * self.parameters.path_resolution,
                         smoother=smoother,
                     )
-                    # if not final_node2:
-                    node2, tan2 = self._select_node_at_dist(
-                        chain=interpolated,
-                        dist=dr,
-                        direction=-1,
-                        dist_err=self.parameters.dist_err
-                        * self.parameters.path_resolution,
-                        smoother=smoother,
-                    )
-                if node1:
-                    final_node1 = node1
-                    final_node1_tan = tan1
+                    if node1:
+                        final_node1 = node1
+                        final_node1_tan = tan1
 
-                if node2:
-                    final_node2 = node2
-                    final_node2_tan = tan2
+                    if add_two_nodes:
+                        node2, tan2 = self._select_node_at_dist(
+                            chain=interpolated,
+                            dist=dr,
+                            direction=-1,
+                            dist_err=self.parameters.dist_err
+                            * self.parameters.path_resolution,
+                            smoother=smoother,
+                        )
 
-                if final_node1 and final_node2:
+                        if node2:
+                            final_node2 = node2
+                            final_node2_tan = tan2
+
+                if add_two_nodes and (final_node1 and final_node2):
+                    found_nodes = True
+                elif not add_two_nodes and final_node1:
                     found_nodes = True
                 else:
                     nimg += 50
@@ -359,7 +364,8 @@ class FreezingNEB(PathMinimizer):
 
         grown_chain = chain.copy()
         insert_index = int(len(grown_chain) / 2)
-        grown_chain.nodes.insert(insert_index, final_node2)
+        if add_two_nodes:
+            grown_chain.nodes.insert(insert_index, final_node2)
         grown_chain.nodes.insert(insert_index, final_node1)
 
         return grown_chain, [final_node1_tan, final_node2_tan]
