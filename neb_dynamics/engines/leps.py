@@ -6,11 +6,14 @@ from typing import Union, List
 from neb_dynamics import Node, Chain
 from neb_dynamics.engines.engine import Engine
 from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
+from neb_dynamics.dynamics.chainbiaser import ChainBiaser
+from neb_dynamics.nodes.node import XYNode
 import numpy as np
 
 
 @dataclass
 class LEPS(Engine):
+    biaser: ChainBiaser = None
 
     def coulomb(self, r, d, r0, alpha):
         return (d / 2) * (
@@ -51,6 +54,12 @@ class LEPS(Engine):
         result_Js = result_Js_1 - result_Js_2
 
         result = result_Qs - (result_Js) ** (1 / 2)
+        if self.biaser:
+            dist = self.biaser.compute_min_dist_to_ref(
+                node=node, dist_func=self.biaser.compute_euclidean_distance
+            )
+            result += self.biaser.energy_gaussian_bias(distance=dist)
+
         return result
 
     def grad_x(self, node):
@@ -209,7 +218,11 @@ class LEPS(Engine):
         computes gradient from xy point
         """
 
-        return np.array([self.grad_x(xy), self.grad_y(xy)])
+        grad = np.array([self.grad_x(xy), self.grad_y(xy)])
+        if self.biaser:
+            g_bias = self.biaser.gradient_node_bias(node=XYNode(structure=xy))
+            grad += g_bias
+        return grad
 
     def _compute_ene_grads(self, chain: Union[Chain, List[Node]]):
         if isinstance(chain, Chain):

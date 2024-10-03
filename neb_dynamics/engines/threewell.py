@@ -6,20 +6,30 @@ from typing import Union, List
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines import Engine
-from neb_dynamics.nodes.nodehelpers import update_node_cache
+from neb_dynamics.nodes.node import XYNode
+from neb_dynamics.dynamics.chainbiaser import ChainBiaser
+
 
 import numpy as np
 
 
 @dataclass
 class ThreeWellPotential(Engine):
+    biaser: ChainBiaser = None
 
     def _en_func(self, xy: np.array) -> float:
         """
         computes energy from xy point
         """
         x, y = xy
-        return (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
+        ene = (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
+        if self.biaser:
+            dist = self.biaser.compute_min_dist_to_ref(
+                node=XYNode(structure=xy),
+                dist_func=self.biaser.compute_euclidean_distance,
+            )
+            ene += self.biaser.energy_gaussian_bias(distance=dist)
+        return ene
 
     def _grad_func(self, xy: np.array) -> NDArray:
         """
@@ -28,7 +38,11 @@ class ThreeWellPotential(Engine):
         x, y = xy
         dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
         dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
-        return np.array([dx, dy])
+        grad = np.array([dx, dy])
+        if self.biaser:
+            g_bias = self.biaser.gradient_node_bias(node=XYNode(structure=xy))
+            grad += g_bias
+        return grad
 
     def _compute_ene_grads(self, chain: Union[Chain, List[Node]]):
         if isinstance(chain, Chain):
