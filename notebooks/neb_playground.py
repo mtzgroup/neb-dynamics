@@ -4,15 +4,17 @@ from neb_dynamics.neb import NEB
 import neb_dynamics.chainhelpers as ch
 
 
-h = TreeNode.read_from_disk("/tmp/wtf")
+from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
 
-h.output_chain[10].structure.to_smiles(), h.output_chain[17].structure.to_smiles()
+start, end = create_pairs_from_smiles(smi1="[H]C#N",smi2="[H]N#C")
 
-ch.visualize_chain(h.output_chain)
+from qcio import Structure
 
-h.output_chain.plot_chain()
+start, end = Structure.from_smiles("[H]C#N"),Structure.from_smiles("[H][N+]#[C-]")
 
+from qcio import view
 
+view.view(start, end)
 
 h = TreeNode.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Wittig')
 neb = NEB.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_neb/Wittig24_neb')

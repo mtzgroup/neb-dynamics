@@ -359,7 +359,12 @@ class FreezingNEB(PathMinimizer):
                 else:
                     nimg += 50
 
-        self.engine.compute_energies([final_node2, final_node1])
+        if add_two_nodes:
+            self.engine.compute_energies([final_node2, final_node1])
+            self.grad_calls_made += 2
+        else:
+            self.engine.compute_energies([final_node1])
+            self.grad_calls_made += 1
         self.grad_calls_made += 2
 
         grown_chain = chain.copy()

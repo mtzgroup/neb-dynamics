@@ -224,7 +224,11 @@ def test_2d_neb():
 
     ks = 0.1
     cni = ChainInputs(
-        k=ks, delta_k=0, node_class=XYNode, use_geodesic_interpolation=False
+        k=ks,
+        delta_k=0,
+        node_class=XYNode,
+        use_geodesic_interpolation=False,
+        node_ene_thre=10,
     )
     nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True, max_steps=500, climb=False)
     chain = Chain(nodes=[XYNode(structure=xy) for xy in coords], parameters=cni)
@@ -237,7 +241,9 @@ def test_2d_neb():
     #         engine=eng)
     # n.optimize_chain()
     history = m.run_recursive_minimize(chain)
-    raise NotImplementedError()
+    assert (
+        len(history.ordered_leaves) == 3
+    ), f"Incorrect number of elementary steps for flower potential. Got: {len(history.ordered_leaves)}. Reference: 3"
 
 
 def test_ASE_engine():

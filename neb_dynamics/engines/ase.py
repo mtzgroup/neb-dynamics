@@ -29,6 +29,9 @@ from ase.optimize.bfgs import BFGS
 from ase.optimize.fire import FIRE
 from ase.optimize.mdmin import MDMin
 
+from neb_dynamics.dynamics.chainbiaser import ChainBiaser
+
+
 
 from ase.io import Trajectory
 
@@ -59,6 +62,7 @@ class ASEEngine(Engine):
     calculator: Calculator
     ase_optimizer: Optimizer = None
     ase_opt_str: str = "LBFGS"
+    biaser: ChainBiaser = None
 
     def __post_init__(self):
         if self.ase_optimizer is None:
@@ -71,17 +75,41 @@ class ASEEngine(Engine):
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:
-            return np.array([node.gradient for node in chain])
+            grads = np.array([node.gradient for node in chain])
         except GradientsNotComputedError:
             node_list = self._run_calc(chain=chain, calctype="gradient")
-            return np.array([node.gradient for node in node_list])
+            grads = np.array([node.gradient for node in node_list])
+
+        if self.biaser:
+            new_grads = grads.copy()
+            for i, (node, grad) in enumerate(zip(chain, grads)):
+                for ref_chain in self.biaser.reference_chains:
+                    g_bias = self.biaser.gradient_node_bias(node=node)
+                    new_grads[i] += g_bias
+            grads = new_grads
+
+        return grads
 
     def compute_energies(self, chain: Chain) -> NDArray:
         try:
-            return np.array([node.energy for node in chain])
+            enes = np.array([node.energy for node in chain])
         except EnergiesNotComputedError:
             node_list = self._run_calc(chain=chain, calctype="energy")
-            return np.array([node.energy for node in node_list])
+            enes = np.array([node.energy for node in node_list])
+
+        if self.biaser:
+            new_enes = enes.copy()
+            for i, (node, ene) in enumerate(zip(chain, enes)):
+                for ref_chain in self.biaser.reference_chains:
+                    dist = self.biaser.compute_min_dist_to_ref(
+                        node=node,
+                        dist_func=self.biaser.compute_euclidean_distance,
+                        reference=ref_chain
+                    )
+                    new_enes[i] += self.biaser.energy_gaussian_bias(distance=dist)
+            enes = new_enes
+        return enes
+        return enes
 
     def _run_calc(
         self, calctype: str, chain: Union[Chain, List]

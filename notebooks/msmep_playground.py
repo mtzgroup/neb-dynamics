@@ -1,67 +1,9 @@
+NIMG = 10
+
+# +
 from neb_dynamics.TreeNode import TreeNode
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.engines import QCOPEngine
-
-df = pd.read_csv("/home/jdep/T3D_data/msmep_draft/msmep_reaction_successes.csv")
-
-from neb_dynamics.helper_functions import _create_df
-from pathlib import Path
-
-names = [fp / 'ASNEB_03_NOSIG_NOMR' for fp in Path("/home/jdep/T3D_data/msmep_draft/comparisons/structures").glob("*")]
-
-# +
-
-df = _create_df(names, out_at_beginning_name=True)
-# -
-
-len(df.dropna())
-
-data_dir = names[0].parent.parent
-tree_name = names[0].stem
-
-multi = df[df['n_rxn_steps']>1.0]['reaction_name']
-
-from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
-
-# +
-true_ms = []
-
-for rn in multi:
-    h = TreeNode.read_from_disk(data_dir / rn / tree_name)
-    effective_len_nodes = 0
-    for leaf in h.ordered_leaves:
-        if _is_connectivity_identical(leaf.data.initial_chain[0], leaf.data.initial_chain[-1]):
-            continue
-        else:
-            effective_len_nodes+=1
-
-    if effective_len_nodes >= 2:
-        true_ms.append(rn)
-    
-# -
-
-data_dir = Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/")
-
-# +
-f = open("/home/jdep/T3D_data/msmep_draft/comparisons_dft/reactions_todo_multistep.txt","w+")
-
-for line in true_ms :
-    f.write(f"{str(data_dir/line)}\n")
-f.close()
-# -
-
-true_ms
-
-import neb_dynamics.chainhelpers as ch
-
-rn = true_ms[21]
-print(rn)
-path = f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/ASNEB_03_yesSIG"
-h = TreeNode.read_from_disk(path)
-
-ch.visualize_chain(h.output_chain)
-
-len(true_ms)
 
 from neb_dynamics.TreeNode import TreeNode
 
@@ -69,54 +11,59 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs
 import neb_dynamics.chainhelpers as ch
 
-rns = Path("/home/jdep/T3D_data/msmep_draft//structures/").glob("*")
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Claisen-Rearrangement/debug2_msmep/")
 
-names = [rn / "ASNEB_03_NOSIG_NOMR" for rn in rns]
+from neb_dynamics.engines.ase import ASEEngine
+from neb_dynamics import MSMEP, NEBInputs, ChainInputs
+from xtb.ase.calculator import XTB
 
-data = []
-for name in names:
-    print(name)
-    try:
-        h = TreeNode.read_from_disk(name)
-        leaf_gis = [leaf.data.optimized.get_eA_chain() for leaf in h.ordered_leaves]
-        init_gi = h.data.initial_chain.get_eA_chain()
-        data.append((init_gi, leaf_gis))
-    except FileNotFoundError:
-        data.append((None, None))
+eng = ASEEngine(calculator=XTB(method='GFN2-XTB'), ase_opt_str='LBFGSLineSearch')
 
+m = MSMEP(engine=eng, path_min_method='fneb', chain_inputs=ChainInputs(friction_optimal_gi=False, node_rms_thre=1.5, node_ene_thre=.5), 
+          neb_inputs=NEBInputs(fneb_kwds={'path_resolution':0.5,
+                                          "distance_metric":"geodesic", 
+                                         "dist_err":0.1, "min_images": NIMG}))
+start = eng.compute_geometry_optimization(h.data.initial_chain[0])[-1]
+end = eng.compute_geometry_optimization(h.data.initial_chain[-1])[-1]
+init_c = Chain([start, end])
 
-stats = [0, 0]
-for init_gi, leaf_gi in data:
-    if init_gi is None:
-        continue
-        
-    max_leaf_gi = max(leaf_gi)
-    
-    if len(leaf_gi) > 1:
-        if init_gi > max_leaf_gi:
-            stats[1] += 1
-        else:
-            stats[0] += 1
-
-stats
-
-data[0]
-
-# +
-# df = _create_df(names)
+neb, es_res = m.run_minimize_chain(init_c)
 # -
 
-names = [ p/'ASNEB_03_SIGYES' for p in Path("/home/jdep/T3D_data/msmep_draft/full_retropaths_launch/structures/").glob("*")]
+from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/ladderane/ladderane_rct_msmep//")
+rounds_of_mtd = 3
+refs = [neb.optimized]
+for i in range(rounds_of_mtd):
+    cb = ChainBiaser(reference_chains=refs, amplitude=100000, sigma=100)
+    eng2 = ASEEngine(calculator=XTB(method='GFN2-XTB'), ase_opt_str='LBFGSLineSearch', biaser=cb)
 
-h.data.plot_opt_history(0)
+    m2 = MSMEP(engine=eng2, path_min_method='fneb', chain_inputs=ChainInputs(friction_optimal_gi=False, node_rms_thre=1.5, node_ene_thre=.5), 
+              neb_inputs=NEBInputs(fneb_kwds={'path_resolution':0.5,
+                                              "distance_metric":"geodesic", 
+                                             "dist_err":0.1, "min_images":NIMG}))
 
-visualize_chain(h.output_chain)
+    neb2, es_res2 = m2.run_minimize_chain(init_c)
+    refs.append(neb2.output_chain)
+    
 
-df = create_df(names)
+import matplotlib.pyplot as plt
 
-# # Database
+for i, c in enumerate(refs):
+    plt.plot(c.integrated_path_length, c.energies_kcalmol,'o-', label=f"chain_{i}")
+plt.legend()
+
+structs = [c.get_ts_node().structure for c in refs]
+
+from neb_dynamics.helper_functions import RMSD
+
+from qcio import view
+
+view.view(structs[6], structs[16], structs[26])
+
+# +
+# ch.visualize_chain(history3.output_chain)
+# -
 
 from pathlib import Path
 from neb_dynamics.TreeNode import TreeNode
@@ -1231,8 +1178,10 @@ for label in ['5','1','05','03','01','005','0']:
 
 # ### Initial Guess Comparison (ASNEB v NEB)
 
-from neb_dynamics.Inputs import NEBInputs
-from neb_dynamics.NEB import NEB
+from pathlib import Path
+
+from neb_dynamics.inputs import NEBInputs
+from neb_dynamics.neb import NEB
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 
 # +
@@ -1250,12 +1199,64 @@ nbi = NEBInputs(
         max_steps=500,
 
 )
+# -
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Wittig/")
+neb12 = NEB.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_neb/Wittig12_neb.xyz")
+neb24 = NEB.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_neb/Wittig24_neb.xyz")
+
+import matplotlib.pyplot as plt
+
 # +
-# rn = 'Wittig'
+rn = 'Wittig'
+s=5
+fs=18
+f, ax = plt.subplots(figsize=(2*s, s))
+
+plt.plot(h.output_chain.integrated_path_length, h.output_chain.energies_kcalmol, 'o-', color='black',label='ASNEB')#, linewidth=3.3)
+plt.plot(neb12.optimized.integrated_path_length, neb12.optimized.energies_kcalmol, '^-', color='blue',label='NEB(12)')#, alpha=.3)
+plt.plot(neb24.optimized.integrated_path_length, neb24.optimized.energies_kcalmol, 'x-', color='red',label=f'NEB({len(neb_long.optimized)})')#, alpha=.3)
+
+# plt.plot(pl_dft, joined.energies_kcalmol, 'o-',label='ASNEB_DFT')#, linewidth=3.3)
+
+plt.legend(fontsize=fs)
+
+
+plt.xlabel('Normalized path length',fontsize=fs)
+plt.ylabel("Relative energies (kcal/mol)",fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+
+plt.savefig(f"/home/jdep/T3bD_data/msmep_draft/figures/{rn}_comparison_paths.svg")
+plt.show()
+# -
+
+gcalls = [2230, 1251, 2506]
+
+neb12.optimized.energies
+
+neb24.optimized.energies
+
+h.output_chain.energies
+
+# +
+
+neb24.plot_opt_history(1)
+# -
+
+h.output_chain.energies
+
+neb24.optimized.energies
+
+neb12.plot_opt_history(1)
+
+neb24.plot_opt_history(1)
+
+# +
+rn = 'Wittig'
 # rn = 'Robinson-Gabriel-Synthesis'
 # rn = 'Lobry-de-Bruyn-Van-Ekenstein-Transformation'
 # rn = 'Bamford-Stevens-Reaction'
-rn = 'Ramberg-Backlund-Reaction-Bromine'
+# rn = 'Ramberg-Backlund-Reaction-Bromine'
 # rn = 'Rupe-Rearrangement'
 
 ref_p = Path(f"/home/jdep/T3D_data/msmep_draft/comparisons/structures/{rn}/ASNEB_01_NOSIG_NOMR_v2/")

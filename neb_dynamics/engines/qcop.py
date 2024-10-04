@@ -17,6 +17,7 @@ from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedEr
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import update_node_cache
 from neb_dynamics.qcio_structure_helpers import _change_prog_input_property
+from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 
 AVAIL_PROGRAMS = ["qcop", "chemcloud"]
 
@@ -31,22 +32,52 @@ class QCOPEngine(Engine):
     program: str = "xtb"
     geometry_optimizer: str = "geometric"
     compute_program: str = "qcop"
+    biaser: ChainBiaser = None
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:
-            return np.array([node.gradient for node in chain])
+            grads = np.array([node.gradient for node in chain])
+
         except GradientsNotComputedError:
             node_list = self._run_calc(chain=chain, calctype="gradient")
-            return np.array([node.gradient for node in node_list])
+            grads = np.array([node.gradient for node in node_list])
+
+        if self.biaser:
+            new_grads = grads.copy()
+            for i, (node, grad) in enumerate(zip(chain, grads)):
+                for ref_chain in self.biaser.reference_chains:
+                    g_bias = self.biaser.gradient_node_bias(node=node)
+                    new_grads[i] += g_bias
+            grads = new_grads
+        return grads
 
     def compute_energies(self, chain: Chain) -> NDArray:
         try:
-            return np.array([node.energy for node in chain])
+            enes = np.array([node.energy for node in chain])
         except EnergiesNotComputedError:
             node_list = self._run_calc(
                 chain=chain, calctype="gradient"
             )  # need the gradients to be cached anyway
-            return np.array([node.energy for node in node_list])
+            enes = np.array([node.energy for node in node_list])
+
+        except AttributeError:
+            node_list = self._run_calc(
+                chain=chain, calctype="gradient"
+            )  # need the gradients to be cached anyway
+            enes = np.array([node.energy for node in node_list])
+
+        if self.biaser:
+            new_enes = enes.copy()
+            for i, (node, ene) in enumerate(zip(chain, enes)):
+                for ref_chain in self.biaser.reference_chains:
+                    dist = self.biaser.compute_min_dist_to_ref(
+                        node=node,
+                        dist_func=self.biaser.compute_euclidean_distance,
+                        reference=ref_chain
+                    )
+                    new_enes[i] += self.biaser.energy_gaussian_bias(distance=dist)
+            enes = new_enes
+        return enes
 
     def compute_func(self, *args):
         if self.compute_program == "qcop":
@@ -70,7 +101,7 @@ class QCOPEngine(Engine):
         elif isinstance(chain, list):
             assert isinstance(
                 chain[0], StructureNode
-            ), "input list has nodes incompatible with QCOPEngine."
+            ), f"input list has nodes incompatible with QCOPEngine: {chain[0]}"
             node_list = chain
         else:
             raise ValueError(

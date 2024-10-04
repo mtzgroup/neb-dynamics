@@ -43,12 +43,24 @@ class ChainBiaser:
 
     def compute_euclidean_distance(self, p1, p2):
         """Calculates the Euclidean distance between two points p1 and p2."""
+
         if isinstance(p1, XYNode):
             p1 = p1.structure
-        if isinstance(p2, XYNode):
             p2 = p2.structure
+        elif isinstance(p1, StructureNode):
+            p1, p2 = ch._get_mass_weighed_coords([p1, p2])
 
         return np.linalg.norm(np.array(p1) - np.array(p2))
+
+    def compute_rmsd(self, p1, p2):
+        """Calculates the RMSD distance between two points p1 and p2."""
+
+        if isinstance(p1, XYNode):
+            raise ValueError("Cannot compute RMSD for 2D potential.")
+        elif isinstance(p1, StructureNode):
+            dist, _ = RMSD(p1.coords, p2.coords)
+
+        return dist
 
     def frechet_distance(self, path1, path2):
         """Calculates the Fréchet distance between two paths."""
@@ -104,24 +116,21 @@ class ChainBiaser:
     def energy_gaussian_bias(self, distance):
         return self.amplitude * np.exp(-(distance**2) / (2 * self.sigma**2))
 
-    def compute_min_dist_to_ref(self, dist_func, node: Node, reference=None):
-        if reference is None:
-            reference = self.reference_chains
-
-        min_dists = []
-        for chain in reference:
-            min_dists.append(min([dist_func(node, ref) for ref in chain]))
-        return min(min_dists)
+    def compute_min_dist_to_ref(self, dist_func, node: Node, reference: List[Node]):
+        return min([dist_func(node, ref) for ref in reference])
 
     def energy_chain_bias(self, chain):
         dist_to_chain = self.distance_node_wise(chain)
         return self.energy_gaussian_bias(dist_to_chain)
 
-    def gradient_node_bias(self, node: Node, reference: List[Node] = None, dr=0.1):
+    def gradient_node_bias(self, node: Node, reference_chains: List[List[Node]] = None, dr=0.1):
         """
         computes the gradient acting on `node` from `reference` nodes.
         """
         n_atoms = len(node.coords)
+        if reference_chains is None:
+            reference_chains = self.reference_chains
+
         if isinstance(node, StructureNode):
             shape = (n_atoms, 3)
             directions = ["x", "y", "z"]
@@ -130,49 +139,61 @@ class ChainBiaser:
             directions = ["x", "y"]
         else:
             raise ValueError(f"invalid input node type: {node}")
-        grads = np.zeros(shape=shape)
-        if isinstance(node, StructureNode):
-            raise NotImplementedError
-        # for i in range(n_atoms):
-        #     for j in range(len(directions)):
-        #         disp_vector = np.zeros(shape=shape)
-        #         disp_vector[i, j] = dr
-
-        #         displaced_coord = node.coords + disp_vector
-        #         node_disp_direction = node.update_coords(displaced_coord)
-        #         fake_chain = chain.copy()
-        #         fake_chain.nodes[ind_node] = node_disp_direction
-
-        #         grad_direction = self.energy_chain_bias(
-        #             fake_chain
-        #         ) - self.energy_chain_bias(chain)
-        #         grads[i, j] = grad_direction
-
-        # return grads / dr
-        elif isinstance(node, XYNode):
-            orig_dist = self.compute_min_dist_to_ref(
-                dist_func=self.compute_euclidean_distance,
-                node=node,
-                reference=reference,
-            )
-            for i in range(n_atoms):
-
-                disp_vector = np.zeros(shape=shape)
-                disp_vector[i] = dr
-
-                displaced_coord = node.coords + disp_vector
-                node_disp_direction = node.update_coords(displaced_coord)
-                new_dist = self.compute_min_dist_to_ref(
-                    dist_func=self.compute_euclidean_distance,
-                    node=node_disp_direction,
+        final_grads = np.zeros(shape=shape)
+        for reference in reference_chains:
+            grads = np.zeros(shape=shape)
+            if isinstance(node, StructureNode):
+                orig_dist = self.compute_min_dist_to_ref(
+                    dist_func=self.compute_rmsd,
+                    node=node,
                     reference=reference,
                 )
-                grad_direction = self.energy_gaussian_bias(
-                    new_dist
-                ) - self.energy_gaussian_bias(orig_dist)
-                grads[i] = grad_direction
+                for i in range(n_atoms):
+                    for j in range(len(directions)):
+                        disp_vector = np.zeros(shape=shape)
+                        disp_vector[i, j] = dr
 
-            return grads / dr
+                        displaced_coord = node.coords + disp_vector
+                        node_disp_direction = node.update_coords(displaced_coord)
+                        new_dist = self.compute_min_dist_to_ref(
+                            dist_func=self.compute_rmsd,
+                            node=node_disp_direction,
+                            reference=reference,
+                        )
+                        grad_direction = self.energy_gaussian_bias(
+                            new_dist
+                        ) - self.energy_gaussian_bias(orig_dist)
+                        grads[i, j] = grad_direction
+
+                grads = grads / dr
+
+            elif isinstance(node, XYNode):
+                orig_dist = self.compute_min_dist_to_ref(
+                    dist_func=self.compute_euclidean_distance,
+                    node=node,
+                    reference=reference,
+                )
+                for i in range(n_atoms):
+
+                    disp_vector = np.zeros(shape=shape)
+                    disp_vector[i] = dr
+
+                    displaced_coord = node.coords + disp_vector
+                    node_disp_direction = node.update_coords(displaced_coord)
+                    new_dist = self.compute_min_dist_to_ref(
+                        dist_func=self.compute_euclidean_distance,
+                        node=node_disp_direction,
+                        reference=reference,
+                    )
+                    grad_direction = self.energy_gaussian_bias(
+                        new_dist
+                    ) - self.energy_gaussian_bias(orig_dist)
+                    grads[i] = grad_direction
+
+                grads = grads / dr
+
+            final_grads += grads
+        return final_grads
 
     def gradient_node_in_chain_bias(self, chain, node, ind_node, dr=0.1):
         n_atoms = len(node.coords)

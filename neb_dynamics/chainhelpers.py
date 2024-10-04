@@ -22,7 +22,6 @@ from neb_dynamics.geodesic_interpolation.geodesic import (
 )
 from neb_dynamics.helper_functions import get_mass
 from neb_dynamics.inputs import ChainInputs, GIInputs
-from neb_dynamics.engines.qcop import QCOPEngine
 from neb_dynamics.helper_functions import (
     linear_distance,
     qRMSD_distance,
@@ -106,7 +105,7 @@ def _get_mass_weights(chain: Chain, normalize_weights=True):
 
 def _get_mass_weighed_coords(chain: Chain):
     weights = _get_mass_weights(chain)
-    coords = chain.coordinates
+    coords = np.array([node.coords for node in chain])
     mass_weighed_coords = coords * weights.reshape(-1, 1)
     return mass_weighed_coords
 
@@ -383,6 +382,7 @@ def _update_cache(self, chain: Chain, gradients: NDArray, energies: NDArray) -> 
 def create_friction_optimal_gi(
     chain: Chain, gi_inputs: GIInputs, chain_inputs: ChainInputs()
 ):
+    from neb_dynamics.engines.qcop import QCOPEngine
     print("GI: Optimizing friction parameter")
     eng = QCOPEngine()
     frics = [0.0001, 0.001, 0.01, 0.1, 1]
