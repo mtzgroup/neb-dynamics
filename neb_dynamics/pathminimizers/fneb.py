@@ -35,10 +35,10 @@ class FreezingNEB(PathMinimizer):
             "path_resolution": 1 / 10,  # BOHR,
             "max_atom_displacement": 0.1,
             "early_stop_scaling": 3,
-            "use_geodesic_tangent": False,
-            "dist_err": 0.5,
+            "use_geodesic_tangent": True,
+            "dist_err": 0.1,
             "min_images": 4,
-            "distance_metric": "RMSD",
+            "distance_metric": "GEODESIC",
             "verbosity": 1,
         }
         for key, val in self.fneb_kwds.items():

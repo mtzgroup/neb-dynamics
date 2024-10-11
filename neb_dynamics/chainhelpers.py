@@ -112,7 +112,7 @@ def _get_mass_weighed_coords(chain: Chain):
 
 def iter_triplets(chain: Chain) -> list[list[Node]]:
     for i in range(1, len(chain.nodes) - 1):
-        yield chain.nodes[i - 1 : i + 2]
+        yield chain.nodes[i - 1: i + 2]
 
 
 def neighs_grad_func(
@@ -583,6 +583,37 @@ def _energies_kcalmol(chain: List[Node]):
     """
     enes = np.array([node.energy for node in chain])
     return (enes - enes[0]) * 627.5
+
+
+def build_correlation_matrix(node_list, ts_vector):
+    node_list = [(node.coords.flatten() - ts_vector) for node in node_list]
+    a = node_list[0]
+    mat = np.zeros(shape=(len(a), len(a)))
+    for i in range(mat.shape[0]):
+        for j in range(mat.shape[0]):
+            products = sum([vec[i]*vec[j] for vec in node_list]) / len(node_list)
+            sums = sum([vec[i] for vec in node_list])*sum([vec[j] for vec in node_list]) / (len(node_list)**2)
+            mat[i, j] = products - sums
+    return mat
+
+
+def get_rxn_coordinate(c: Chain):
+    mat = build_correlation_matrix(c, ts_vector=c.get_ts_node().coords.flatten())
+    evals, evecs = np.linalg.eigh(mat)
+    print(evals)
+    return evecs[:, -1]
+
+
+def get_projections(c: Chain, eigvec):
+    ind_ts = c.energies.argmax()
+    # ind_ts = 0
+
+    all_dists = []
+    for i, node in enumerate(c):
+        displacement = c[i].coords.flatten() - c[ind_ts].coords.flatten()
+        all_dists.append(np.dot(displacement, eigvec))
+    # plt.plot(all_dists)
+    return all_dists
 
 
 def visualize_chain(chain: List[StructureNode]):

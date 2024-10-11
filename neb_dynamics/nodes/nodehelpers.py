@@ -151,3 +151,16 @@ def create_pairs_from_smiles(smi1: str, smi2: str, spinmult=1):
         molecule_to_structure(p, charge=p.charge, spinmult=spinmult),
     )
     return td_r, td_p
+
+
+def displace_by_dr(node: Node, displacement: np.array, dr: float = 0.1):
+    """returns a new node object that has been displaced along the input 'displacement' vector by 'dr'.
+
+    Args:
+        node (Node): Node to displace
+        displacement (np.array): vector along which to displace
+        dr (float, optional): Magnitude of displacement vector. Defaults to 0.1.
+    """
+    displacement = displacement / np.linalg.norm(displacement)
+    new_coords = node.coords + dr*displacement
+    return node.update_coords(new_coords)

@@ -32,7 +32,6 @@ from ase.optimize.mdmin import MDMin
 from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 
 
-
 from ase.io import Trajectory
 
 from pathlib import Path
@@ -79,15 +78,6 @@ class ASEEngine(Engine):
         except GradientsNotComputedError:
             node_list = self._run_calc(chain=chain, calctype="gradient")
             grads = np.array([node.gradient for node in node_list])
-
-        if self.biaser:
-            new_grads = grads.copy()
-            for i, (node, grad) in enumerate(zip(chain, grads)):
-                for ref_chain in self.biaser.reference_chains:
-                    g_bias = self.biaser.gradient_node_bias(node=node)
-                    new_grads[i] += g_bias
-            grads = new_grads
-
         return grads
 
     def compute_energies(self, chain: Chain) -> NDArray:
@@ -97,18 +87,6 @@ class ASEEngine(Engine):
             node_list = self._run_calc(chain=chain, calctype="energy")
             enes = np.array([node.energy for node in node_list])
 
-        if self.biaser:
-            new_enes = enes.copy()
-            for i, (node, ene) in enumerate(zip(chain, enes)):
-                for ref_chain in self.biaser.reference_chains:
-                    dist = self.biaser.compute_min_dist_to_ref(
-                        node=node,
-                        dist_func=self.biaser.compute_euclidean_distance,
-                        reference=ref_chain
-                    )
-                    new_enes[i] += self.biaser.energy_gaussian_bias(distance=dist)
-            enes = new_enes
-        return enes
         return enes
 
     def _run_calc(
@@ -149,6 +127,24 @@ class ASEEngine(Engine):
             else:
                 all_results.append(non_frozen_results.pop(0))
         update_node_cache(node_list=node_list, results=all_results)
+
+        # compute bias if relevant
+        if self.biaser:
+            for i, node in enumerate(node_list):
+                ene_bias = 0
+                grad_bias = np.zeros_like(node.gradient)
+                for ref_chain in self.biaser.reference_chains:
+                    g_bias = self.biaser.gradient_node_bias(node=node)
+                    dist = self.biaser.compute_min_dist_to_ref(
+                        node=node,
+                        dist_func=self.biaser.compute_euclidean_distance,
+                        reference=ref_chain
+                    )
+                    ene_bias += self.biaser.energy_gaussian_bias(distance=dist)
+                    grad_bias += g_bias
+                node._cached_energy += ene_bias
+                node._cached_gradient += grad_bias
+
         return node_list
 
     def compute_func(self, atoms: Atoms):

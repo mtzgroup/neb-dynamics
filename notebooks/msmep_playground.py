@@ -1,10 +1,8 @@
-NIMG = 10
-
 # +
 from neb_dynamics.TreeNode import TreeNode
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.engines import QCOPEngine
-
+import matplotlib.pyplot as plt
 from neb_dynamics.TreeNode import TreeNode
 
 from neb_dynamics.chain import Chain
@@ -17,12 +15,15 @@ from neb_dynamics.engines.ase import ASEEngine
 from neb_dynamics import MSMEP, NEBInputs, ChainInputs
 from xtb.ase.calculator import XTB
 
+NIMG = 10
 eng = ASEEngine(calculator=XTB(method='GFN2-XTB'), ase_opt_str='LBFGSLineSearch')
+nbi = NEBInputs(fneb_kwds={'path_resolution':0.5,
+                                          "distance_metric":"geodesic", 
+                                         "dist_err":0.1, "min_images": NIMG,
+                                         "max_atom_displacement": 0.1})
 
 m = MSMEP(engine=eng, path_min_method='fneb', chain_inputs=ChainInputs(friction_optimal_gi=False, node_rms_thre=1.5, node_ene_thre=.5), 
-          neb_inputs=NEBInputs(fneb_kwds={'path_resolution':0.5,
-                                          "distance_metric":"geodesic", 
-                                         "dist_err":0.1, "min_images": NIMG}))
+          neb_inputs=nbi)
 start = eng.compute_geometry_optimization(h.data.initial_chain[0])[-1]
 end = eng.compute_geometry_optimization(h.data.initial_chain[-1])[-1]
 init_c = Chain([start, end])
@@ -30,28 +31,34 @@ init_c = Chain([start, end])
 neb, es_res = m.run_minimize_chain(init_c)
 # -
 
+import matplotlib.pyplot as plt
+
 from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 
-rounds_of_mtd = 3
+# +
+# ch.visualize_chain(neb.optimized)
+# -
+
+rounds_of_mtd = 5
 refs = [neb.optimized]
 for i in range(rounds_of_mtd):
-    cb = ChainBiaser(reference_chains=refs, amplitude=100000, sigma=100)
+    cb = ChainBiaser(reference_chains=refs, amplitude=1, sigma=1)
     eng2 = ASEEngine(calculator=XTB(method='GFN2-XTB'), ase_opt_str='LBFGSLineSearch', biaser=cb)
 
     m2 = MSMEP(engine=eng2, path_min_method='fneb', chain_inputs=ChainInputs(friction_optimal_gi=False, node_rms_thre=1.5, node_ene_thre=.5), 
-              neb_inputs=NEBInputs(fneb_kwds={'path_resolution':0.5,
-                                              "distance_metric":"geodesic", 
-                                             "dist_err":0.1, "min_images":NIMG}))
+              neb_inputs=nbi)
 
     neb2, es_res2 = m2.run_minimize_chain(init_c)
-    refs.append(neb2.output_chain)
-    
+    refs.append(neb2.chain_trajectory[-1])
+    # history2 = m2.run_recursive_minimize(init_c)
+    # refs.append(history2.output_chain)
 
-import matplotlib.pyplot as plt
 
 for i, c in enumerate(refs):
     plt.plot(c.integrated_path_length, c.energies_kcalmol,'o-', label=f"chain_{i}")
 plt.legend()
+
+ch.visualize_chain(refs[5])
 
 structs = [c.get_ts_node().structure for c in refs]
 
@@ -59,7 +66,7 @@ from neb_dynamics.helper_functions import RMSD
 
 from qcio import view
 
-view.view(structs[6], structs[16], structs[26])
+view.view(*structs)
 
 # +
 # ch.visualize_chain(history3.output_chain)

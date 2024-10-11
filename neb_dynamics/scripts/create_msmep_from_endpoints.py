@@ -335,13 +335,14 @@ def main():
         fneb_kwds={
             "stepsize": args.stepsize,
             "ngradcalls": 3,
+            "min_images": 12,
             "max_cycles": args.maxsteps,
-            "path_resolution": 1 / 20,  # BOHR,
+            "path_resolution": 2000,  # BOHR,
             "max_atom_displacement": 0.1,
             "early_stop_scaling": args.es_ft,
             "dist_err": 1 / 10,
-            "distance_metric": "geodesic",
-            "use_geodesic_tangent": True,
+            "distance_metric": "linear",
+            "use_geodesic_tangent": False,
             "verbosity": 1,
         },
     )

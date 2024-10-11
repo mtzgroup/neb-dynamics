@@ -1,81 +1,212 @@
 # -*- coding: utf-8 -*-
+from dataclasses import dataclass
+
+from qcio import ProgramInput
+from neb_dynamics import NEBInputs, ChainInputs, GIInputs
+
+
+
+# +
+
+ProgramArgs(
+# -
+
+
+
+# +
+from types import SimpleNamespace
+from qcio import ProgramInput, ProgramArgs
+@dataclass 
+class RunInputs:
+    engine: str
+    program: str
+
+    path_min: str = 'NEB'
+    path_min_kwds: dict = None
+
+    chain_kwds: dict = None
+    
+    program_kwds: ProgramArgs = None
+    geodesic_kwds: dict = None
+
+
+    def __post_init__(self):
+        
+        if self.path_min.upper() == "NEB":
+            default_kwds = NEBInputs().__dict__
+        
+        elif self.path_min.upper() == "FSM":
+            default_kwds = {
+            "stepsize": 0.5,
+            "ngradcalls": 3,
+            "max_cycles": 500,
+            "path_resolution": 1 / 10,  # BOHR,
+            "max_atom_displacement": 0.1,
+            "early_stop_scaling": 3,
+            "use_geodesic_tangent": True,
+            "dist_err": 0.1,
+            "min_images": 4,
+            "distance_metric": "GEODESIC",
+            "verbosity": 1,
+        }
+        #     default_kwds = FSMInputs()
+        elif self.path_min.upper() == "PYGSM":
+            default_kwds = PYGSMInputs()
+        
+        if self.path_min_kwds is None:
+            self.path_min_kwds = default_kwds
+        
+        else:
+            for key, val in self.path_min_kwds.items():
+                default_kwds[key] = val
+                
+            self.path_min_kwds = SimpleNamespace(**default_kwds)
+
+
+        if self.geodesic_kwds is None:
+            self.geodesic_kwds = GIInputs()
+        else:
+            self.geodesic_kwds = GIInputs(**self.geodesic_kwds)
+
+
+        if self.program_kwds is None:
+            if self.program == "xtb":
+                program_args = ProgramArgs(
+                    model={"method": "GFN2xTB"},
+                    keywords={})
+
+            elif "terachem" in self.program:
+                program_args = ProgramArgs(
+                    model={"method": "ub3lyp", "basis": "3-21g"},
+                    keywords={})
+                
+            else:
+                raise ValueError("Need to specify program arguments")
+
+        if self.chain_kwds is None:
+            self.chain_kwds = ChainInputs()
+        
+        else:
+            self.chain_kwds = ChainInputs(**self.chain_kwds)
+            
+
+
+
+                
+        
+        
+    
+    
+    
+    
+# -
+
+huh = RunInputs(engine='qcop', program='xtb',  path_min='fsm', path_min_kwds={'distance_metric':'linear'})
+huh
+
+# +
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.neb import NEB
+from neb_dynamics import ChainInputs
+from neb_dynamics.chain import Chain
 import neb_dynamics.chainhelpers as ch
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+from neb_dynamics import StructureNode
+
+import matplotlib.pyplot as plt
+from pathlib import Path
+
+from qcio import Structure, view, ProgramInput
+
+from neb_dynamics.nodes.nodehelpers import displace_by_dr
+from neb_dynamics.nodes.node import Node
+from neb_dynamics import QCOPEngine
 
 
-from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
-
-start, end = create_pairs_from_smiles(smi1="[H]C#N",smi2="[H]N#C")
-
-from qcio import Structure
-
-start, end = Structure.from_smiles("[H]C#N"),Structure.from_smiles("[H][N+]#[C-]")
-
-from qcio import view
-
-view.view(start, end)
-
-h = TreeNode.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Wittig')
-neb = NEB.read_from_disk('/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_neb/Wittig24_neb')
-
-import neb_dynamics.chainhelpers as ch
-
-# ch.visualize_chain(h.output_chain)
-ch.visualize_chain(neb.optimized)
 
 # +
-# ch.visualize_chain(history.output_chain)
+import numpy as np
+
+# Function to compute normalized gradient (reaction path direction) in non-mass-weighted coordinates
+def compute_normalized_gradient(gradient):
+    norm = np.linalg.norm(gradient)
+    if norm == 0:
+        raise ValueError("Zero gradient! Cannot normalize.")
+    return gradient / norm
+
+# Function to compute the geodesic correction
+def geodesic_correction(geometry, new_geometry, step_direction, engine):
+    """
+    Apply geodesic correction to the new geometry to ensure that it
+    follows the IRC tangent direction.
+    
+    :param geometry: Current geometry (numpy array)
+    :param new_geometry: New geometry after taking a step
+    :param step_direction: Direction of the previous step (normalized gradient)
+    :return: Corrected geometry
+    """
+    # Compute the gradient at the new geometry
+    new_gradient = engine.compute_gradients([new_geometry])[0]
+    
+    # Project the new gradient onto the previous step direction
+    dot = np.dot(new_gradient.flatten(), step_direction.flatten()) 
+    projection = dot * step_direction
+    print(f"{dot=}")
+    
+    # Apply geodesic correction by subtracting the projection
+    corrected_geometry_coords = new_geometry.coords - projection
+    corrected_geometry = new_geometry.update_coords(corrected_geometry_coords)
+    
+    return corrected_geometry
+
+# Function to take a single IRC step with geodesic correction
+def irc_step_with_correction(geometry: Node, step_size, engine, prev_direction=None):
+    # Compute gradient and normalized gradient (direction of motion)
+    gradient = engine.compute_gradients([geometry])[0]
+    direction = compute_normalized_gradient(gradient)
+    
+    # Take an initial IRC step along the normalized gradient
+    new_geometry_coords = geometry.coords - step_size * direction
+    new_geometry = geometry.update_coords(new_geometry_coords)
+
+    
+    # If there's a previous step direction, apply geodesic correction
+    if prev_direction is not None:
+        new_geometry = geodesic_correction(geometry=geometry, new_geometry=new_geometry, step_direction=prev_direction, engine=engine)
+    
+    return new_geometry, direction
+
+# Schlegel-Gonzalez IRC integration algorithm with geodesic correction
+def schlegel_gonzalez_irc_with_geodesic(geometry, engine, step_size=0.01, max_steps=100):
+    """
+    Integrates the IRC path using the Schlegel-Gonzalez algorithm
+    with geodesic corrections in non-mass-weighted coordinates.
+
+    :param geometry: Initial geometry (coordinates) as a numpy array
+    :param step_size: Step size for each IRC integration step
+    :param max_steps: Maximum number of steps to integrate
+    :return: IRC path as a list of geometries
+    """
+    irc_path = [geometry]
+    prev_direction = None
+
+    for step in range(max_steps):
+        # Take an IRC step with geodesic correction
+        geometry, prev_direction = irc_step_with_correction(geometry=geometry, step_size=step_size, prev_direction=prev_direction, engine=engine)
+        engine.compute_gradients([geometry])
+        
+        # Append the new geometry to the IRC path
+        irc_path.append(geometry)
+        
+        # Optional: Add convergence check or re-adjust step size if necessary
+        if np.linalg.norm(geometry.gradient) < 1e-5:
+            print(f"Converged after {step+1} steps.")
+            break
+
+    return irc_path
+
+
 # -
-
-from neb_dynamics.TreeNode import TreeNode
-from qcio import DualProgramInput
-
-# +
-# h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Claisen-Rearrangement-Aromatic/")
-fneb = NEB.read_from_disk("/home/jdep/debug/wittig/db_neb/")
-fneb2 = NEB.read_from_disk("/home/jdep/debug/wittig/db2_neb/")
-fneb3 = NEB.read_from_disk("/home/jdep/debug/wittig/db3_neb/")
-
-fneb4 = NEB.read_from_disk("/home/jdep/debug/wittig/db_nogitan_neb/")
-fneb5 = NEB.read_from_disk("/home/jdep/debug/wittig/db_nogitan2_neb/")
-# -
-
-fneb = NEB.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Beckmann-Rearrangement/db4_neb.xyz")
-asfneb = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons/structures/Beckmann-Rearrangement/asdb/")
-# asneb = TreeNode.read_from_disk("/home/jdep/debug/qchem/cope/db4")
-
-ch.plot_opt_history(asfneb.ordered_leaves[1].data.chain_trajectory)
-
-ch.visualize_chain(asfneb.output_chain)
-
-# +
-# view.view(fneb.optimized[0].structure, fneb.optimized[-1].structure, show_indices=True)
-
-# +
-# 118 ++ 1000ish
-# -
-
-# ch.visualize_chain(fneb.optimized)
-ch.visualize_chain(asfneb.output_chain)
-
-plt.plot(fneb.optimized.energies_kcalmol, 'o-'
-
-# ch.visualize_chain(fneb.optimized)
-# ch.visualize_chain(fneb2.optimized)
-# ch.visualize_chain(fneb3.optimized)
-ch.visualize_chain(fneb3.optimized)
-
-tsg1 = h.ordered_leaves[0].data.optimized.get_ts_node()
-
-tsg2 = h.ordered_leaves[1].data.optimized.get_ts_node()
-
-from neb_dynamics.neb import NEB
-
-fneb = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/hardexample1/fneb_geo_dft_neb.xyz")
-
-ch.visualize_chain(fneb.optimized)
-
 
 def load_qchem_result(path_dir):
     
@@ -92,73 +223,298 @@ def load_qchem_result(path_dir):
     return chain
 
 
-# +
+hcn = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/hcn/fsm_short_neb.xyz")
+hcn_linear = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/hcn/fsm_linear_short_neb.xyz")
+hcn_qchem = load_qchem_result("/home/jdep/T3D_data/fneb_draft/hcn/fsm.files.1/")
 
-from pathlib import Path
-from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+plt.plot(hcn_linear.optimized.energies)
+plt.plot(hcn.optimized.energies)
+
+# +
+# ch.visualize_chain(hcn_qchem)
 # -
 
-qchem = load_qchem_result("/home/jdep/T3D_data/fneb_draft/wittig/fsm.files/")
+ts_hcn_res = eng._compute_ts_result(hcn.optimized.get_ts_node())
+
+ts_hcn_qchem_res = eng._compute_ts_result(hcn_qchem.get_ts_node())
+
+# +
+# view.view(ts_hcn_res)
+# view.view(ts_hcn_qchem_res)
 
 # +
 
-tsg3 = qchem.get_ts_node()
+fsm = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/wittig/fsm_short_geodesic_neb.xyz")
+qchem = load_qchem_result("/home/jdep/T3D_data/fneb_draft/wittig/fsm_short.files.1/")
 # -
 
-dpi1 = DualProgramInput(structure=tsg1.structure, 
-                       keywords={'max_iter':500},
-                       subprogram='terachem',
-                       subprogram_args={'model':{'method':'hf','basis':'6-31g'}}, 
-                       calctype='transition_state')
+fsm_long = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/claisen/fsm_geodesic_neb.xyz")
+qchem_long = load_qchem_result("/home/jdep/T3D_data/fneb_draft/claisen/fsm.files.1/")
 
-dpi2 = DualProgramInput(structure=tsg2.structure, 
-                       keywords={'max_iter':500},
-                       subprogram='terachem',
-                       subprogram_args={'model':{'method':'hf','basis':'6-31g'}}, 
-                       calctype='transition_state')
+plt.plot(fsm.optimized.integrated_path_length, fsm.optimized.energies, 'o-')
+plt.plot(qchem.integrated_path_length, qchem.energies, 'o-')
 
-dpi3 = DualProgramInput(structure=tsg3.structure, 
-                       keywords={'max_iter':500},
-                       subprogram='terachem',
-                       subprogram_args={'model':{'method':'hf','basis':'6-31g'}}, 
-                       calctype='transition_state')
+eng = QCOPEngine(program
+                 _input=ProgramInput(structure=fsm.optimized.get_ts_node().structure, model={'method':'hf','basis':'6-31g'}, calctype='energy'), compute_program='qcop', program='terachem-pbs')
 
-from chemcloud import CCClient
+ts = eng.compute_transition_state(fsm.optimized.get_ts_node())
 
-client = CCClient()
+ts_hcn_res.return_result.save("/home/jdep/T3D_data/fneb_draft/hcn/ts_hf.xyz")
 
-future_res = client.compute('geometric', [dpi1, dpi2])
+c_backwards = Chain.from_xyz("/home/jdep/T3D_data/fneb_draft/hcn/irc_negative.xyz", ChainInputs())
 
-future_res2 = client.compute('geometric', dpi3)
+c_forward = Chain.from_xyz("/home/jdep/T3D_data/fneb_draft/hcn/irc_forward.xyz", ChainInputs())
 
-output2 = future_res2.get()
+c_backwards.nodes.reverse()
 
-output = future_res.get()
+c_irc = Chain(c_backwards.nodes+[ts_node]+c_forward.nodes)
 
-output[0].return_result.save("/home/jdep/T3D_data/fneb_draft/wittig/irc/ts1_asfneb.xyz")
+eng.compute_energies(c_irc)
 
-output[1].return_result.save("/home/jdep/T3D_data/fneb_draft/wittig/irc/ts2_asfneb.xyz")
+ts_qchem = eng.compute_transition_state(qchem.get_ts_node())
 
-view.view(output[0].return_result, output[1].return_result, output[2].return_result)
+ts.save("/home/jdep/T3D_data/fneb_draft/claisen/ts_hf.xyz")
 
-view.view(output[0].return_result, output[1].return_result, output2.return_result)
+ts_node = StructureNode(structure=ts)
 
-view.view(dpi3.structure)
+ts_node = StructureNode(structure=ts_hcn_res.return_result)
+eng.compute_energies([ts_node])
 
-from pathlib import Path
 
-from qcio import DualProgramInput, Structure
+outputs = build_full_irc_chain(ts_node, engine=eng, dr=0.01, step_size=0.001)
 
-struct = Structure.from_smiles("COCO")
-dpi = DualProgramInput(
-    calctype = "neb",
-    structure = struct, # this probably would have to be ignored
-    keywords = {"recursive": True},  # Optional
-    subprogram = "xtb",
-    subprogram_args = {
-        'model':{"method": "GFN2-XTB", "basis": "GFN2-XTB"},
-        'keywords':{}}  # Optional}
-)
+rxn_coordinate = ch.get_rxn_coordinate(c_irc)
+
+hcn_qchem[0].energy, hcn.optimized[0].energy, c_irc[0].energy
+
+c_irc[0].structure.save("/home/jdep/T3D_data/fneb_draft/hcn/hcn_reactant.xyz")
+
+c_irc[-1].structure.save("/home/jdep/T3D_data/fneb_draft/hcn/hcn_product.xyz")
+
+c_fsm_linear = hcn_linear.optimized
+
+c_fsm = hcn.optimized
+c_qchem = hcn_qchem
+
+
+def get_projections(c: Chain, eigvec, reference):
+    # ind_ts = c.energies.argmax()
+    ind_ts = 0
+
+    all_dists = []
+    for i, node in enumerate(c):
+        # _, aligned_ci = align_geom(c[i].coords, reference)
+        # _, aligned_start = align_geom(c[ind_ts].coords, reference)
+        # displacement = aligned_ci.flatten() - c[ind_ts].coords.flatten()
+        # displacement = aligned_ci.flatten() - aligned_start.flatten()
+        displacement = c[i].coords.flatten() - c[ind_ts].coords.flatten()
+        # _, disp_aligned = align_geom(displacement.reshape(c[i].coords.shape), eigvec.reshape(c[i].coords.shape))
+        all_dists.append(np.dot(displacement, eigvec))
+        # all_dists.append(np.dot(disp_aligned.flatten(), eigvec))
+                                     
+    # plt.plot(all_dists)
+    return all_dists
+
+
+dists_fsm_linear = get_projections(c_fsm_linear, rxn_coordinate, c_irc[0].coords)
+dists_fsm = get_projections(c_fsm, rxn_coordinate, c_irc[0].coords)
+dists_qchem = get_projections(c_qchem, rxn_coordinate, c_irc[0].coords)
+dists_irc = get_projections(c_irc, rxn_coordinate, c_irc[0].coords)
+
+from neb_dynamics.neb import NEB
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
+from neb_dynamics import NEBInputs
+
+# +
+# n = NEB(initial_chain=c_fsm, optimizer=VelocityProjectedOptimizer(timestep=0.5), parameters=NEBInputs(v=True, max_steps=100), engine=eng)
+
+# +
+# es_res = n.optimize_chain()
+
+# +
+# dists_neb = ch.get_projections(n.optimized, rxn_coordinate)
+
+# +
+# n.grad_calls_made
+# -
+
+
+
+
+
+# +
+s=6
+fs=18
+f, ax = plt.subplots(figsize=(1.16*s, s))
+
+plt.plot(np.array(dists_fsm), c_fsm.energies_kcalmol, 'o-', label='fsm')
+plt.plot(np.array(dists_fsm_linear), c_fsm_linear.energies_kcalmol, 'o-', label='fsm(linear)')
+# plt.plot(np.array(dists_qchem), c_qchem.energies_kcalmol, 'o-', label='qchem')
+plt.plot(np.array(dists_irc), c_irc.energies_kcalmol, label='irc', color='black', lw=3)
+
+# plt.plot(c_fsm.integrated_path_length, c_fsm.energies_kcalmol, 'o-', label='fsm')
+# plt.plot(c_qchem.integrated_path_length, c_qchem.energies_kcalmol, 'o-', label='qchem')
+# plt.plot(c_irc.integrated_path_length, c_irc.energies_kcalmol, label='irc', color='black', lw=3)
+plt.ylabel("Energies (kcal/mol)", fontsize=fs)
+plt.xlabel("Reaction coordinate", fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.legend(fontsize=fs)
+# -
+
+len(c_fsm_linear)
+
+ch.visualize_chain(hcn.optimized)
+
+hcn_qchem.coordinates[-1]
+
+ch.visualize_chain(c_irc)
+
+c_irc.energies
+
+# +
+
+hcn_qchem.energies
+# -
+
+ch.visualize_chain(hcn_qchem)
+
+wittig = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/wittig/fsm_geodesic_neb.xyz")
+wittig_qchem = load_qchem_result("/home/jdep/T3D_data/fneb_draft/wittig/fsm.files.2/")
+
+# +
+
+# ch.visualize_chain(wittig.optimized)
+ch.visualize_chain(wittig_qchem)
+# -
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Wittig/")
+
+plt.plot(wittig.optimized.integrated_path_length, wittig.optimized.energies,'o-')
+plt.plot(wittig_qchem.integrated_path_length, wittig_qchem.energies,'o-')
+
+len(wittig.optimized), len(wittig_qchem)
+
+# +
+# wittig.optimized.plot_chain()
+
+# +
+# ch.visualize_chain(wittig.optimized)
+# -
+
+tsg1_jan = wittig.optimized[16]
+tsg2_jan = wittig.optimized[26]
+
+try:
+    ts_res1_jan = eng._compute_ts_result(h.ordered_leaves[0].data.optimized.get_ts_node(), keywords={'maxiter':500})
+except Exception as e:
+    failed_out1 = e
+
+try:
+    ts_res1_jan = eng._compute_ts_result(tsg1_jan, keywords={'maxiter':500})
+except Exception as e:
+    failed_out1 = e
+
+# +
+
+try:
+    ts_res2_jan = eng._compute_ts_result(tsg2_jan, keywords={'maxiter':500})
+except Exception as e:
+    failed_out2 = e
+# -
+
+irc1_res = build_full_irc_chain(StructureNode(structure=ts_res1_jan.return_result), engine=eng)
+
+irc2_res = build_full_irc_chain(StructureNode(structure=ts_res2_jan.return_result), engine=eng)
+
+coord1 = ch.get_rxn_coordinate(irc1_res[1])
+coord2 = ch.get_rxn_coordinate(irc2_res[1])
+
+irc2_res[0].nodes.reverse()
+irc2_res[1].nodes.reverse()
+
+# full_irc = Chain(irc1_res[0].nodes+irc2_res[0].nodes)
+full_irc = Chain([irc1_res[0][0]]+irc1_res[1].nodes+[irc1_res[0][-1], irc2_res[0][0]]+irc2_res[1].nodes+[irc2_res[0][-1]])
+
+# +
+
+from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+# -
+
+align_geom(
+
+
+
+# +
+dists_fsm_1 = get_projections(wittig.optimized, coord1)
+dists_fsm_2 = get_projections(wittig.optimized, coord2)
+
+
+dists_qchem_1 = get_projections(wittig_qchem, coord1)
+dists_qchem_2 = get_projections(wittig_qchem, coord2)
+
+dists_irc_1 = get_projections(full_irc, coord1)
+dists_irc_2 = get_projections(full_irc, coord2)
+
+# +
+s=6
+fs=18
+f, ax = plt.subplots(figsize=(1.16*s, s))
+
+plt.plot(wittig.optimized.integrated_path_length, wittig.optimized.energies_kcalmol, 'o-', label='fsm')
+plt.plot(wittig_qchem.integrated_path_length, wittig_qchem.energies_kcalmol, 'o-', label='qchem')
+
+
+plt.plot(full_irc.integrated_path_length, full_irc.energies_kcalmol, 'o--',label='irc', color='black', lw=3)
+plt.ylabel("Rxn coordinate 2", fontsize=fs)
+plt.xlabel("Rxn coordinate 1", fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.legend(fontsize=fs)
+# plt.savefig("attempt_at_wittig_irc.svg")
+
+# +
+s=6
+fs=18
+f, ax = plt.subplots(figsize=(1.16*s, s))
+
+plt.plot(dists_fsm_1, dists_fsm_2, 'o-', label='fsm')
+plt.plot(dists_qchem_1, dists_qchem_2, 'o-', label='qchem')
+
+
+plt.plot(np.array(dists_irc_1), np.array(dists_irc_2), 'o--',label='irc', color='black', lw=3)
+plt.ylabel("Rxn coordinate 2", fontsize=fs)
+plt.xlabel("Rxn coordinate 1", fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.legend(fontsize=fs)
+# plt.savefig("attempt_at_wittig_irc.svg")
+
+# +
+
+ch.visualize_chain(full_irc)
+
+# +
+
+len(wittig.optimized)
+
+# +
+
+full_irc.write_to_disk("/home/jdep/T3D_data/fneb_draft/wittig/irc_disjoined_intermediates.xyz")
+# -
+
+RMSD(full_irc[0].coords, wittig.optimized[0].coords)
+
+full_irc.plot_chain()
+
+# +
+
+view.view(ts_res1_jan)
+# -
+
+hess_ress1 = eng._compute_hessian_result(StructureNode(structure=ts_res1_jan.return_result))
+
+hess_ress2 = eng._compute_hessian_result(StructureNode(structure=ts_res2_jan.return_result))
 
 from pathlib import Path
 
@@ -237,6 +593,8 @@ all_rns = [Path(p).stem for p in open("/home/jdep/T3D_data/msmep_draft/compariso
 # all_rns = [p.stem for p in ref_dir.glob("*") if p.stem in ]
 
 import os
+
+ch.visualize_chain(c_irc)
 
 # rn = '1-2-Amide-Phthalamide-Synthesis'
 rns_to_submit = []

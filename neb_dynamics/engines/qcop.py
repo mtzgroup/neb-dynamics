@@ -198,7 +198,7 @@ class QCOPEngine(Engine):
 
         return output
 
-    def compute_hessian(self, node: StructureNode):
+    def _compute_hessian_result(self, node: StructureNode):
         from chemcloud import CCClient
 
         prog = self.program
@@ -218,7 +218,29 @@ class QCOPEngine(Engine):
         client = CCClient()
         fres = client.compute("bigchem", dpi)
         output = fres.get()
+        return output
+
+    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 200}):
+        dpi = DualProgramInput(
+            structure=node.structure,
+            calctype="transition_state",
+            subprogram=self.program,
+            subprogram_args={
+                "model": self.program_input.model,
+                "keywords": self.program_input.keywords,
+            })
+        return self.compute_func('geometric', dpi)
+
+    def compute_hessian(self, node: StructureNode):
+        output = self._compute_hessian_result(node)
         return output.return_result
+
+    def compute_transition_state(self, node: StructureNode, keywords={'maxiter': 200}):
+        output = self._compute_ts_result(node=node)
+        if output.success:
+            return StructureNode(structure=output.return_result)
+        else:
+            return output
 
     def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:
         """
