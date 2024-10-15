@@ -15,6 +15,7 @@ from neb_dynamics.nodes.node import Node, StructureNode
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.fakeoutputs import FakeQCIOResults, FakeQCIOOutput
+from dataclasses import field
 from neb_dynamics.helper_functions import (
     linear_distance,
     qRMSD_distance,
@@ -24,7 +25,7 @@ from neb_dynamics.helper_functions import (
 @dataclass
 class Chain:
     nodes: List[Node]
-    parameters: ChainInputs = ChainInputs()
+    parameters: ChainInputs = field(default_factory=ChainInputs())
 
     _cached_chain_bias: np.array = None
 
@@ -256,9 +257,9 @@ class Chain:
         if ind_ts == 0:
             triplet = gsprings[0:2]
         elif ind_ts == len(self) - 1:
-            triplet = gsprings[ind_ts - 1 :]
+            triplet = gsprings[ind_ts - 1:]
         else:
-            triplet = gsprings[ind_ts - 1 : ind_ts + 2]
+            triplet = gsprings[ind_ts - 1: ind_ts + 2]
         infnorms = [np.amax(abs(gspr)) for gspr in triplet]
         return max(infnorms)
 
