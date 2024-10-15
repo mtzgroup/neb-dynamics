@@ -1,3 +1,197 @@
+from neb_dynamics.neb import NEB
+
+
+def load_qchem_result(path_dir):
+    
+    path_dir = Path(path_dir)
+    path_string = path_dir / 'stringfile.txt'
+    structs = read_multiple_structure_from_file(path_string)
+    nodes = [StructureNode(structure=s) for s in structs]
+    enes_file = path_dir / 'Vfile.txt'
+    enes_data = open(enes_file).read().splitlines()[1:]
+    enes = [float(line.split()[-2]) for line in enes_data]
+    for node, ene in zip(nodes, enes):
+        node._cached_energy = ene
+    chain = Chain(nodes=nodes) 
+    return chain
+
+
+neb2 = NEB.read_from_disk("/home/jdep/debug/hcn/geodesic_long_neb.xyz")
+
+# +
+
+neb = NEB.read_from_disk("/home/jdep/debug/hcn/geodesic_neb.xyz")
+# -
+
+import neb_dynamics.chainhelpers as ch
+
+len(neb.optimized)
+
+gi = ch.run_geodesic(neb.optimized, nimages=5)
+
+from neb_dynamics import QCOPEngine
+
+from qcio import ProgramArgs
+
+eng = QCOPEngine(program_args=ProgramArgs(model={'method':'hf', 'basis':"6-31g"}), program='terachem-pbs', compute_program='qcop')
+
+eng.compute_energies(gi)
+
+import matplotlib.pyplot as plt
+
+from pathlib import Path
+
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+from neb_dynamics import StructureNode, Chain
+
+qchem = load_qchem_result('/home/jdep/debug/hcn/fsm.files/')
+
+from qcio import view
+
+ts_hcn_res = eng._compute_ts_result(neb.optimized.get_ts_node())
+
+ts_hcn_qchem_res = eng._compute_ts_result(qchem.get_ts_node())
+
+from neb_dynamics import ChainInputs
+
+# +
+c_backwards = Chain.from_xyz("/home/jdep/T3D_data/fneb_draft/hcn/irc_negative.xyz", ChainInputs())
+
+c_forward = Chain.from_xyz("/home/jdep/T3D_data/fneb_draft/hcn/irc_forward.xyz", ChainInputs())
+
+c_backwards.nodes.reverse()
+
+c_irc = Chain(c_backwards.nodes+[StructureNode(structure=ts_hcn_res.return_result)]+c_forward.nodes)
+
+eng.compute_energies(c_irc)
+# -
+
+c_irc.plot_chain()
+
+rxn_coordinate = ch.get_rxn_coordinate(c_irc)
+
+c_fsm = neb.optimized
+c_qchem = qchem.copy()
+
+import numpy as np
+
+c_qchem.nodes[-1] =  c_fsm.nodes[-1]
+c_qchem.nodes[0] =  c_fsm.nodes[0]
+
+
+def get_projections(c: Chain, eigvec, reference):
+    # ind_ts = c.energies.argmax()
+    ind_ts = 0
+
+    all_dists = []
+    for i, node in enumerate(c):
+        _, aligned_ci = align_geom(reference, c[i].coords)
+        # _, aligned_start = align_geom(c[ind_ts].coords, reference)
+        displacement = aligned_ci.flatten() - c[ind_ts].coords.flatten()
+        # displacement = aligned_ci.flatten() - aligned_start.flatten()
+        # displacement = c[i].coords.flatten() - c[ind_ts].coords.flatten()
+        # _, disp_aligned = align_geom(displacement.reshape(c[i].coords.shape), eigvec.reshape(c[i].coords.shape))
+        all_dists.append(np.dot(displacement, eigvec))
+        # all_dists.append(np.dot(disp_aligned.flatten(), eigvec))
+                                     
+    # plt.plot(all_dists)
+    return all_dists
+
+
+c_gi = ch.run_geodesic(c_fsm, nimages=15)
+
+eng.compute_energies(c_gi)
+
+dists_gi = get_projections(c_gi, rxn_coordinate, reference=c_fsm[-1].coords)
+
+dists_fsm_long = get_projections(neb2.optimized, rxn_coordinate, reference=c_fsm[-1].coords)
+
+dists_fsm = get_projections(c_fsm, rxn_coordinate, reference=c_irc.get_ts_node().coords)
+dists_qchem = get_projections(c_qchem, rxn_coordinate, reference=c_irc.get_ts_node().coords)
+dists_irc = get_projections(c_irc, rxn_coordinate, reference=c_fsm.get_ts_node().coords)
+
+# +
+s=6
+fs=18
+f, ax = plt.subplots(figsize=(1.16*s, s))
+
+# plt.plot(np.array(dists_gi), c_gi.energies_kcalmol, 'o-', label='GI')
+plt.plot(np.array(dists_irc), c_irc.energies_kcalmol, label='irc', color='black', lw=3)
+ 
+plt.plot(np.array(dists_fsm), c_fsm.energies_kcalmol, 'o-', label='fsm')
+# plt.plot(np.array(dists_fsm_long), neb2.optimized.energies_kcalmol, 'o-', label='fsm(long)')
+plt.plot(np.array(dists_qchem), c_qchem.energies_kcalmol, 'o-', label='qchem')
+plt.scatter(dists_irc[18], c_irc.energies_kcalmol[17], marker='x', s=100, color='black', label='TS', lw=5)
+
+
+plt.ylabel("Energies (kcal/mol)", fontsize=fs)
+plt.xlabel("Reaction coordinate", fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.legend(fontsize=fs)
+# -
+
+from neb_dynamics.TreeNode import TreeNode
+
+h = TreeNode.read_from_disk("/home/jdep/debug/wittig/geodesic_asfneb/")
+
+c_fwd_irc1 = Chain.from_xyz("/home/jdep/debug/wittig/fwd_irc1.xyz", ChainInputs())
+c_back_irc1 = Chain.from_xyz("/home/jdep/debug/wittig/back_irc1.xyz", ChainInputs())
+
+eng.compute_energies(c_back_irc1)
+
+c_fwd_irc1.nodes.reverse()
+
+ts1 = StructureNode(structure=ts1_res.return_result)
+
+c_irc1 = Chain(nodes=c_fwd_irc1.nodes+c_back_irc1.nodes)
+
+final_irc1 = eng.compute_geometry_optimization(c_irc1[-1])[-1]
+
+start_irc1 = eng.compute_geometry_optimization(c_irc1[0])[-1]
+
+c_irc1.nodes.insert(0, start_irc1)
+
+c_irc1.nodes.append(final_irc1)
+
+ch.visualize_chain(c_irc1)
+
+ch.visualize_chain(c_back_irc1)
+
+eng.compute_energies(c_fwd_irc1)
+
+# ch.visualize_chain(neb.optimized)
+ch.visualize_chain(h.output_chain)
+
+tsg1 = h.ordered_leaves[0].data.optimized.get_ts_node()
+
+tsg2 = h.ordered_leaves[1].data.optimized.get_ts_node()
+
+ts1_res = eng._compute_ts_result(tsg1)
+
+ts2_res = eng._compute_ts_result(tsg2)
+
+from qcio import view
+
+# +
+
+# view.view(ts1_res)
+# -
+
+ts1_res.save("/home/jdep/debug/wittig/ts1_hf.qcio")
+
+ts2_res.save("/home/jdep/debug/wittig/ts2_hf.qcio")
+
+# +
+
+ts1_res.return_result.save("/home/jdep/debug/wittig/ts1.xyz")
+# -
+
+ts2_res.return_result.save("/home/jdep/debug/wittig/ts2.xyz")
+
+# +
+# view.view(ts2_res)
+
 # +
 from neb_dynamics.TreeNode import TreeNode
 import neb_dynamics.chainhelpers as ch

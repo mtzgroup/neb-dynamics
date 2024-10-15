@@ -3,105 +3,159 @@ from dataclasses import dataclass
 
 from qcio import ProgramInput
 from neb_dynamics import NEBInputs, ChainInputs, GIInputs
+from neb_dynamics import QCOPEngine
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
+
+from neb_dynamics.inputs import RunInputs
+
+inputs = RunInputs(engine_name='ase',program='xtb', path_min_method='neb', chain_inputs={'friction_optimal_gi':True}, path_min_inputs={'path_resolution':200},
+                  gi_inputs={'nimages':20})
+
+from neb_dynamics import MSMEP
+
+m = MSMEP(inputs=inputs)
+
+from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
+
+a = 'CCl.[Br-]'
+b = 'CBr.[Cl-]'
 
 
+a_s, b_s = create_pairs_from_smiles(a,b)
+
+from qcio import view
+
+from neb_dynamics import StructureNode
+
+react = StructureNode(structure=a_s)
+prod = StructureNode(structure=b_s)
+
+h = m.run_recursive_minimize(input_chain=[react, prod])
+
+import neb_dynamics.chainhelpers as ch
+
+ch.visualize_chain(h.output_chain)
 
 # +
-
-ProgramArgs(
-# -
-
-
-
-# +
-from types import SimpleNamespace
-from qcio import ProgramInput, ProgramArgs
-@dataclass 
-class RunInputs:
-    engine: str
-    program: str
-
-    path_min: str = 'NEB'
-    path_min_kwds: dict = None
-
-    chain_kwds: dict = None
+    from types import SimpleNamespace
+    from qcio import ProgramInput, ProgramArgs
+    from xtb.ase.calculator import XTB
+    from neb_dynamics import ASEEngine
     
-    program_kwds: ProgramArgs = None
-    geodesic_kwds: dict = None
+    import json
 
-
-    def __post_init__(self):
+    @dataclass 
+    class RunInputs:
+        engine: str
+        program: str
+    
+        path_min: str = 'NEB'
+        path_min_kwds: dict = None
+    
+        chain_inputs: dict = None
         
-        if self.path_min.upper() == "NEB":
-            default_kwds = NEBInputs().__dict__
-        
-        elif self.path_min.upper() == "FSM":
-            default_kwds = {
-            "stepsize": 0.5,
-            "ngradcalls": 3,
-            "max_cycles": 500,
-            "path_resolution": 1 / 10,  # BOHR,
-            "max_atom_displacement": 0.1,
-            "early_stop_scaling": 3,
-            "use_geodesic_tangent": True,
-            "dist_err": 0.1,
-            "min_images": 4,
-            "distance_metric": "GEODESIC",
-            "verbosity": 1,
-        }
-        #     default_kwds = FSMInputs()
-        elif self.path_min.upper() == "PYGSM":
-            default_kwds = PYGSMInputs()
-        
-        if self.path_min_kwds is None:
-            self.path_min_kwds = default_kwds
-        
-        else:
-            for key, val in self.path_min_kwds.items():
-                default_kwds[key] = val
-                
-            self.path_min_kwds = SimpleNamespace(**default_kwds)
-
-
-        if self.geodesic_kwds is None:
-            self.geodesic_kwds = GIInputs()
-        else:
-            self.geodesic_kwds = GIInputs(**self.geodesic_kwds)
-
-
-        if self.program_kwds is None:
-            if self.program == "xtb":
-                program_args = ProgramArgs(
-                    model={"method": "GFN2xTB"},
-                    keywords={})
-
-            elif "terachem" in self.program:
-                program_args = ProgramArgs(
-                    model={"method": "ub3lyp", "basis": "3-21g"},
-                    keywords={})
-                
-            else:
-                raise ValueError("Need to specify program arguments")
-
-        if self.chain_kwds is None:
-            self.chain_kwds = ChainInputs()
-        
-        else:
-            self.chain_kwds = ChainInputs(**self.chain_kwds)
+        program_kwds: ProgramArgs = None
+        gi_inputs: dict = None
+        optimizer_kwds: dict = None
+    
+    
+        def __post_init__(self):
             
-
-
-
+            if self.path_min.upper() == "NEB":
+                default_kwds = NEBInputs().__dict__
+            
+            elif self.path_min.upper() == "FSM":
+                default_kwds = {
+                "stepsize": 0.5,
+                "ngradcalls": 3,
+                "max_cycles": 500,
+                "path_resolution": 1 / 10,  # BOHR,
+                "max_atom_displacement": 0.1,
+                "early_stop_scaling": 3,
+                "use_geodesic_tangent": True,
+                "dist_err": 0.1,
+                "min_images": 4,
+                "distance_metric": "GEODESIC",
+                "verbosity": 1,
+            }
+            #     default_kwds = FSMInputs()
+            elif self.path_min.upper() == "PYGSM":
+                default_kwds = PYGSMInputs()
+            
+            if self.path_min_kwds is None:
+                self.path_min_kwds = default_kwds
+            
+            else:
+                for key, val in self.path_min_kwds.items():
+                    default_kwds[key] = val
+                    
+                self.path_min_kwds = SimpleNamespace(**default_kwds)
+    
+    
+            if self.gi_inputs is None:
+                self.gi_inputs = GIInputs()
+            else:
+                self.gi_inputs = GIInputs(**self.gi_inputs)
+    
+            if self.program_kwds is None:
+                if self.program == "xtb":
+                    program_args = ProgramArgs(
+                        model={"method": "GFN2xTB"},
+                        keywords={})
+    
+                elif "terachem" in self.program:
+                    program_args = ProgramArgs(
+                        model={"method": "ub3lyp", "basis": "3-21g"},
+                        keywords={})
+                else:
+                    raise ValueError("Need to specify program arguments")
+            else:
+                program_args = ProgramArgs(**self.program_kwds)
+            self.program_kwds = program_args
+    
+            if self.chain_inputs is None:
+                self.chain_inputs = ChainInputs()
+            
+            else:
+                self.chain_inputs = ChainInputs(**self.chain_inputs)
+    
+    
+            if self.optimizer_kwds is None:
+                self.optimizer_kwds = {"timestep": 1.0}
+    
+            
+            if self.engine == 'qcop' or self.engine == 'chemcloud':
+                eng = QCOPEngine(program_input=self.program_kwds, 
+                                 program=self.program, 
+                                 compute_program=self.engine
+                                )
+            elif self.engine == 'ase':
+                assert self.program == 'xtb', f"{self.program} not yet supported with ASEEngine"
+                calc = XTB()
+                eng = ASEEngine(calculator=calc)
+            else:
+                raise ValueError(f"Unsupported engine: {self.engine}")
+    
+            self.engine_object = eng
                 
+                
+    
+        @classmethod
+        def open(cls, fp):
+            with open(fp) as f:
+                data = f.read()
+            data_dict = json.loads(data)
+            return cls(**data_dict)
+                    
+             
         
         
-    
-    
-    
-    
 # -
 
-huh = RunInputs(engine='qcop', program='xtb',  path_min='fsm', path_min_kwds={'distance_metric':'linear'})
+ri = RunInputs.open("/home/jdep/debug/runfile.in")
+ri
+
+huh = RunInputs(engine='qcop', program='xtb',  path_min='fsm', path_min_kwds={'distance_metric':'linear'},)
 huh
 
 # +
@@ -261,6 +315,7 @@ ts = eng.compute_transition_state(fsm.optimized.get_ts_node())
 
 ts_hcn_res.return_result.save("/home/jdep/T3D_data/fneb_draft/hcn/ts_hf.xyz")
 
+# +
 c_backwards = Chain.from_xyz("/home/jdep/T3D_data/fneb_draft/hcn/irc_negative.xyz", ChainInputs())
 
 c_forward = Chain.from_xyz("/home/jdep/T3D_data/fneb_draft/hcn/irc_forward.xyz", ChainInputs())
@@ -270,6 +325,7 @@ c_backwards.nodes.reverse()
 c_irc = Chain(c_backwards.nodes+[ts_node]+c_forward.nodes)
 
 eng.compute_energies(c_irc)
+# -
 
 ts_qchem = eng.compute_transition_state(qchem.get_ts_node())
 
@@ -295,6 +351,7 @@ c_fsm_linear = hcn_linear.optimized
 
 c_fsm = hcn.optimized
 c_qchem = hcn_qchem
+
 
 
 def get_projections(c: Chain, eigvec, reference):

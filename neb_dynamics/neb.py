@@ -4,6 +4,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Tuple
+import copy
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -116,7 +117,7 @@ class NEB(PathMinimizer):
 
         if ts_guess_grad < self.parameters.early_stop_force_thre:
 
-            new_params = self.parameters.copy()
+            new_params = copy.copy(self.parameters)
             new_params.early_stop_force_thre = 0.0
             self.parameters = new_params
 

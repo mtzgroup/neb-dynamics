@@ -41,7 +41,7 @@ class FreezingNEB(PathMinimizer):
             "distance_metric": "GEODESIC",
             "verbosity": 1,
         }
-        for key, val in self.fneb_kwds.items():
+        for key, val in self.fneb_kwds.__dict__.items():
             fneb_kwds_defaults[key] = val
         self.fneb_kwds = fneb_kwds_defaults
 
@@ -86,7 +86,7 @@ class FreezingNEB(PathMinimizer):
 
         self.dinitial = d0
         self.parameters.path_resolution = min(
-            self.dinitial / self.parameters.min_images, self.parameters.path_resolution
+            self.dinitial / (self.parameters.min_images+2), self.parameters.path_resolution
         )
         print(f"Using path resolution of: {self.parameters.path_resolution}")
 
@@ -310,54 +310,63 @@ class FreezingNEB(PathMinimizer):
             else:
                 if self.parameters.verbosity > 1:
                     print(f"\t\t***trying with {nimg=}")
-                smoother = ch.run_geodesic_get_smoother(
-                    input_object=[
-                        sub_chain[0].symbols,
-                        [sub_chain[0].coords, sub_chain[-1].coords],
-                    ],
-                    nimages=nimg,
-                    sweep=sweep,
-                )
-                interpolated = ch.gi_path_to_chain(
-                    xyz_coords=smoother.path,
-                    parameters=sub_chain.parameters.copy(),
-                    symbols=sub_chain.symbols,
-                )
-                sys.stdout.flush()
-
-                if not final_node1 or not final_node2:
-                    node1, tan1 = self._select_node_at_dist(
-                        chain=interpolated,
-                        dist=dr,
-                        direction=1,
-                        dist_err=self.parameters.dist_err
-                        * self.parameters.path_resolution,
-                        smoother=smoother,
-                    )
-                    if node1:
-                        final_node1 = node1
-                        final_node1_tan = tan1
-
+                if self.parameters.naive_grow:
+                    interpolated = ch.run_geodesic(chain=sub_chain, nimages=self.parameters.min_images)
+                    final_node1 = interpolated[1]
                     if add_two_nodes:
-                        node2, tan2 = self._select_node_at_dist(
+                        final_node2 = interpolated[-2]
+
+                    found_nodes = True
+                    sys.stdout.flush()
+                else:
+                    smoother = ch.run_geodesic_get_smoother(
+                        input_object=[
+                            sub_chain[0].symbols,
+                            [sub_chain[0].coords, sub_chain[-1].coords],
+                        ],
+                        nimages=nimg,
+                        sweep=sweep,
+                    )
+                    interpolated = ch.gi_path_to_chain(
+                        xyz_coords=smoother.path,
+                        parameters=sub_chain.parameters.copy(),
+                        symbols=sub_chain.symbols,
+                    )
+                    sys.stdout.flush()
+
+                    if not final_node1 or not final_node2:
+                        node1, tan1 = self._select_node_at_dist(
                             chain=interpolated,
                             dist=dr,
-                            direction=-1,
+                            direction=1,
                             dist_err=self.parameters.dist_err
                             * self.parameters.path_resolution,
                             smoother=smoother,
                         )
+                        if node1:
+                            final_node1 = node1
+                            final_node1_tan = tan1
 
-                        if node2:
-                            final_node2 = node2
-                            final_node2_tan = tan2
+                        if add_two_nodes:
+                            node2, tan2 = self._select_node_at_dist(
+                                chain=interpolated,
+                                dist=dr,
+                                direction=-1,
+                                dist_err=self.parameters.dist_err
+                                * self.parameters.path_resolution,
+                                smoother=smoother,
+                            )
 
-                if add_two_nodes and (final_node1 and final_node2):
-                    found_nodes = True
-                elif not add_two_nodes and final_node1:
-                    found_nodes = True
-                else:
-                    nimg += 50
+                            if node2:
+                                final_node2 = node2
+                                final_node2_tan = tan2
+
+                    if add_two_nodes and (final_node1 and final_node2):
+                        found_nodes = True
+                    elif not add_two_nodes and final_node1:
+                        found_nodes = True
+                    else:
+                        nimg += 50
 
         if add_two_nodes:
             self.engine.compute_energies([final_node2, final_node1])

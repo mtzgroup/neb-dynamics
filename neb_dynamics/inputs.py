@@ -1,7 +1,11 @@
 from __future__ import annotations
+from xtb.ase.calculator import XTB
+import json
+from qcio import ProgramArgs
+from types import SimpleNamespace
 from dataclasses import dataclass, field
-from neb_dynamics.nodes.node import Node
-from neb_dynamics.constants import BOHR_TO_ANGSTROMS
+
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 
 @dataclass
@@ -119,7 +123,6 @@ class ChainInputs:
     k: float = 0.1
     delta_k: float = 0.0
 
-    node_class: Node = Node
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
     friction_optimal_gi: bool = True
@@ -186,3 +189,121 @@ class NetworkInputs:
     CREST_temp: float = 298.15  # Kelvin
     CREST_ewin: float = 6.0  # kcal/mol
     # crest inputs for conformer generation. Incomplete list.
+
+
+@dataclass
+class RunInputs:
+    engine_name: str
+    program: str
+
+    path_min_method: str = 'NEB'
+    path_min_inputs: dict = None
+
+    chain_inputs: dict = None
+    gi_inputs: dict = None
+
+    program_kwds: ProgramArgs = None
+    optimizer_kwds: dict = None
+
+    def __post_init__(self):
+
+        if self.path_min_method.upper() == "NEB":
+            default_kwds = NEBInputs().__dict__
+
+        elif self.path_min_method.upper() == "FNEB":
+            default_kwds = {
+                "stepsize": 0.5,
+                "ngradcalls": 3,
+                "max_cycles": 500,
+                "path_resolution": 1 / 10,  # BOHR,
+                "max_atom_displacement": 0.1,
+                "early_stop_scaling": 3,
+                "use_geodesic_tangent": True,
+                "dist_err": 0.1,
+                "min_images": 4,
+                "distance_metric": "GEODESIC",
+                "verbosity": 1,
+                "skip_identical_graphs": True,
+                "naive_grow": False
+            }
+        #     default_kwds = FSMInputs()
+        # elif self.path_min_method.upper() == "PYGSM":
+        #     default_kwds = PYGSMInputs()
+
+        if self.path_min_inputs is None:
+            self.path_min_inputs = SimpleNamespace(**default_kwds)
+
+        else:
+            for key, val in self.path_min_inputs.items():
+                default_kwds[key] = val
+
+            self.path_min_inputs = SimpleNamespace(**default_kwds)
+
+        if self.gi_inputs is None:
+            self.gi_inputs = GIInputs()
+        else:
+            self.gi_inputs = GIInputs(**self.gi_inputs)
+
+        if self.program_kwds is None:
+            if self.program == "xtb":
+                program_args = ProgramArgs(
+                    model={"method": "GFN2xTB"},
+                    keywords={})
+
+            elif "terachem" in self.program:
+                program_args = ProgramArgs(
+                    model={"method": "ub3lyp", "basis": "3-21g"},
+                    keywords={})
+            else:
+                raise ValueError("Need to specify program arguments")
+        else:
+            program_args = ProgramArgs(**self.program_kwds)
+        self.program_kwds = program_args
+
+        if self.chain_inputs is None:
+            self.chain_inputs = ChainInputs()
+
+        else:
+            self.chain_inputs = ChainInputs(**self.chain_inputs)
+
+        if self.optimizer_kwds is None:
+            self.optimizer_kwds = {"timestep": 1.0}
+
+        if self.engine_name == 'qcop' or self.engine_name == 'chemcloud':
+            from neb_dynamics.engines.qcop import QCOPEngine
+            eng = QCOPEngine(program_args=self.program_kwds,
+                             program=self.program,
+                             compute_program=self.engine_name
+                             )
+        elif self.engine_name == 'ase':
+            from neb_dynamics.engines.ase import ASEEngine
+            assert self.program == 'xtb', f"{self.program} not yet supported with ASEEngine"
+            calc = XTB()
+            eng = ASEEngine(calculator=calc)
+        else:
+            raise ValueError(f"Unsupported engine: {self.engine_name}")
+
+        self.engine = eng
+        self.optimizer = VelocityProjectedOptimizer(**self.optimizer_kwds)
+
+    @classmethod
+    def open(cls, fp):
+        with open(fp) as f:
+            data = f.read()
+        data_dict = json.loads(data)
+        return cls(**data_dict)
+
+    def save(self, fp):
+        json_dict = self.__dict__.copy()
+        del json_dict['engine']
+        del json_dict['optimizer']
+        for key, val in json_dict.items():
+            if 'input' in key:
+                json_dict[key] = val.__dict__
+            elif 'program_kwds' in key:
+                d = val.json()
+                d = d.replace("null", "None")
+                json_dict[key] = eval(d)
+
+        with open(fp, "w+") as f:
+            json.dump(json_dict, f)

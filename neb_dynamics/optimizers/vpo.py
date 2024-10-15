@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from neb_dynamics.optimizers.optimizer import Optimizer
-from neb_dynamics.chain import Chain
 from neb_dynamics.errors import ElectronicStructureError
 
 import numpy as np
@@ -26,6 +25,7 @@ class VelocityProjectedOptimizer(Optimizer):
         )
 
     def optimize_step(self, chain, chain_gradients):
+        from neb_dynamics.chain import Chain
         prev_velocity = chain.velocity
         new_force = -(chain_gradients)
         new_force_unit = new_force / np.linalg.norm(new_force)

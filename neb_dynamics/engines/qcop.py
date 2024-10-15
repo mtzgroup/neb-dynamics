@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 import numpy as np
 
 import qcop
-from qcio.models.inputs import DualProgramInput, ProgramInput, Structure
+from qcio.models.inputs import DualProgramInput, ProgramInput, Structure, ProgramArgs
 
 from chemcloud import CCClient
 
@@ -24,11 +24,8 @@ AVAIL_PROGRAMS = ["qcop", "chemcloud"]
 
 @dataclass
 class QCOPEngine(Engine):
-    program_input: ProgramInput = ProgramInput(
-        structure=Structure.from_smiles("C"),
-        model={"method": "GFN2xTB"},
-        calctype="gradient",
-    )
+    program_args: ProgramArgs = ProgramArgs(
+        model={"method": "GFN2xTB"},)
     program: str = "xtb"
     geometry_optimizer: str = "geometric"
     compute_program: str = "qcop"
@@ -109,9 +106,7 @@ class QCOPEngine(Engine):
             )
 
         # first make sure the program input has calctype set to input calctype
-        prog_inp = _change_prog_input_property(
-            prog_inp=self.program_input, key="calctype", value=calctype
-        )
+        prog_inp = ProgramInput(structure=node_list[0].structure, calctype=calctype, **self.program_args.__dict__)
 
         # now create program inputs for each geometry that is not frozen
         inds_frozen = [i for i, node in enumerate(node_list) if node.converged]
@@ -175,8 +170,8 @@ class QCOPEngine(Engine):
                 structure=structure,
                 subprogram=self.program,
                 subprogram_args={
-                    "model": self.program_input.model,
-                    "keywords": self.program_input.keywords,
+                    "model": self.program_args.model,
+                    "keywords": self.program_args.keywords,
                 },
                 keywords={},
             )
@@ -188,7 +183,7 @@ class QCOPEngine(Engine):
                 structure=structure,
                 # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
                 calctype="optimization",  # type: ignore
-                model=self.program_input.model,
+                model=self.program_args.model,
                 keywords={
                     "purify": "no",
                     "new_minimizer": "yes",
@@ -210,8 +205,8 @@ class QCOPEngine(Engine):
             structure=node.structure,
             subprogram=prog,
             subprogram_args={
-                "model": self.program_input.model,
-                "keywords": self.program_input.keywords,
+                "model": self.program_args.model,
+                "keywords": self.program_args.keywords,
             },
             keywords={},
         )
@@ -226,8 +221,8 @@ class QCOPEngine(Engine):
             calctype="transition_state",
             subprogram=self.program,
             subprogram_args={
-                "model": self.program_input.model,
-                "keywords": self.program_input.keywords,
+                "model": self.program_args.model,
+                "keywords": self.program_args.keywords,
             })
         return self.compute_func('geometric', dpi)
 

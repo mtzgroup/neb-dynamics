@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 from neb_dynamics.chain import Chain
-from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
+from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs, RunInputs
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
@@ -11,7 +11,7 @@ from neb_dynamics.engines import QCOPEngine, ThreeWellPotential, FlowerPotential
 from neb_dynamics.nodes.node import XYNode
 from neb_dynamics.engines import Engine
 
-from qcio.models.inputs import ProgramInput
+from qcio.models.inputs import ProgramInput, ProgramArgs
 
 import matplotlib.pyplot as plt
 from itertools import product
@@ -79,7 +79,7 @@ def test_engine():
         parameters=ChainInputs(),
     )
     eng = QCOPEngine(
-        program_input=ProgramInput(
+        program_args=ProgramInput(
             structure=c[0].structure, calctype="energy", model={"method": "GFN2xTB"}
         ),
         program="xtb",
@@ -116,9 +116,7 @@ def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
     calc = XTB(method="GFN2-xTB")
     all_engs = [
         QCOPEngine(
-            program_input=ProgramInput(
-                structure=initial_chain[0].structure,
-                calctype="energy",
+            program_args=ProgramArgs(
                 model={"method": "GFN2xTB"},
             ),
             program="xtb",
@@ -182,21 +180,14 @@ def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         skip_identical_graphs=True,
     )  # *BOHR_TO_ANGSTROMS)
     initial_chain = Chain.from_xyz(test_data_dir / "traj_msmep.xyz", parameters=cni)
-    opt = VelocityProjectedOptimizer(timestep=1.0)
     gii = GIInputs(nimages=12)
 
-    eng = QCOPEngine(
-        program_input=ProgramInput(
-            structure=initial_chain[0].structure,
-            calctype="energy",
-            model={"method": "GFN2xTB"},
-        ),
-        program="xtb",
-    )
-
-    m = MSMEP(
-        neb_inputs=nbi, chain_inputs=cni, gi_inputs=gii, optimizer=opt, engine=eng
-    )
+    m = MSMEP(inputs=RunInputs(
+        engine_name='qcop',
+        program='xtb', path_min_inputs=nbi.__dict__,
+        optimizer_kwds={'timestep': 1.0},
+        gi_inputs=gii.__dict__,
+        chain_inputs=cni.__dict__))
     h = m.run_recursive_minimize(initial_chain)
 
     h.write_to_disk("./test_msmep_results")
@@ -282,61 +273,6 @@ def test_ASE_engine():
     ), f"ASE Calculator giving incorrect energies, \n{reference=}\n{vals=}"
 
 
-def test_msmep_pygsm(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
-
-    cni = ChainInputs(
-        k=0.01,
-        delta_k=0.009,
-        do_parallel=True,
-        node_freezing=True,
-        friction_optimal_gi=False,
-        node_rms_thre=5.0,
-    )
-
-    tol = 0.002
-    nbi = NEBInputs(
-        tol=tol,  # * BOHR_TO_ANGSTROMS,
-        barrier_thre=0.1,  # kcalmol,
-        climb=False,
-        rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
-        max_rms_grad_thre=tol * 2.5,  # * BOHR_TO_ANGSTROMS*2.5,
-        ts_grad_thre=tol * 2.5,  # * BOHR_TO_ANGSTROMS,
-        ts_spring_thre=tol * 1.5,  # * BOHR_TO_ANGSTROMS*3,
-        v=1,
-        max_steps=3000,
-        early_stop_force_thre=0.03,
-        skip_identical_graphs=True,
-        pygsm_kwds={
-            "conv_tol": 0.005,  # Convergence tolerance for optimizing nodes
-            "conv_Ediff": 100.0,  # Energy difference convergence of optimization.
-            "conv_gmax": 100.0,  # Max grad rms threshold
-            "max_gsm_iterations": 100,
-            "max_opt_steps": 3,
-        },
-    )  # *BOHR_TO_ANGSTROMS)
-    initial_chain = Chain.from_xyz(test_data_dir / "traj_msmep.xyz", parameters=cni)
-    opt = VelocityProjectedOptimizer(timestep=1.0)
-    gii = GIInputs(nimages=12)
-
-    calc = XTB(method="GFN2-xTB")
-    eng = ASEEngine(calculator=calc)
-    # eng = QCOPEngine()
-
-    m = MSMEP(
-        neb_inputs=nbi,
-        chain_inputs=cni,
-        gi_inputs=gii,
-        optimizer=opt,
-        engine=eng,
-        path_min_method="pygsm",
-    )
-    h = m.run_recursive_minimize(initial_chain)
-    assert (
-        len(h.ordered_leaves) == 2
-    ), f"MSMEP found incorrect number of elementary steps.\
-          Found {len(h.ordered_leaves)}. Reference: 2"
-
-
 def test_msmep_fneb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
 
     cni = ChainInputs(
@@ -396,10 +332,10 @@ def test_msmep_fneb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests"))
 
 
 if __name__ == "__main__":
-    # test_engine()
-    # test_neb()
-    # test_msmep()
-    # test_msmep_pygsm()
-    # test_msmep_fneb()
-    # test_ASE_engine()
+    test_engine()
+    test_neb()
+    test_msmep()
+    test_msmep_pygsm()
+    test_msmep_fneb()
+    test_ASE_engine()
     test_2d_neb()

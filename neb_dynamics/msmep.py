@@ -15,16 +15,12 @@ from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 from neb_dynamics.elementarystep import ElemStepResults
 from neb_dynamics.neb import NEB, PYGSM, NoneConvergedException
 from neb_dynamics.nodes.nodehelpers import is_identical
-from neb_dynamics.engines import Engine
-from neb_dynamics.inputs import NEBInputs, ChainInputs, GIInputs
 
 from neb_dynamics.TreeNode import TreeNode
-from neb_dynamics.optimizers.optimizer import Optimizer
-from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.errors import ElectronicStructureError
 
-from neb_dynamics.pathminimizers.pathminimizer import PathMinimizer
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
+from neb_dynamics.inputs import RunInputs
 
 import traceback
 
@@ -36,23 +32,17 @@ PATH_METHODS = ["NEB", "PYGSM", "FNEB"]
 class MSMEP:
     """Class for running autosplitting MEP minimizations."""
 
-    engine: Engine
-    neb_inputs: NEBInputs = NEBInputs()
-    chain_inputs: ChainInputs = ChainInputs()
-    gi_inputs: GIInputs = GIInputs()
-
-    optimizer: Optimizer = VelocityProjectedOptimizer()
-    path_min_method: str = "NEB"
-    path_minimizer: PathMinimizer = None
+    inputs: RunInputs
+    path_minimizer = None
 
     def __post_init__(self):
         assert (
-            self.path_min_method or self.path_minimizer is not None
+            self.inputs.path_min_method or self.path_minimizer is not None
         ), "Need to input a path_min_method or path minimizer"
         if self.path_minimizer is None:
             assert (
-                self.path_min_method.upper() in PATH_METHODS
-            ), f"Invalid path method: {self.path_min_method}. Allowed are: {PATH_METHODS}"
+                self.inputs.path_min_method.upper() in PATH_METHODS
+            ), f"Invalid path method: {self.inputs.path_min_method}. Allowed are: {PATH_METHODS}"
 
     def run_recursive_minimize(self, input_chain: Chain, tree_node_index=0) -> TreeNode:
         """Will take a chain as an input and run NEB minimizations until it exits out.
@@ -70,19 +60,19 @@ class MSMEP:
         """
         import neb_dynamics.chainhelpers as ch
 
-        if self.neb_inputs.skip_identical_graphs and input_chain[0].has_molecular_graph:
+        if self.inputs.path_min_inputs.skip_identical_graphs and input_chain[0].has_molecular_graph:
             if _is_connectivity_identical(input_chain[0], input_chain[-1]):
                 print("Endpoints are identical. Returning nothing")
                 return TreeNode(data=None, children=[], index=tree_node_index)
 
         ch._reset_node_convergence(input_chain)
-        self.engine.compute_gradients(input_chain)
+        self.inputs.engine.compute_gradients(input_chain)
 
         if is_identical(
             self=input_chain[0],
             other=input_chain[-1],
-            fragment_rmsd_cutoff=self.chain_inputs.node_rms_thre,
-            kcal_mol_cutoff=self.chain_inputs.node_ene_thre,
+            fragment_rmsd_cutoff=self.inputs.chain_inputs.node_rms_thre,
+            kcal_mol_cutoff=self.inputs.chain_inputs.node_ene_thre,
         ):
             print("Endpoints are identical. Returning nothing")
             return TreeNode(data=None, children=[], index=tree_node_index)
@@ -126,21 +116,21 @@ class MSMEP:
     def _create_interpolation(self, chain: Chain):
         import neb_dynamics.chainhelpers as ch
 
-        if self.chain_inputs.use_geodesic_interpolation:
-            if self.chain_inputs.friction_optimal_gi:
+        if self.inputs.chain_inputs.use_geodesic_interpolation:
+            if self.inputs.chain_inputs.friction_optimal_gi:
                 interpolation = ch.create_friction_optimal_gi(
                     chain=chain,
-                    gi_inputs=self.gi_inputs.copy(),
-                    chain_inputs=self.chain_inputs.copy(),
+                    gi_inputs=self.inputs.gi_inputs,
+                    chain_inputs=self.inputs.chain_inputs,
                 )
             else:
                 interpolation = ch.run_geodesic(
                     chain=chain,
-                    chain_inputs=self.chain_inputs.copy(),
-                    nimages=self.gi_inputs.nimages,
-                    friction=self.gi_inputs.friction,
-                    nudge=self.gi_inputs.nudge,
-                    **self.gi_inputs.extra_kwds,
+                    chain_inputs=self.inputs.chain_inputs,
+                    nimages=self.inputs.gi_inputs.nimages,
+                    friction=self.inputs.gi_inputs.friction,
+                    nudge=self.inputs.gi_inputs.nudge,
+                    **self.inputs.gi_inputs.extra_kwds,
                 )
 
             interpolation._zero_velocity()
@@ -149,46 +139,46 @@ class MSMEP:
             start_point = chain[0].coords
             end_point = chain[-1].coords
             coords = np.linspace(
-                start=start_point, stop=end_point, num=self.gi_inputs.nimages
+                start=start_point, stop=end_point, num=self.inputs.gi_inputs.nimages
             )
             nodes = [
                 node.update_coords(c)
                 for node, c in zip([chain.nodes[0]] * len(coords), coords)
             ]
-            interpolation = Chain(nodes=nodes, parameters=self.chain_inputs.copy())
+            interpolation = Chain(nodes=nodes, parameters=self.inputs.chain_inputs)
 
         return interpolation
 
     def _construct_path_minimizer(self, initial_chain: Chain):
-        if self.path_min_method.upper() == "NEB":
+        if self.inputs.path_min_method.upper() == "NEB":
 
             print("Using in-house NEB optimizer")
             sys.stdout.flush()
 
             n = NEB(
                 initial_chain=initial_chain,
-                parameters=self.neb_inputs.copy(),
-                optimizer=self.optimizer.copy(),
-                engine=self.engine,
+                parameters=self.inputs.path_min_inputs,
+                optimizer=self.inputs.optimizer,
+                engine=self.inputs.engine,
             )
-        elif self.path_min_method.upper() == "PYGSM":
+        elif self.inputs.path_min_method.upper() == "PYGSM":
             print("Using PYGSM optimizer")
             n = PYGSM(
                 initial_chain=initial_chain,
-                engine=self.engine,
-                pygsm_kwds=self.neb_inputs.pygsm_kwds,
+                engine=self.inputs.engine,
+                pygsm_kwds=self.inputs.path_min_inputs,
             )
 
-        elif self.path_min_method.upper() == "FNEB":
+        elif self.inputs.path_min_method.upper() == "FNEB":
             print("Using Freezing NEB optimizer")
             n = FreezingNEB(
                 initial_chain=initial_chain,
-                engine=self.engine,
-                fneb_kwds=self.neb_inputs.fneb_kwds,
+                engine=self.inputs.engine,
+                fneb_kwds=self.inputs.path_min_inputs,
             )
 
         else:
-            n = self.path_minimizer(initial_chain=initial_chain, engine=self.engine)
+            n = self.path_minimizer(initial_chain=initial_chain, engine=self.inputs.engine)
 
         return n
 
@@ -196,14 +186,14 @@ class MSMEP:
 
         # make sure the chain parameters are reset
         # if they come from a converged chain
-        if len(input_chain) != self.gi_inputs.nimages:
+        if len(input_chain) != self.inputs.gi_inputs.nimages:
             interpolation = self._create_interpolation(
                 input_chain,
             )
             assert (
-                len(interpolation) == self.gi_inputs.nimages
+                len(interpolation) == self.inputs.gi_inputs.nimages
             ), f"Geodesic interpolation wrong length.\
-                 Requested: {self.gi_inputs.nimages}. Given: {len(interpolation)}"
+                 Requested: {self.inputs.gi_inputs.nimages}. Given: {len(interpolation)}"
 
         else:
             interpolation = input_chain
@@ -223,7 +213,7 @@ class MSMEP:
                         Returning an unoptimized chain..."
             )
             out_chain = n.chain_trajectory[-1]
-            elem_step_results = check_if_elem_step(out_chain, engine=self.engine)
+            elem_step_results = check_if_elem_step(out_chain, engine=self.inputs.engine)
 
         except ElectronicStructureError as e:
             print(traceback.format_exc())
@@ -314,7 +304,7 @@ class MSMEP:
             try:
                 new_chain = self._update_chain_dynamics(
                     chain=chain_previous,
-                    engine=self.engine,
+                    engine=self.inputs.engine,
                     dt=dt,
                     biaser=biaser,
                     mass=chain_weight,
@@ -344,10 +334,10 @@ class MSMEP:
     def _make_chain_frag(self, chain: Chain, geom_pair, ind_pair):
         start_ind, end_ind = ind_pair
         opt_start, opt_end = geom_pair
-        chain_frag_nodes = chain.nodes[start_ind : end_ind + 1]
+        chain_frag_nodes = chain.nodes[start_ind: end_ind + 1]
         chain_frag = Chain(
             nodes=[opt_start] + chain_frag_nodes + [opt_end],
-            parameters=self.chain_inputs.copy(),
+            parameters=self.inputs.chain_inputs,
         )
         # opt_start = chain[start].do_geometry_optimization()
         # opt_end = chain[end].do_geometry_optimization()
@@ -363,7 +353,7 @@ class MSMEP:
         end_opt = chain[end].do_geometry_optimization()
 
         chain_frag = Chain(
-            nodes=[start_opt, end_opt], parameters=self.chain_inputs.copy()
+            nodes=[start_opt, end_opt], parameters=self.inputs.chain_inputs
         )
 
         return chain_frag
