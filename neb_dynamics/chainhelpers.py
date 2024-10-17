@@ -126,13 +126,15 @@ def neighs_grad_func(
     pe_grad = current_node.gradient
 
     # remove rotations and translations
-    if len(pe_grad.shape) > 1 and pe_grad.shape[1] >= 3:  # if we have at least 3 atoms
+    # if we have at least 3 atoms
+    if len(pe_grad.shape) > 1 and pe_grad.shape[1] >= 3:
         pe_grad[0, :] = 0  # this atom cannot move
         pe_grad[1, :2] = 0  # this atom can only move in a line
         pe_grad[2, :1] = 0  # this atom can only move in a plane
 
     if current_node.do_climb:
-        pe_along_path_const = np.dot(pe_grad.flatten(), unit_tan_path.flatten())
+        pe_along_path_const = np.dot(
+            pe_grad.flatten(), unit_tan_path.flatten())
         pe_along_path = pe_along_path_const * unit_tan_path
 
         climbing_grad = 2 * pe_along_path
@@ -210,7 +212,8 @@ def compute_NEB_gradient(chain: Chain) -> NDArray:
     will return the sum of the perpendicular gradient
     and the spring gradient
     """
-    pe_grads_nudged, spring_forces_nudged = pe_grads_spring_forces_nudged(chain=chain)
+    pe_grads_nudged, spring_forces_nudged = pe_grads_spring_forces_nudged(
+        chain=chain)
 
     grads = pe_grads_nudged - spring_forces_nudged
 
@@ -262,8 +265,10 @@ def get_force_spring_nudged(
     unit_tan_path: np.array,
 ):
     parameters = chain.parameters
-    k_max = max(parameters.k) if hasattr(parameters.k, "__iter__") else parameters.k
-    e_ref = max(chain.nodes[0].energy, chain.nodes[len(chain.nodes) - 1].energy)
+    k_max = max(parameters.k) if hasattr(
+        parameters.k, "__iter__") else parameters.k
+    e_ref = max(chain.nodes[0].energy,
+                chain.nodes[len(chain.nodes) - 1].energy)
     e_max = max(chain.energies)
 
     k01 = _k_between_nodes(
@@ -283,7 +288,6 @@ def get_force_spring_nudged(
         e_max=e_max,
         parameters=parameters,
     )
-
     force_spring = k12 * np.linalg.norm(
         next_node.coords - current_node.coords
     ) - k01 * np.linalg.norm(current_node.coords - prev_node.coords)
@@ -591,14 +595,17 @@ def build_correlation_matrix(node_list, ts_vector):
     mat = np.zeros(shape=(len(a), len(a)))
     for i in range(mat.shape[0]):
         for j in range(mat.shape[0]):
-            products = sum([vec[i]*vec[j] for vec in node_list]) / len(node_list)
-            sums = sum([vec[i] for vec in node_list])*sum([vec[j] for vec in node_list]) / (len(node_list)**2)
+            products = sum([vec[i]*vec[j]
+                           for vec in node_list]) / len(node_list)
+            sums = sum([vec[i] for vec in node_list])*sum([vec[j]
+                                                           for vec in node_list]) / (len(node_list)**2)
             mat[i, j] = products - sums
     return mat
 
 
 def get_rxn_coordinate(c: Chain):
-    mat = build_correlation_matrix(c, ts_vector=c.get_ts_node().coords.flatten())
+    mat = build_correlation_matrix(
+        c, ts_vector=c.get_ts_node().coords.flatten())
     evals, evecs = np.linalg.eigh(mat)
     print(evals)
     return evecs[:, -1]
@@ -690,7 +697,8 @@ def plot_opt_history(chain_trajectory: List[Chain], do_3d=False):
                     alpha=0.1,
                 )
             else:
-                ax.plot([xind] * len(y), y, "o-", zs=zs[i], color="blue", markersize=3)
+                ax.plot([xind] * len(y), y, "o-", zs=zs[i],
+                        color="blue", markersize=3)
         ax.grid(False)
 
         ax.set_xlabel("optimization step", fontsize=fs)
@@ -708,7 +716,8 @@ def plot_opt_history(chain_trajectory: List[Chain], do_3d=False):
 
         for i, chain in enumerate(chain_trajectory):
             if i == len(chain_trajectory) - 1:
-                plt.plot(chain.integrated_path_length, chain.energies, "o-", alpha=1)
+                plt.plot(chain.integrated_path_length,
+                         chain.energies, "o-", alpha=1)
             else:
                 plt.plot(
                     chain.integrated_path_length,

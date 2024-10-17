@@ -31,6 +31,7 @@ qcop = {extras = ["tcpb"], version = "^0.9.1"}
 qcio = "^0.11.10"
 bigchem = "^0.10.0"
 rxnmapper = "^0.3.0"  # needed for NetworkBuilder is you want smi->smi network
+typer = "^0.12.5"
 
 
 [tool.poetry.group.dev.dependencies]

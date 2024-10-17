@@ -162,9 +162,11 @@ def main():
 
     if args.min_ends:
         print("Minimizing input endpoints...")
-        start_tr = program_input.engine.compute_geometry_optimization(StructureNode(structure=start))
+        start_tr = program_input.engine.compute_geometry_optimization(
+            StructureNode(structure=start))
         start_node = start_tr[-1]
-        end_tr = program_input.engine.compute_geometry_optimization(StructureNode(structure=end))
+        end_tr = program_input.engine.compute_geometry_optimization(
+            StructureNode(structure=end))
         end_node = end_tr[-1]
         print("Done!")
     else:
@@ -186,10 +188,10 @@ def main():
 
     if bool(args.rec):
         print(f"RUNNING AUTOSPLITTING {program_input.path_min_method}")
-
         history = m.run_recursive_minimize(chain)
 
-        leaves_nebs = [obj for obj in history.get_optimization_history() if obj]
+        leaves_nebs = [
+            obj for obj in history.get_optimization_history() if obj]
         fp = Path(args.st)
         data_dir = fp.parent
 
@@ -205,7 +207,8 @@ def main():
         history.write_to_disk(foldername)
 
         tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
-        geom_grad_calls = sum([obj.geom_grad_calls_made for obj in leaves_nebs])
+        geom_grad_calls = sum(
+            [obj.geom_grad_calls_made for obj in leaves_nebs])
         print(f">>> Made {tot_grad_calls} gradient calls total.")
         print(
             f"<<< Made {geom_grad_calls} gradient for geometry\

@@ -1,9 +1,0 @@
-name: neb2
-channels:
-  - openeye
-  - conda-forge
-  - defaults
-dependencies:
-  - python >=3.9
-  - openbabel
-prefix: /home/jdep/.conda/envs/neb

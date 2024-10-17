@@ -23,6 +23,7 @@ from neb_dynamics.pathminimizers.fneb import FreezingNEB
 from neb_dynamics.inputs import RunInputs
 
 import traceback
+import copy
 
 
 PATH_METHODS = ["NEB", "PYGSM", "FNEB"]
@@ -81,7 +82,8 @@ class MSMEP:
             root_neb_obj, elem_step_results = self.run_minimize_chain(
                 input_chain=input_chain
             )
-            history = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
+            history = TreeNode(data=root_neb_obj,
+                               children=[], index=tree_node_index)
 
             if elem_step_results.is_elem_step:
                 return history
@@ -120,13 +122,13 @@ class MSMEP:
             if self.inputs.chain_inputs.friction_optimal_gi:
                 interpolation = ch.create_friction_optimal_gi(
                     chain=chain,
-                    gi_inputs=self.inputs.gi_inputs,
-                    chain_inputs=self.inputs.chain_inputs,
+                    gi_inputs=copy.deepcopy(self.inputs.gi_inputs),
+                    chain_inputs=copy.deepcopy(self.inputs.chain_inputs),
                 )
             else:
                 interpolation = ch.run_geodesic(
                     chain=chain,
-                    chain_inputs=self.inputs.chain_inputs,
+                    chain_inputs=copy.deepcopy(self.inputs.chain_inputs),
                     nimages=self.inputs.gi_inputs.nimages,
                     friction=self.inputs.gi_inputs.friction,
                     nudge=self.inputs.gi_inputs.nudge,
@@ -145,8 +147,8 @@ class MSMEP:
                 node.update_coords(c)
                 for node, c in zip([chain.nodes[0]] * len(coords), coords)
             ]
-            interpolation = Chain(nodes=nodes, parameters=self.inputs.chain_inputs)
-
+            interpolation = Chain(
+                nodes=nodes, parameters=copy.deepcopy(self.inputs.chain_inputs))
         return interpolation
 
     def _construct_path_minimizer(self, initial_chain: Chain):
@@ -178,7 +180,8 @@ class MSMEP:
             )
 
         else:
-            n = self.path_minimizer(initial_chain=initial_chain, engine=self.inputs.engine)
+            n = self.path_minimizer(
+                initial_chain=initial_chain, engine=self.inputs.engine)
 
         return n
 
@@ -213,7 +216,8 @@ class MSMEP:
                         Returning an unoptimized chain..."
             )
             out_chain = n.chain_trajectory[-1]
-            elem_step_results = check_if_elem_step(out_chain, engine=self.inputs.engine)
+            elem_step_results = check_if_elem_step(
+                out_chain, engine=self.inputs.engine)
 
         except ElectronicStructureError as e:
             print(traceback.format_exc())
@@ -317,7 +321,8 @@ class MSMEP:
 
             max_rms_grad_val = np.amax(new_chain.rms_gperps)
             ind_ts_guess = np.argmax(new_chain.energies)
-            ts_guess_grad = np.amax(np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
+            ts_guess_grad = np.amax(
+                np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
 
             print(
                 f"step {nsteps} // argmax(|TS gperp|) {np.amax(np.abs(ts_guess_grad))} // \

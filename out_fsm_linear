@@ -1,4 +1,0 @@
-usage: create_msmep [-h] -st ST [-c C] [-s S] -en EN [-min_ends MIN_ENDS]
-                    [-name NAME] [-pif PIF] [-geom_opt GEOM_OPT] [-fog FOG]
-                    [-smi SMI] [-rec REC]
-create_msmep: error: unrecognized arguments: -met fneb -prog terachem-pbs -eng qcop -tcin ./tc_hf.in

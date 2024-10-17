@@ -20,12 +20,13 @@ from neb_dynamics.helper_functions import (
     linear_distance,
     qRMSD_distance,
 )
+import copy
 
 
 @dataclass
 class Chain:
     nodes: List[Node]
-    parameters: ChainInputs = field(default_factory=ChainInputs())
+    parameters: ChainInputs = field(default_factory=ChainInputs)
 
     _cached_chain_bias: np.array = None
 
@@ -138,7 +139,8 @@ class Chain:
         distances = [0]
         for i, node in enumerate(c[1:], start=1):
             distances.append(
-                ch.calculate_geodesic_distance(nimages=12, node1=c[i - 1], node2=c[i])
+                ch.calculate_geodesic_distance(
+                    nimages=12, node1=c[i - 1], node2=c[i])
                 + distances[-1]
             )
         return np.array(distances)
@@ -201,7 +203,8 @@ class Chain:
 
     def copy(self) -> Chain:
         list_of_nodes = [node.copy() for node in self.nodes]
-        chain_copy = Chain(nodes=list_of_nodes, parameters=self.parameters.copy())
+        chain_copy = Chain(nodes=list_of_nodes,
+                           parameters=copy.deepcopy(self.parameters))
         return chain_copy
 
     @property
@@ -212,7 +215,8 @@ class Chain:
     @property
     def energies(self) -> np.array:
         if not self._energies_already_computed:
-            raise EnergiesNotComputedError(msg="Energies have not been computed.")
+            raise EnergiesNotComputedError(
+                msg="Energies have not been computed.")
 
         out_ens = np.array([node.energy for node in self.nodes])
 
@@ -233,7 +237,8 @@ class Chain:
     @property
     def gradients(self) -> np.array:
         if not self._grads_already_computed:
-            raise GradientsNotComputedError(msg="Gradients have note been computed")
+            raise GradientsNotComputedError(
+                msg="Gradients have note been computed")
         grads = [node.gradient for node in self.nodes]
         return grads
 
@@ -317,7 +322,8 @@ class Chain:
         grad_path = fp.parent / Path(str(fp.stem) + ".gradients")
         grad_shape_path = fp.parent / Path(str(fp.stem) + "_grad_shapes.txt")
         np.savetxt(
-            grad_path, np.array([node.gradient for node in self.nodes]).flatten()
+            grad_path, np.array(
+                [node.gradient for node in self.nodes]).flatten()
         )
         np.savetxt(grad_shape_path, np.array(self.gradients).shape)
 

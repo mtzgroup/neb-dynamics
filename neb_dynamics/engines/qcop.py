@@ -18,6 +18,7 @@ from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import update_node_cache
 from neb_dynamics.qcio_structure_helpers import _change_prog_input_property
 from neb_dynamics.dynamics.chainbiaser import ChainBiaser
+import copy
 
 AVAIL_PROGRAMS = ["qcop", "chemcloud"]
 
@@ -72,7 +73,8 @@ class QCOPEngine(Engine):
                         dist_func=self.biaser.compute_euclidean_distance,
                         reference=ref_chain
                     )
-                    new_enes[i] += self.biaser.energy_gaussian_bias(distance=dist)
+                    new_enes[i] += self.biaser.energy_gaussian_bias(
+                        distance=dist)
             enes = new_enes
         return enes
 
@@ -106,7 +108,8 @@ class QCOPEngine(Engine):
             )
 
         # first make sure the program input has calctype set to input calctype
-        prog_inp = ProgramInput(structure=node_list[0].structure, calctype=calctype, **self.program_args.__dict__)
+        prog_inp = ProgramInput(
+            structure=node_list[0].structure, calctype=calctype, **self.program_args.__dict__)
 
         # now create program inputs for each geometry that is not frozen
         inds_frozen = [i for i, node in enumerate(node_list) if node.converged]
@@ -153,9 +156,9 @@ class QCOPEngine(Engine):
         all_results = []
         for i, node in enumerate(node_list):
             if i in inds_frozen:
-                all_results.append(node_list[i]._cached_result)
+                all_results.append(copy.deepcopy(node_list[i]._cached_result))
             else:
-                all_results.append(non_frozen_results.pop(0))
+                all_results.append(copy.deepcopy(non_frozen_results.pop(0)))
 
         update_node_cache(node_list=node_list, results=all_results)
         return node_list

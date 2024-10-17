@@ -6,6 +6,8 @@ from types import SimpleNamespace
 from dataclasses import dataclass, field
 
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
+import tomli
+import tomli_w
 
 
 @dataclass
@@ -288,10 +290,11 @@ class RunInputs:
 
     @classmethod
     def open(cls, fp):
-        with open(fp) as f:
-            data = f.read()
-        data_dict = json.loads(data)
-        return cls(**data_dict)
+
+        with open(fp, 'rb') as f:
+            data = tomli.load(f)
+        # data_dict = json.loads(data)
+        return cls(**data)
 
     def save(self, fp):
         json_dict = self.__dict__.copy()
@@ -306,4 +309,5 @@ class RunInputs:
                 json_dict[key] = eval(d)
 
         with open(fp, "w+") as f:
-            json.dump(json_dict, f)
+            # json.dump(json_dict, f)
+            f.write(tomli_w.dumps(json_dict))
