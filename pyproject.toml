@@ -56,4 +56,4 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]
-create_msmep = "neb_dynamics.scripts.create_msmep_from_endpoints:main"
+create_mep = "neb_dynamics.scripts.main_cli:app"

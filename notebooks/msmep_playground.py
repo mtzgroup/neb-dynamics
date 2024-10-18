@@ -4,11 +4,13 @@ from neb_dynamics.inputs import ChainInputs
 
 import neb_dynamics.chainhelpers as ch
 
-h = TreeNode.read_from_disk("/home/jdep/neb_dynamics/tests/start_msmep/")
+h = NEB.read_from_disk("/home/jdep/neb_dynamics/tests/start_neb.xyz")
 
-h.output_chain.energies
+# +
+
 # h.output_chain.plot_chain()
-ch.visualize_chain(h.output_chain)
+ch.visualize_chain(h.optimized)
+# -
 
 c = h.output_chain
 

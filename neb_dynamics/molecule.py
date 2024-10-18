@@ -91,7 +91,8 @@ class Molecule(nx.Graph):
         """
         if reindex:
             # if reindex is true, convert the node labels to integers starting with start
-            new_mol = nx.convert_node_labels_to_integers(self, first_label=start)
+            new_mol = nx.convert_node_labels_to_integers(
+                self, first_label=start)
         else:
             new_mol = super().copy()
         new_mol._smiles = self._smiles
@@ -327,7 +328,8 @@ class Molecule(nx.Graph):
     @classmethod
     def from_rdmol(cls, rdmol, smi, name=None):
         new_mol = cls(name=name, smi=smi)
-        assert isinstance(rdmol, Chem.rdchem.Mol), "rdmol must be Rdkit molecule"
+        assert isinstance(
+            rdmol, Chem.rdchem.Mol), "rdmol must be Rdkit molecule"
 
         # atom_list = [(x.GetTotalNumHs(), x.GetAtomicNum()) for x in rdmol.GetAtoms()]
         atom_list = [
@@ -516,7 +518,8 @@ class Molecule(nx.Graph):
 
     def create_smiles(self):
         smiles = ".".join(
-            sorted([graph_to_smiles(x) for x in self.separate_graph_in_pieces()])
+            sorted([graph_to_smiles(x)
+                   for x in self.separate_graph_in_pieces()])
         )
         return smiles
 
@@ -580,7 +583,8 @@ class Molecule(nx.Graph):
         even when the graph contains multiple molecules.
         It is used in the pot to have uniqueness.
         """
-        list_smiles = [x.force_smiles() for x in mol.separate_graph_in_pieces()]
+        list_smiles = [x.force_smiles()
+                       for x in mol.separate_graph_in_pieces()]
         return ".".join(sorted(list_smiles))
 
     def force_smiles(self):
@@ -713,7 +717,7 @@ class Molecule(nx.Graph):
         assert (
             len(m) == atomn
         ), f"some atoms do not have a new index. Inds: {len(m)}. Atoms: {atomn}. \
-                Make sure your endpoints have the same number of atomns."
+                Make sure your endpoints have the same number of atoms."
         new_mol = new_mol.renumber_indexes(m)
         new_mol = new_mol.add_Hs()
         new_mol.set_neighbors()

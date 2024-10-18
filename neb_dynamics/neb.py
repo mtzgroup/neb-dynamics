@@ -92,11 +92,13 @@ class NEB(PathMinimizer):
                     to stop early, and an ElemStepResults objects
         """
 
-        elem_step_results = check_if_elem_step(inp_chain=chain, engine=self.engine)
+        elem_step_results = check_if_elem_step(
+            inp_chain=chain, engine=self.engine)
 
         if not elem_step_results.is_elem_step:
             print("\nStopped early because chain is not an elementary step.")
-            print(f"Split chain based on: {elem_step_results.splitting_criterion}")
+            print(
+                f"Split chain based on: {elem_step_results.splitting_criterion}")
             self.optimized = chain
             return True, elem_step_results
 
@@ -117,7 +119,7 @@ class NEB(PathMinimizer):
 
         if ts_guess_grad < self.parameters.early_stop_force_thre:
 
-            new_params = copy.copy(self.parameters)
+            new_params = copy.deepcopy(self.parameters)
             new_params.early_stop_force_thre = 0.0
             self.parameters = new_params
 
@@ -163,14 +165,17 @@ class NEB(PathMinimizer):
         n = NEB(initial_chain=xtb_chain, parameters=xtb_nbi, optimizer=opt_xtb)
         try:
             _ = n.optimize_chain()
-            print(f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
+            print(
+                f"\nConverged an xtb chain in {len(n.chain_trajectory)} steps")
         except Exception:
-            print(f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
+            print(
+                f"\nCompleted {len(n.chain_trajectory)} xtb steps. Did not converge.")
 
         xtb_seed_tr = n.chain_trajectory[-1].to_trajectory()
         xtb_seed_tr.update_tc_parameters(chain[0].tdstructure)
 
-        xtb_seed = Chain.from_traj(xtb_seed_tr, parameters=chain.parameters.copy())
+        xtb_seed = Chain.from_traj(
+            xtb_seed_tr, parameters=chain.parameters.copy())
         xtb_seed.gradients  # calling it to cache the values
 
         return xtb_seed
@@ -198,7 +203,8 @@ class NEB(PathMinimizer):
             chain_previous = self._do_xtb_preopt(self.initial_chain)
             self.chain_trajectory.append(chain_previous)
 
-            stop_early, elem_step_results = self._do_early_stop_check(chain_previous)
+            stop_early, elem_step_results = self._do_early_stop_check(
+                chain_previous)
             self.geom_grad_calls_made += elem_step_results.number_grad_calls
             if stop_early:
                 return elem_step_results
@@ -209,7 +215,8 @@ class NEB(PathMinimizer):
 
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:
-                stop_early, elem_step_results = self._check_early_stop(chain_previous)
+                stop_early, elem_step_results = self._check_early_stop(
+                    chain_previous)
                 self.geom_grad_calls_made += elem_step_results.number_grad_calls
                 if stop_early:
                     return elem_step_results
@@ -223,7 +230,8 @@ class NEB(PathMinimizer):
 
             max_rms_grad_val = np.amax(new_chain.rms_gperps)
             ind_ts_guess = np.argmax(new_chain.energies)
-            ts_guess_grad = np.amax(np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
+            ts_guess_grad = np.amax(
+                np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
             converged = chain_converged(
                 chain_prev=chain_previous,
                 chain_new=new_chain,
@@ -313,7 +321,8 @@ class NEB(PathMinimizer):
         self._update_cache(chain, grads, enes)
 
         grad_step = ch.compute_NEB_gradient(chain)
-        new_chain = self.optimizer.optimize_step(chain=chain, chain_gradients=grad_step)
+        new_chain = self.optimizer.optimize_step(
+            chain=chain, chain_gradients=grad_step)
         # need to copy the gradients from the converged nodes
         for new_node, old_node in zip(new_chain.nodes, chain.nodes):
             if old_node.converged:
@@ -397,10 +406,13 @@ class NEB(PathMinimizer):
         ts_gperp = []
 
         for ind in range(1, len(ct)):
-            avg_rms_g.append(sum(ct[ind].rms_gradients[1:-1]) / (len(ct[ind]) - 2))
-            avg_rms_gperp.append(sum(ct[ind].rms_gperps[1:-1]) / (len(ct[ind]) - 2))
+            avg_rms_g.append(
+                sum(ct[ind].rms_gradients[1:-1]) / (len(ct[ind]) - 2))
+            avg_rms_gperp.append(
+                sum(ct[ind].rms_gperps[1:-1]) / (len(ct[ind]) - 2))
             max_rms_gperp.append(max(ct[ind].rms_gperps))
-            barr_height.append(abs(ct[ind].get_eA_chain() - ct[ind - 1].get_eA_chain()))
+            barr_height.append(
+                abs(ct[ind].get_eA_chain() - ct[ind - 1].get_eA_chain()))
             ts_node_ind = ct[ind].energies.argmax()
             ts_node_gperp = np.max(ch.get_g_perps(ct[ind])[ts_node_ind])
             ts_gperp.append(ts_node_gperp)
@@ -510,7 +522,8 @@ class NEB(PathMinimizer):
 
             # Create a second y-axis for barrier height data
             ax2 = ax.twinx()
-            ax2.plot(barr_height, "o--", label="barr_height_delta", color="purple")
+            ax2.plot(barr_height, "o--",
+                     label="barr_height_delta", color="purple")
             ax2.set_ylabel("Barrier height data")
             ax2.hlines(
                 y=self.parameters.barrier_thre,
@@ -593,7 +606,8 @@ class PYGSM(PathMinimizer):
             for frame in ase_frames
         ]
         nodes = [StructureNode(structure=struct) for struct in frames]
-        out_chain = Chain(nodes=nodes, parameters=self.initial_chain.parameters.copy())
+        out_chain = Chain(
+            nodes=nodes, parameters=self.initial_chain.parameters.copy())
         self.engine.compute_energies(out_chain)
         self.chain_trajectory.append(out_chain)
         self.optimized = out_chain
