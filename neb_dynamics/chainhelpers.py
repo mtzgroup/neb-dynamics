@@ -20,6 +20,7 @@ from neb_dynamics.geodesic_interpolation.geodesic import (
     run_geodesic_py,
     run_geodesic_get_smoother,
 )
+from neb_dynamics.errors import ElectronicStructureError
 from neb_dynamics.helper_functions import get_mass
 from neb_dynamics.inputs import ChainInputs, GIInputs
 from neb_dynamics.helper_functions import (
@@ -366,6 +367,23 @@ def calculate_geodesic_distance(
         nimages=nimages,
     )
     return smoother.length
+
+
+def calculate_geodesic_xtb_barrier(
+    node1: StructureNode, node2: StructureNode, nimages=12, nudge=0.1
+):
+    from neb_dynamics.engines.ase import ASEEngine
+    from xtb.ase.calculator import XTB
+    calc = XTB()
+    eng = ASEEngine(calculator=calc)
+
+    gi = run_geodesic([node1, node2], nimages=nimages, nudge=nudge)
+    try:
+        eng.compute_energies(gi)
+    except ElectronicStructureError:
+        return np.inf
+
+    return max(gi.energies_kcalmol)
 
 
 def _update_cache(self, chain: Chain, gradients: NDArray, energies: NDArray) -> None:

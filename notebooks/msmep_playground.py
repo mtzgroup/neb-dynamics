@@ -1,10 +1,96 @@
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.neb import NEB
 from neb_dynamics.inputs import ChainInputs
+from qcio import Structure
+from neb_dynamics import StructureNode
 
 import neb_dynamics.chainhelpers as ch
 
-h = NEB.read_from_disk("/home/jdep/neb_dynamics/tests/start_neb.xyz")
+h = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/hardexample1/fneb_geo_dft_neb.xyz")
+
+from neb_dynamics import QCOPEngine
+
+QCOPEngine().compute_energies(gi)
+
+# +
+
+gi.write_to_disk("/home/jdep/debug/hi_martin2.xyz")
+# -
+
+
+
+# +
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/fneb_draft/hardexample1/martin/")
+# -
+
+
+
+ch.visualize_chain(h.output_chain)
+
+h.optimized.write_to_disk("/home/jdep/debug/hi_martin.xyz")
+
+neb = NEB.read_from_disk('/home/jdep/T3D_data/fneb_draft/hcn/linear_path_res1_neb.xyz')
+
+len(neb.optimized)
+
+neb.optimized.plot_chain()
+
+eng = QCOPEngine(program_args=ProgramArgs(model={"method":"ub3lyp", "basis":"def2-svp"}, keywords={'dftd': "yes"}), program='terachem')
+
+sysname = 'system1'
+fneb = NEB.read_from_disk(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/{sysname}/react_neb.xyz")
+ts = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/{sysname}/sp.xyz")
+
+ch.visualize_chain(fneb.optimized)
+
+ts_node = StructureNode(structure=ts)
+
+hess_res = eng._compute_hessian_result(fneb.optimized.get_ts_node())
+
+view.view(hess_res)
+
+tsg = fneb.optimized.get_ts_node()
+
+new_ts = eng.compute_transition_state(tsg)
+
+view.view(fneb.optimized.get_ts_node().structure, ts, new_ts.structure)
+
+ch.visualize_chain(fneb.optimized)
+
+corrected_ts = eng._compute_ts_result(ts_node)
+
+# +
+# view.view(hess_res)
+# view.view(corrected_ts)
+
+# +
+# import neb_dynamics.chainhelpers as ch
+# -
+
+h = TreeNode.read_from_disk("/home/jdep/debug/wittig/start_msmep/")
+
+from qcio import ProgramArgs, view
+
+# +
+
+tsg1 = h.ordered_leaves[0].data.optimized.get_ts_node()
+tsg2 = h.ordered_leaves[1].data.optimized.get_ts_node()
+# -
+
+ts_res1 = eng._compute_ts_result(tsg1)
+
+ts_res2 = eng._compute_ts_result(tsg2)
+
+view.view(ts_res2, animate=False)
+
+eng = QCOPEngine(program='terachem-pbs', program_args=ProgramArgs(model={'method':'hf', 'basis':'6-31G'}))
+
+ts_res = eng._compute_ts_result(h.optimized.get_ts_node())
+
+view.view(ts_res)
+
+ch.visualize_chain(h.optimized)
 
 # +
 

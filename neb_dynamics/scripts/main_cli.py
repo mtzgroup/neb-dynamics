@@ -21,10 +21,10 @@ app = typer.Typer()
 
 @app.command()
 def run(
-        start: Annotated[str, typer.Option(help='path to start file, or a reactant smiles')],
-        end: Annotated[str, typer.Option(help='path to end file, or a product smiles')],
-        inputs: Annotated[str, typer.Option(
-            help='path to RunInputs toml file')] = None,
+        start: Annotated[str, typer.Argument(help='path to start file, or a reactant smiles')],
+        end: Annotated[str, typer.Argument(help='path to end file, or a product smiles')],
+        inputs: Annotated[str, typer.Option("--inputs", "-i",
+                                            help='path to RunInputs toml file')] = None,
         use_smiles: bool = False,
         minimize_ends: bool = False,
         recursive: bool = False,
@@ -37,6 +37,7 @@ def run(
     # load the structures
     if use_smiles:
         from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
+        from neb_dynamics.arbalign import align_structures
 
         print(
             "WARNING: Using RXNMapper to create atomic mapping. Carefully check output to see how labels\
@@ -44,6 +45,10 @@ def run(
         )
         start_structure, end_structure = create_pairs_from_smiles(
             smi1=start, smi2=end)
+
+        print("Using arbalign to optimize index labelling for endpoints")
+        end_structure = align_structures(
+            start_structure, end_structure, distance_metric='xtb')
     else:
         start_structure = Structure.open(start)
         end_structure = Structure.open(end)
