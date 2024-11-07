@@ -1,10 +1,114 @@
+n = NEB.read_from_disk("/home/jdep/debug/hcn/path_res_neb.xyz")
+
+ind = 7
+ch.calculate_geodesic_distance(n.optimized[ind], n.optimized[ind+1])
+
+ch.visualize_chain(n.optimized)
+
+sub_chain = n.chain_trajectory[1].copy()
+smoother = ch.run_geodesic_get_smoother(
+                        input_object=[
+                            sub_chain[0].symbols,
+                            [sub_chain[0].coords, sub_chain[-1].coords],
+                        ],
+                        nimages=100,
+                        sweep=False,
+                    )
+
+from neb_dynamics.chain import Chain
+
+
+def _get_innermost_nodes_inds(chain: Chain):
+    if len(chain) == 2:
+        return 0, 1
+
+    ind_node2 = int(len(chain) / 2)
+    ind_node1 = ind_node2 - 1
+    return ind_node1, ind_node2
+
+
+def _get_innermost_nodes(chain: Chain):
+        """
+        returns a chain object with the two innermost nodes
+        """
+        ind_node1, ind_node2 = _get_innermost_nodes_inds(chain)
+        out_chain = chain.copy()
+        out_chain.nodes = [chain[ind_node1], chain[ind_node2]]
+
+        return out_chain
+
+
+
+inner_nodes = _get_innermost_nodes(sub_chain)
+
+from neb_dynamics.helper_functions import RMSD
+
+
+# +
+def get_closest_node_ind(smoother_obj, reference):
+    smallest_dist = 1e10
+    ind = None
+    for i, geom in enumerate(smoother_obj.path):
+        dist, _ = RMSD(geom, reference)
+        if dist < smallest_dist:
+            smallest_dist = dist
+            ind = i
+    # print(smallest_dist)
+    return ind
+        
+        
+        
+# -
+
+first_ind = get_closest_node_ind(smoother, inner_nodes[0].coords)
+second_ind = get_closest_node_ind(smoother, inner_nodes[1].coords)
+
+smoother.compute_disps(start=first_ind, end=second_ind)
+smoother.length
+
+[ch.calculate_geodesic_distance(inner_nodes[0], inner_nodes[1]) for i in range(10)]
+
+ch.calculate_geodesic_distance(n.chain_trajectory[1][1], n.chain_trajectory[1][2])
+
+from qcio import view, ProgramOutput
+from pathlib import Path
+import matplotlib.pyplot as plt
+
+po = ProgramOutput.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system116/system116/sp_terachem.qcio")
+
+dd = Path("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/")
+
+alldirs = list(dd.glob("sys*"))
+
+results = []
+for sysdir in alldirs:
+    data_fp = sysdir / sysdir.stem / 'sp_terachem.qcio'
+    results.append(ProgramOutput.open(data_fp))
+
+alldirs[5]
+
+nfail = 0
+for i, po in enumerate(results):
+    if not po.success: 
+        nfail+=1
+        print(i)
+
+view.view(results[5])
+
+nfail
+
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.neb import NEB
 from neb_dynamics.inputs import ChainInputs
 from qcio import Structure
 from neb_dynamics import StructureNode
-
 import neb_dynamics.chainhelpers as ch
+
+neb5 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/hcn/geo5_neb.xyz")
+neb10 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/hcn/geo10_neb.xyz")
+
+plt.plot(neb5.optimized.integrated_path_length, neb5.optimized.energies_kcalmol, 'o-')
+plt.plot(neb10.optimized.integrated_path_length, neb10.optimized.energies_kcalmol, 'o-')
 
 h = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/hardexample1/fneb_geo_dft_neb.xyz")
 

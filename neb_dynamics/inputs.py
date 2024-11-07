@@ -123,7 +123,7 @@ class ChainInputs:
     """
 
     k: float = 0.1
-    delta_k: float = 0.0
+    delta_k: float = 0.09
 
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
@@ -195,8 +195,8 @@ class NetworkInputs:
 
 @dataclass
 class RunInputs:
-    engine_name: str
-    program: str
+    engine_name: str = "qcop"
+    program: str = "xtb"
 
     path_min_method: str = 'NEB'
     path_min_inputs: dict = None
@@ -214,15 +214,15 @@ class RunInputs:
 
         elif self.path_min_method.upper() == "FNEB":
             default_kwds = {
-                "stepsize": 0.5,
+                "stepsize": 1.0,
                 "ngradcalls": 3,
                 "max_cycles": 500,
                 "path_resolution": 1 / 10,  # BOHR,
-                "max_atom_displacement": 0.1,
+                "max_atom_displacement": 0.5,
                 "early_stop_scaling": 3,
                 "use_geodesic_tangent": True,
                 "dist_err": 0.1,
-                "min_images": 4,
+                "min_images": 5,
                 "distance_metric": "GEODESIC",
                 "verbosity": 1,
                 "skip_identical_graphs": True,

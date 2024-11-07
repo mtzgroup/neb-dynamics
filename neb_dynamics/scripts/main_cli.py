@@ -1,6 +1,7 @@
 import typer
 from typing_extensions import Annotated
 
+import os
 from openbabel import openbabel
 from qcio import Structure
 import sys
@@ -11,6 +12,7 @@ from neb_dynamics.inputs import RunInputs
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.chain import Chain
 from neb_dynamics.msmep import MSMEP
+from neb_dynamics.nodes.nodehelpers import displace_by_dr
 
 
 ob_log_handler = openbabel.OBMessageHandler()
@@ -100,7 +102,7 @@ def run(
         leaves_nebs = [
             obj for obj in history.get_optimization_history() if obj]
         fp = Path(start)
-        data_dir = fp.parent
+        data_dir = Path(os.getcwd())
 
         if name is not None:
             foldername = data_dir / name
@@ -128,9 +130,9 @@ def run(
 
         n, elem_step_results = m.run_minimize_chain(input_chain=chain)
         fp = Path(start)
-        data_dir = fp.parent
+        data_dir = Path(os.getcwd())
         if name is not None:
-            filename = data_dir / (name + "_neb.xyz")
+            filename = data_dir / (name + ".xyz")
 
         else:
             filename = data_dir / f"{fp.stem}_neb.xyz"
@@ -141,6 +143,110 @@ def run(
         print(f">>> Made {tot_grad_calls} gradient calls total.")
 
     print(f"***Walltime: {end_time - start_time} s")
+
+
+@app.command()
+def ts(
+    geometry: Annotated[str, typer.Argument(help='path to geometry file tpo optimize')],
+    inputs: Annotated[str, typer.Option("--inputs", "-i",
+                                        help='path to RunInputs toml file')] = None,
+    name: str = None,
+    charge: int = 0,
+    multiplicity: int = 1
+):
+    # create output names
+    fp = Path(geometry)
+    data_dir = Path(os.getcwd())
+
+    if name is not None:
+        results_name = data_dir / (name + ".qcio")
+        filename = data_dir / (name + ".xyz")
+    else:
+        results_name = fp.stem + ".qcio"
+        filename = fp.stem + ".xyz"
+
+    # load the RunInputs
+    if inputs is not None:
+        program_input = RunInputs.open(inputs)
+    else:
+        program_input = RunInputs(program='xtb', engine_name='qcop')
+
+    print(f"Optimizing: {geometry}...")
+    sys.stdout.flush()
+    try:
+        struct = Structure.open(geometry)
+        s_dict = struct.model_dump()
+        s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
+        struct = Structure(**s_dict)
+
+        node = StructureNode(structure=struct)
+        output = program_input.engine._compute_ts_result(node=node)
+
+    except Exception as e:
+        output = e.program_output
+
+    output.save(results_name)
+    output.results.final_structure.save(filename)
+    print("Done!")
+
+
+@app.command()
+def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file tpo optimize')],
+            inputs: Annotated[str, typer.Option("--inputs", "-i",
+                                                help='path to RunInputs toml file')] = None,
+            name: str = None,
+            charge: int = 0,
+            multiplicity: int = 1,
+            dr: float = 1.0):
+    # create output names
+    fp = Path(geometry)
+    data_dir = Path(os.getcwd())
+
+    if name is not None:
+        results_name = data_dir / (name + ".qcio")
+    else:
+        results_name = Path(fp.stem + ".qcio")
+
+    # load the RunInputs
+    if inputs is not None:
+        program_input = RunInputs.open(inputs)
+    else:
+        program_input = RunInputs(program='xtb', engine_name='qcop')
+
+    print(f"Computing hessian: {geometry}...")
+
+    sys.stdout.flush()
+    try:
+        struct = Structure.open(geometry)
+        s_dict = struct.model_dump()
+        s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
+        struct = Structure(**s_dict)
+
+        node = StructureNode(structure=struct)
+        hessres = program_input.engine._compute_hessian_result(node)
+
+    except Exception as e:
+        hessres = e.program_output
+
+    hessres.save(results_name.parent / (results_name.stem+"_hessian.qcio"))
+
+    print(f"Minimizing TS(-): {geometry}...")
+    sys.stdout.flush()
+    tsminus_raw = displace_by_dr(
+        node=node, displacement=hessres.results.normal_modes_cartesian[0], dr=-dr)
+    tsminus_res = program_input.engine._compute_geom_opt_result(
+        tsminus_raw.structure)
+    tsminus_res.save(results_name.parent / (results_name.stem+"_minus.qcio"))
+
+    print(f"Minimizing TS(+): {geometry}...")
+    sys.stdout.flush()
+    tsplus_raw = displace_by_dr(
+        node=node, displacement=hessres.results.normal_modes_cartesian[0], dr=dr)
+    tsplus_res = program_input.engine._compute_geom_opt_result(
+        tsplus_raw.structure)
+
+    tsplus_res.save(results_name.parent / (results_name.stem+"_plus.qcio"))
+    print("Done!")
 
 
 if __name__ == "__main__":

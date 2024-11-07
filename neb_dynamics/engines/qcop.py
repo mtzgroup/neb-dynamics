@@ -163,7 +163,7 @@ class QCOPEngine(Engine):
         update_node_cache(node_list=node_list, results=all_results)
         return node_list
 
-    def _run_geom_opt_calc(self, structure: Structure):
+    def _compute_geom_opt_result(self, structure: Structure):
         """
         this will return a ProgramOutput from qcio geom opt call.
         """
@@ -196,7 +196,7 @@ class QCOPEngine(Engine):
 
         return output
 
-    def _compute_hessian_result(self, node: StructureNode):
+    def _compute_hessian_result(self, node: StructureNode, use_bigchem=True):
         from chemcloud import CCClient
 
         prog = self.program
@@ -213,9 +213,12 @@ class QCOPEngine(Engine):
             },
             keywords={},
         )
-        client = CCClient()
-        fres = client.compute("bigchem", dpi)
-        output = fres.get()
+        if use_bigchem:
+            client = CCClient()
+            fres = client.compute("bigchem", dpi)
+            output = fres.get()
+        else:
+            output = self.compute_func('geometric', dpi)
         return output
 
     def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 200}):
@@ -245,7 +248,7 @@ class QCOPEngine(Engine):
         will run a geometry optimization call and parse the output into
         a list of Node objects
         """
-        output = self._run_geom_opt_calc(structure=node.structure)
+        output = self._compute_geom_opt_result(structure=node.structure)
         all_outputs = output.results.trajectory
         structures = [output.input_data.structure for output in all_outputs]
         return [

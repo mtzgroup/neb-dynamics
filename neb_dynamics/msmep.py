@@ -176,7 +176,7 @@ class MSMEP:
             n = FreezingNEB(
                 initial_chain=initial_chain,
                 engine=self.inputs.engine,
-                fneb_kwds=self.inputs.path_min_inputs,
+                parameters=self.inputs.path_min_inputs,
             )
 
         else:

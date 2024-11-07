@@ -1,5 +1,344 @@
 # -*- coding: utf-8 -*-
+# +
 from dataclasses import dataclass
+from pathlib import Path
+
+from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.chainhelpers import visualize_chain
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+
+from neb_dynamics.neb import NEB
+from neb_dynamics import StructureNode, Chain
+from neb_dynamics.helper_functions import RMSD
+from neb_dynamics.inputs import RunInputs
+
+from qcio import Structure, view, ProgramOutput
+import neb_dynamics.chainhelpers as ch
+import pandas as pd
+# -
+
+from neb_dynamics.inputs import ChainInputs
+
+dd = Path("/home/jdep/T3D_data/fneb_draft/benchmark/")
+
+# +
+
+
+name = 'system25'
+
+
+print(name)
+neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb.xyz")
+# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/db.xyz")
+# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/debug.xyz")
+fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts.qcio")
+fsmgi_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi_ts.qcio")
+if not neb_fp.exists() or not fsmqcio_fp.exists() or not fsmgi_fp.exists():
+    print('\tfailed! check this entry.')
+neb = NEB.read_from_disk(neb_fp)
+gi = Chain.from_xyz(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi.xyz", ChainInputs())
+po_fsm = ProgramOutput.open(fsmqcio_fp)
+po_gi = ProgramOutput.open(fsmgi_fp)
+sp = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/{name}/{name}/sp_terachem.xyz")
+if po_fsm.success:
+    d_fsm, _  = RMSD(po_fsm.return_result.geometry, sp.geometry)
+else:
+    d_fsm = None
+    
+if po_gi.success:
+    d_gi, _  = RMSD(po_gi.return_result.geometry, sp.geometry)
+else:
+    d_gi = None
+
+# view.view(sp, po_fsm.return_result, po_gi.return_result, titles=['SP', f"FSM {round(d_fsm, 3)}", f"GI {round(d_gi, 3)}"])
+# -
+
+visualize_chain(gi)
+
+# +
+import numpy as np
+
+class DimerMethod:
+    def __init__(self, initial_position, dimer_length=0.01, rotation_tolerance=1e-3, translation_tolerance=1e-3, max_rotations=50, max_translations=200, learning_rate=0.1, max_steps=100):
+        """
+        Initialize Dimer Method parameters.
+        
+        Parameters:
+        - initial_position: Initial position in the search space.
+        - dimer_length: Separation distance between dimer images.
+        - rotation_tolerance: Tolerance for the rotation convergence.
+        - translation_tolerance: Tolerance for the translation convergence.
+        - max_rotations: Maximum number of iterations for rotation.
+        - max_translations: Maximum number of translation steps.
+        - learning_rate: Step size for translation.
+        """
+        self.position = initial_position
+        self.dimer_length = dimer_length
+        self.rotation_tolerance = rotation_tolerance
+        self.translation_tolerance = translation_tolerance
+        self.max_rotations = max_rotations
+        self.max_translations = max_translations
+        self.learning_rate = learning_rate
+        self.max_steps = max_steps
+
+        self.traj = []
+        
+    def energy(self, position):
+        """
+        Placeholder function for calculating energy at a given position.
+        Replace with actual energy calculation.
+        """
+        x, y = position
+        ene = (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
+        return ene
+
+    def gradient(self, position):
+        """
+        Placeholder function for calculating gradient at a given position.
+        Replace with actual gradient calculation.
+        """
+        x, y = position
+        dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
+        dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
+        grad = np.array([dx, dy])
+        return grad
+
+    def rotate_dimer(self, dimer_vector):
+        """
+        Rotate dimer to align with the lowest curvature mode.
+        """
+        for _ in range(self.max_rotations):
+            grad1 = self.gradient(self.position + dimer_vector * self.dimer_length / 2)
+            grad2 = self.gradient(self.position - dimer_vector * self.dimer_length / 2)
+            force_parallel = (grad1 + grad2) / 2  # Average gradient
+            force_perpendicular = grad1 - grad2  # Difference of gradients
+
+            torque = np.cross(dimer_vector, force_perpendicular)
+            rotation_direction = -torque / np.linalg.norm(torque)
+            dimer_vector += 0.01 * rotation_direction  # Small step rotation
+            dimer_vector /= np.linalg.norm(dimer_vector)  # Normalize
+
+            # Check rotation convergence
+            if np.linalg.norm(torque) < self.rotation_tolerance:
+                break
+
+        return dimer_vector
+
+    def translate_dimer(self, dimer_vector):
+        """
+        Translate the dimer along the rotated vector.
+        """
+        for _ in range(self.max_translations):
+            grad = self.gradient(self.position)
+            grad_parallel = np.dot(grad, dimer_vector) * dimer_vector
+            grad_perpendicular = grad - grad_parallel
+
+            # Update position by moving against the perpendicular component of the gradient
+            new_pos = self.position - self.learning_rate * grad_perpendicular + self.learning_rate * grad_parallel
+            self.traj.append(new_pos)
+            self.position = new_pos
+
+            # Check translation convergence
+            if np.linalg.norm(grad_perpendicular) < self.translation_tolerance:
+                break
+
+    def find_transition_state(self):
+        """
+        Run the Dimer Method to find the transition state.
+        """
+        dimer_vector = np.random.normal(size=self.position.shape)
+        dimer_vector /= np.linalg.norm(dimer_vector)  # Normalize the initial dimer vector
+
+        for _ in range(self.max_steps):
+            dimer_vector = self.rotate_dimer(dimer_vector)
+            self.translate_dimer(dimer_vector)
+        
+        return self.position
+
+
+# -
+
+# Example usage with an initial guess
+initial_position = np.array([1 , 3])  # Adjust based on the problem
+dimer_method = DimerMethod(initial_position, learning_rate=0.001, rotation_tolerance=0.001, translation_tolerance=0.001, max_rotations=3, max_translations=1, max_steps=100)
+transition_state = dimer_method.find_transition_state()
+print("Transition State Position:", transition_state)
+print(f"Traj len: {len(dimer_method.traj)}")
+
+from itertools import product
+
+# +
+size = 8
+
+s = 4
+min_val = -s
+max_val = s
+
+fig = 10
+f, _ = plt.subplots(figsize=(1.18 * fig, fig))
+
+gridsize = 100
+x = np.linspace(start=min_val, stop=max_val, num=gridsize)
+y = x.reshape(-1, 1)
+dm = DimerMethod([0,0])
+h_flat_ref = np.array([dm.energy(pair) for pair in product(x, x)])
+h = h_flat_ref.reshape(gridsize, gridsize).T
+cs = plt.contourf(x, x, h)
+_ = f.colorbar(cs)
+
+for p in dimer_method.traj:
+    plt.plot(p[0], p[1], 'o', color='red')
+# psave(new_chain, "new_chain.p")
+plt.show()
+
+
+# +
+# visualize_chain(neb.optimized)
+# -
+
+ri = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/launch.toml")
+
+eng = ri.engine
+
+eng_default = RunInputs().engine
+
+if po_fsm.success and po_gi.success:
+    print("Comparing TSs")
+    view.view(sp, po_fsm.return_result, po_gi.return_result)
+else:
+    print(f"{po_fsm.success=} {po_gi.success=}")
+    view.view(sp, neb.optimized.get_ts_node().structure, gi.get_ts_node().structure)
+
+dd = Path("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark")
+all_names = list(dd.glob("system*"))
+
+import shutil
+
+
+# +
+# for sysdir in list(dd.glob("sys*")):
+#     fp = sysdir / sysdir.stem 
+#     for x in fp.glob("sp*"):
+#         shutil.copy(x, sysdir)
+# -
+
+def pseuirc(ts_node, engine):
+
+    hessres = engine._compute_hessian_result(ts_node)
+    tsminus_raw = displace_by_dr(node=ts_node, displacement=hessres.results.normal_modes_cartesian[0], dr=-1)
+    tsplus_raw = displace_by_dr(node=ts_node, displacement=hessres.results.normal_modes_cartesian[0], dr=1)
+    
+    tsminus_res = engine._compute_geom_opt_result(tsminus_raw.structure)
+    tsplus_res = engine._compute_geom_opt_result(tsplus_raw.structure)
+    return tsminus_res, tsplus_res
+
+
+# +
+
+data = []
+# name = 'system5'
+for fp in all_names:
+    name = fp.stem
+    print(name)
+    neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb.xyz")
+    fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts.qcio")
+    fsmgi_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi_ts.qcio")
+    if not neb_fp.exists() or not fsmqcio_fp.exists() or not fsmgi_fp.exists():
+        print('\tfailed! check this entry.')
+        continue
+    neb = NEB.read_from_disk(neb_fp)
+    gi = Chain.from_xyz(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi.xyz", ChainInputs())
+    po_fsm = ProgramOutput.open(fsmqcio_fp)
+    po_gi = ProgramOutput.open(fsmgi_fp)
+    sp = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/{name}/{name}/sp_terachem.xyz")
+    if po_fsm.success:
+        d_fsm, _  = RMSD(po_fsm.return_result.geometry_angstrom, sp.geometry_angstrom)
+    else:
+        d_fsm = None
+        
+    if po_gi.success:
+        d_gi, _  = RMSD(po_gi.return_result.geometry_angstrom, sp.geometry_angstrom)
+    else:
+        d_gi = None
+
+    row = [name, po_fsm.success, po_gi.success, d_fsm, d_gi]
+    data.append(row)
+    # view.view(sp, po_fsm.return_result, po_gi.return_result, titles=['SP', f"FSM {round(d_fsm, 3)}", f"GI {round(d_gi, 3)}"])
+# -
+
+df = pd.DataFrame(data, columns=["name", "fsm_success", "gi_success", "d_fsm", "d_gi"])
+
+len(df)
+
+gi2 = gi.copy()
+
+for node in gi2:
+    node._cached_energy = None
+    
+
+ri = RunInputs()
+
+eng = ri.engine
+
+import neb_dynamics.chainhelpers as ch
+
+
+# +
+def dimer_minimization(triplet_nodes, engine, chain):
+    prev_node, curr_node, next_node = triplet_nodes
+    pe_grads_nudged, spring_forces_nudged = ch.neighs_grad_func(chain=chain, prev_node=prev_node, curr_node=curr_node, next_node=next_node)
+    engine.compute_gradients(triplet_nodes)
+    
+    
+# -
+
+eng.compute_energies(gi2)
+
+failed =  df[(df['fsm_success']==0)&(df['gi_success']==0)]
+len(failed)
+
+success = df[(df['fsm_success']==1)|(df['gi_success']==1)]
+len(success)
+
+import matplotlib.pyplot as plt
+
+success['d_gi'].plot(kind='hist')
+plt.xlabel("Distance from truth (Angstroms)")
+
+success[success['d_gi']>0.5]
+
+df["d_fsm"].plot(kind='kde', label='fsm')
+df["d_gi"].plot(kind='kde', label='gi')
+
+success[success['fsm_success']==0]
+
+success[success['gi_success']==0]
+
+
+
+df["fsm_success"].value_counts()
+
+df["gi_success"].value_counts()
+
+visualize_chain(neb.optimized)
+# visualize_chain(gi)
+
+# +
+ind_ts = neb.optimized.energies.argmax()
+# ind_ts = 10
+
+d_ref, _ = RMSD(neb.optimized[ind_ts].coords, sp.geometry)
+d_gi, _ = RMSD(neb.optimized[ind_ts].coords, gi.get_ts_node().coords)
+d_giref, _ = RMSD(sp.geometry, gi.get_ts_node().coords)
+view.view(neb.optimized[ind_ts].structure, sp, gi.get_ts_node().structure,  titles=[f"RMSD_2Ref: {d_ref}", "ref", f"RMSD_2FSM: {d_gi}\nRMSD_2Ref: {d_giref}"])
+# visualize_chain(h.output_chain)
+
+# +
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Enolate-Claisen-Rearrangement/")
+# -
+
+visualize_chain(h.output_chain)
 
 from qcio import ProgramInput
 from neb_dynamics import NEBInputs, ChainInputs, GIInputs
@@ -617,7 +956,7 @@ def create_submission_scripts(
     "source activate neb",
     "export OMP_NUM_THREADS=1",
     "# Run the job",
-    "create_msmep_from_endpoints.py ",
+    "create-mep ",
     ]
     
     start_fp = reference_dir / reference_start_name
@@ -632,9 +971,10 @@ def create_submission_scripts(
     else:
         tcin = ""
     
-    cmd = f"/home/jdep/.cache/pypoetry/virtualenvs/neb-dynamics-G7__rX26-py3.9/bin/python /home/jdep/neb_dynamics/neb_dynamics/scripts/create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.002 \
-        -sig {sig} -nimg 12 -min_ends 1 \
-        -es_ft {es_ft} -name {out_fp} -prog {prog} -eng {eng} -node_rms_thre {nrt} -met {met} -node_ene_thre {net} {tcin} &> {out_fp}_out "
+    # cmd = f"/home/jdep/.cache/pypoetry/virtualenvs/neb-dynamics-G7__rX26-py3.9/bin/python /home/jdep/neb_dynamics/neb_dynamics/scripts/create_msmep_from_endpoints.py -st {start_fp} -en {end_fp} -tol 0.002 \
+    #     -sig {sig} -nimg 12 -min_ends 1 \
+    #     -es_ft {es_ft} -name {out_fp} -prog {prog} -eng {eng} -node_rms_thre {nrt} -met {met} -node_ene_thre {net} {tcin} &> {out_fp}_out "
+    cmd = f"create-mep run {start_fp} {end_fp} --minimize-ends --name {out_fp} --inputs {tcin_fp} --recursive &> {out_fp}_out"
     
     new_template = template.copy()
     new_template[-1] = cmd
@@ -650,8 +990,6 @@ all_rns = [Path(p).stem for p in open("/home/jdep/T3D_data/msmep_draft/compariso
 # all_rns = [p.stem for p in ref_dir.glob("*") if p.stem in ]
 
 import os
-
-ch.visualize_chain(c_irc)
 
 # rn = '1-2-Amide-Phthalamide-Synthesis'
 rns_to_submit = []
@@ -672,7 +1010,7 @@ for rn in all_rns:
         reference_start_name='start_xtb.xyz', reference_end_name='end_xtb.xyz',
         eng='qcop',
         prog='terachem-pbs',
-        tcin_fp='/home/jdep/T3D_data/msmep_draft/comparisons_dft/tc.in',
+        tcin_fp='/home/jdep/T3D_data/msmep_draft/comparisons_dft/input.toml',
         es_ft=0.03,
         met='asneb',
         nrt=1, net=1)
