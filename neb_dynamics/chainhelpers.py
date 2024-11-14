@@ -369,6 +369,43 @@ def calculate_geodesic_distance(
     return smoother.length
 
 
+
+def calculate_geodesic_tangent(
+    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages=50, nudge=0.1
+):
+    """
+    will create a high density geodesic, then output a triplet of images corresponding to 
+    a previous image, an adjusted current image, and a next image, forming a piecewise tangent.
+    ref_node_ind is the indewx of the node we want to build a tangent around
+    """
+    from neb_dynamics.helper_functions import RMSD
+    def _get_closest_node_ind(smoother_obj, reference):
+        smallest_dist = 1e10
+        ind = None
+        for i, geom in enumerate(smoother_obj.path):
+            dist, _ = RMSD(geom, reference)
+            if dist < smallest_dist:
+                smallest_dist = dist
+                ind = i
+        # print(smallest_dist)
+        return ind
+    
+    inp_obj = [list_of_nodes[0].symbols, [n.coords for n in list_of_nodes]]
+    smoother = run_geodesic_get_smoother(
+        input_object=inp_obj,
+        nudge=nudge,
+        nimages=nimages,
+    )
+    ref_node = list_of_nodes[ref_node_ind]
+    ind = _get_closest_node_ind(smoother, reference=ref_node.coords)
+    new0 = ref_node.update_coords(smoother.path[ind-1])
+    new1 = ref_node.update_coords(smoother.path[ind])
+    new2 = ref_node.update_coords(smoother.path[ind+1])
+
+
+    return [new0, new1, new2]
+
+
 def calculate_geodesic_xtb_barrier(
     node1: StructureNode, node2: StructureNode, nimages=12, nudge=0.1
 ):

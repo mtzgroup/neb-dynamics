@@ -12,7 +12,7 @@ import neb_dynamics.chainhelpers as ch
 from neb_dynamics import StructureNode
 
 
-def align_structures(structure1: Structure, structure2: Structure, distance_metric="rmsd"):
+def align_structures(structure1: Structure, structure2: Structure, distance_metric="rmsd", return_distance: bool = False):
     distance_metric = distance_metric.upper()
 
     if distance_metric.upper() == 'GEODESIC':
@@ -296,6 +296,8 @@ def align_structures(structure1: Structure, structure2: Structure, distance_metr
         b_final_labels = b_init_labels
         b_final_coords = b_init_coords
 
+    if return_distance:
+        return FinalRMSD, Structure(geometry=b_final_coords, symbols=b_final_labels)
     return Structure(geometry=b_final_coords, symbols=b_final_labels)
 
 

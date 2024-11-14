@@ -96,7 +96,7 @@ class FreezingNEB(PathMinimizer):
             print("\tgrowing nodes")
             node1, node2 = self._get_innermost_nodes(chain)
             d0 = self._distance_function(node1, node2)
-            grown_chain, node_tangents = self.grow_nodes(
+            grown_chain = self.grow_nodes(
                 chain, dr=self.parameters.path_resolution
             )
             self.chain_trajectory.append(grown_chain.copy())
@@ -104,7 +104,7 @@ class FreezingNEB(PathMinimizer):
             # minimize nodes
             print("\tminimizing nodes")
             min_chain = self.minimize_nodes(
-                chain=grown_chain, node_tangents=node_tangents, d0=d0
+                chain=grown_chain, d0=d0
             )
             self.chain_trajectory.append(min_chain.copy())
 
@@ -159,7 +159,6 @@ class FreezingNEB(PathMinimizer):
     def _min_node(
         self,
         raw_chain: Chain,
-        tangent: np.array,
         ngradcalls: int,
         ss: float,
         d0: float,
@@ -190,14 +189,39 @@ class FreezingNEB(PathMinimizer):
                 if self.parameters.verbosity > 1:
                     print(f"{prev_iter_ene=}")
 
-                if tangent is None:
+                if self.parameters.use_geodesic_tangent:
+                    prev_node, curr_node, next_node = ch.calculate_geodesic_tangent(
+                        list_of_nodes=raw_chain, ref_node_ind=node_to_opt_ind, nimages=self.parameters.min_images)
+                    # _ = self.engine.compute_gradients([curr_node])
+                    # self.grad_calls_made += 1
+                    # node_to_opt = curr_node # !!! I replace node1 with the output from the geodesic tangent
+                    tangent = ((node_to_opt.coords - prev_node.coords) +
+                               (next_node.coords - node_to_opt.coords)) / 2
+
+                else:
                     tangent = node2.coords - node1.coords
                 unit_tan = tangent / np.linalg.norm(tangent)
 
                 # grad1 = self.engine.compute_gradients([node_to_opt])
                 grad1 = node_to_opt.gradient
+
                 gperp1 = ch.get_nudged_pe_grad(
                     unit_tangent=unit_tan, gradient=grad1)
+
+                # add a spring force
+                kconst = 0.01
+                if self.parameters.use_geodesic_tangent:
+                    fspring = kconst * np.linalg.norm(
+                        next_node.coords - node_to_opt.coords) - \
+                        kconst * \
+                        np.linalg.norm(node_to_opt.coords - prev_node.coords)
+                else:
+                    fspring = kconst * np.linalg.norm(
+                        raw_chain[node_to_opt_ind+1].coords -
+                        node_to_opt.coords
+                    ) - kconst * np.linalg.norm(node_to_opt.coords - raw_chain[node_to_opt_ind-1].coords)
+                gperp1 -= fspring*unit_tan
+                print(f"***{fspring=}")
 
                 direction = -1 * gperp1 * ss
                 direction_scaled = direction.copy()
@@ -245,12 +269,12 @@ class FreezingNEB(PathMinimizer):
         print(f"\t converged in {nsteps}")
         return raw_chain
 
-    def minimize_nodes(self, chain: Chain, node_tangents: list, d0):
+    def minimize_nodes(self, chain: Chain, d0):
         raw_chain = chain.copy()
         # return raw_chain
+
         chain_opt1 = self._min_node(
             raw_chain,
-            tangent=node_tangents[0],
             ind_node=0,
             ngradcalls=self.parameters.ngradcalls,
             ss=self.parameters.stepsize,
@@ -259,7 +283,6 @@ class FreezingNEB(PathMinimizer):
         )
         chain_opt2 = self._min_node(
             chain_opt1,
-            tangent=node_tangents[1],
             ind_node=1,
             ngradcalls=self.parameters.ngradcalls,
             ss=self.parameters.stepsize,
@@ -290,6 +313,8 @@ class FreezingNEB(PathMinimizer):
     def grow_nodes(self, chain: Chain, dr: float):
         sub_chain = self._get_innermost_nodes(chain)
         ind1, ind2 = self._get_innermost_nodes_inds(chain)
+        higher_ene_node_ind = np.argmax(
+            [sub_chain[0].energy, sub_chain[1].energy])
 
         sweep = True
         found_nodes = False
@@ -297,9 +322,7 @@ class FreezingNEB(PathMinimizer):
         nimg = 100
 
         final_node1 = None
-        final_node1_tan = None
         final_node2 = None
-        final_node2_tan = None
 
         dist_innermost_nodes = self._distance_function(
             sub_chain[0], sub_chain[1])
@@ -325,9 +348,11 @@ class FreezingNEB(PathMinimizer):
                 if self.parameters.naive_grow:
                     interpolated = ch.run_geodesic(
                         chain=sub_chain, nimages=self.parameters.min_images)
-                    final_node1 = interpolated[1]
+                    intnodes = interpolated[1], interpolated[-2]
                     if add_two_nodes:
-                        final_node2 = interpolated[-2]
+                        final_node1, final_node2 = intnodes
+                    else:
+                        final_node1 = intnodes[higher_ene_node_ind]
 
                     found_nodes = True
                     sys.stdout.flush()
@@ -356,7 +381,7 @@ class FreezingNEB(PathMinimizer):
                     sys.stdout.flush()
 
                     if not final_node1 or not final_node2:
-                        node1, tan1 = self._select_node_at_dist(
+                        node1 = self._select_node_at_dist(
                             chain=interpolated,
                             dist=dr,
                             direction=1,
@@ -367,10 +392,9 @@ class FreezingNEB(PathMinimizer):
                         )
                         if node1:
                             final_node1 = node1
-                            final_node1_tan = tan1
 
                         if add_two_nodes:
-                            node2, tan2 = self._select_node_at_dist(
+                            node2 = self._select_node_at_dist(
                                 chain=interpolated,
                                 dist=dr,
                                 direction=-1,
@@ -382,7 +406,6 @@ class FreezingNEB(PathMinimizer):
 
                             if node2:
                                 final_node2 = node2
-                                final_node2_tan = tan2
 
                     if add_two_nodes and (final_node1 and final_node2):
                         found_nodes = True
@@ -405,7 +428,7 @@ class FreezingNEB(PathMinimizer):
             grown_chain.nodes.insert(insert_index, final_node2)
         grown_chain.nodes.insert(insert_index, final_node1)
 
-        return grown_chain, [final_node1_tan, final_node2_tan]
+        return grown_chain
 
     def _get_closest_node_ind(self, smoother_obj, reference):
         smallest_dist = 1e10
@@ -449,7 +472,6 @@ class FreezingNEB(PathMinimizer):
         start_node = input_chain[0]
         best_node = None
         best_dist_err = 10000.0
-        best_node_tangent = None
 
         for i, _ in enumerate(subset_chain, start=enum_start):
             if self.parameters.distance_metric.upper() == "GEODESIC":
@@ -477,30 +499,14 @@ class FreezingNEB(PathMinimizer):
             curr_dist_err = np.abs(curr_dist - dist)
             if self.parameters.verbosity > 1:
                 print(f"\t{curr_dist_err=} vs {dist_err=} || {direction=}")
+
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
                 best_node = node
                 best_dist_err = curr_dist_err
-                prev_node = input_chain.nodes[i - 1]
-                next_node = input_chain.nodes[i + 1]
-                if self.parameters.use_geodesic_tangent:
-                    # raise NotImplementedError("Not done yet.")
-                    # self.engine.compute_energies([prev_node, node, next_node])
-                    # self.grad_calls_made += 3
-                    tau_plus = next_node.coords - node.coords
-                    tau_minus = node.coords - prev_node.coords
-                    best_node_tangent = (tau_plus + tau_minus) / 2
-                    # best_node_tangent = ch._create_tangent_path(
-                    #     prev_node=prev_node,
-                    #     current_node=node,
-                    #     next_node=next_node,
-                    # )
-                else:
-
-                    best_node_tangent = None
 
                 break
 
-        return best_node, best_node_tangent
+        return best_node
 
     def chain_converged(self, chain: Chain):
         dr = self.parameters.path_resolution

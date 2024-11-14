@@ -249,5 +249,18 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
     print("Done!")
 
 
+@app.command()
+def make_default_inputs(
+        name: Annotated[str, typer.Option(
+            "--name", help='path to output toml file')] = None,
+        path_min_method: Annotated[str, typer.Option("--path-min-method", "-pmm",
+                                                     help=f'name of path minimization. Options are: [neb, fneb]')] = "neb"):
+    if name is None:
+        name = Path(Path(os.getcwd()) / 'default_inputs')
+    ri = RunInputs(path_min_method=path_min_method)
+    out = Path(name)
+    ri.save(out.parent / (out.stem+".toml"))
+
+
 if __name__ == "__main__":
     app()

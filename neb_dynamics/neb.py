@@ -63,6 +63,9 @@ class NEB(PathMinimizer):
         self.n_steps_still_chain = 0
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
+        if self.parameters.frozen_atom_indices is not None:
+            self.parameters.frozen_atom_indices = [
+                int(x) for x in self.parameters.frozen_atom_indices.split(",") if x]
 
     def set_climbing_nodes(self, chain: Chain) -> None:
         """Iterates through chain and sets the nodes that should climb.
@@ -321,6 +324,10 @@ class NEB(PathMinimizer):
         self._update_cache(chain, grads, enes)
 
         grad_step = ch.compute_NEB_gradient(chain)
+        if self.parameters.frozen_atom_indices:
+            for index in self.parameters.frozen_atom_indices:
+                grad_step[index] = np.array([0.0, 0.0, 0.0])
+
         new_chain = self.optimizer.optimize_step(
             chain=chain, chain_gradients=grad_step)
         # need to copy the gradients from the converged nodes

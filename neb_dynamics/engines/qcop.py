@@ -26,7 +26,7 @@ AVAIL_PROGRAMS = ["qcop", "chemcloud"]
 @dataclass
 class QCOPEngine(Engine):
     program_args: ProgramArgs = ProgramArgs(
-        model={"method": "GFN2xTB"},)
+        model={"method": "GFN2xTB", "basis": "GFN2xTB"},)
     program: str = "xtb"
     geometry_optimizer: str = "geometric"
     compute_program: str = "qcop"

@@ -15,22 +15,49 @@ from neb_dynamics.inputs import RunInputs
 from qcio import Structure, view, ProgramOutput
 import neb_dynamics.chainhelpers as ch
 import pandas as pd
+
+import numpy as np
 # -
 
 from neb_dynamics.inputs import ChainInputs
 
+from neb_dynamics.pathminimizers.dimer import DimerMethod3D
+
 dd = Path("/home/jdep/T3D_data/fneb_draft/benchmark/")
+
+ind_guess = round(len(neb.optimized) / 2)
+print(ind_guess)
+ind_guesses = [ind_guess-1, ind_guess,ind_guess+1]
+enes_guess = [neb.optimized.energies[ind_guesses[0]], neb.optimized.energies[ind_guesses[1]], neb.optimized.energies[ind_guesses[2]]]
+ind_tsg = ind_guesses[np.argmax(enes_guess)]
+print(ind_tsg)
+
+eng = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/system76/debug/debug.toml").engine
+eng.program = 'terachem-pbs'
+# eng = RunInputs().engine
+
+# hessres = eng._compute_hessian_result(StructureNode(structure=sp))
+hessres = eng._compute_hessian_result(neb.optimized.get_ts_node())
+
+view.view(hessres)
+
+try:
+    tsres = eng._compute_ts_result(neb.optimized.get_ts_node())
+except Exception as e:
+    tsres = e.program_ouput
+
+view.view(tsres)
 
 # +
 
 
-name = 'system25'
+name = 'system76'
 
 
 print(name)
 neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb.xyz")
 # neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/db.xyz")
-# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/debug.xyz")
+neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/debug/reactant_neb.xyz")
 fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts.qcio")
 fsmgi_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi_ts.qcio")
 if not neb_fp.exists() or not fsmqcio_fp.exists() or not fsmgi_fp.exists():
@@ -53,193 +80,89 @@ else:
 # view.view(sp, po_fsm.return_result, po_gi.return_result, titles=['SP', f"FSM {round(d_fsm, 3)}", f"GI {round(d_gi, 3)}"])
 # -
 
-visualize_chain(gi)
+visualize_chain(neb.optimized)
+
+view.view(neb.optimized.get_ts_node().structure, sp)
+
+df[df['dE_fsm'] > 1.0]
+
+eng.program = 'terachem'
 
 # +
-import numpy as np
 
-class DimerMethod:
-    def __init__(self, initial_position, dimer_length=0.01, rotation_tolerance=1e-3, translation_tolerance=1e-3, max_rotations=50, max_translations=200, learning_rate=0.1, max_steps=100):
-        """
-        Initialize Dimer Method parameters.
-        
-        Parameters:
-        - initial_position: Initial position in the search space.
-        - dimer_length: Separation distance between dimer images.
-        - rotation_tolerance: Tolerance for the rotation convergence.
-        - translation_tolerance: Tolerance for the translation convergence.
-        - max_rotations: Maximum number of iterations for rotation.
-        - max_translations: Maximum number of translation steps.
-        - learning_rate: Step size for translation.
-        """
-        self.position = initial_position
-        self.dimer_length = dimer_length
-        self.rotation_tolerance = rotation_tolerance
-        self.translation_tolerance = translation_tolerance
-        self.max_rotations = max_rotations
-        self.max_translations = max_translations
-        self.learning_rate = learning_rate
-        self.max_steps = max_steps
-
-        self.traj = []
-        
-    def energy(self, position):
-        """
-        Placeholder function for calculating energy at a given position.
-        Replace with actual energy calculation.
-        """
-        x, y = position
-        ene = (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
-        return ene
-
-    def gradient(self, position):
-        """
-        Placeholder function for calculating gradient at a given position.
-        Replace with actual gradient calculation.
-        """
-        x, y = position
-        dx = 2 * (x**2 + y - 11) * (2 * x) + 2 * (x + y**2 - 7)
-        dy = 2 * (x**2 + y - 11) + 2 * (x + y**2 - 7) * (2 * y)
-        grad = np.array([dx, dy])
-        return grad
-
-    def rotate_dimer(self, dimer_vector):
-        """
-        Rotate dimer to align with the lowest curvature mode.
-        """
-        for _ in range(self.max_rotations):
-            grad1 = self.gradient(self.position + dimer_vector * self.dimer_length / 2)
-            grad2 = self.gradient(self.position - dimer_vector * self.dimer_length / 2)
-            force_parallel = (grad1 + grad2) / 2  # Average gradient
-            force_perpendicular = grad1 - grad2  # Difference of gradients
-
-            torque = np.cross(dimer_vector, force_perpendicular)
-            rotation_direction = -torque / np.linalg.norm(torque)
-            dimer_vector += 0.01 * rotation_direction  # Small step rotation
-            dimer_vector /= np.linalg.norm(dimer_vector)  # Normalize
-
-            # Check rotation convergence
-            if np.linalg.norm(torque) < self.rotation_tolerance:
-                break
-
-        return dimer_vector
-
-    def translate_dimer(self, dimer_vector):
-        """
-        Translate the dimer along the rotated vector.
-        """
-        for _ in range(self.max_translations):
-            grad = self.gradient(self.position)
-            grad_parallel = np.dot(grad, dimer_vector) * dimer_vector
-            grad_perpendicular = grad - grad_parallel
-
-            # Update position by moving against the perpendicular component of the gradient
-            new_pos = self.position - self.learning_rate * grad_perpendicular + self.learning_rate * grad_parallel
-            self.traj.append(new_pos)
-            self.position = new_pos
-
-            # Check translation convergence
-            if np.linalg.norm(grad_perpendicular) < self.translation_tolerance:
-                break
-
-    def find_transition_state(self):
-        """
-        Run the Dimer Method to find the transition state.
-        """
-        dimer_vector = np.random.normal(size=self.position.shape)
-        dimer_vector /= np.linalg.norm(dimer_vector)  # Normalize the initial dimer vector
-
-        for _ in range(self.max_steps):
-            dimer_vector = self.rotate_dimer(dimer_vector)
-            self.translate_dimer(dimer_vector)
-        
-        return self.position
-
-
+tsres = eng._compute_ts_result(neb.optimized[7])
 # -
 
-# Example usage with an initial guess
-initial_position = np.array([1 , 3])  # Adjust based on the problem
-dimer_method = DimerMethod(initial_position, learning_rate=0.001, rotation_tolerance=0.001, translation_tolerance=0.001, max_rotations=3, max_translations=1, max_steps=100)
-transition_state = dimer_method.find_transition_state()
-print("Transition State Position:", transition_state)
-print(f"Traj len: {len(dimer_method.traj)}")
+view.view(po_fsm.return_result, sp)
 
-from itertools import product
+visualize_chain(neb.optimized)
+
+view.view(po_fsm.return_result, sp)
+
+hessres = eng._compute_hessian_result(StructureNode(structure=po_fsm.return_result))
+
+view.view(hessres)
+
+view.view(po_fsm.return_result, sp, po_gi.return_result)
+
+fout = open("/home/jdep/T3D_data/fneb_draft/benchmark/todo.txt", "w+")
+for n in df[df["dE_fsm"] > 0.1]['name'].values:
+    fout.write(f"{n}\n")
+fout.close()
+
+eng = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/debug.toml").engine
+
+tsres = eng._compute_ts_result(neb.optimized.get_ts_node())
 
 # +
-size = 8
+# tsres = eng._compute_ts_result(neb.optimized[3])
 
-s = 4
-min_val = -s
-max_val = s
+# +
+# view.view(tsres, animate=False)
+# -
 
-fig = 10
-f, _ = plt.subplots(figsize=(1.18 * fig, fig))
+# view.view(po_fsm.return_result, sp, po_gi.return_result)
+view.view(po_fsm.return_result, sp)
+# view.view(sp, neb.optimized.get_ts_node().structure)
 
-gridsize = 100
-x = np.linspace(start=min_val, stop=max_val, num=gridsize)
-y = x.reshape(-1, 1)
-dm = DimerMethod([0,0])
-h_flat_ref = np.array([dm.energy(pair) for pair in product(x, x)])
-h = h_flat_ref.reshape(gridsize, gridsize).T
-cs = plt.contourf(x, x, h)
-_ = f.colorbar(cs)
+eng = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/system25/debug/debug.toml").engine
 
-for p in dimer_method.traj:
-    plt.plot(p[0], p[1], 'o', color='red')
-# psave(new_chain, "new_chain.p")
+visualize_chain(neb.optimized)
+
+len(df[df['dE_gi']<=0.1])
+
+sub = df[df['dE_gi']<=0.1]
+sub[sub['dE_fsm'] >0.1]
+
+len(df[df['dE_fsm']<=0.1])
+
+f,ax = plt.subplots()
+fs=18
+N = len(df)
+kcal1 = [sum(df['dE_fsm'] <= 1.0)/N, sum(df['dE_gi'] <= 1.0)/N]
+kcal05 = [sum(df['dE_fsm'] <= 0.5)/N, sum(df['dE_gi'] <= 0.5)/N]
+kcal01 = [sum(df['dE_fsm'] <= 0.1)/N, sum(df['dE_gi'] <= 0.1)/N]
+labels=["FSM-GI","GI"]
+plt.plot(labels, kcal1,'o-', label='∆=1.0(kcal/mol)')
+plt.plot(labels, kcal05,'*-', label='∆=0.5(kcal/mol)')
+plt.plot(labels, kcal01,'x-', label='∆=0.1(kcal/mol)')
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.legend(fontsize=fs)
+plt.ylabel("Percent",fontsize=fs+5)
 plt.show()
 
-
-# +
-# visualize_chain(neb.optimized)
-# -
-
-ri = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/launch.toml")
-
-eng = ri.engine
-
-eng_default = RunInputs().engine
-
-if po_fsm.success and po_gi.success:
-    print("Comparing TSs")
-    view.view(sp, po_fsm.return_result, po_gi.return_result)
-else:
-    print(f"{po_fsm.success=} {po_gi.success=}")
-    view.view(sp, neb.optimized.get_ts_node().structure, gi.get_ts_node().structure)
-
-dd = Path("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark")
-all_names = list(dd.glob("system*"))
-
-import shutil
-
-
-# +
-# for sysdir in list(dd.glob("sys*")):
-#     fp = sysdir / sysdir.stem 
-#     for x in fp.glob("sp*"):
-#         shutil.copy(x, sysdir)
-# -
-
-def pseuirc(ts_node, engine):
-
-    hessres = engine._compute_hessian_result(ts_node)
-    tsminus_raw = displace_by_dr(node=ts_node, displacement=hessres.results.normal_modes_cartesian[0], dr=-1)
-    tsplus_raw = displace_by_dr(node=ts_node, displacement=hessres.results.normal_modes_cartesian[0], dr=1)
-    
-    tsminus_res = engine._compute_geom_opt_result(tsminus_raw.structure)
-    tsplus_res = engine._compute_geom_opt_result(tsplus_raw.structure)
-    return tsminus_res, tsplus_res
-
+defaulteng = RunInputs().engine
 
 # +
 
 data = []
 # name = 'system5'
+all_names = list(dd.glob("sys*"))
 for fp in all_names:
     name = fp.stem
     print(name)
+    
     neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb.xyz")
     fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts.qcio")
     fsmgi_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi_ts.qcio")
@@ -251,48 +174,91 @@ for fp in all_names:
     po_fsm = ProgramOutput.open(fsmqcio_fp)
     po_gi = ProgramOutput.open(fsmgi_fp)
     sp = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/{name}/{name}/sp_terachem.xyz")
+    
     if po_fsm.success:
         d_fsm, _  = RMSD(po_fsm.return_result.geometry_angstrom, sp.geometry_angstrom)
+        # sp_ene, spfsm_ene = eng_true.compute_energies([StructureNode(structure=sp), StructureNode(structure=po_fsm.return_result)])
+        sp_ene, spfsm_ene = defaulteng.compute_energies([StructureNode(structure=sp), StructureNode(structure=po_fsm.return_result)])
     else:
         d_fsm = None
+        sp_ene, spfsm_ene = None, None
         
     if po_gi.success:
         d_gi, _  = RMSD(po_gi.return_result.geometry_angstrom, sp.geometry_angstrom)
+        # spgi_ene = eng_true.compute_energies([StructureNode(structure=po_gi.return_result)])[0]
+        spgi_ene = defaulteng.compute_energies([StructureNode(structure=po_gi.return_result)])[0]
     else:
+        spgi_ene = None
         d_gi = None
 
-    row = [name, po_fsm.success, po_gi.success, d_fsm, d_gi]
+    row = [name, po_fsm.success, po_gi.success, d_fsm, d_gi, sp_ene, spfsm_ene, spgi_ene]
     data.append(row)
     # view.view(sp, po_fsm.return_result, po_gi.return_result, titles=['SP', f"FSM {round(d_fsm, 3)}", f"GI {round(d_gi, 3)}"])
 # -
 
-df = pd.DataFrame(data, columns=["name", "fsm_success", "gi_success", "d_fsm", "d_gi"])
+df = pd.DataFrame(data, columns=["name", "fsm_success", "gi_success", "d_fsm", "d_gi", "sp_ene", "spfsm_ene", "spgi_ene"])
+
+df
+
+df["dE_gi"] = abs(df['sp_ene'] - df["spgi_ene"])*627.5
+
+df["dE_fsm"] = abs(df['sp_ene'] - df["spfsm_ene"])*627.5
+
+sum(df["dE_gi"] < .1)
+
+sum(df["dE_fsm"] < .1)
+
+sum(df["dE_fsm"] < .1)
+
+df["dE_gi"].plot(kind='hist')
+
+# +
+
+df["dE_fsm"].plot(kind='hist')
+# -
+
+sub = df[df['d_gi']>0.3]
+
+df['fsm_success'].value_counts()
+
+df['gi_success'].value_counts()
+
+93/116
+
+88/116
 
 len(df)
 
-gi2 = gi.copy()
+sum(df["d_fsm"] < 0.3)
 
-for node in gi2:
-    node._cached_energy = None
-    
+sum(df["d_gi"] < 0.3)
 
-ri = RunInputs()
+sub
 
-eng = ri.engine
+len(df)
 
-import neb_dynamics.chainhelpers as ch
+96/116
 
+len(sub)
+
+fout = open("/home/jdep/T3D_data/fneb_draft/benchmark/todo.txt","w+")
+for name in sub['name'].values:
+    fout.write(f"{name}\n")
+fout.close()
+
+
+len(df[df['d_fsm'] <0.3])
+
+len(df)
+
+len(df[df['d_gi'] < 0.3])
+
+93/116, 88/116
 
 # +
-def dimer_minimization(triplet_nodes, engine, chain):
-    prev_node, curr_node, next_node = triplet_nodes
-    pe_grads_nudged, spring_forces_nudged = ch.neighs_grad_func(chain=chain, prev_node=prev_node, curr_node=curr_node, next_node=next_node)
-    engine.compute_gradients(triplet_nodes)
-    
-    
-# -
 
-eng.compute_energies(gi2)
+len(df[df["fsm_success"]==1]) / len(df)
+# -
 
 failed =  df[(df['fsm_success']==0)&(df['gi_success']==0)]
 len(failed)
@@ -300,9 +266,42 @@ len(failed)
 success = df[(df['fsm_success']==1)|(df['gi_success']==1)]
 len(success)
 
+percents = [
+    .70, 
+    len(df[df["gi_success"]==1]) / len(df),
+    len(df[df["fsm_success"]==1]) / len(df),
+    .85
+]
+labels = [
+    "IDPP-TS*", 
+    "GI-TS", 
+    "FSM-TS",
+    "NEB(0.01)-TS*"]
+
+# +
+s=6
+fs=18
+f, ax = plt.subplots(figsize=(1.16*s, s))
+
+plt.bar(x=labels, height=percents)
+plt.xticks(fontsize=fs)
+plt.ylabel(f"Percent success ({len(df)} rxns)", fontsize=fs)
+plt.xticks(fontsize=fs-2)
+plt.yticks(fontsize=fs)
+plt.show()
+# -
+
+len(df)
+
+len(df)
+
+90 / 114, 75 / 114
+
+len(success[(success['fsm_success']==1)&(success['d_fsm']<0.5)])
+
 import matplotlib.pyplot as plt
 
-success['d_gi'].plot(kind='hist')
+success['d_fsm'].plot(kind='hist', color='orange')
 plt.xlabel("Distance from truth (Angstroms)")
 
 success[success['d_gi']>0.5]

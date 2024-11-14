@@ -59,6 +59,7 @@ class NEBInputs:
     ts_spring_thre: float = None
     barrier_thre: float = 0.1  # kcal/mol
 
+    frozen_atom_indices: str = ""
     early_stop_force_thre: float = 0.0
     early_stop_chain_rms_thre: float = 0.0
     early_stop_corr_thre: float = 10.0
@@ -92,6 +93,10 @@ class NEBInputs:
 
         if self.max_rms_grad_thre is None:
             self.max_rms_grad_thre = self.tol * 5 / 2
+
+        if len(self.frozen_atom_indices) > 0:
+            self.frozen_atom_indices = [
+                int(x) for x in self.frozen_atom_indices.split(",")]
 
     def copy(self) -> NEBInputs:
         return NEBInputs(**self.__dict__)
@@ -249,7 +254,7 @@ class RunInputs:
         if self.program_kwds is None:
             if self.program == "xtb":
                 program_args = ProgramArgs(
-                    model={"method": "GFN2xTB"},
+                    model={"method": "GFN2xTB", "basis": "GFN2xTB"},
                     keywords={})
 
             elif "terachem" in self.program:
@@ -305,8 +310,13 @@ class RunInputs:
                 json_dict[key] = val.__dict__
             elif 'program_kwds' in key:
                 d = val.json()
-                d = d.replace("null", "None")
-                json_dict[key] = eval(d)
+
+                if d != None:
+                    d = d.replace("null", "None")
+                    json_dict[key] = eval(d)
+                else:
+                    d = ""
+                    json_dict[key] = d
 
         with open(fp, "w+") as f:
             # json.dump(json_dict, f)
