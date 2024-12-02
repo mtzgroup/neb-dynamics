@@ -47,9 +47,6 @@ def get_mass(s: str):
     return ed.from_symbol(s).mass_amu
 
 
-
-
-
 def qRMSD_distance(structure, reference):
     return RMSD(structure, reference)[0]
 
@@ -132,9 +129,6 @@ def RMSD(structure, reference):
 
 def linear_distance(coords1, coords2):
     return np.linalg.norm(coords2 - coords1)
-
-
-
 
 
 def get_nudged_pe_grad(unit_tangent, gradient):
@@ -352,7 +346,8 @@ def run_tc_local_optimization(td, tmp, return_optim_traj):
     from neb_dynamics.trajectory import Trajectory
 
     optim_fp = Path(tmp.name[:-4]) / "optim.xyz"
-    tr = Trajectory.from_xyz(optim_fp, tot_charge=td.charge, tot_spinmult=td.spinmult)
+    tr = Trajectory.from_xyz(
+        optim_fp, tot_charge=td.charge, tot_spinmult=td.spinmult)
     tr.update_tc_parameters(td)
 
     if return_optim_traj:
@@ -469,7 +464,8 @@ def _create_df(filenames: List[Path], v=True, refinement_results=False, out_at_b
     xtb = True
     for i, p in enumerate(filenames):
         rn = p.parent.stem
-        if v: print(p)
+        if v:
+            print(p)
 
         try:
             if out_at_beginning_name:
@@ -495,85 +491,99 @@ def _create_df(filenames: List[Path], v=True, refinement_results=False, out_at_b
                     out_chain = Chain.from_xyz(clean_fp, ChainInputs())
 
                 except:
-                    if v: print("\t\terror in energies. recomputing")
+                    if v:
+                        print("\t\terror in energies. recomputing")
                     tr = Trajectory.from_xyz(clean_fp)
                     out_chain = Chain.from_traj(tr, ChainInputs())
                     grads = out_chain.gradients
-                    if v: print(f"\t\twriting to {clean_fp}")
+                    if v:
+                        print(f"\t\twriting to {clean_fp}")
                     out_chain.write_to_disk(clean_fp)
-
 
                 if not out_chain._energies_already_computed:
-                    if v: print("\t\terror in energies. recomputing")
+                    if v:
+                        print("\t\terror in energies. recomputing")
                     tr = Trajectory.from_xyz(clean_fp)
                     out_chain = Chain.from_traj(tr, ChainInputs())
                     grads = out_chain.gradients
-                    if v: print(f"\t\twriting to {clean_fp}")
+                    if v:
+                        print(f"\t\twriting to {clean_fp}")
                     out_chain.write_to_disk(clean_fp)
             elif not clean_fp.exists() and refinement_results:
-                print(clean_fp,' did not succeed')
+                print(clean_fp, ' did not succeed')
                 raise FileNotFoundError("boo")
             elif not clean_fp.exists() and not refinement_results:
                 out_chain = h.output_chain
 
-
-            es = len(out_chain)==12
-            if v: print('elem_step: ', es)
+            es = len(out_chain) == 12
+            if v:
+                print('elem_step: ', es)
             if refinement_results:
-                n_splits = sum([len(leaf.get_optimization_history()) for leaf in ref_results])
-                tot_steps = sum([len(leaf.data.chain_trajectory) for leaf in ref_results])
-                act_en = max([leaf.data.chain_trajectory[-1].get_eA_chain() for leaf in ref_results])
+                n_splits = sum([len(leaf.get_optimization_history())
+                               for leaf in ref_results])
+                tot_steps = sum([len(leaf.data.chain_trajectory)
+                                for leaf in ref_results])
+                act_en = max([leaf.data.chain_trajectory[-1].get_eA_chain()
+                             for leaf in ref_results])
 
             else:
-                if v: print([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
+                if v:
+                    print([len(obj.chain_trajectory)
+                          for obj in h.get_optimization_history()])
                 n_splits = len(h.get_optimization_history())
-                if v: print(sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()]))
-                tot_steps = sum([len(obj.chain_trajectory) for obj in h.get_optimization_history()])
-                act_en = max([leaf.data.chain_trajectory[-2].get_eA_chain() for leaf in h.ordered_leaves])
+                if v:
+                    print(sum([len(obj.chain_trajectory)
+                          for obj in h.get_optimization_history()]))
+                tot_steps = sum([len(obj.chain_trajectory)
+                                for obj in h.get_optimization_history()])
+                act_en = max([leaf.data.chain_trajectory[-2].get_eA_chain()
+                             for leaf in h.ordered_leaves])
 
             n_opt_steps.append(tot_steps)
             n_opt_splits.append(n_splits)
 
-
-            ng_line = [line for line in out if len(line)>3 and line[0]=='>']
-            if v: print(ng_line)
+            ng_line = [line for line in out if len(
+                line) > 3 and line[0] == '>']
+            if v:
+                print(ng_line)
             ng = sum([int(ngl.split()[2]) for ngl in ng_line])
 
-            ng_geomopt = [line for line in out if len(line)>3 and line[0]=='<']
+            ng_geomopt = [line for line in out if len(
+                line) > 3 and line[0] == '<']
             ng_geomopt = sum([int(ngl.split()[2]) for ngl in ng_geomopt])
             # ng = 69
-            if v: print(ng, ng_geomopt)
+            if v:
+                print(ng, ng_geomopt)
 
             activation_ens.append(act_en)
             sys_size.append(len(out_chain[0].coords))
-
-
 
             if es:
                 elem.append(p)
             else:
                 multi.append(p)
 
-
             n = len(out_chain) / 12
-            n_steps.append((i,n))
+            n_steps.append((i, n))
             success_names.append(rn)
             n_grad_calls.append(ng)
             n_grad_calls_geoms.append(ng_geomopt)
 
         except FileNotFoundError as e:
-            if v: print(e)
+            if v:
+                print(e)
             failed.append(p)
 
         except IndexError as e:
-            if v: print(e)
+            if v:
+                print(e)
             failed.append(p)
 
 #         except KeyboardInterrupt:
 #             skipped.append(p)
 
-
-        if v: print("")
+        if v:
+            print("")
 
     import pandas as pd
     df = pd.DataFrame()
@@ -583,22 +593,27 @@ def _create_df(filenames: List[Path], v=True, refinement_results=False, out_at_b
     df['success'] = [fp.parent.stem in success_names for fp in filenames]
 
     df['n_grad_calls'] = _mod_variable(n_grad_calls, all_rns, success_names)
-    if v: print(n_grad_calls)
-    if v: print(_mod_variable(n_grad_calls, all_rns, success_names))
+    if v:
+        print(n_grad_calls)
+    if v:
+        print(_mod_variable(n_grad_calls, all_rns, success_names))
 
-    df['n_grad_calls_geoms'] = _mod_variable(n_grad_calls_geoms, all_rns, success_names)
+    df['n_grad_calls_geoms'] = _mod_variable(
+        n_grad_calls_geoms, all_rns, success_names)
 
     df["n_opt_splits"] = _mod_variable(n_opt_splits, all_rns, success_names)
     # df["n_opt_splits"] = [0 for rn in all_rns]
 
-    df['n_rxn_steps'] = _mod_variable([x[1] for x in n_steps], all_rns, success_names)
+    df['n_rxn_steps'] = _mod_variable(
+        [x[1] for x in n_steps], all_rns, success_names)
     # df['n_rxn_steps'] = [0 for rn in all_rns]
 
     df['n_opt_steps'] = _mod_variable(n_opt_steps, all_rns, success_names)
 
     df['file_path'] = all_rns
 
-    df['activation_ens'] = _mod_variable(activation_ens, all_rns, success_names)
+    df['activation_ens'] = _mod_variable(
+        activation_ens, all_rns, success_names)
 
     df['activation_ens'].plot(kind='hist')
 
@@ -614,8 +629,17 @@ def _mod_variable(var, all_rns, success_names):
     for i, rn in enumerate(all_rns):
         if rn in success_names:
             mod_var.append(var[ind])
-            ind+=1
+            ind += 1
         else:
             mod_var.append(None)
 
     return mod_var
+
+
+def get_fsm_tsg_from_chain(chain):
+    ind_guess = round(len(chain) / 2)
+    ind_guesses = [ind_guess-1, ind_guess, ind_guess+1]
+    enes_guess = [chain.energies[ind_guesses[0]],
+                  chain.energies[ind_guesses[1]], chain.energies[ind_guesses[2]]]
+    ind_tsg = ind_guesses[np.argmax(enes_guess)]
+    return chain[ind_tsg]

@@ -11,6 +11,8 @@ from qcio import Structure
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics import StructureNode
 
+NIMG = 5
+
 
 def align_structures(structure1: Structure, structure2: Structure, distance_metric="rmsd", return_distance: bool = False):
     distance_metric = distance_metric.upper()
@@ -39,7 +41,8 @@ def align_structures(structure1: Structure, structure2: Structure, distance_metr
         if distance_metric == 'GEODESIC':
             node1 = StructureNode(structure=structure1)
             node2 = StructureNode(structure=structure2)
-            InitRMSD_unsorted = ch.calculate_geodesic_distance(node1, node2)
+            InitRMSD_unsorted = ch.calculate_geodesic_distance(
+                node1, node2, nimages=NIMG)
         if distance_metric == 'XTB':
             node1 = StructureNode(structure=structure1)
             node2 = StructureNode(structure=structure2)
@@ -114,7 +117,8 @@ def align_structures(structure1: Structure, structure2: Structure, distance_metr
         node1 = StructureNode(structure=sorted_a)
         node2 = StructureNode(structure=Structure(
             geometry=B_all, symbols=b_labels))
-        InitRMSD_sorted = ch.calculate_geodesic_distance(node1, node2)
+        InitRMSD_sorted = ch.calculate_geodesic_distance(
+            node1, node2, nimages=NIMG)
     elif distance_metric == "RMSD":
         InitRMSD_sorted = kabsch(A_all, B_all)
     elif distance_metric == "XTB":
@@ -195,14 +199,14 @@ def align_structures(structure1: Structure, structure2: Structure, distance_metr
                                    b_Indices[Uniq[l]]])
             b_final = transform_coords(b_perm, B_t[i][1], B_t[i][2])
 
-            print(str(Uniq[l]) + " Swap: " + str(B_t[i][1]) + " Refl: " + str(B_t[i][2]) +
-                  f" {dist_name}: " + str(kabsch(a_coords, b_final)) + " " + str(vars()[Perm[Uniq[l]]]))
+            # print(str(Uniq[l]) + " Swap: " + str(B_t[i][1]) + " Refl: " + str(B_t[i][2]) +
+            #       f" {dist_name}: " + str(kabsch(a_coords, b_final)) + " " + str(vars()[Perm[Uniq[l]]]))
 
             if distance_metric == "GEODESIC":
                 node1 = StructureNode(structure=sorted_a)
                 node2 = StructureNode(structure=Structure(
                     geometry=b_final, symbols=b_labels))
-                rmsds.append([ch.calculate_geodesic_distance(node1, node2), B_t[i][1],
+                rmsds.append([ch.calculate_geodesic_distance(node1, node2, nimages=NIMG), B_t[i][1],
                               B_t[i][2], b_final, vars()[Perm[Uniq[l]]]])
             elif distance_metric == "RMSD":
                 rmsds.append([kabsch(a_coords, b_final), B_t[i][1],
@@ -269,13 +273,13 @@ def align_structures(structure1: Structure, structure2: Structure, distance_metr
 
                 rmsds.append([dist, B_t[i][1], B_t[i][2], b_final])
                 rmsds = sorted(rmsds, key=lambda x: x[0])
-                print(str(Uniq[q]) + " Swap: " + str(B_t[i][1]) + " Refl: " + str(B_t[i][2]) +
-                      f" {dist_name}: " + str(dist) + " " + str(vars()[Perm[Uniq[q]]]))
+                # print(str(Uniq[q]) + " Swap: " + str(B_t[i][1]) + " Refl: " + str(B_t[i][2]) +
+                #       f" {dist_name}: " + str(dist) + " " + str(vars()[Perm[Uniq[q]]]))
 
             # print "Permutation: " + str(vars()[Perm[Uniq[q]]])
 
-    print("Swap Transform: " + str(rmsds[0][1]))
-    print("Reflection Transform: " + str(rmsds[0][2]))
+    # print("Swap Transform: " + str(rmsds[0][1]))
+    # print("Reflection Transform: " + str(rmsds[0][2]))
 
     # print "Permutation: " + str(rmsds[0][4])
     FinalRMSD = float(rmsds[0][0])
@@ -846,8 +850,8 @@ If you find this script useful for any publishable work, please cite the corresp
             b_perm = permute_atoms(b_coords, vars()[Perm[Uniq[l]]], vars()[
                                    b_Indices[Uniq[l]]])
             b_final = transform_coords(b_perm, B_t[i][1], B_t[i][2])
-            print(str(Uniq[l]) + " Swap: " + str(B_t[i][1]) + " Refl: " + str(B_t[i][2]) +
-                  " RMSD: " + str(kabsch(a_coords, b_final)) + " " + str(vars()[Perm[Uniq[l]]]))
+            # print(str(Uniq[l]) + " Swap: " + str(B_t[i][1]) + " Refl: " + str(B_t[i][2]) +
+            #       " RMSD: " + str(kabsch(a_coords, b_final)) + " " + str(vars()[Perm[Uniq[l]]]))
             rmsds.append([kabsch(a_coords, b_final), B_t[i][1],
                          B_t[i][2], b_final, vars()[Perm[Uniq[l]]]])
             rmsds = sorted(rmsds, key=lambda x: x[0])
@@ -886,16 +890,16 @@ If you find this script useful for any publishable work, please cite the corresp
                 b_trans = b_final
                 l += 1
                 q = l - 1
-                print(str(Uniq[q]) + " Swap: " + str(B_t[i][1]) + " Refl: " + str(B_t[i][2]) +
-                      " RMSD: " + str(kabsch(a_coords, b_final)) + " " + str(vars()[Perm[Uniq[q]]]))
+                # print(str(Uniq[q]) + " Swap: " + str(B_t[i][1]) + " Refl: " + str(B_t[i][2]) +
+                #       " RMSD: " + str(kabsch(a_coords, b_final)) + " " + str(vars()[Perm[Uniq[q]]]))
                 rmsds.append([kabsch(a_coords, b_final),
                              B_t[i][1], B_t[i][2], b_final])
                 rmsds = sorted(rmsds, key=lambda x: x[0])
                 # print "Permutation: " + str(vars()[Perm[Uniq[q]]])
 
-    if not args.simple:
-        print("Swap Transform: " + str(rmsds[0][1]))
-        print("Reflection Transform: " + str(rmsds[0][2]))
+    # if not args.simple:
+    #     print("Swap Transform: " + str(rmsds[0][1]))
+    #     print("Reflection Transform: " + str(rmsds[0][2]))
 
     # print "Permutation: " + str(rmsds[0][4])
     FinalRMSD = float(rmsds[0][0])

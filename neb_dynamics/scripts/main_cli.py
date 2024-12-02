@@ -152,7 +152,8 @@ def ts(
                                         help='path to RunInputs toml file')] = None,
     name: str = None,
     charge: int = 0,
-    multiplicity: int = 1
+    multiplicity: int = 1,
+    bigchem: bool = False
 ):
     # create output names
     fp = Path(geometry)
@@ -180,7 +181,8 @@ def ts(
         struct = Structure(**s_dict)
 
         node = StructureNode(structure=struct)
-        output = program_input.engine._compute_ts_result(node=node)
+        output = program_input.engine._compute_ts_result(
+            node=node, use_bigchem=bigchem)
 
     except Exception as e:
         output = e.program_output
@@ -254,7 +256,7 @@ def make_default_inputs(
         name: Annotated[str, typer.Option(
             "--name", help='path to output toml file')] = None,
         path_min_method: Annotated[str, typer.Option("--path-min-method", "-pmm",
-                                                     help=f'name of path minimization. Options are: [neb, fneb]')] = "neb"):
+                                                     help='name of path minimization. Options are: [neb, fneb]')] = "neb"):
     if name is None:
         name = Path(Path(os.getcwd()) / 'default_inputs')
     ri = RunInputs(path_min_method=path_min_method)

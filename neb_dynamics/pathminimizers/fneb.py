@@ -8,6 +8,7 @@ from neb_dynamics.geodesic_interpolation.geodesic import Geodesic
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
+from neb_dynamics.engines.qcop import QCOPEngine
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.helper_functions import RMSD
 from neb_dynamics.pathminimizers.pathminimizer import PathMinimizer
@@ -50,6 +51,12 @@ class FreezingNEB(PathMinimizer):
             return ch.calculate_geodesic_distance(node1, node2)
         elif self.parameters.distance_metric.upper() == "LINEAR":
             return np.linalg.norm(node1.coords - node2.coords)
+        elif self.parameters.distance_metric.upper() == "XTBGI":
+            return abs(ch.calculate_geodesic_xtb_barrier(node1, node2))
+            # xtbeng = QCOPEngine()
+            # enes = xtbeng.compute_energies([node1, node2])
+            # print((enes[1] - enes[0])*627.5)
+            # return abs(enes[1] - enes[0])*627.5
         else:
             raise ValueError(
                 f"Invalid distance metric: {self.parameters.distance_metric}. Use one of {DISTANCE_METRICS}"
@@ -79,11 +86,11 @@ class FreezingNEB(PathMinimizer):
         d0 = self._distance_function(node1, node2)
 
         self.dinitial = d0
-        # self.parameters.path_resolution = min(
-        #     self.dinitial / (self.parameters.min_images +
-        #                      2), self.parameters.path_resolution
-        # )
-        self.parameters.path_resolution = self.dinitial / self.parameters.min_images
+        self.parameters.path_resolution = min(
+            self.dinitial / (self.parameters.min_images +
+                             2), self.parameters.path_resolution
+        )
+        # self.parameters.path_resolution = self.dinitial / self.parameters.min_images
 
         print(f"Using path resolution of: {self.parameters.path_resolution}")
 
@@ -96,15 +103,27 @@ class FreezingNEB(PathMinimizer):
             print("\tgrowing nodes")
             node1, node2 = self._get_innermost_nodes(chain)
             d0 = self._distance_function(node1, node2)
+            add_two_nodes = True
+            dr = self.parameters.path_resolution
+            # dr = d0 / 2
+
+            if (d0 <= 2 * dr):
+                print(
+                    f"Distance innermost is: {d0}. 2dr: {2*dr} Only adding one node. ")
+                add_two_nodes = False
+
+            # grown_chain = self.grow_nodes(
+            #     chain, dr=self.parameters.path_resolution
+            # )
             grown_chain = self.grow_nodes(
-                chain, dr=self.parameters.path_resolution
+                chain, dr=dr, add_two_nodes=add_two_nodes
             )
             self.chain_trajectory.append(grown_chain.copy())
 
             # minimize nodes
             print("\tminimizing nodes")
             min_chain = self.minimize_nodes(
-                chain=grown_chain, d0=d0
+                chain=grown_chain, d0=d0, min_two_nodes=add_two_nodes
             )
             self.chain_trajectory.append(min_chain.copy())
 
@@ -147,14 +166,15 @@ class FreezingNEB(PathMinimizer):
         self, node, prev_node, opposite_node, prev_iter_ene: float, d0
     ):
         curr_iter_ene = node.energy
-        d = self._distance_function(node, opposite_node)
-        s = self._distance_function(node, prev_node)
-        # print(d, d0, s, d0 + 0.5*s, curr_iter_ene, prev_iter_ene)
-        distance_exceeded = d > d0 + 0.5 * s
+        # d = self._distance_function(node, opposite_node)
+        # s = self._distance_function(node, prev_node)
+        # # print(d, d0, s, d0 + 0.5*s, curr_iter_ene, prev_iter_ene)
+        # distance_exceeded = d > d0 + 0.5 * s
         energy_exceeded = curr_iter_ene > prev_iter_ene
-        if self.parameters.verbosity > 1:
-            print(f"{distance_exceeded=} {energy_exceeded=}")
-        return distance_exceeded or energy_exceeded
+        # if self.parameters.verbosity > 1:
+        #     print(f"{distance_exceeded=} {energy_exceeded=}")
+        # return distance_exceeded or energy_exceeded
+        return energy_exceeded
 
     def _min_node(
         self,
@@ -191,7 +211,7 @@ class FreezingNEB(PathMinimizer):
 
                 if self.parameters.use_geodesic_tangent:
                     prev_node, curr_node, next_node = ch.calculate_geodesic_tangent(
-                        list_of_nodes=raw_chain, ref_node_ind=node_to_opt_ind, nimages=self.parameters.min_images)
+                        list_of_nodes=raw_chain, ref_node_ind=node_to_opt_ind)  # , nimages=self.parameters.min_images)
                     # _ = self.engine.compute_gradients([curr_node])
                     # self.grad_calls_made += 1
                     # node_to_opt = curr_node # !!! I replace node1 with the output from the geodesic tangent
@@ -210,16 +230,16 @@ class FreezingNEB(PathMinimizer):
 
                 # add a spring force
                 kconst = 0.01
-                if self.parameters.use_geodesic_tangent:
-                    fspring = kconst * np.linalg.norm(
-                        next_node.coords - node_to_opt.coords) - \
-                        kconst * \
-                        np.linalg.norm(node_to_opt.coords - prev_node.coords)
-                else:
-                    fspring = kconst * np.linalg.norm(
-                        raw_chain[node_to_opt_ind+1].coords -
-                        node_to_opt.coords
-                    ) - kconst * np.linalg.norm(node_to_opt.coords - raw_chain[node_to_opt_ind-1].coords)
+                # if self.parameters.use_geodesic_tangent:
+                #     fspring = kconst * np.linalg.norm(
+                #         next_node.coords - node_to_opt.coords) - \
+                #         kconst * \
+                #         np.linalg.norm(node_to_opt.coords - prev_node.coords)
+                # else:
+                fspring = kconst * np.linalg.norm(
+                    raw_chain[node_to_opt_ind+1].coords -
+                    node_to_opt.coords
+                ) - kconst * np.linalg.norm(node_to_opt.coords - raw_chain[node_to_opt_ind-1].coords)
                 gperp1 -= fspring*unit_tan
                 print(f"***{fspring=}")
 
@@ -269,11 +289,11 @@ class FreezingNEB(PathMinimizer):
         print(f"\t converged in {nsteps}")
         return raw_chain
 
-    def minimize_nodes(self, chain: Chain, d0):
+    def minimize_nodes(self, chain: Chain, d0, min_two_nodes: bool):
         raw_chain = chain.copy()
         # return raw_chain
 
-        chain_opt1 = self._min_node(
+        chain_opt = self._min_node(
             raw_chain,
             ind_node=0,
             ngradcalls=self.parameters.ngradcalls,
@@ -281,16 +301,17 @@ class FreezingNEB(PathMinimizer):
             max_atom_displacement=self.parameters.max_atom_displacement,
             d0=d0,
         )
-        chain_opt2 = self._min_node(
-            chain_opt1,
-            ind_node=1,
-            ngradcalls=self.parameters.ngradcalls,
-            ss=self.parameters.stepsize,
-            max_atom_displacement=self.parameters.max_atom_displacement,
-            d0=d0,
-        )
+        if min_two_nodes:
+            chain_opt = self._min_node(
+                chain_opt,
+                ind_node=1,
+                ngradcalls=self.parameters.ngradcalls,
+                ss=self.parameters.stepsize,
+                max_atom_displacement=self.parameters.max_atom_displacement,
+                d0=d0,
+            )
 
-        return chain_opt2
+        return chain_opt
 
     def _get_innermost_nodes_inds(self, chain: Chain):
         if len(chain) == 2:
@@ -310,7 +331,8 @@ class FreezingNEB(PathMinimizer):
 
         return out_chain
 
-    def grow_nodes(self, chain: Chain, dr: float):
+    def grow_nodes(self, chain: Chain, dr: float, add_two_nodes: bool):
+
         sub_chain = self._get_innermost_nodes(chain)
         ind1, ind2 = self._get_innermost_nodes_inds(chain)
         higher_ene_node_ind = np.argmax(
@@ -318,19 +340,10 @@ class FreezingNEB(PathMinimizer):
 
         sweep = True
         found_nodes = False
-        add_two_nodes = True
-        nimg = 100
+        nimg = 10
 
         final_node1 = None
         final_node2 = None
-
-        dist_innermost_nodes = self._distance_function(
-            sub_chain[0], sub_chain[1])
-
-        if (dist_innermost_nodes <= 2 * dr):
-            print(
-                f"Distance innermost is: {dist_innermost_nodes}. 2dr: {2*dr} Only adding one node. ")
-            add_two_nodes = False
 
         while not found_nodes:
             if self.parameters.distance_metric.upper() == "LINEAR":
@@ -342,7 +355,8 @@ class FreezingNEB(PathMinimizer):
                 final_node2 = sub_chain[1].update_coords(new_node2)
                 found_nodes = True
 
-            elif self.parameters.distance_metric.upper() == "GEODESIC":
+            else:
+                # elif self.parameters.distance_metric.upper() == "GEODESIC":
                 if self.parameters.verbosity > 1:
                     print(f"\t\t***trying with {nimg=}")
                 if self.parameters.naive_grow:
@@ -390,29 +404,28 @@ class FreezingNEB(PathMinimizer):
                             smoother=smoother,
                             reference_node=sub_chain[0]
                         )
-                        if node1:
-                            final_node1 = node1
+                        node2 = self._select_node_at_dist(
+                            chain=interpolated,
+                            dist=dr,
+                            direction=-1,
+                            dist_err=self.parameters.dist_err
+                            * self.parameters.path_resolution,
+                            smoother=smoother,
+                            reference_node=sub_chain[1]
+                        )
 
+                        intnodes = node1, node2
                         if add_two_nodes:
-                            node2 = self._select_node_at_dist(
-                                chain=interpolated,
-                                dist=dr,
-                                direction=-1,
-                                dist_err=self.parameters.dist_err
-                                * self.parameters.path_resolution,
-                                smoother=smoother,
-                                reference_node=sub_chain[1]
-                            )
+                            final_node1, final_node2 = intnodes
+                        else:
+                            final_node1 = intnodes[higher_ene_node_ind]
 
-                            if node2:
-                                final_node2 = node2
-
-                    if add_two_nodes and (final_node1 and final_node2):
-                        found_nodes = True
-                    elif not add_two_nodes and final_node1:
-                        found_nodes = True
-                    else:
-                        nimg += 50
+                        if add_two_nodes and (final_node1 and final_node2):
+                            found_nodes = True
+                        elif not add_two_nodes and final_node1:
+                            found_nodes = True
+                        else:
+                            nimg += 50
 
         if add_two_nodes:
             self.engine.compute_energies([final_node2, final_node1])
@@ -473,34 +486,50 @@ class FreezingNEB(PathMinimizer):
         best_node = None
         best_dist_err = 10000.0
 
+        eng = QCOPEngine()
+        enes = eng.compute_energies(subset_chain)
+        enes = enes - enes[0]
+
         for i, _ in enumerate(subset_chain, start=enum_start):
+            if direction == -1:
+                start = (reference_index - i) + 1
+                end = (reference_index) + 1
+                # node = subset_chain[start-1]
+                node = chain[start-1]
+                subnode = subset_chain[i-1]
+
+            elif direction == 1:
+                start = reference_index + 1
+                end = (reference_index + i) + 1
+                # node = subset_chain[end - 1]
+
+                node = chain[end-1]
+                subnode = subset_chain[i]
+
+            if start == end or start == 0 or end == 0:
+                continue
+
             if self.parameters.distance_metric.upper() == "GEODESIC":
-                if direction == -1:
-                    start = (reference_index - i) + 1
-                    end = (reference_index) + 1
-                    # node = subset_chain[start-1]
-                    node = chain[start-1]
-
-                elif direction == 1:
-                    start = reference_index + 1
-                    end = (reference_index + i) + 1
-                    # node = subset_chain[end - 1]
-
-                    node = chain[end-1]
-                if start == end or start == 0 or end == 0:
-                    continue
-                # print(f"COMPARING {start} and {end}")
-
                 smoother.compute_disps(start=start, end=end)
                 curr_dist = smoother.length
+            # elif self.parameters.distance_metric.upper() == "XTBGI":
+            #     curr_dist = abs(subnode.energy -
+            #                     subset_chain[reference_index].energy)*627.5
             else:
                 curr_dist = self._distance_function(
-                    node1=start_node, node2=node)
+                    node1=reference_node, node2=node)
             curr_dist_err = np.abs(curr_dist - dist)
             if self.parameters.verbosity > 1:
                 print(f"\t{curr_dist_err=} vs {dist_err=} || {direction=}")
 
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
+                if self.parameters.distance_metric.upper() == 'XTBGI' and best_node is not None:
+                    new_dist, _ = RMSD(node.coords, reference_node.coords)
+                    best_dist, _ = RMSD(
+                        best_node.coords, reference_node.coords)
+                    if best_dist < new_dist:
+                        continue
+
                 best_node = node
                 best_dist_err = curr_dist_err
 

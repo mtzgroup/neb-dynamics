@@ -117,11 +117,20 @@ def iter_triplets(chain: Chain) -> list[list[Node]]:
 
 
 def neighs_grad_func(
-    chain: Chain, prev_node: Node, current_node: Node, next_node: Node
+    chain: Chain, prev_node: Node, current_node: Node, next_node: Node,
+    geodesic_tangent: bool = False
 ):
-    vec_tan_path = _create_tangent_path(
-        prev_node=prev_node, current_node=current_node, next_node=next_node
-    )
+    if geodesic_tangent:
+        ind = _get_closest_node_ind(
+            chain.coordinates, reference=current_node.coords)
+        _node0, _node1, _node2 = calculate_geodesic_tangent(
+            list_of_nodes=chain.nodes, ref_node_ind=ind)
+        vec_tan_path = ((current_node.coords - _node0.coords) +
+                        (_node2.coords - current_node.coords)) / 2
+    else:
+        vec_tan_path = _create_tangent_path(
+            prev_node=prev_node, current_node=current_node, next_node=next_node
+        )
     unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
     pe_grad = current_node.gradient
@@ -160,7 +169,7 @@ def neighs_grad_func(
     return pe_grads_nudged, spring_forces_nudged
 
 
-def pe_grads_spring_forces_nudged(chain: Chain):
+def pe_grads_spring_forces_nudged(chain: Chain, geodesic_tangent: bool = False):
     pe_grads_nudged = []
     spring_forces_nudged = []
 
@@ -170,6 +179,7 @@ def pe_grads_spring_forces_nudged(chain: Chain):
             prev_node=prev_node,
             current_node=current_node,
             next_node=next_node,
+            geodesic_tangent=geodesic_tangent
         )
 
         pe_grads_nudged.append(pe_grad_nudged)
@@ -208,13 +218,13 @@ def _k_between_nodes(
     return new_k
 
 
-def compute_NEB_gradient(chain: Chain) -> NDArray:
+def compute_NEB_gradient(chain: Chain, geodesic_tangent: bool = False) -> NDArray:
     """
     will return the sum of the perpendicular gradient
     and the spring gradient
     """
     pe_grads_nudged, spring_forces_nudged = pe_grads_spring_forces_nudged(
-        chain=chain)
+        chain=chain, geodesic_tangent=geodesic_tangent)
 
     grads = pe_grads_nudged - spring_forces_nudged
 
@@ -292,6 +302,7 @@ def get_force_spring_nudged(
     force_spring = k12 * np.linalg.norm(
         next_node.coords - current_node.coords
     ) - k01 * np.linalg.norm(current_node.coords - prev_node.coords)
+
     return force_spring * unit_tan_path
 
 
@@ -369,27 +380,15 @@ def calculate_geodesic_distance(
     return smoother.length
 
 
-
 def calculate_geodesic_tangent(
-    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages=50, nudge=0.1
+    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages=15, nudge=0.1
 ):
     """
-    will create a high density geodesic, then output a triplet of images corresponding to 
+    will create a high density geodesic, then output a triplet of images corresponding to
     a previous image, an adjusted current image, and a next image, forming a piecewise tangent.
     ref_node_ind is the indewx of the node we want to build a tangent around
     """
-    from neb_dynamics.helper_functions import RMSD
-    def _get_closest_node_ind(smoother_obj, reference):
-        smallest_dist = 1e10
-        ind = None
-        for i, geom in enumerate(smoother_obj.path):
-            dist, _ = RMSD(geom, reference)
-            if dist < smallest_dist:
-                smallest_dist = dist
-                ind = i
-        # print(smallest_dist)
-        return ind
-    
+
     inp_obj = [list_of_nodes[0].symbols, [n.coords for n in list_of_nodes]]
     smoother = run_geodesic_get_smoother(
         input_object=inp_obj,
@@ -397,13 +396,25 @@ def calculate_geodesic_tangent(
         nimages=nimages,
     )
     ref_node = list_of_nodes[ref_node_ind]
-    ind = _get_closest_node_ind(smoother, reference=ref_node.coords)
+    ind = _get_closest_node_ind(smoother.path, reference=ref_node.coords)
     new0 = ref_node.update_coords(smoother.path[ind-1])
     new1 = ref_node.update_coords(smoother.path[ind])
     new2 = ref_node.update_coords(smoother.path[ind+1])
 
-
     return [new0, new1, new2]
+
+
+def _get_closest_node_ind(xyz_path, reference):
+    from neb_dynamics.helper_functions import RMSD
+    smallest_dist = 1e10
+    ind = None
+    for i, geom in enumerate(xyz_path):
+        dist, _ = RMSD(geom, reference)
+        if dist < smallest_dist:
+            smallest_dist = dist
+            ind = i
+    # print(smallest_dist)
+    return ind
 
 
 def calculate_geodesic_xtb_barrier(

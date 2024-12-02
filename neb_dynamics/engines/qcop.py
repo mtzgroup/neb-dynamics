@@ -221,15 +221,31 @@ class QCOPEngine(Engine):
             output = self.compute_func('geometric', dpi)
         return output
 
-    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 200}):
-        dpi = DualProgramInput(
-            structure=node.structure,
-            calctype="transition_state",
-            subprogram=self.program,
-            subprogram_args={
-                "model": self.program_args.model,
-                "keywords": self.program_args.keywords,
-            })
+    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 200}, use_bigchem=False):
+        if use_bigchem:
+            hess = self.compute_hessian(node=node)
+            np.savetxt("/tmp/hess.txt", hess)
+            kwds = keywords.copy()
+            kwds["hessian"] = "file:hessian.txt"
+            dpi = DualProgramInput(keywords=kwds,
+                                   structure=node.structure,
+                                   calctype="transition_state",
+                                   subprogram='terachem',
+                                   subprogram_args={
+                                            "model": self.program_args.model,
+                                            "keywords": self.program_args.keywords,
+                                   },
+                                   files={'hessian.txt': open("/tmp/hess.txt").read()})
+        else:
+            dpi = DualProgramInput(
+                keywords=keywords.copy(),
+                structure=node.structure,
+                calctype="transition_state",
+                subprogram=self.program,
+                subprogram_args={
+                    "model": self.program_args.model,
+                    "keywords": self.program_args.keywords,
+                })
         return self.compute_func('geometric', dpi)
 
     def compute_hessian(self, node: StructureNode):

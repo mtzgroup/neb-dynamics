@@ -66,6 +66,7 @@ class NEBInputs:
     early_stop_still_steps_thre: int = 100
 
     negative_steps_thre: int = 10
+    use_geodesic_tangent: bool = False
 
     max_steps: float = 1000
 
@@ -231,7 +232,8 @@ class RunInputs:
                 "distance_metric": "GEODESIC",
                 "verbosity": 1,
                 "skip_identical_graphs": True,
-                "naive_grow": False
+                "naive_grow": False,
+                "do_elem_step_checks": True,
             }
         #     default_kwds = FSMInputs()
         # elif self.path_min_method.upper() == "PYGSM":
