@@ -50,7 +50,7 @@ def run(
 
         print("Using arbalign to optimize index labelling for endpoints")
         end_structure = align_structures(
-            start_structure, end_structure, distance_metric='xtb')
+            start_structure, end_structure, distance_metric='RMSD')
     else:
         start_structure = Structure.open(start)
         end_structure = Structure.open(end)
