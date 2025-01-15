@@ -40,12 +40,18 @@ def _check_rms_grad_converged(chain: Chain, threshold: float) -> Tuple[NDArray, 
     rms_gperps = []
 
     for rms_gp, rms_gradient in zip(chain.rms_gperps, chain.rms_gradients):
-        rms_gperps.append(rms_gp)
+        # rms_gperps.append(rms_gp)
 
-        # the boolens are used exclusively for deciding to freeze nodes or not
-        # I want the spring forces to affect whether a node is frozen, but not
-        # to affect the total chain's convergence.
+        # # the boolens are used exclusively for deciding to freeze nodes or not
+        # # I want the spring forces to affect whether a node is frozen, but not
+        # # to affect the total chain's convergence.
+        # rms_grad_converged = rms_gradient <= threshold
+
+        # 01072025: Maybe the spring forces should affect, so we don't cheat it by
+        # having bunch of nodes near minima
         rms_grad_converged = rms_gradient <= threshold
+        rms_gperps.append(rms_gradient)
+
         bools.append(rms_grad_converged)
 
     return np.where(bools), rms_gperps
@@ -53,13 +59,16 @@ def _check_rms_grad_converged(chain: Chain, threshold: float) -> Tuple[NDArray, 
 
 def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) -> bool:
     import neb_dynamics.chainhelpers as ch
+    fraction_freeze = 0.5
+
     rms_grad_conv_ind, rms_gperps = _check_rms_grad_converged(
-        chain_new, threshold=parameters.rms_grad_thre)
+        chain_new, threshold=parameters.rms_grad_thre*fraction_freeze)
     ts_triplet_gspring = chain_new.ts_triplet_gspring_infnorm
     en_converged_indices, en_deltas = _check_en_converged(
         chain_prev=chain_prev, chain_new=chain_new,
-        threshold=parameters.en_thre
+        threshold=parameters.en_thre*fraction_freeze
     )
+    g_perps = ch.get_g_perps(chain_new)
 
     converged_nodes_indices = np.intersect1d(
         en_converged_indices, rms_grad_conv_ind
@@ -77,16 +86,20 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
     barrier_height_converged = _check_barrier_height_conv(
         chain_prev=chain_prev, chain_new=chain_new, threshold=parameters.barrier_thre)
     ind_ts_guess = np.argmax(chain_new.energies)
-    ts_guess_grad = np.amax(np.abs(ch.get_g_perps(chain_new)[ind_ts_guess]))
+    ts_guess_grad = np.amax(np.abs(g_perps[ind_ts_guess]))
 
     criteria_converged = [
-        max(rms_gperps) <= parameters.max_rms_grad_thre,
+        sum(rms_gperps)/len(chain_new.nodes) <= parameters.rms_grad_thre,
         sum(rms_gperps)/len(chain_new) <= parameters.rms_grad_thre,
         ts_guess_grad <= parameters.ts_grad_thre,
         ts_triplet_gspring <= parameters.ts_spring_thre,
         barrier_height_converged]
 
-    converged = sum(criteria_converged) >= 5
+    CRITERIA_NAMES = ["MAX(RMS_GPERP)", "MEAN(RMS_GPERP)",
+                      "TS_GRAD", "TS_SPRING", "BARRIER_HEIGHT"]
+    print(f"\n{list(zip(CRITERIA_NAMES, criteria_converged))}\n")
+
+    converged = sum(criteria_converged) == len(criteria_converged)
 
     return converged
 

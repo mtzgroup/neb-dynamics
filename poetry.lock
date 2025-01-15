@@ -4128,13 +4128,13 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "qcio"
-version = "0.11.14"
+version = "0.11.17"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcio-0.11.14-py3-none-any.whl", hash = "sha256:9f99a278b03e3ee468c15ad829eb9b58cd6b242e1fc73c9765260fede44e2ec4"},
-    {file = "qcio-0.11.14.tar.gz", hash = "sha256:d18c09d30f7d15a7e7723055ba753d671ec78c01cda9068dc25bb8cab8d7dd71"},
+    {file = "qcio-0.11.17-py3-none-any.whl", hash = "sha256:25bfbefe528cb49f9340041b3b35644576059f553920fd95be7b7ac8eccc8ea2"},
+    {file = "qcio-0.11.17.tar.gz", hash = "sha256:949e6aa770ed45896b8bb4764a1f16ef630c261d42779eb39b62aab49c5e6c18"},
 ]
 
 [package.dependencies]
@@ -4152,18 +4152,18 @@ view = ["ipython (>=8.0.0)", "matplotlib (>=3.0.0)", "py3Dmol (>=2.2.1)", "rdkit
 
 [[package]]
 name = "qcop"
-version = "0.9.1"
+version = "0.9.2"
 description = "A package for operating Quantum Chemistry programs using qcio standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "qcop-0.9.1-py3-none-any.whl", hash = "sha256:adf287bf84d26de3829c81f332ad0183379d4036a3e4d5a322ec8b0b0cda198e"},
-    {file = "qcop-0.9.1.tar.gz", hash = "sha256:4a3a3b8a514f135e1213331edb4f0243356720fa7bc22953206cf40263255e37"},
+    {file = "qcop-0.9.2-py3-none-any.whl", hash = "sha256:24551683478e48a5d0d262fdc0131e480a1fb4317374bf8c35b8a3cf6dd3f3d6"},
+    {file = "qcop-0.9.2.tar.gz", hash = "sha256:3bfcf4ba5ee7c7cc4e982abdcac4154a183394d151086a7366c97f8e924b1a74"},
 ]
 
 [package.dependencies]
 qcio = ">=0.11.8,<0.12.0"
-qcparse = ">=0.6.3,<0.7.0"
+qcparse = ">=0.6.4,<0.7.0"
 tomli-w = ">=1.0.0,<2.0.0"
 
 [package.extras]
@@ -4174,13 +4174,13 @@ xtb = ["xtb (>=22.1,<23.0)"]
 
 [[package]]
 name = "qcparse"
-version = "0.6.3"
+version = "0.6.4"
 description = "A package for parsing Quantum Chemistry program file outputs into structured qcio data objects."
 optional = false
 python-versions = "<4.0,>=3.8"
 files = [
-    {file = "qcparse-0.6.3-py3-none-any.whl", hash = "sha256:b568c312ad5f96372b0fc2b1855a50e2eca911bc5793c1ecc863893be789e376"},
-    {file = "qcparse-0.6.3.tar.gz", hash = "sha256:c29eee4e6481fd5af2c45ec413d5ad45a69aacb6c6dbed9a46291fcf6aa1a763"},
+    {file = "qcparse-0.6.4-py3-none-any.whl", hash = "sha256:0904a8970e1ef2714f4d976f0af1b4a3402fca756d1003a181c67ae188daa164"},
+    {file = "qcparse-0.6.4.tar.gz", hash = "sha256:3db21e5b8dc3b46786ef1765e546958f43c9378cfd5127ee9bfcd473fceb2907"},
 ]
 
 [package.dependencies]

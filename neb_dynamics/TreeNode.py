@@ -75,7 +75,8 @@ class TreeNode:
 
     def get_num_grad_calls(self):
         return sum(
-            [leaf.grad_calls_made for leaf in self.get_optimization_history() if leaf]
+            [leaf.grad_calls_made for leaf in self.get_optimization_history()
+             if leaf]
         )
 
     def get_nodes_at_depth(self, depth):
@@ -120,7 +121,8 @@ class TreeNode:
         else:
             for child in node.children:
                 matrix_copy[node.index, child.index] = 1
-                matrix_copy = self._update_adj_matrix(matrix=matrix_copy, node=child)
+                matrix_copy = self._update_adj_matrix(
+                    matrix=matrix_copy, node=child)
 
         return matrix_copy
 
@@ -140,7 +142,9 @@ class TreeNode:
         chain_parameters=ChainInputs(),
         gi_parameters=GIInputs(),
         optimizer=VelocityProjectedOptimizer(),
-        engine=None
+        engine=None,
+        charge=0,
+        multiplicity=1,
     ):
         if isinstance(folder_name, str):
             folder_name = Path(folder_name)
@@ -162,7 +166,9 @@ class TreeNode:
                     neb_parameters=neb_parameters,
                     gi_parameters=gi_parameters,
                     optimizer=optimizer,
-                    engine=engine
+                    engine=engine,
+                    charge=charge,
+                    multiplicity=multiplicity,
                 )
                 for i in range(len(nodes))
             ]
@@ -179,7 +185,9 @@ class TreeNode:
                     chain_parameters=chain_parameters,
                     neb_parameters=neb_parameters,
                     optimizer=optimizer,
-                    engine=engine
+                    engine=engine,
+                    charge=charge,
+                    multiplicity=multiplicity,
                 )
             ]
             root = cls(data=neb_nodes[0], children=[], index=0)
@@ -249,5 +257,6 @@ class TreeNode:
             for node in self.depth_first_ordered_nodes
             if node.index in inds
         ]
-        out = Chain.from_list_of_chains(chains, parameters=chains[0].parameters)
+        out = Chain.from_list_of_chains(
+            chains, parameters=chains[0].parameters)
         return out

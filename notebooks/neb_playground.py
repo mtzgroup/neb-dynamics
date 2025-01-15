@@ -9,19 +9,366 @@ from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_fil
 
 from neb_dynamics.neb import NEB
 from neb_dynamics import StructureNode, Chain
-from neb_dynamics.helper_functions import RMSD
+from neb_dynamics.helper_functions import RMSD, get_fsm_tsg_from_chain
 from neb_dynamics.inputs import RunInputs
 
 from qcio import Structure, view, ProgramOutput
+
 import neb_dynamics.chainhelpers as ch
 import pandas as pd
 
+from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 import numpy as np
+
+import matplotlib.pyplot as plt
 # -
 
 from neb_dynamics.inputs import ChainInputs
 
 from neb_dynamics.pathminimizers.dimer import DimerMethod3D
+
+p = Path("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system1/")
+
+allsys = [p.parent / sys for sys in list(p.parent.glob("sys*"))]
+
+# +
+data = []
+failcount = 0
+unsucc = []
+for sysn in allsys:
+    try:
+        ngc = [float(l.split()[2]) for l in open(sysn / 'out_fsm_msmep').read().splitlines() if ">>>" in l][0]
+        ngc_geom = [float(l.split()[2]) for l in open(sysn / 'out_fsm_msmep').read().splitlines() if "<<<" in l][0]
+        ts_output = ProgramOutput.open(sysn / 'fsm_msmep_tsres_0.qcio')
+        
+        if not ts_output.success:
+            print(f"*****{sysn}")
+            dist = None
+        else:
+            sp = Structure.open(sysn / 'sp.xyz')
+            spnode = StructureNode(structure=sp)
+            # tsnode = StructureNode(structure=ts_output.return_result)
+            # enes = RunInputs().engine.compute_energies([spnode, tsnode])
+            # dist = abs(tsnode.energy - spnode.energy)*627.5
+            dist = RMSD(sp.geometry, ts_output.return_result.geometry)[0]
+            # print(sysn.stem, dist[0])
+            
+
+        data.append([str(sysn.stem), ngc, ngc_geom, dist])
+    except Exception as e:
+        print(e)
+        failcount+=1
+        print(sysn, ' failed')
+
+
+# data = np.array(data)
+# -
+
+len(unsucc), failcount
+
+import pandas as pd
+
+df = pd.DataFrame(data, columns=['name', 'ngc','geom', 'ts_dist'])
+
+df.iloc[:, 1].mean(), df.iloc[:, 1].std(), df.iloc[:, 1].mean() ,df.iloc[:, 1].max(), df.iloc[:, 1].min()
+
+df.sort_values(by='ts_dist',ascending=False).dropna()
+
+
+
+tsres = eng._compute_ts_result(h.ordered_leaves[0].data.chain_trajectory[-1].get_ts_node())
+
+inds = list(range(0, 125, 25))
+eng = RunInputs().engine
+THRE = 2.0
+succeses = []
+weird_failures = []
+for p in allsys:
+    # print("\n\n\n\n\n\n\n\n\n\n***\n\n\n\n\n\n\n\n\n\n", p)
+    if not (p / "xtb_msmep").exists(): continue
+    try:
+        h = TreeNode.read_from_disk(p / "xtb_msmep")
+        # h = TreeNode.read_from_disk(p / "deb")
+        sp = Structure.open(p / 'sp.xyz')
+        for i in inds:
+        
+            # tsres = eng._compute_ts_result(StructureNode(structure=sp))
+            c = h.data.chain_trajectory[i]
+            ts_ind = c.energies.argmax()
+            # print(f"ts_gperp: {np.amax(abs(c.gperps[ts_ind]))} || ts_spring: {c.ts_triplet_gspring_infnorm} || rms: {sum(c.rms_gradients)/len(c)}")
+            conditions = (p, i, np.amax(abs(c.gperps[ts_ind])), c.ts_triplet_gspring_infnorm, sum(c.rms_gradients)/len(c))
+            
+            try:
+                tsres = eng._compute_ts_result(c.get_ts_node())
+            except Exception as e:
+                tsres = e.program_output
+            if tsres.success:
+                dist = RMSD(tsres.return_result.geometry, sp.geometry)[0]
+        
+                if dist < THRE:
+                    succeses.append(conditions)
+    except Exception:
+        weird_failures.append((p, i))
+
+a = Structure.from_smiles("C")
+
+# +
+
+import itertools
+# -
+
+a = Structure.open("/home/jdep/T3D_data/msmep_draft/pes/ch4/structures/mol_0.xyz")
+b = Structure.open("/home/jdep/T3D_data/msmep_draft/pes/ch4/structures/mol_1.xyz")
+
+reshape = {}
+vals = [] 
+for row in succeses:
+    if row[0].stem in reshape.keys():
+        continue
+    else:
+        reshape[row[0].stem] = row[1:]
+        vals.append(row[2:])
+
+dataframe = pd.DataFrame(vals, columns=['ts_gperp', 'ts_spring', 'rms'])
+
+# +
+
+dataframe['sums'] = [sum(v) for v in vals]
+dataframe['avgs'] = [sum(v)/len(v) for v in vals]
+dataframe['mins'] = [min(v) for v in vals]
+dataframe['maxs'] = [max(v) for v in vals]
+# -
+
+dataframe['ts_gperp'].median(), dataframe['ts_spring'].median(), dataframe['rms'].median()
+
+dataframe['ts_gperp'].plot(kind='kde')
+dataframe['ts_spring'].plot(kind='kde')
+dataframe['rms'].plot(kind='kde')
+plt.vlines(x=0.05765000839220463, ymin=0, ymax=40, color='blue', linestyles='--')
+plt.vlines(x=0.02301635371365334, ymin=0, ymax=40, color='orange', linestyles='--')
+plt.vlines(x=0.02395753780581609, ymin=0, ymax=40, color='green', linestyles='--')
+plt.legend()
+
+dataframe['sums'].argmin(),  dataframe['mins'].argmin(), dataframe['maxs'].argmin()
+
+len(df[df['ts_dist']>0.5])
+df[df['ts_dist']>0.5]
+
+n = NEB.read_from_disk("/home/kukier/projects/dioxetane/terachem-rework/neb/irc-guess/cc-f6/less-dissoc/twenty-beads/mep_output_neb.xyz")
+
+n.optimized.energies
+
+# +
+
+pa = ProgramInput(keywords=kwds, model={'method':method, 'basis':basis}, structure=n.optimized[1].structure, calctype='energy')
+# -
+
+ri.program_kwds.keywords['guess'] = 'hcore'
+
+n.optimized[1]._cached_energy = None
+
+ri.engine.compute_energies([n.optimized[1]])
+
+ri = RunInputs.open("/home/kukier/software/neb-dynamics/diox-cc-f6.toml")
+
+c = n.optimized.copy()
+for node in c:
+    node._cached_energy = None
+
+huh = [-2.286789222635999863e+02,
+-2.286741163174999940e+02,
+-2.286221265927999866e+02,
+-2.286035979922000081e+02,
+-2.285889732324000079e+02,
+-2.285836811558999955e+02,
+-2.285836463107999919e+02,
+-2.285854023990999906e+02,
+-2.285875434595000115e+02,
+-2.285884957842999938e+02,
+-2.285877607642999862e+02,
+-2.285866934649000086e+02,
+-2.285857247874000109e+02,
+-2.285839660931000026e+02,
+-2.285849953995000021e+02,
+-2.285835751468999888e+02,
+-2.285849529147000112e+02,
+-2.286628515818999858e+02,
+-2.287521525319000091e+02,
+-2.287649087929999894e+02
+]
+
+ri.engine.program = 'terachem'
+
+out = ri.engine.compute_energies(c)
+
+po = ProgramOutput.open("/home/jdep/for_kuke
+
+# +
+
+view.view(po)
+# -
+
+view.view(c[1]._cached_result)
+
+c2 = c.copy()
+for node in c2:
+    node._cached_energy = None
+out2 = RunInputs().engine.compute_energies(c2)
+
+plt.plot((np.array(out)-out[0])*627.5,'o-')
+# plt.plot((np.array(out2)-out2[0])*627.5,'o-')
+plt.plot((np.array(huh)-huh[0])*627.5,'x-')
+
+plt.plot((np.array(out)-out[0])*627.5,'o-')
+# plt.plot((np.array(out2)-out2[0])*627.5,'o-')
+plt.plot((np.array(huh)-huh[0])*627.5,'x-')
+
+plt.plot((np.array(out)-out[0])*627.5,'o-')
+plt.plot((np.array(out2)-out2[0])*627.5,'o-')
+plt.plot((np.array(huh)-huh[0])*627.5,'x-')
+
+# +
+"""An example of how to create a FileInput object for a QC Program."""
+
+from pathlib import Path
+
+from qcio import FileInput, Structure
+
+from qcop import compute
+
+# Input files for QC Program
+inp_file = Path("/home/kukier/projects/dioxetane/terachem-rework/neb/irc-guess/cc-f6/less-dissoc/twenty-beads/opt-new-min/poss-new_min.inp").read_text()  # Or your own function to create tc.in
+
+# Structure object to XYZ file
+structure = Structure.open("/home/kukier/projects/dioxetane/terachem-rework/neb/irc-guess/cc-f6/less-dissoc/twenty-beads/opt-new-min/poss-new-minimum.xyz")
+xyz_str = structure.to_xyz()  # type: ignore
+
+# Create a FileInput object for TeraChem
+file_inp = FileInput(
+    files={"tc.in": inp_file, "coords.xyz": xyz_str}, cmdline_args=["tc.in"]
+)
+
+# +
+# This will write the files to disk in a temporary directory and then run
+# "terachem tc.in" in that directory.
+output = compute("terachem", file_inp, print_stdout=True)
+
+# Data
+output.stdout
+output.input_data
+output.results.files  # Has all the files terachem creates
+output.results.files.keys()  # Print out file names
+# Saves all outputs with the exact structure produced by the QC program
+output.results.save_files("to/this/directory")
+# -
+
+pa = ProgramInput(
+    keywords={'guess':'/home/kukier/projects/dioxetane/terachem-rework/crit-points/cartesian-qchem/wf-cartesian/diox-reac-p4-6-f6-0.c0a.qchem /home/kukier/projects/dioxetane/terachem-rework/crit-points/cartesian-qchem/wf-cartesian/diox-reac-p4-6-f6-0.c0b.qchem',
+              'purify': 'no', 
+          'precision': 'double', 
+          'mixguess': 0, 
+          'dftgrid': 2,
+          'convthre': 1e-06,
+          'steering': 'adaptive', 
+          'steeratom1': 4, 
+          'steeratom2': 6, 
+          'steerforce': 0.036413407958360185},
+        files={}, 
+    model={'method':'uwb97xd3', 'basis':'def2-svp'}, 
+calctype='energy',
+structure=n.optimized[1].structure)
+
+out = compute('terachem', pa, collect_stdout=True)
+
+view.view(out)
+
+n.optimized[1].structure.save("/home/jdep/for_kuke/hello.xyz")
+
+ch.visualize_chain(n.optimized)
+
+n.plot_opt_history(1)
+
+n.optimized.energies
+
+n.optimized.plot_chain()
+
+ch.visualize_chain(n.optimized)
+
+# h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/debug/wittig/fsm")
+# fp = Path("/home/jdep/T3D_data/msmep_draft/pes/ch4/results/")
+# name = 'pair_16'
+# h = TreeNode.read_from_disk(fp / name)
+# h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/debug/Claisen-Aromatic/mep_output_msmep/")
+# name = 'Semmler-Wolff-Reaction'
+# p = Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/') / name
+name = 'system25'
+p = Path('/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/') / name
+# h = TreeNode.read_from_disk(p / "xtb_msmep")
+h = TreeNode.read_from_disk(p / "dft_msmep")
+# h = TreeNode.read_from_disk(p / "deb")x
+sp = Structure.open(p / 'sp_terachem.xyz')
+# h = TreeNode.read_from_disk(p / "ref")
+
+a = Structure.open(p / 'sp_terachem_plus.xyz')
+
+view.view(a)
+
+visualize_chain(h.output_chain)
+
+# p = Path("/home/jdep/T3D_data/msmep_draft/debug/Claisen-Aromatic/")
+# po_names = list(p.glob("xtb_msmep_tsres*"))
+po_names = list(p.glob("dft_msmep_tsres*"))
+# po_names = list(Path("/home/jdep/T3D_data/msmep_draft/pes/ch4/results").glob("*.qcio"))
+# po_names = list(p.glob("deb_tsres*"))
+pos = [ProgramOutput.open(name) for name in po_names]
+
+view.view(pos[0])
+
+eng = RunInputs().engine
+
+# +
+
+tsres = eng._compute_hessian_result(StructureNode(structure=pos[0].return_result))
+# -
+
+res = eng.compute_sd_irc(StructureNode(structure=pos[0].return_result))
+
+pos = [ProgramOutput.open(x) for x in Path("/home/jdep/T3D_data/msmep_draft/pes/ch4/results/").glob("*.qcio")]
+
+tss = [po.return_result for po in pos if po.success]
+
+unique = [tss[0]]
+for structure in tss[1:]:
+    dists = np.array([RMSD(structure.geometry, ref.geometry)[0] for ref in unique])
+    if all(dists >1.0):
+        unique.append(structure)
+        
+
+view.view(*unique)
+
+hessres = eng._compute_hessian_result(StructureNode(structure=unique[-1]))
+
+# +
+# view.view(pos[0])
+# view.view(pos[0].return_result, sp)
+
+# +
+# ts = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system1/sp.xyz")
+
+# +
+# view.view(po)
+# -
+
+visualize_chain(h.output_chain)
+
+po1 = ProgramOutput.open("/home/jdep/T3D_data/msmep_draft/debug/Claisen-Aromatic/mep_output_msmep_tsres_0.qcio")
+po2 = ProgramOutput.open("/home/jdep/T3D_data/msmep_draft/debug/Claisen-Aromatic/mep_output_msmep_tsres_1.qcio")
+
+view.view(po1.return_result, po2.return_result)
+
+# +
+# visualize_chain(h.output_chain)
+# -
 
 dd = Path("/home/jdep/T3D_data/fneb_draft/benchmark/")
 
@@ -32,33 +379,37 @@ enes_guess = [neb.optimized.energies[ind_guesses[0]], neb.optimized.energies[ind
 ind_tsg = ind_guesses[np.argmax(enes_guess)]
 print(ind_tsg)
 
-eng = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/system76/debug/debug.toml").engine
-eng.program = 'terachem-pbs'
-# eng = RunInputs().engine
-
-# hessres = eng._compute_hessian_result(StructureNode(structure=sp))
-hessres = eng._compute_hessian_result(neb.optimized.get_ts_node())
-
-view.view(hessres)
-
-try:
-    tsres = eng._compute_ts_result(neb.optimized.get_ts_node())
-except Exception as e:
-    tsres = e.program_ouput
-
-view.view(tsres)
-
 # +
 
+view.view(gi[0].structure, neb.optimized[0].structure)
+# -
 
-name = 'system76'
+ri = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/launch.toml")
+eng = ri.engine
+eng.program = 'terachem'
+# eng = RunInputs().engine
+
+from neb_dynamics.scripts.main_cli import pseuirc
+
+# +
+name = 'system25'
+gradcallspernode = 5
 
 
 print(name)
 neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb.xyz")
-# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/db.xyz")
-neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/debug/reactant_neb.xyz")
+# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb_bugfix.xyz")
+# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb_linear.xyz")
+# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb_oldminima.xyz")
+# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/neb.xyz")
+# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/redofailed.xyz")
+# neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/debug/reactant_neb.xyz")
+sp = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/{name}/{name}/sp_terachem.xyz")
 fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts.qcio")
+# fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts_bugfix.qcio")
+# fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts_linear.qcio")
+# fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/neb_ts.qcio")
+# fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/debug/tsg.qcio")
 fsmgi_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi_ts.qcio")
 if not neb_fp.exists() or not fsmqcio_fp.exists() or not fsmgi_fp.exists():
     print('\tfailed! check this entry.')
@@ -67,6 +418,10 @@ gi = Chain.from_xyz(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi.xyz", C
 po_fsm = ProgramOutput.open(fsmqcio_fp)
 po_gi = ProgramOutput.open(fsmgi_fp)
 sp = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/{name}/{name}/sp_terachem.xyz")
+
+ngc_fsm = ((len(neb.optimized)-2)*gradcallspernode + 2)  + len(po_fsm.results.trajectory)
+ngc_gi = len(po_gi.results.trajectory)
+
 if po_fsm.success:
     d_fsm, _  = RMSD(po_fsm.return_result.geometry, sp.geometry)
 else:
@@ -80,35 +435,410 @@ else:
 # view.view(sp, po_fsm.return_result, po_gi.return_result, titles=['SP', f"FSM {round(d_fsm, 3)}", f"GI {round(d_gi, 3)}"])
 # -
 
-visualize_chain(neb.optimized)
 
-view.view(neb.optimized.get_ts_node().structure, sp)
+for node in neb.optimized:
+    node._cached_energy = None
 
-df[df['dE_fsm'] > 1.0]
+eng_true.compute_energies(neb.optimized)
 
-eng.program = 'terachem'
+sp_node = StructureNode(structure=sp)
+eng_true.compute_energies([sp_node])
 
 # +
 
-tsres = eng._compute_ts_result(neb.optimized[7])
+from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 # -
+
+sp.geometry
+
+RMSD(get_fsm_tsg_from_chain(neb.optimized).coords, sp_node.coords)[0]*BOHR_TO_ANGSTROMS
+
+
+
+[l for l in po_fsm.stdout.split('\n') if "Imaginary" in l]
+
+(get_fsm_tsg_from_chain(neb.optimized).energy - sp_node.energy)*627.5
+
+# +
+
+visualize_chain(lolz.optimized)
+# -
+
+huh = ProgramOutput.open("/home/jdep/T3D_data/fneb_draft/benchmark/system25/fsm_ts_linear.qcio")
+huh2 = ProgramOutput.open("/home/jdep/T3D_data/fneb_draft/benchmark/system25/fsm_ts.qcio")
+lolz = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/benchmark/system25/fneb_linear.xyz")
+
+[l for l in huh2.stdout.split("\n") if "Imaginary" in l]
+
+[l for l in huh.stdout.split("\n") if "Imaginary" in l]
+
+view.view(huh.input_data.structure, po_fsm.input_data.structure, sp)
+
+[l for l in po_gi.stdout.split("\n") if "Imaginary" in l]
+
+tsgs = [gi.get_ts_node().structure, neb.optimized.get_ts_node().structure, get_fsm_tsg_from_chain(lolz.optimized).structure]
+
+for i, s in enumerate(tsgs):
+    s.save(f"/home/jdep/neb_dynamics/notebooks/GM2024/data/tsg_{i}.xyz")
+
+
+
+
+visualize_chain(lolz.optimized)
+
+view.view(huh)
+
+tsres = eng_true._compute_ts_result(gi.get_ts_node())
+
+tsres.save("/home/jdep/T3D_data/fneb_draft/benchmark/system8/gi_ts.qcio")
 
 view.view(po_fsm.return_result, sp)
 
 visualize_chain(neb.optimized)
 
-view.view(po_fsm.return_result, sp)
+view.view(po_fsm)
 
-hessres = eng._compute_hessian_result(StructureNode(structure=po_fsm.return_result))
+# +
 
-view.view(hessres)
+view.view(gi.get_ts_node().structure, neb.optimized.get_ts_node().structure, sp)
 
-view.view(po_fsm.return_result, sp, po_gi.return_result)
+# +
+# sub[['name','dE_fsm_geo']]
 
-fout = open("/home/jdep/T3D_data/fneb_draft/benchmark/todo.txt", "w+")
-for n in df[df["dE_fsm"] > 0.1]['name'].values:
-    fout.write(f"{n}\n")
-fout.close()
+# +
+# tsres = eng_true._compute_ts_result(get_fsm_tsg_from_chain(neb.optimized))
+# tsres = RunInputs().engine._compute_ts_result(get_fsm_tsg_from_chain(neb.optimized))
+# -
+
+r = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system4/sp_terachem_minus.xyz")
+p = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system4/sp_terachem_plus.xyz")
+
+# view.view(po_fsm.return_result, sp)
+view.view(neb.optimized[0].structure, neb.optimized[-1].structure, r, p)
+# view.view(po_gi)
+
+# +
+# visualize_chain(neb.optimized)
+# -
+
+view.view(po_fsm.input_data.structure, sp)
+
+for node in c:
+    node._cached_energy = None
+
+c = neb.optimized
+
+eng_true.compute_energies(c)
+
+visualize_chain(c)
+
+a = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system2/react.xyz")
+b = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system2/prod.xyz")
+sp = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system2/sp.xyz")
+
+eng = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/launch.toml").engine
+
+tsres = eng._compute_ts_result(neb.optimized.get_ts_node())
+
+tsres.save("/home/jdep/T3D_data/fneb_draft/benchmark/system2/fsm_ts.qcio")
+
+view.view(tsres.return_result, sp)
+
+# +
+# view.view(po_fsm)
+# -
+
+defeng = RunInputs().engine
+
+# tsres = defeng._compute_ts_result(get_fsm_tsg_from_chain(neb.optimized))
+tsres = defeng._compute_ts_result(neb.optimized.get_ts_node())
+
+view.view(tsres.return_result, sp)p
+
+# +
+
+tsres2 = defeng._compute_ts_result(neb.optimized[8])
+# -
+
+view.view(tsres.return_result, sp)
+
+visualize_chain(neb.optimized)
+
+
+def get_projections(all_coords, eigvec, reference=None):
+    # ind_ts = c.energies.argmax()
+    ind_ts = 0
+    # ind_ts = 8
+
+    all_dists = []
+    for i, coords in enumerate(all_coords):
+        # _, aligned_ci = align_geom(all_coords[i], reference)
+        if reference:
+            _, aligned_start = align_geom(c[ind_ts].coords, reference)
+        # displacement = aligned_ci.flatten() - c[ind_ts].coords.flatten()
+            displacement = aligned_ci.flatten() - aligned_start.flatten()
+        else:
+            displacement = coords.flatten() - all_coords[ind_ts].flatten()
+        # _, disp_aligned = align_geom(displacement.reshape(c[i].coords.shape), eigvec.reshape(c[i].coords.shape))
+        all_dists.append(np.dot(displacement, eigvec))
+        # all_dists.append(np.dot(disp_aligned.flatten(), eigvec))
+                                     
+    # plt.plot(all_dists)
+    return all_dists
+
+
+# +
+# n0 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/geo.xyz")
+n0 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/geo2.xyz")
+# n0 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/fsm.xyz")
+# n0 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/hellomartin.xyz")
+# n1 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/line.xyz")
+n1 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/line2.xyz")
+n2 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/neb.xyz")
+
+lol = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/start_neb.xyz")
+# -
+
+from neb_dynamics.nodes.nodehelpers import displace_by_dr
+
+# c_irc = Chain(nodes=tsmin_tr+tsplus_tr)
+c_irc = Chain.from_xyz("/home/jdep/T3D_data/fneb_draft/animation/hcn/irc.xyz", ChainInputs())
+
+
+def animate_trajectory(traj, xmin=-0.1, xmax=1.1, ymin=-1, ymax=200):
+    import matplotlib.pyplot as plt
+    import matplotlib.animation
+    import numpy as np
+    from IPython.display import HTML
+    
+    
+    x = [list(chain.coordinates) for chain in traj]
+    y = [list(chain.energies_kcalmol) for chain in traj]
+    
+    fig, ax = plt.subplots()
+    fs = 18
+    
+    l, = ax.plot([],[], 'o-', label='fsm')
+    rxn_coord = ch.get_rxn_coordinate(c_irc)
+    # disps = np.array(get_projections(c_irc.coordinates, rxn_coord))
+    disps = c_irc.integrated_path_length
+    
+    ax.plot(disps, c_irc.energies_kcalmol, '-', color='black', label='irc')
+    ax.scatter([disps[501]], [max(c_irc.energies_kcalmol)], marker='x', color='black', s=50, label='TS')
+    
+    # ax.axis([0,1,0,100])
+    ax.set_xlim(xmin,xmax)
+    ax.set_ylim(ymin,ymax)
+    def animate(i):    
+        disps = np.array(get_projections(x[i], rxn_coord))
+        # l.set_data(disps, y[i])
+        l.set_data(traj[i].integrated_path_length, traj[i].energies_kcalmol)
+    
+    ani = matplotlib.animation.FuncAnimation(fig, animate, frames=len(traj))
+    plt.ylabel("Energies (kcal/mol)",fontsize=fs)
+    plt.xlabel("Reaction coordinate",fontsize=fs)
+    plt.xticks(fontsize=fs)
+    plt.yticks(fontsize=fs)
+    plt.legend(fontsize=fs)
+    plt.tight_layout()
+    return ani
+    # return HTML(ani.to_jshtml())
+
+# +
+
+
+# visualize_chain(lol.optimized)
+# -
+
+def align_chain_to_node(chain, refnode):
+    wtfnew_nodes = []
+    for node in chain:
+        _, lolz = align_geom(refgeom=refnode.coords, geom=node.coords)
+        wtfnew_nodes.append(node.update_coords(lolz))
+    return Chain(wtfnew_nodes)
+
+
+new_ct = []
+for c in n0.chain_trajectory:
+    new_ct.append(align_chain_to_node(c, n0.optimized[-1]))
+
+new_ct_line = []
+for c in n1.chain_trajectory:
+    new_ct_line.append(align_chain_to_node(c, n1.optimized[-1]))
+
+eng = RunInputs().engine
+
+# +
+
+for c in new_ct_line:
+    eng.compute_gradients(c)
+# -
+
+for c in new_ct:
+    eng.compute_gradients(c)
+
+c_irc = Chain(nodes=wtfnew_nodes)
+
+defeng.compute_energies(c_irc)
+
+# +
+import matplotlib.pyplot as plt
+import matplotlib.animation
+import numpy as np
+from IPython.display import HTML
+
+fs = 15
+fig, ax = plt.subplots()
+
+
+l, = ax.plot([],[], 'o-')
+rxn_coord = ch.get_rxn_coordinate(c_irc)
+disps = np.array(get_projections(c_irc.coordinates, rxn_coord))
+
+# ax.plot(disps, c_irc.energies_kcalmol, '-', color='black')
+ax.plot(c_irc.integrated_path_length, c_irc.energies_kcalmol, '-', color='black')
+ax.scatter([c_irc.integrated_path_length[501]], [max(c_irc.energies_kcalmol)], marker='x', color='black', s=50, label='TS')
+# ax.plot(get_projections(new_ct[1].coordinates, rxn_coord), new_ct[1].energies_kcalmol, 'o-', label='geodesic-growth')
+# ax.plot(get_projections(new_ct_line[1].coordinates, rxn_coord), new_ct_line[1].energies_kcalmol, 'o-', label='linear-growth')
+ax.plot(new_ct[1].integrated_path_length, new_ct[1].energies_kcalmol, 'o-', label='geodesic-growth')
+ax.plot(new_ct_line[1].integrated_path_length, new_ct_line[1].energies_kcalmol, 'o-', label='linear-growth')
+
+# ax.plot(get_projections(n0.optimized.coordinates, rxn_coord), n0.optimized.energies_kcalmol, 'o-', label='geodesic-converged')
+# ax.plot(get_projections(n1.optimized.coordinates, rxn_coord), n1.optimized.energies_kcalmol, 'o-', label='linear-converged')
+plt.legend(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.ylabel("Energies (kcal/mol)",fontsize=fs)
+plt.xlabel("Rxn coordinate",fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.show()
+# -
+
+fig.savefig("/home/jdep/neb_dynamics/notebooks/GM2024/data/comparison.png")
+
+for c in new_ct_line:
+    defeng.compute_energies(c)
+
+for c in new_ct:
+    defeng.compute_energies(c)
+
+# huh = animate_trajectory(n0.chain_trajectory, ymax=500, xmin=-4, xmax=0.1, ymin=-30)
+# huh = animate_trajectory(new_ct_line, ymax=1500, xmin=-0.1, xmax=1.1, ymin=-30)
+huh = animate_trajectory(new_ct, ymax=200, xmin=-0.1, xmax=1.1, ymin=-30)
+huh
+
+high_ene_tr = []
+for i, c in enumerate(new_ct_line):
+    high_ene_tr.append((c[int(len(c)/2)-1], c[int(len(c)/2)], i))
+
+for i in range(len(new_ct_line)):
+    print(i)
+    fs = 15
+    fig, ax = plt.subplots()
+    
+    c = new_ct_line[i]
+    l, = ax.plot([],[], 'o-')
+    rxn_coord = ch.get_rxn_coordinate(c_irc)
+    disps = np.array(get_projections(c_irc.coordinates, rxn_coord))
+    
+    # ax.plot(disps, c_irc.energies_kcalmol, '-', color='black')
+    ax.plot(c_irc.integrated_path_length, c_irc.energies_kcalmol, '-', color='black')
+    ax.scatter([c_irc.integrated_path_length[501]], [max(c_irc.energies_kcalmol)], marker='x', color='black', s=50, label='TS')
+    # ax.plot(get_projections(new_ct[1].coordinates, rxn_coord), new_ct[1].energies_kcalmol, 'o-', label='geodesic-growth')
+    # ax.plot(get_projections(new_ct_line[1].coordinates, rxn_coord), new_ct_line[1].energies_kcalmol, 'o-', label='linear-growth')
+    ax.plot(c.integrated_path_length, c.energies_kcalmol, 'o-', label='linear-growth')
+    
+    # ax.plot(get_projections(n0.optimized.coordinates, rxn_coord), n0.optimized.energies_kcalmol, 'o-', label='geodesic-converged')
+    # ax.plot(get_projections(n1.optimized.coordinates, rxn_coord), n1.optimized.energies_kcalmol, 'o-', label='linear-converged')
+    plt.legend(fontsize=fs)
+    plt.xticks(fontsize=fs)
+    plt.ylabel("Energies (kcal/mol)",fontsize=fs)
+    plt.xlabel("Rxn coordinate",fontsize=fs)
+    plt.yticks(fontsize=fs)
+    plt.show()
+
+ch.visualize_chain([n[1] for n in high_ene_tr])
+
+huh.save("/home/jdep/T3D_data/fneb_draft/animation/geo.gif")
+# huh.save("/home/jdep/T3D_data/fneb_draft/animation/line.gif")
+
+tsres = defeng._compute_ts_result(get_fsm_tsg_from_chain(lol.optimized))
+
+# +
+lol = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/neb.xyz")
+# irc = Chain.from_xyz("/home/jdep/T3D_data/fneb_draft/animation/hcn/irc.xyz", ChainInputs())
+lol2 = NEB.read_from_disk("/home/jdep/T3D_data/fneb_draft/animation/hcn/geo2.xyz")
+
+
+sp = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system1/sp.xyz")
+
+# -
+
+gi = ch.run_geodesic([lol2.optimized[0], lol2.optimized[-1]], nimages=50)
+defeng.compute_energies(gi)
+
+irc = c_irc
+
+len_list = [len(c) for c in lol2.chain_trajectory]
+
+pivot_inds = []
+prev_val = len_list[0]
+for i, val in enumerate(len_list):
+    if val != prev_val:
+        prev_val = val
+        pivot_inds.append(i)
+pivot_inds
+
+
+step = 1
+i = pivot_inds[step]-1
+plt.plot(lol2.chain_trajectory[0].integrated_path_length, lol2.chain_trajectory[0].energies_kcalmol,'o-')
+plt.plot(lol2.chain_trajectory[i].integrated_path_length, lol2.chain_trajectory[i].energies_kcalmol,'o-')
+print(len(lol2.chain_trajectory[i]))
+
+# innleft = 1
+innleft = step
+gi2 = ch.run_geodesic([lol2.chain_trajectory[i][innleft], lol2.chain_trajectory[i][innleft+1]], nimages=10)
+# gi2 = ch.run_geodesic([lol2.chain_trajectory[i][2], lol2.chain_trajectory[i][4]], nimages=10)
+
+defeng = RunInputs().engine
+
+defeng.compute_energies(gi2)
+
+coords = np.linspace(lol2.optimized[0].coords, lol2.optimized[-1].coords, num=15)
+line_nodes = [gi[0].update_coords(x) for x in coords]
+
+line = Chain(line_nodes)
+
+defeng.compute_energies(line)
+
+line[7]._cached_energy = np.nan
+
+# +
+
+
+fs = 18
+
+c_gi2 = Chain(nodes=lol2.chain_trajectory[i][:innleft]+gi2.nodes+lol2.chain_trajectory[i][innleft+1:], parameters=ChainInputs())
+# c_gi2 = Chain(nodes=lol2.chain_trajectory[i][:2]+gi2.nodes+lol2.chain_trajectory[i][4+1:], parameters=ChainInputs())
+
+defeng.compute_energies(c_gi2)
+
+plt.plot(line.integrated_path_length, line.energies_kcalmol,'-', label='original linear')
+plt.plot(gi.integrated_path_length, gi.energies_kcalmol,'-', label='original gi')
+plt.plot(irc.integrated_path_length, irc.energies_kcalmol,'-', label='irc', color='black')
+
+plt.plot(c_gi2.integrated_path_length, c_gi2.energies_kcalmol,'-', label=f'gi after step {step}', color='green')
+plt.plot([c_gi2.integrated_path_length[1],c_gi2.integrated_path_length[-2]], [c_gi2.energies_kcalmol[1], c_gi2.energies_kcalmol[-2]],'^', color='green',ms=15)
+
+
+plt.ylim(0,100)
+plt.ylabel("Energies (kcal/mol)", fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.legend(fontsize=fs)
+# -
+
+view.view(neb.optimized.get_ts_node().structure, get_fsm_tsg_from_chain(neb.optimized).structure, sp)
 
 eng = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/debug.toml").engine
 
@@ -125,20 +855,14 @@ tsres = eng._compute_ts_result(neb.optimized.get_ts_node())
 view.view(po_fsm.return_result, sp)
 # view.view(sp, neb.optimized.get_ts_node().structure)
 
-eng = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/system25/debug/debug.toml").engine
+
 
 visualize_chain(neb.optimized)
 
-len(df[df['dE_gi']<=0.1])
-
-sub = df[df['dE_gi']<=0.1]
-sub[sub['dE_fsm'] >0.1]
-
-len(df[df['dE_fsm']<=0.1])
-
 f,ax = plt.subplots()
 fs=18
-N = len(df)
+# N = len(df)
+N = len(df[df['fsm_success']==1])
 kcal1 = [sum(df['dE_fsm'] <= 1.0)/N, sum(df['dE_gi'] <= 1.0)/N]
 kcal05 = [sum(df['dE_fsm'] <= 0.5)/N, sum(df['dE_gi'] <= 0.5)/N]
 kcal01 = [sum(df['dE_fsm'] <= 0.1)/N, sum(df['dE_gi'] <= 0.1)/N]
@@ -152,10 +876,10 @@ plt.legend(fontsize=fs)
 plt.ylabel("Percent",fontsize=fs+5)
 plt.show()
 
-defaulteng = RunInputs().engine
-
-# +
-
+defaulteng = RunInputs(engine_name='ase').engine
+eng_true = RunInputs.open("/home/jdep/T3D_data/fneb_draft/benchmark/launch.toml").engine
+eng_true.program = 'terachem'
+gradcallspernode = 5
 data = []
 # name = 'system5'
 all_names = list(dd.glob("sys*"))
@@ -163,8 +887,14 @@ for fp in all_names:
     name = fp.stem
     print(name)
     
-    neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb.xyz")
-    fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts.qcio")
+    # neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb.xyz")
+    # neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb_bugfix.xyz")
+    neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fneb_linear.xyz")
+    # neb_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/neb.xyz")
+    # fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts.qcio")
+    # fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts_bugfix.qcio")
+    fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/fsm_ts_linear.qcio")
+    # fsmqcio_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/neb_ts.qcio")
     fsmgi_fp = Path(f"/home/jdep/T3D_data/fneb_draft/benchmark/{name}/gi_ts.qcio")
     if not neb_fp.exists() or not fsmqcio_fp.exists() or not fsmgi_fp.exists():
         print('\tfailed! check this entry.')
@@ -174,175 +904,262 @@ for fp in all_names:
     po_fsm = ProgramOutput.open(fsmqcio_fp)
     po_gi = ProgramOutput.open(fsmgi_fp)
     sp = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/{name}/{name}/sp_terachem.xyz")
+
+    ngc_fsm = ((len(neb.optimized)-2)*gradcallspernode + 2)
+    ngc_fsm_algo = ngc_fsm
+
+    nimaginary_fsm = None
+    nimaginary_gi = None
+    if po_fsm.stdout:
+        imgdata=[l for l in po_fsm.stdout.split('\n') if "Frequencies (cm^-1)" in l]
+        if len(imgdata)>0:
+            nimaginary_fsm = int(imgdata[0].split()[0])
+    if po_gi.stdout:
+        imgdata=[l for l in po_gi.stdout.split('\n') if "Frequencies (cm^-1)" in l]
+        if len(imgdata)>0:
+            nimaginary_gi = int(imgdata[0].split()[0])
     
     if po_fsm.success:
         d_fsm, _  = RMSD(po_fsm.return_result.geometry_angstrom, sp.geometry_angstrom)
         # sp_ene, spfsm_ene = eng_true.compute_energies([StructureNode(structure=sp), StructureNode(structure=po_fsm.return_result)])
         sp_ene, spfsm_ene = defaulteng.compute_energies([StructureNode(structure=sp), StructureNode(structure=po_fsm.return_result)])
+        if "Valid Hessian" in po_fsm.stdout.split("\n")[0]:
+            hesscalls = int(po_fsm.stdout.split("\n")[2].split("(")[1].split()[0])
+        else:
+            hesscalls = 0
+        ngc_fsm += len(po_fsm.results.trajectory) - hesscalls
     else:
         d_fsm = None
         sp_ene, spfsm_ene = None, None
         
     if po_gi.success:
         d_gi, _  = RMSD(po_gi.return_result.geometry_angstrom, sp.geometry_angstrom)
+        
+        
+        if "Valid Hessian" in po_gi.stdout.split("\n")[0]:
+            hesscalls = int(po_gi.stdout.split("\n")[2].split("(")[1].split()[0])
+        else:
+            hesscalls = 0
+        
         # spgi_ene = eng_true.compute_energies([StructureNode(structure=po_gi.return_result)])[0]
         spgi_ene = defaulteng.compute_energies([StructureNode(structure=po_gi.return_result)])[0]
+        
+        ngc_gi = len(po_gi.results.trajectory) - hesscalls
     else:
         spgi_ene = None
         d_gi = None
+        ngc_gi = None
 
-    row = [name, po_fsm.success, po_gi.success, d_fsm, d_gi, sp_ene, spfsm_ene, spgi_ene]
+    row = [name, po_fsm.success, po_gi.success, d_fsm, d_gi, sp_ene, spfsm_ene, spgi_ene, ngc_fsm, ngc_gi, ngc_fsm_algo, nimaginary_fsm, nimaginary_gi]
     data.append(row)
     # view.view(sp, po_fsm.return_result, po_gi.return_result, titles=['SP', f"FSM {round(d_fsm, 3)}", f"GI {round(d_gi, 3)}"])
-# -
 
-df = pd.DataFrame(data, columns=["name", "fsm_success", "gi_success", "d_fsm", "d_gi", "sp_ene", "spfsm_ene", "spgi_ene"])
-
-df
+df = pd.DataFrame(data, columns=["name", "fsm_success", "gi_success", "d_fsm", "d_gi", "sp_ene", "spfsm_ene", "spgi_ene", "ngc_fsm", "ngc_gi", "ngc_fsm_algo", 'nimaginary_fsm', 'nimaginary_gi'])
 
 df["dE_gi"] = abs(df['sp_ene'] - df["spgi_ene"])*627.5
 
 df["dE_fsm"] = abs(df['sp_ene'] - df["spfsm_ene"])*627.5
 
-sum(df["dE_gi"] < .1)
+fs = 18
+df['nimaginary_fsm'].plot(kind='hist', label='fsm ts guess')
+df['nimaginary_gi'].plot(kind='hist', label='gi ts guess', alpha=.7)
+plt.ylabel("Count",fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.legend(fontsize=fs)
+plt.xlabel("Number of imaginary modes", fontsize=fs)
 
-sum(df["dE_fsm"] < .1)
-
-sum(df["dE_fsm"] < .1)
-
-df["dE_gi"].plot(kind='hist')
-
-# +
-
-df["dE_fsm"].plot(kind='hist')
-# -
-
-sub = df[df['d_gi']>0.3]
-
-df['fsm_success'].value_counts()
-
-df['gi_success'].value_counts()
-
-93/116
-
-88/116
-
-len(df)
-
-sum(df["d_fsm"] < 0.3)
-
-sum(df["d_gi"] < 0.3)
-
-sub
-
-len(df)
-
-96/116
-
-len(sub)
-
-fout = open("/home/jdep/T3D_data/fneb_draft/benchmark/todo.txt","w+")
-for name in sub['name'].values:
-    fout.write(f"{name}\n")
-fout.close()
-
-
-len(df[df['d_fsm'] <0.3])
-
-len(df)
-
-len(df[df['d_gi'] < 0.3])
-
-93/116, 88/116
+fs = 18
+bins_orig = plt.hist(df['dE_fsm'], label='fsm-gi')
+df['dE_gi'].plot(kind='hist', label='gi', bins=bins_orig[1], alpha=.8)
+# df_linear['dE_fsm'].plot(kind='hist', label='fsm-line', alpha=.7)
+plt.legend(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.ylabel("Count", fontsize=fs)
+plt.xlabel("|E$_{TS_{ref}}$ - E$_{TS_{method}}$|",fontsize=fs)
 
 # +
 
-len(df[df["fsm_success"]==1]) / len(df)
+fs = 18
+bins_orig = plt.hist(df3['nimaginary_fsm_geo'], label='fsm-gi')
+df3['nimaginary_gi_geo'].plot(kind='hist', label='gi', bins=bins_orig[1], alpha=.8)
+df3['nimaginary_fsm_line'].plot(kind='hist', label='fsm-line', alpha=.7, bins=bins_orig[1])
+plt.legend(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.ylabel("Count", fontsize=fs)
+plt.xlabel("Number of imaginary modes of TS guess",fontsize=fs)
 # -
 
-failed =  df[(df['fsm_success']==0)&(df['gi_success']==0)]
-len(failed)
+fs = 18
+bins_orig = plt.hist(df3['dE_fsm_geo'], label='fsm-gi')
+df3['dE_gi_geo'].plot(kind='hist', label='gi', bins=bins_orig[1], alpha=.8)
+df3['dE_fsm_line'].plot(kind='hist', label='fsm-line', alpha=.7, bins=bins_orig[1])
+plt.legend(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.ylabel("Count", fontsize=fs)
+plt.xlabel("|E$_{TS_{ref}}$ - E$_{TS_{method}}$|",fontsize=fs)
 
-success = df[(df['fsm_success']==1)|(df['gi_success']==1)]
-len(success)
+# df.to_csv("./GM2024/data/dataset.csv",index=False)
+df.to_csv("./GM2024/data/lineardf.csv",index=False)
 
+df3['ngc_fsm_algo_line'].median(), df3['ngc_fsm_algo_line'].mean(), df3['ngc_fsm_algo_line'].std()
+
+df3['ngc_fsm_algo_geo'].median(), df3['ngc_fsm_algo_geo'].mean(), df3['ngc_fsm_algo_geo'].std()
+
+fs=18
+# (df['ngc_fsm'] - df['ngc_fsm_algo']).mean(), (df['ngc_fsm'] - df['ngc_fsm_algo']).median()
+# plt.violinplot(df['ngc_fsm_algo'], showmedians=True)
+# plt.violinplot(positions=[2], dataset=df2['ngc_fsm_algo'], showmedians=True)
+plt.violinplot(df3['ngc_fsm_algo_line'], showmedians=True)
+plt.violinplot(positions=[2], dataset=df3['ngc_fsm_algo_geo'], showmedians=True)
+plt.plot([2], [df3['ngc_fsm_algo_geo'].mean()],'o',color='black')
+plt.plot([1], [df3['ngc_fsm_algo_line'].mean()],'o',color='black')
+plt.xticks([1,2], labels=['linear','geodesic'],fontsize=fs)
+plt.ylabel("Cost algorithm (gradient calls)",fontsize=fs)
+# plt.ylim(0,200)
+plt.yticks(fontsize=fs)
+
+df3.iloc[72]
+
+df3['ngc_fsm_algo_geo'].argmax()
+
+# +
+
+(df3['ngc_fsm_line'] - df3['ngc_fsm_algo_line']).median(), (df3['ngc_fsm_line'] - df3['ngc_fsm_algo_line']).mean(), (df3['ngc_fsm_line'] - df3['ngc_fsm_algo_line']).std()
+# -
+
+(df3['ngc_fsm_geo'] - df3['ngc_fsm_algo_geo']).median(), (df3['ngc_fsm_geo'] - df3['ngc_fsm_algo_geo']).mean(), (df3['ngc_fsm_geo'] - df3['ngc_fsm_algo_geo']).std()
+
+fs=18
+# (df['ngc_fsm'] - df['ngc_fsm_algo']).mean(), (df['ngc_fsm'] - df['ngc_fsm_algo']).median()
+# plt.violinplot(df['ngc_fsm'] - df['ngc_fsm_algo'],showmedians=True)
+# plt.violinplot(positions=[2], dataset=df2['ngc_fsm'] - df2['ngc_fsm_algo'],showmedians=True)
+plt.violinplot(df3['ngc_fsm_line'] - df3['ngc_fsm_algo_line'],showmedians=True)
+plt.violinplot(positions=[2], dataset=df3['ngc_fsm_geo'] - df3['ngc_fsm_algo_geo'],showmedians=True)
+plt.xticks([1,2], labels=['linear','geodesic'],fontsize=fs)
+plt.ylabel("Cost TS opt (gradient calls)",fontsize=fs)
+# plt.ylim(0,200)
+plt.yticks(fontsize=fs)
+
+df3['ngc_fsm_line'].median(),df3['ngc_fsm_line'].mean(), df3['ngc_fsm_line'].std()
+
+df3['ngc_fsm_geo'].median(),df3['ngc_fsm_geo'].mean(), df3['ngc_fsm_geo'].std()
+
+(df['ngc_fsm'] - df['ngc_fsm_algo']).mean(), (df['ngc_fsm'] - df['ngc_fsm_algo']).median()
+
+df.to_csv("./GM2024/data/lineardf.csv",index=False)
+
+# +
+# df2 = pd.read_csv("./GM2024/data/dataframe.csv")
+df2 = pd.read_csv("./GM2024/data/dataset.csv")
+# df2 = df
+
+df = pd.read_csv("./GM2024/data/lineardf.csv")
+
+# +
+
+df['ngc_fsm_algo'].mean(), df['ngc_fsm_algo'].median()
+# -
+
+(df['ngc_fsm'] - df['ngc_fsm_algo']).mean(), (df['ngc_fsm'] - df['ngc_fsm_algo']).median()
+
+df2['ngc_fsm_algo'].mean(), df2['ngc_fsm_algo'].median()
+
+# +
+
+(df2['ngc_fsm'] - df2['ngc_fsm_algo']).mean(), (df2['ngc_fsm'] - df2['ngc_fsm_algo']).median()
+# -
+
+df3 = pd.merge(left=df2, right=df, suffixes=("_geo","_line"), on='name')
+
+# +
 percents = [
     .70, 
+    .85,
     len(df[df["gi_success"]==1]) / len(df),
     len(df[df["fsm_success"]==1]) / len(df),
-    .85
+    
 ]
 labels = [
     "IDPP-TS*", 
+    "NEB(0.01)-TS*",
     "GI-TS", 
-    "FSM-TS",
-    "NEB(0.01)-TS*"]
+    "FSM-TS"]
+# -
+# failednames = ['system114',
+#  'system116',
+#  'system13',
+#  'system14',
+#  'system17',
+#  'system3',
+#  'system31',
+#  'system39',
+#  'system49',
+#  'system50',
+#  'system58',
+#  'system63',
+#  'system74',
+#  'system75',
+#  'system84',
+#  'system90',
+#  'system97',
+#  'system98',
+#  'system99']
+failednames=['system114', 'system116', 'system93', 'system97', 'system98', 'system99']
+
+df3 = df3[~df3['name'].isin(failednames)]
+
+df3[df3['dE_fsm_geo']>1.0][['dE_fsm_geo','name']]
+
+
+
+sub_fail = df3[(df3['fsm_success_geo']==0)|(df3['dE_fsm_geo']>1.0)]
+sub_nice = df3[(df3['gi_success_geo']==0)&(df3['dE_fsm_geo']<1.0)|(df3['dE_gi_geo']>1.0)]
 
 # +
-s=6
-fs=18
-f, ax = plt.subplots(figsize=(1.16*s, s))
 
-plt.bar(x=labels, height=percents)
+sub_nice[['name','dE_fsm_line', 'dE_fsm_geo','dE_gi_geo']]
+# -
+
+len(sub), len(df3)
+
+with open("/home/jdep/T3D_data/fneb_draft/benchmark/todo.txt", "w+") as f:
+    for name in sub['name'].values:
+        f.write(f"{name}\n")
+
+len(df3[df3["dE_fsm_line"]<0.1]) / len(df3), len(df3[df3["dE_fsm_geo"]<0.1]) / len(df3)
+
+df3['ngc_fsm_geo'].median(), df3['ngc_fsm_line'].median()
+
+# +
+
+fs = 18
+vals = [0.1, 0.5, 1.0]
+symbols = ["o","x","^"]
+for i, val in enumerate(vals):
+    valfsm_line = len(df3[df3["dE_fsm_line"]<val]) / len(df3)
+    valfsm_geo = len(df3[df3["dE_fsm_geo"]<val]) / len(df3)
+    valgi = len(df3[df3["dE_gi_geo"]<val]) / len(df3)
+    print(valfsm_line, valgi, valfsm_geo)
+    plt.plot(["FSM(linear)","GI", "FSM(geo)"], [valfsm_line , valgi, valfsm_geo],f'{symbols[i]}-', ms=10, label=f"∆={val} kcal/mol")
+plt.legend(fontsize=fs)
 plt.xticks(fontsize=fs)
-plt.ylabel(f"Percent success ({len(df)} rxns)", fontsize=fs)
-plt.xticks(fontsize=fs-2)
 plt.yticks(fontsize=fs)
+plt.ylabel(f"Percent success (N={len(df3)})", fontsize=fs)
 plt.show()
 # -
 
-len(df)
+df3['ngc_fsm_algo_geo'].argmax()
 
-len(df)
-
-90 / 114, 75 / 114
-
-len(success[(success['fsm_success']==1)&(success['d_fsm']<0.5)])
-
-import matplotlib.pyplot as plt
-
-success['d_fsm'].plot(kind='hist', color='orange')
-plt.xlabel("Distance from truth (Angstroms)")
-
-success[success['d_gi']>0.5]
-
-df["d_fsm"].plot(kind='kde', label='fsm')
-df["d_gi"].plot(kind='kde', label='gi')
-
-success[success['fsm_success']==0]
-
-success[success['gi_success']==0]
-
-
-
-df["fsm_success"].value_counts()
-
-df["gi_success"].value_counts()
-
-visualize_chain(neb.optimized)
-# visualize_chain(gi)
-
-# +
-ind_ts = neb.optimized.energies.argmax()
-# ind_ts = 10
-
-d_ref, _ = RMSD(neb.optimized[ind_ts].coords, sp.geometry)
-d_gi, _ = RMSD(neb.optimized[ind_ts].coords, gi.get_ts_node().coords)
-d_giref, _ = RMSD(sp.geometry, gi.get_ts_node().coords)
-view.view(neb.optimized[ind_ts].structure, sp, gi.get_ts_node().structure,  titles=[f"RMSD_2Ref: {d_ref}", "ref", f"RMSD_2FSM: {d_gi}\nRMSD_2Ref: {d_giref}"])
-# visualize_chain(h.output_chain)
+df3['ngc_fsm_algo_geo'].median(), df3['ngc_fsm_algo_geo'].mean()
 
 # +
 
-h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_asneb/Enolate-Claisen-Rearrangement/")
+df3['ngc_fsm_geo'].median(), df3['ngc_fsm_algo_geo'].mean()
 # -
-
-visualize_chain(h.output_chain)
-
-from qcio import ProgramInput
-from neb_dynamics import NEBInputs, ChainInputs, GIInputs
-from neb_dynamics import QCOPEngine
-from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 from neb_dynamics.inputs import RunInputs
 
@@ -373,122 +1190,6 @@ h = m.run_recursive_minimize(input_chain=[react, prod])
 import neb_dynamics.chainhelpers as ch
 
 ch.visualize_chain(h.output_chain)
-
-# +
-    from types import SimpleNamespace
-    from qcio import ProgramInput, ProgramArgs
-    from xtb.ase.calculator import XTB
-    from neb_dynamics import ASEEngine
-    
-    import json
-
-    @dataclass 
-    class RunInputs:
-        engine: str
-        program: str
-    
-        path_min: str = 'NEB'
-        path_min_kwds: dict = None
-    
-        chain_inputs: dict = None
-        
-        program_kwds: ProgramArgs = None
-        gi_inputs: dict = None
-        optimizer_kwds: dict = None
-    
-    
-        def __post_init__(self):
-            
-            if self.path_min.upper() == "NEB":
-                default_kwds = NEBInputs().__dict__
-            
-            elif self.path_min.upper() == "FSM":
-                default_kwds = {
-                "stepsize": 0.5,
-                "ngradcalls": 3,
-                "max_cycles": 500,
-                "path_resolution": 1 / 10,  # BOHR,
-                "max_atom_displacement": 0.1,
-                "early_stop_scaling": 3,
-                "use_geodesic_tangent": True,
-                "dist_err": 0.1,
-                "min_images": 4,
-                "distance_metric": "GEODESIC",
-                "verbosity": 1,
-            }
-            #     default_kwds = FSMInputs()
-            elif self.path_min.upper() == "PYGSM":
-                default_kwds = PYGSMInputs()
-            
-            if self.path_min_kwds is None:
-                self.path_min_kwds = default_kwds
-            
-            else:
-                for key, val in self.path_min_kwds.items():
-                    default_kwds[key] = val
-                    
-                self.path_min_kwds = SimpleNamespace(**default_kwds)
-    
-    
-            if self.gi_inputs is None:
-                self.gi_inputs = GIInputs()
-            else:
-                self.gi_inputs = GIInputs(**self.gi_inputs)
-    
-            if self.program_kwds is None:
-                if self.program == "xtb":
-                    program_args = ProgramArgs(
-                        model={"method": "GFN2xTB"},
-                        keywords={})
-    
-                elif "terachem" in self.program:
-                    program_args = ProgramArgs(
-                        model={"method": "ub3lyp", "basis": "3-21g"},
-                        keywords={})
-                else:
-                    raise ValueError("Need to specify program arguments")
-            else:
-                program_args = ProgramArgs(**self.program_kwds)
-            self.program_kwds = program_args
-    
-            if self.chain_inputs is None:
-                self.chain_inputs = ChainInputs()
-            
-            else:
-                self.chain_inputs = ChainInputs(**self.chain_inputs)
-    
-    
-            if self.optimizer_kwds is None:
-                self.optimizer_kwds = {"timestep": 1.0}
-    
-            
-            if self.engine == 'qcop' or self.engine == 'chemcloud':
-                eng = QCOPEngine(program_input=self.program_kwds, 
-                                 program=self.program, 
-                                 compute_program=self.engine
-                                )
-            elif self.engine == 'ase':
-                assert self.program == 'xtb', f"{self.program} not yet supported with ASEEngine"
-                calc = XTB()
-                eng = ASEEngine(calculator=calc)
-            else:
-                raise ValueError(f"Unsupported engine: {self.engine}")
-    
-            self.engine_object = eng
-                
-                
-    
-        @classmethod
-        def open(cls, fp):
-            with open(fp) as f:
-                data = f.read()
-            data_dict = json.loads(data)
-            return cls(**data_dict)
-                    
-             
-        
-        
-# -
 
 ri = RunInputs.open("/home/jdep/debug/runfile.in")
 ri
@@ -831,10 +1532,7 @@ irc2_res[1].nodes.reverse()
 # full_irc = Chain(irc1_res[0].nodes+irc2_res[0].nodes)
 full_irc = Chain([irc1_res[0][0]]+irc1_res[1].nodes+[irc1_res[0][-1], irc2_res[0][0]]+irc2_res[1].nodes+[irc2_res[0][-1]])
 
-# +
 
-from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
-# -
 
 align_geom(
 

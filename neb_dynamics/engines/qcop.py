@@ -8,6 +8,7 @@ import numpy as np
 
 import qcop
 from qcio.models.inputs import DualProgramInput, ProgramInput, Structure, ProgramArgs
+from qcio import ProgramOutput
 
 from chemcloud import CCClient
 
@@ -15,7 +16,7 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
 from neb_dynamics.nodes.node import StructureNode
-from neb_dynamics.nodes.nodehelpers import update_node_cache
+from neb_dynamics.nodes.nodehelpers import update_node_cache, displace_by_dr
 from neb_dynamics.qcio_structure_helpers import _change_prog_input_property
 from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 import copy
@@ -78,12 +79,13 @@ class QCOPEngine(Engine):
             enes = new_enes
         return enes
 
-    def compute_func(self, *args):
+    def compute_func(self, *args, **kwargs):
         if self.compute_program == "qcop":
-            return qcop.compute(*args)
+            return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
             client = CCClient()
-            return client.compute(*args).get()
+            return client.compute(*args,
+                                  **kwargs).get()
         else:
             raise ValueError(
                 f"Invalid compute program: {self.compute_program}. Must be one of: {AVAIL_PROGRAMS}"
@@ -124,7 +126,7 @@ class QCOPEngine(Engine):
         ]
 
         # only compute the nonfrozen structures
-        if self.program == "xtb" and self.compute_program == "qcop":
+        if any([self.program == 'xtb']) and self.compute_program == "qcop":
 
             def helper(inp):
                 prog, prog_inp = inp
@@ -163,36 +165,36 @@ class QCOPEngine(Engine):
         update_node_cache(node_list=node_list, results=all_results)
         return node_list
 
-    def _compute_geom_opt_result(self, structure: Structure):
+    def _compute_geom_opt_result(self, node: StructureNode):
         """
         this will return a ProgramOutput from qcio geom opt call.
         """
-        if "terachem" not in self.program:
-            dpi = DualProgramInput(
-                calctype="optimization",  # type: ignore
-                structure=structure,
-                subprogram=self.program,
-                subprogram_args={
-                    "model": self.program_args.model,
-                    "keywords": self.program_args.keywords,
-                },
-                keywords={},
-            )
+        # if "terachem" not in self.program:
+        dpi = DualProgramInput(
+            calctype="optimization",  # type: ignore
+            structure=node.structure,
+            subprogram=self.program,
+            subprogram_args={
+                "model": self.program_args.model,
+                "keywords": self.program_args.keywords,
+            },
+            keywords={},
+        )
 
-            output = self.compute_func(self.geometry_optimizer, dpi)
+        output = self.compute_func(self.geometry_optimizer, dpi)
 
-        else:
-            prog_input = ProgramInput(
-                structure=structure,
-                # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
-                calctype="optimization",  # type: ignore
-                model=self.program_args.model,
-                keywords={
-                    "purify": "no",
-                    "new_minimizer": "yes",
-                },  # new_minimizer yes is required
-            )
-            output = self.compute_func("terachem", prog_input)
+        # else:
+        #     prog_input = ProgramInput(
+        #         structure=structure,
+        #         # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
+        #         calctype="optimization",  # type: ignore
+        #         model=self.program_args.model,
+        #         keywords={
+        #             "purify": "no",
+        #             "new_minimizer": "yes",
+        #         },  # new_minimizer yes is required
+        #     )
+        #     output = self.compute_func("terachem", prog_input)
 
         return output
 
@@ -246,7 +248,36 @@ class QCOPEngine(Engine):
                     "model": self.program_args.model,
                     "keywords": self.program_args.keywords,
                 })
-        return self.compute_func('geometric', dpi)
+        return self.compute_func('geometric', dpi, collect_files=True)
+
+    def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500) -> List[List[StructureNode], List[StructureNode]]:
+        """
+        steepest descent IRC.
+        """
+        if hessres is None:
+            hessres = self._compute_hessian_result(ts)
+
+        self.compute_gradients([ts])
+
+        nimaginary = 0
+        for freq in hessres.results.freqs_wavenumber:
+            if freq < 0:
+                nimaginary += 1
+
+        if nimaginary > 1:
+            print(
+                "WARNING: More than one imaginary frequency detected. This is not a TS.")
+
+        node_plus = displace_by_dr(
+            node=ts, dr=dr, displacement=hessres.results.normal_modes_cartesian[0])
+
+        node_minus = displace_by_dr(
+            node=ts, dr=-1*dr, displacement=hessres.results.normal_modes_cartesian[0])
+
+        self.compute_gradients([ts, node_plus, node_minus])
+        sd_plus = self.steepest_descent(node_plus, max_steps=max_steps)
+        sd_minus = self.steepest_descent(node_minus, max_steps=max_steps)
+        return [sd_minus, sd_plus]
 
     def compute_hessian(self, node: StructureNode):
         output = self._compute_hessian_result(node)
@@ -264,10 +295,11 @@ class QCOPEngine(Engine):
         will run a geometry optimization call and parse the output into
         a list of Node objects
         """
-        output = self._compute_geom_opt_result(structure=node.structure)
+        output = self._compute_geom_opt_result(node=node)
         all_outputs = output.results.trajectory
         structures = [output.input_data.structure for output in all_outputs]
         return [
             StructureNode(structure=struct, _cached_result=result)
             for struct, result in zip(structures, all_outputs)
+
         ]

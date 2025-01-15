@@ -281,6 +281,18 @@ class Chain:
         return np.array(rms_grads)
 
     @property
+    def gperps(self):
+        import neb_dynamics.chainhelpers as ch
+        gperps, gsprings = ch.pe_grads_spring_forces_nudged(self)
+        return gperps
+
+    @property
+    def gsprings(self):
+        import neb_dynamics.chainhelpers as ch
+        gperps, gsprings = ch.pe_grads_spring_forces_nudged(self)
+        return gsprings
+
+    @property
     def unit_tangents(self):
         tan_list = []
         for prev_node, current_node, next_node in self.iter_triplets():
@@ -337,6 +349,10 @@ class Chain:
             self.write_ene_info_to_disk(fp)
         if self._grads_already_computed:
             self.write_grad_info_to_disk(fp)
+        for i, node in enumerate(self.nodes):
+            if node._cached_result is not None:
+                node._cached_result.save(
+                    fp.parent / Path(str(fp.stem) + f"_node_{i}.qcio"))
 
     def get_ts_node(self) -> Node:
         """

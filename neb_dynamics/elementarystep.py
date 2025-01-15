@@ -14,6 +14,9 @@ from neb_dynamics.engines import Engine
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, is_identical
 
 
+SLOPE_THRESH = 0.01
+
+
 @dataclass
 class ElemStepResults:
     """
@@ -87,6 +90,7 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     crude_irc_passed, ngc_approx_elem_step = is_approx_elem_step(
         chain=inp_chain, engine=engine
     )
+    print("CrudeIRC: ", crude_irc_passed)
     n_geom_opt_grad_calls += ngc_approx_elem_step
 
     if crude_irc_passed:
@@ -130,7 +134,7 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
 
 
 def is_approx_elem_step(
-    chain: Chain, engine: Engine, slope_thresh=0.1
+    chain: Chain, engine: Engine, slope_thresh=SLOPE_THRESH
 ) -> Tuple[bool, int]:
     """Will do at most 50 steepest descent steps  on geometries neighboring the transition state guess
     and check whether they are approaching the chain endpoints. If function returns False, the geoms
@@ -170,15 +174,18 @@ def is_approx_elem_step(
         import traceback
 
         print(traceback.format_exc())
-        print(f"Error in geometry optimization: {e}. Pretending this is an elem step.")
+        print(
+            f"Error in geometry optimization: {e}. Pretending this is an elem step.")
         return True, 0
     nodes_have_graph = chain.nodes[0].has_molecular_graph
     # if we have molecular graphs to work with, make sure the connectivities are
     # isomorphic to each other. Otherwise, we will decide only based on distance.
     # (which is bad!!)
     if nodes_have_graph:
-        r_passes = r_passes_opt and _is_connectivity_identical(r_traj[-1], chain[0])
-        p_passes = p_passes_opt and _is_connectivity_identical(p_traj[-1], chain[-1])
+        r_passes = r_passes_opt and _is_connectivity_identical(
+            r_traj[-1], chain[0])
+        p_passes = p_passes_opt and _is_connectivity_identical(
+            p_traj[-1], chain[-1])
     else:
         r_passes = r_passes_opt
         p_passes = p_passes_opt
@@ -216,7 +223,6 @@ def _converges_to_an_endpoints(
             total_traj.extend(traj)
         except Exception as e:
             import traceback
-
             print(traceback.format_exc())
             print(
                 f"Error in geometry optimization: {e}. Pretending this is an elem step."
@@ -229,12 +235,18 @@ def _converges_to_an_endpoints(
         ]
 
         slopes_to_ref1 = distances[-1][0] - distances[0][0]
+        if np.isclose(distances[-1][0], 0, atol=0.001, rtol=0.001):
+            slopes_to_ref1 = -np.inf
+
         slopes_to_ref2 = distances[-1][1] - distances[0][1]
+        if np.isclose(distances[-1][1], 0, atol=0.001, rtol=0.001):
+            slopes_to_ref2 = np.inf
+        print("slope1", slopes_to_ref1, "slope2", slopes_to_ref2)
 
         slope1_conv = abs(slopes_to_ref1) / slope_thresh > 1
         slope2_conv = abs(slopes_to_ref2) / slope_thresh > 1
-
-        slopes_to_ref1, slopes_to_ref2
+        # slope1_conv = 1
+        # slope2_conv = 1
 
         done = slope1_conv and slope2_conv
         if len(total_traj) - 1 >= max_grad_calls:
@@ -249,8 +261,11 @@ def _distances_to_refs(ref1: Node, ref2: Node, raw_node: Node) -> List[float]:
     """
     Computes distances of `raw_node` to `ref1` and `ref2`.
     """
-    dist_to_ref1 = np.linalg.norm(raw_node.coords - ref1.coords)
-    dist_to_ref2 = np.linalg.norm(raw_node.coords - ref2.coords)
+    dist_to_ref1 = np.linalg.norm(
+        raw_node.coords - ref1.coords)/np.sqrt(len(raw_node.coords))
+
+    dist_to_ref2 = np.linalg.norm(
+        raw_node.coords - ref2.coords)/np.sqrt(len(raw_node.coords))
     return [dist_to_ref1, dist_to_ref2]
 
 
@@ -268,7 +283,7 @@ def _run_geom_opt(node: Node, engine: Engine):
     return opt_traj
 
 
-def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
+def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH) -> ConcavityResults:
     """
     will assess+categorize the presence of minima on the chain.
     """
@@ -282,22 +297,48 @@ def _chain_is_concave(chain: Chain, engine: Engine) -> ConcavityResults:
         minimas_is_r_or_p = []
         try:
             for i in ind_minima:
-                opt_traj = _run_geom_opt(chain[i], engine=engine)
-                n_grad_calls += len(opt_traj)
-                opt = opt_traj[-1]
-                opt_results.append(opt)
-                is_r = is_identical(
-                    opt,
-                    chain[0],
-                    fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
-                    kcal_mol_cutoff=chain.parameters.node_ene_thre,
-                )
-                is_p = is_identical(
-                    opt,
-                    chain[-1],
-                    fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
-                    kcal_mol_cutoff=chain.parameters.node_ene_thre,
-                )
+                _, min_traj = _converges_to_an_endpoints(
+                    chain=chain,
+                    engine=engine,
+                    node_index=i,
+                    direction=-1,
+                    slope_thresh=min_slope_thre)
+
+                distances = [
+                    _distances_to_refs(
+                        ref1=chain[0], ref2=chain[-1], raw_node=n)
+                    for n in min_traj
+                ]
+
+                slopes_to_ref1 = distances[-1][0] - distances[0][0]
+                slopes_to_ref2 = distances[-1][1] - distances[0][1]
+
+                slope1_conv = abs(slopes_to_ref1) / min_slope_thre > 1
+                slope2_conv = abs(slopes_to_ref2) / min_slope_thre > 1
+
+                done = slope1_conv and slope2_conv
+                if done:
+                    is_r = slopes_to_ref1 < 0 and slopes_to_ref2 > 0
+                    is_p = slopes_to_ref1 > 0 and slopes_to_ref2 < 0
+                    kinked_chain = is_r or is_p
+
+                elif not done or not kinked_chain:
+                    opt_traj = _run_geom_opt(chain[i], engine=engine)
+                    n_grad_calls += len(opt_traj)
+                    opt = opt_traj[-1]
+                    opt_results.append(opt)
+                    is_r = is_identical(
+                        opt,
+                        chain[0],
+                        fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
+                        kcal_mol_cutoff=chain.parameters.node_ene_thre,
+                    )
+                    is_p = is_identical(
+                        opt,
+                        chain[-1],
+                        fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
+                        kcal_mol_cutoff=chain.parameters.node_ene_thre,
+                    )
                 minimas_is_r_or_p.append(is_r or is_p)
         except Exception as e:
             import traceback
@@ -361,7 +402,8 @@ def pseudo_irc(chain: Chain, engine: Engine):
         import traceback
 
         print(traceback.format_exc())
-        print(f"Error in geometry optimization: {e}. Pretending this is an elem step.")
+        print(
+            f"Error in geometry optimization: {e}. Pretending this is an elem step.")
         return IRCResults(
             found_reactant=chain[0],
             found_product=chain[len(chain) - 1],

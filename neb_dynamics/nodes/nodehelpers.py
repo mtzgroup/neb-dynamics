@@ -153,7 +153,7 @@ def create_pairs_from_smiles(smi1: str, smi2: str, spinmult=1):
     return td_r, td_p
 
 
-def displace_by_dr(node: Node, displacement: np.array, dr: float = 0.1):
+def displace_by_dr(node: Node, displacement: np.array, dr: float = 0.1) -> Node:
     """returns a new node object that has been displaced along the input 'displacement' vector by 'dr'.
 
     Args:

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from dataclasses import dataclass
 from neb_dynamics.optimizers.optimizer import Optimizer
 from neb_dynamics.errors import ElectronicStructureError
@@ -27,6 +26,7 @@ class VelocityProjectedOptimizer(Optimizer):
     def optimize_step(self, chain, chain_gradients):
         from neb_dynamics.chain import Chain
         prev_velocity = chain.velocity
+        # print(f"\n{np.linalg.norm(prev_velocity)=}")
         new_force = -(chain_gradients)
         new_force_unit = new_force / np.linalg.norm(new_force)
         timestep = self.timestep  # self.step_size_per_atom*atomn*len(chain)
@@ -40,22 +40,23 @@ class VelocityProjectedOptimizer(Optimizer):
             if np.amax(np.abs(new_force)) < self.activation_tol:
                 orig_shape = new_force.shape
                 prev_velocity_flat = prev_velocity.flatten()
+
                 # print(f"{prev_velocity=}\n{new_force_unit=}")
-                projection = np.dot(prev_velocity_flat, new_force_unit.flatten())
+                projection = np.dot(prev_velocity_flat,
+                                    new_force_unit.flatten())
 
                 vj_flat = projection * new_force_unit.flatten()
                 vj = vj_flat.reshape(orig_shape)
+                for i, (vel, force) in enumerate(zip(vj, new_force)):
+                    if np.all(np.isclose(vel, 0)):
+                        # print(i, vel, force)
+                        vj[i] = force
 
-                vel_unit = prev_velocity / np.linalg.norm(prev_velocity)
-                corr = np.dot(vel_unit.flatten(), new_force_unit.flatten())
-                # print(f'\n/////{projection=} {corr=}////')
                 if projection < 0:
-                    # print(f"\nproj={projection} Reset!")
+                    print(f"\nproj={projection} Reset!")
                     vj = np.zeros_like(new_force)
                     self.zero_vel_count += 1
 
-                elif np.isclose(corr, 1.0):
-                    pass
                 else:
                     self.zero_vel_count = 0
 
@@ -65,13 +66,13 @@ class VelocityProjectedOptimizer(Optimizer):
                     )
                     self.timestep *= 0.5
 
-                # print(f"\nzero_vel_count={self.zero_vel_count}\n")
                 force = timestep * vj
 
             else:
                 vj = np.zeros_like(new_force)
                 force = timestep * new_force
 
+            # print(f"force: {force}")
             scaling = 1
             # if np.linalg.norm(force) > max_disp: # if step size is too large
             #     scaling = (1/(np.linalg.norm(force)))*max_disp
@@ -85,10 +86,13 @@ class VelocityProjectedOptimizer(Optimizer):
             new_chain = Chain(new_nodes, parameters=chain.parameters)
 
             # if np.linalg.norm(new_force) < self.activation_tol:
+
             new_vel = vj + timestep * (-(chain_gradients))
+
             # else:
             #     new_vel = vj + timestep*(-(chain_gradients))
-            new_chain.velocity = new_vel
+            # new_chain.velocity = new_vel
+            new_chain.velocity = force*scaling
             new_chain_gradients_fails = False
 
             # except Exception:

@@ -1,11 +1,12 @@
 from __future__ import annotations
 from xtb.ase.calculator import XTB
-import json
+import shutil
 from qcio import ProgramArgs
 from types import SimpleNamespace
 from dataclasses import dataclass, field
 
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.cg import ConjugateGradient
 import tomli
 import tomli_w
 
@@ -47,53 +48,43 @@ class NEBInputs:
     `preopt_with_xtb`: whether to preconverge a chain using XTB (default: False)
     """
 
-    tol: float = 0.002
     climb: bool = False
     en_thre: float = None
     rms_grad_thre: float = None
     max_rms_grad_thre: float = None
     skip_identical_graphs: bool = True
 
-    grad_thre: float = None
     ts_grad_thre: float = None
     ts_spring_thre: float = None
-    barrier_thre: float = 0.1  # kcal/mol
+    barrier_thre: float = .1  # kcal/mol
 
     frozen_atom_indices: str = ""
     early_stop_force_thre: float = 0.0
-    early_stop_chain_rms_thre: float = 0.0
-    early_stop_corr_thre: float = 10.0
-    early_stop_still_steps_thre: int = 100
 
     negative_steps_thre: int = 10
     use_geodesic_tangent: bool = False
+    do_elem_step_checks: bool = False
 
-    max_steps: float = 1000
+    max_steps: float = 500
 
-    v: bool = False
-
-    preopt_with_xtb: bool = False
-    pygsm_kwds: dict = field(default_factory=dict)
-    fneb_kwds: dict = field(default_factory=dict)
+    v: bool = True
 
     def __post_init__(self):
+
         if self.en_thre is None:
-            self.en_thre = self.tol / 450
+            self.en_thre = 1e-4
 
         if self.rms_grad_thre is None:
-            self.rms_grad_thre = self.tol
-
-        if self.grad_thre is None:
-            self.grad_thre = self.tol / 2
+            self.rms_grad_thre = 0.02
 
         if self.ts_grad_thre is None:
-            self.ts_grad_thre = self.tol * 5 / 2
+            self.ts_grad_thre = 0.05
 
         if self.ts_spring_thre is None:
-            self.ts_spring_thre = self.tol * 5 / 2
+            self.ts_spring_thre = 0.02
 
         if self.max_rms_grad_thre is None:
-            self.max_rms_grad_thre = self.tol * 5 / 2
+            self.max_rms_grad_thre = 0.05
 
         if len(self.frozen_atom_indices) > 0:
             self.frozen_atom_indices = [
@@ -137,8 +128,8 @@ class ChainInputs:
 
     node_freezing: bool = True
 
-    node_rms_thre: float = 1.0  # Bohr
-    node_ene_thre: float = 1.0  # kcal/mol
+    node_rms_thre: float = 5.0  # Bohr
+    node_ene_thre: float = 5.0  # kcal/mol
 
     def copy(self) -> ChainInputs:
         return ChainInputs(**self.__dict__)
@@ -161,7 +152,7 @@ class GIInputs:
     `extra_kwds`: dictionary containing other keywords geodesic interpolation might use.
     """
 
-    nimages: int = 15
+    nimages: int = 10
     friction: float = 0.01
     nudge: float = 0.001
     extra_kwds: dict = field(default_factory=dict)
@@ -255,9 +246,16 @@ class RunInputs:
 
         if self.program_kwds is None:
             if self.program == "xtb":
-                program_args = ProgramArgs(
-                    model={"method": "GFN2xTB", "basis": "GFN2xTB"},
-                    keywords={})
+                if shutil.which("crest") is not None:
+                    self.program = 'crest'
+                    program_args = ProgramArgs(
+                        model={"method": "gfn2",
+                               "basis": "gfn2"},
+                        keywords={"threads": 1})
+                else:
+                    program_args = ProgramArgs(
+                        model={"method": "GFN2xTB", "basis": "GFN2xTB"},
+                        keywords={})
 
             elif "terachem" in self.program:
                 program_args = ProgramArgs(
@@ -276,7 +274,7 @@ class RunInputs:
             self.chain_inputs = ChainInputs(**self.chain_inputs)
 
         if self.optimizer_kwds is None:
-            self.optimizer_kwds = {"timestep": 1.0}
+            self.optimizer_kwds = {"timestep": 0.5}
 
         if self.engine_name == 'qcop' or self.engine_name == 'chemcloud':
             from neb_dynamics.engines.qcop import QCOPEngine
@@ -293,7 +291,8 @@ class RunInputs:
             raise ValueError(f"Unsupported engine: {self.engine_name}")
 
         self.engine = eng
-        self.optimizer = VelocityProjectedOptimizer(**self.optimizer_kwds)
+        # self.optimizer = VelocityProjectedOptimizer(**self.optimizer_kwds)
+        self.optimizer = ConjugateGradient(**self.optimizer_kwds)
 
     @classmethod
     def open(cls, fp):

@@ -1,4 +1,179 @@
-n = NEB.read_from_disk("/home/jdep/debug/hcn/path_res_neb.xyz")
+from pathlib import Path
+from neb_dynamics.helper_functions import RMSD
+import neb_dynamics.chainhelpers as ch
+from neb_dynamics.inputs import RunInputs
+from neb_dynamics import StructureNode
+from qcio  import Structure, view
+import pandas as pd
+
+# df  = pd.read_csv("./GM2024/data/dataframe.csv")
+df  = pd.read_csv("./GM2024/data/dataset.csv")
+df_linear = pd.read_csv("./GM2024/data/lineardf.csv")
+
+fs = 18
+bins_orig = plt.hist(df['dE_fsm'], label='fsm-gi')
+df['dE_gi'].plot(kind='hist', label='gi', bins=bins_orig[1])
+df_linear['dE_fsm'].plot(kind='hist', label='fsm-line', alpha=.7)
+plt.legend(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.xticks(fontsize=fs)
+plt.ylabel("Count", fontsize=fs)
+plt.xlabel("|E$_{TS_{ref}}$ - E$_{TS_{method}}$|",fontsize=fs)
+
+
+
+sysnames = df[(df['fsm_success'] == 0) | (df['dE_fsm'] > 0.1)]['name'].values
+
+# +
+
+dd = Path("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/")
+# -
+
+names = sorted(list(dd.glob("sys*")))
+# names = [dd / sys for sys in sysnames]
+
+from neb_dynamics.elementarystep import _is_connectivity_identical
+
+eng = RunInputs().engine
+
+failed = []
+for i, _ in enumerate(names):
+    fp_jan_r = names[i] / 'sp_terachem_minus.xyz'
+    fp_jan_p = names[i] / 'sp_terachem_plus.xyz'
+    fp_jan_ts = names[i] / 'sp_terachem.xyz'
+    if not fp_jan_r.exists() or not fp_jan_p.exists():
+        failed.append([names[i]])
+        continue
+    
+    fp_r = names[i] / 'react.xyz'
+    fp_p = names[i] / 'prod.xyz'
+    fp_ts = names[i] / 'sp.xyz'
+    
+    sp = Structure.open(fp_ts)
+    sp_jan = Structure.open(fp_jan_ts)
+    
+    
+    r = Structure.open(fp_r)
+    p = Structure.open(fp_p)
+    
+    r_jan = Structure.open(fp_jan_r)
+    p_jan = Structure.open(fp_jan_p)
+    
+    r_node = StructureNode(structure=r)
+    p_node = StructureNode(structure=p)
+    
+    r_err = min([RMSD(r.geometry, r_jan.geometry)[0], RMSD(r.geometry, p_jan.geometry)[0]])
+    r_same = sum([_is_connectivity_identical(StructureNode(structure=r_jan), r_node), _is_connectivity_identical(StructureNode(structure=p_jan), r_node)]) >= 1
+    p_same = sum([_is_connectivity_identical(StructureNode(structure=r_jan), p_node), _is_connectivity_identical(StructureNode(structure=p_jan), p_node)]) >= 1
+    p_err = min([RMSD(p.geometry, r_jan.geometry)[0], RMSD(p.geometry, p_jan.geometry)[0]])
+
+    ens = eng.compute_energies([StructureNode(structure=sp), StructureNode(structure=sp_jan)])
+    
+    # ts_err = RMSD(sp.geometry, sp_jan.geometry)[0]
+    ts_err = abs(ens[1]-ens[0])*627.5
+    if ts_err > 0.1:
+        print(ts_err, names[i])
+    # print(r_err, p_err)
+    # if max((r_err, p_err)) > 1:
+    if ts_err > 1:#or (max((r_err, p_err)) > 2):
+    # if (not r_same or not p_same) or ts_err > 0.1:#or (max((r_err, p_err)) > 2):
+        # print(max((r_err, p_err)))
+        failed.append((names[i], r_same, p_same, ts_err))
+
+
+len(failed)
+
+a = Structure.open("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system116/react.xyz")
+
+# +
+
+view.view(a)
+
+# +
+
+len(failed)
+# -
+
+len(failed), len(names)
+
+# +
+name = Path(dd/'system13')
+fp_jan_r = name / 'sp_terachem_minus.xyz'
+fp_jan_p = name / 'sp_terachem_plus.xyz'
+fp_jan_ts = name / 'sp_terachem.xyz'
+
+fp_r = name / 'react.xyz'
+fp_p = name / 'prod.xyz'
+fp_ts = name / 'sp.xyz'
+
+sp = Structure.open(fp_ts)
+sp_jan = Structure.open(fp_jan_ts)
+# -
+
+view.view(sp, sp_jan)
+
+failed_names = [lol[0].stem for lol in failed]
+
+failed
+
+failed_names
+
+df  = pd.read_csv("./GM2024/data/dataframe.csv")
+df = df[~df['name'].isin(failed_names)]
+
+import matplotlib.pyplot as plt
+
+f,ax = plt.subplots()
+fs=18
+# N = len(df)
+N = len(df[(df['fsm_success']==1)|(df['gi_success']==1)])
+kcal1 = [sum(df['dE_fsm'] <= 1.0)/N, sum(df['dE_gi'] <= 1.0)/N]
+kcal05 = [sum(df['dE_fsm'] <= 0.5)/N, sum(df['dE_gi'] <= 0.5)/N]
+kcal01 = [sum(df['dE_fsm'] <= 0.1)/N, sum(df['dE_gi'] <= 0.1)/N]
+labels=["FSM-GI","GI"]
+plt.plot(labels, kcal1,'o-', label='∆=1.0(kcal/mol)')
+plt.plot(labels, kcal05,'*-', label='∆=0.5(kcal/mol)')
+plt.plot(labels, kcal01,'x-', label='∆=0.1(kcal/mol)')
+plt.xticks(fontsize=fs)
+plt.yticks(fontsize=fs)
+plt.legend(fontsize=fs)
+ax.set_ylim(.65, .95)
+plt.ylabel(f"Percent (out of {len(df)} rxns)",fontsize=fs)
+plt.show()
+
+len(df)
+
+failed_names
+
+gi = ch.run_geodesic([StructureNode(structure=r), StructureNode(structure=p)], nimages=30)
+
+# +
+ri = RunInputs()
+
+
+eng = ri.engine
+eng.compute_energies(gi)
+# -
+
+ch.visualize_chain(gi)
+
+tsres = eng._compute_ts_result(gi.get_ts_node(), keywords={'maxiter':500})
+
+tsres2 = eng._compute_ts_result(StructureNode(structure=sp), keywords={'maxiter':500})
+
+view.view(tsres.return_result, sp, tsres2.return_result)
+# view.view(sp, tsres2.return_result)
+
+view.view(r, r_jan, p, p_jan)
+
+# +
+# gres = eng._compute_geom_opt_result(p)
+
+# +
+# view.view(gres)
+# -
+
+
 
 ind = 7
 ch.calculate_geodesic_distance(n.optimized[ind], n.optimized[ind+1])

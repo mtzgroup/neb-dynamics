@@ -340,8 +340,15 @@ class MSMEP:
         start_ind, end_ind = ind_pair
         opt_start, opt_end = geom_pair
         chain_frag_nodes = chain.nodes[start_ind: end_ind + 1]
+        # chain_frag = Chain(
+        #     nodes=[opt_start] + chain_frag_nodes + [opt_end],
+        #     parameters=self.inputs.chain_inputs,
+        # )
+
+        # JDEP 01132025: Going to not recycle fragment nodes. Want a fresh
+        # interpolation
         chain_frag = Chain(
-            nodes=[opt_start] + chain_frag_nodes + [opt_end],
+            nodes=[opt_start, opt_end],
             parameters=self.inputs.chain_inputs,
         )
         # opt_start = chain[start].do_geometry_optimization()

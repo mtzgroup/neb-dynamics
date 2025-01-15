@@ -60,7 +60,7 @@ class ASEEngine(Engine):
 
     calculator: Calculator
     ase_optimizer: Optimizer = None
-    ase_opt_str: str = "LBFGS"
+    ase_opt_str: str = "LBFGSLineSearch"
     biaser: ChainBiaser = None
 
     def __post_init__(self):
@@ -111,7 +111,8 @@ class ASEEngine(Engine):
         inds_frozen = [
             i for i, node in enumerate(node_list) if node._cached_energy is not None
         ]
-        all_ase_atoms = [structure_to_ase_atoms(node.structure) for node in node_list]
+        all_ase_atoms = [structure_to_ase_atoms(
+            node.structure) for node in node_list]
         non_frozen_ase_atoms = [
             atoms for i, atoms in enumerate(all_ase_atoms) if i not in inds_frozen
         ]
@@ -169,7 +170,8 @@ class ASEEngine(Engine):
         """
         atoms = structure_to_ase_atoms(node.structure)
         atoms.set_calculator(self.calculator)
-        tmp = tempfile.NamedTemporaryFile(suffix=".traj", mode="w+", delete=False)
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".traj", mode="w+", delete=False)
 
         optimizer = self.ase_optimizer(
             atoms=atoms, logfile=None, trajectory=tmp.name

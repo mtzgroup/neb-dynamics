@@ -345,9 +345,9 @@ def gi_path_to_chain(
 
 def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, **kwargs):
     if isinstance(chain, list) and chain_inputs is None:
-        print(
-            "Warning! You input a list of nodes to interpolate and no ChainInputs. Will use defaults ChainInputs"
-        )
+        # print(
+        #     "Warning! You input a list of nodes to interpolate and no ChainInputs. Will use defaults ChainInputs"
+        # )
         chain_inputs = ChainInputs()
     elif isinstance(chain, Chain):
         chain_inputs = chain.parameters

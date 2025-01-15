@@ -32,7 +32,12 @@ from neb_dynamics.qcio_structure_helpers import (
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
-
+IS_ELEM_STEP = ElemStepResults(
+    is_elem_step=True,
+    is_concave=True,
+    splitting_criterion=None,
+    minimization_results=None,
+    number_grad_calls=0,)
 VELOCITY_SCALING = 0.3
 ACTIVATION_TOL = 100
 
@@ -203,18 +208,18 @@ class NEB(PathMinimizer):
         nsteps = 1
         nsteps_negative_grad_corr = 0
 
-        if self.parameters.preopt_with_xtb:
-            chain_previous = self._do_xtb_preopt(self.initial_chain)
-            self.chain_trajectory.append(chain_previous)
+        # if self.parameters.preopt_with_xtb:
+        #     chain_previous = self._do_xtb_preopt(self.initial_chain)
+        #     self.chain_trajectory.append(chain_previous)
 
-            stop_early, elem_step_results = self._do_early_stop_check(
-                chain_previous)
-            self.geom_grad_calls_made += elem_step_results.number_grad_calls
-            if stop_early:
-                return elem_step_results
-        else:
-            chain_previous = self.initial_chain.copy()
-            self.chain_trajectory.append(chain_previous)
+        #     stop_early, elem_step_results = self._do_early_stop_check(
+        #         chain_previous)
+        #     self.geom_grad_calls_made += elem_step_results.number_grad_calls
+        #     if stop_early:
+        #         return elem_step_results
+        # else:
+        chain_previous = self.initial_chain.copy()
+        self.chain_trajectory.append(chain_previous)
         chain_previous._zero_velocity()
 
         while nsteps < self.parameters.max_steps + 1:
@@ -280,11 +285,13 @@ class NEB(PathMinimizer):
             if converged:
                 if self.parameters.v:
                     print("\nChain converged!")
-
-                elem_step_results = check_if_elem_step(
-                    inp_chain=new_chain, engine=self.engine
-                )
-                self.geom_grad_calls_made += elem_step_results.number_grad_calls
+                if self.parameters.do_elem_step_checks:
+                    elem_step_results = check_if_elem_step(
+                        inp_chain=new_chain, engine=self.engine
+                    )
+                    self.geom_grad_calls_made += elem_step_results.number_grad_calls
+                else:
+                    elem_step_results = IS_ELEM_STEP
                 self.optimized = new_chain
                 return elem_step_results
 
@@ -311,11 +318,12 @@ class NEB(PathMinimizer):
         from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 
         for node, grad, ene in zip(chain, gradients, energies):
-            res = FakeQCIOResults(energy=ene, gradient=grad)
-            outp = FakeQCIOOutput(results=res)
-            node._cached_result = outp
-            node._cached_energy = ene
-            node._cached_gradient = grad
+            if not hasattr(node, "_cached_result"):
+                res = FakeQCIOResults(energy=ene, gradient=grad)
+                outp = FakeQCIOOutput(results=res)
+                node._cached_result = outp
+                node._cached_energy = ene
+                node._cached_gradient = grad
 
     def update_chain(self, chain: Chain) -> Chain:
         import neb_dynamics.chainhelpers as ch
@@ -555,6 +563,8 @@ class NEB(PathMinimizer):
         gi_parameters=GIInputs(),
         optimizer=VelocityProjectedOptimizer(),
         engine: Engine = None,
+        charge: int = 0,
+        multiplicity: int = 1,
     ):
         if isinstance(fp, str):
             fp = Path(fp)
@@ -568,7 +578,9 @@ class NEB(PathMinimizer):
             history_files = list(history_folder.glob("*.xyz"))
             history = [
                 Chain.from_xyz(
-                    history_folder / f"traj_{i}.xyz", parameters=chain_parameters
+                    history_folder / f"traj_{i}.xyz", parameters=chain_parameters,
+                    charge=charge,
+                    spinmult=multiplicity
                 )
                 for i, _ in enumerate(history_files)
             ]

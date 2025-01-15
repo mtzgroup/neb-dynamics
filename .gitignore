@@ -39,3 +39,4 @@ site/search/search_index.json
 out_ASNEB
 .gitignore
 notebooks/msmep_playground.py
+neb_dynamics/server*

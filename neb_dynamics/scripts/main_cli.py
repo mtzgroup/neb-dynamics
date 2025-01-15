@@ -33,6 +33,8 @@ def run(
         inputs: Annotated[str, typer.Option("--inputs", "-i",
                                             help='path to RunInputs toml file')] = None,
         use_smiles: bool = False,
+        use_tsopt: Annotated[bool, typer.Option(
+            help='whether to run a transition state optimization on each TS guess')] = False,
         minimize_ends: bool = False,
         recursive: bool = False,
         name: str = None,
@@ -58,20 +60,28 @@ def run(
             start_structure, end_structure, distance_metric='RMSD')
     else:
         if geometries is not None:
-            all_structs = read_multiple_structure_from_file(geometries)
+            try:
+                all_structs = read_multiple_structure_from_file(
+                    geometries, charge=charge, spinmult=multiplicity)
+            except ValueError:  # qcio does not allow an input for charge if file has a charge in it
+                all_structs = read_multiple_structure_from_file(
+                    geometries, charge=None, spinmult=None)
         elif start is not None and end is not None:
-
-            start_structure = Structure.open(start)
-            end_structure = Structure.open(end)
-            all_structs = [start_structure, end_structure]
+            try:
+                start_structure = Structure.open(
+                    start, charge=charge, multiplicity=multiplicity)
+                end_structure = Structure.open(
+                    end, charge=charge, multiplicity=multiplicity)
+                all_structs = [start_structure, end_structure]
+            except ValueError:
+                start_structure = Structure.open(
+                    start, charge=None, multiplicity=None)
+                end_structure = Structure.open(
+                    end, charge=None, multiplicity=None)
+                all_structs = [start_structure, end_structure]
         else:
             raise ValueError(
                 "Either 'geometries' or 'start' and 'end' flags must be populated!")
-
-        for i, s in enumerate(all_structs):
-            s_dict = s.model_dump()
-            s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
-            all_structs[i] = Structure(**s_dict)
 
     # load the RunInputs
     if inputs is not None:
@@ -111,19 +121,35 @@ def run(
         leaves_nebs = [
             obj for obj in history.get_optimization_history() if obj]
         fp = Path("mep_output")
-        data_dir = Path(os.getcwd())
 
         if name is not None:
+            data_dir = Path(name).resolve().parent
             foldername = data_dir / name
             filename = data_dir / (name + ".xyz")
 
         else:
+            data_dir = Path(os.getcwd())
             foldername = data_dir / f"{fp.stem}_msmep"
             filename = data_dir / f"{fp.stem}_msmep.xyz"
 
         end_time = time.time()
         history.output_chain.write_to_disk(filename)
         history.write_to_disk(foldername)
+
+        if use_tsopt:
+            for i, leaf in enumerate(history.ordered_leaves):
+                if not leaf.data:
+                    continue
+                print(f"Running TS opt on leaf {i}")
+                try:
+                    tsres = program_input.engine._compute_ts_result(
+                        leaf.data.chain_trajectory[-1].get_ts_node())
+                except Exception as e:
+                    tsres = e.program_output
+                tsres.save(data_dir / (filename.stem+f"_tsres_{i}.qcio"))
+                if tsres.success:
+                    tsres.return_result.save(
+                        data_dir / (filename.stem+f"_ts_{i}.xyz"))
 
         tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
         geom_grad_calls = sum(
@@ -148,6 +174,19 @@ def run(
 
         end_time = time.time()
         n.write_to_disk(filename)
+
+        if use_tsopt:
+            print("Running TS opt")
+            try:
+                tsres = program_input.engine._compute_ts_result(
+                    n.chain_trajectory[-1].get_ts_node())
+            except Exception as e:
+                tsres = e.program_output
+            tsres.save(data_dir / (filename.stem+"_tsres.qcio"))
+            if tsres.success:
+                tsres.return_result.save(
+                    data_dir / (filename.stem+"_ts.xyz"))
+
         tot_grad_calls = n.grad_calls_made
         print(f">>> Made {tot_grad_calls} gradient calls total.")
 
@@ -246,7 +285,7 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
     tsminus_raw = displace_by_dr(
         node=node, displacement=hessres.results.normal_modes_cartesian[0], dr=-dr)
     tsminus_res = program_input.engine._compute_geom_opt_result(
-        tsminus_raw.structure)
+        tsminus_raw)
     tsminus_res.save(results_name.parent / (results_name.stem+"_minus.qcio"))
 
     print(f"Minimizing TS(+): {geometry}...")
@@ -254,7 +293,7 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
     tsplus_raw = displace_by_dr(
         node=node, displacement=hessres.results.normal_modes_cartesian[0], dr=dr)
     tsplus_res = program_input.engine._compute_geom_opt_result(
-        tsplus_raw.structure)
+        tsplus_raw)
 
     tsplus_res.save(results_name.parent / (results_name.stem+"_plus.qcio"))
     print("Done!")
