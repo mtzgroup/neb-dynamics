@@ -246,6 +246,7 @@ class MSMEP:
         temperature: float,
         mass=1.0,
         biaser: ChainBiaser = None,
+        freeze_ends: bool = True
     ) -> Chain:
         import neb_dynamics.chainhelpers as ch
 
@@ -254,7 +255,7 @@ class MSMEP:
         _ = engine.compute_gradients(chain)
         grads = ch.compute_NEB_gradient(chain)
 
-        new_vel = chain.velocity
+        new_vel = chain.velocity.copy()
         current_temperature = (
             np.dot(new_vel.flatten(), new_vel.flatten()) * mass / (3 * R)
         )
@@ -262,18 +263,21 @@ class MSMEP:
         new_vel *= thermostating_scaling
 
         new_vel += 0.5 * -1 * grads * dt / mass
-        # print("/n", thermostating_scaling, current_temperature)
+        print("/n", thermostating_scaling, current_temperature)
 
         position = chain.coordinates
         ref_start = position[0]
         ref_end = position[-1]
         new_position = position + new_vel * dt
+        # print(new_vel)
         if biaser:
             grad_bias = biaser.grad_chain_bias(chain)
             # energy_weights = chain.energies_kcalmol[1:-1]
-            new_position[1:-1] -= grad_bias
-        new_position[0] = ref_start
-        new_position[-1] = ref_end
+            if freeze_ends:
+                new_position[1:-1] -= grad_bias
+        if freeze_ends:
+            new_position[0] = ref_start
+            new_position[-1] = ref_end
         new_chain = chain.copy()
         new_nodes = []
         for coords, node in zip(new_position, new_chain):
@@ -281,8 +285,10 @@ class MSMEP:
         new_chain.nodes = new_nodes
 
         grads = engine.compute_gradients(new_chain)
-        grads[0] = np.zeros_like(grads[0])
-        grads[-1] = np.zeros_like(grads[0])
+
+        if freeze_ends:
+            grads[0] = np.zeros_like(grads[0])
+            grads[-1] = np.zeros_like(grads[0])
         new_vel += 0.5 * -1 * grads * dt / mass
         new_chain.velocity = new_vel
 
@@ -295,10 +301,17 @@ class MSMEP:
         dt=0.1,
         biaser: ChainBiaser = None,
         temperature: float = 300.0,  # K
+        freeze_ends: bool = True
     ):
         """
         Runs dynamics on the chain.
         """
+        if np.all(chain.velocity == 0):
+            rand_vel = np.random.random(
+                size=len(chain.velocity.flatten())).reshape(chain.velocity.shape)
+            rand_vel /= np.linalg.norm(rand_vel)
+            rand_vel *= temperature
+            chain.velocity = rand_vel
         chain_trajectory = [chain]
         nsteps = 1
         chain_previous = chain
@@ -313,6 +326,7 @@ class MSMEP:
                     biaser=biaser,
                     mass=chain_weight,
                     temperature=temperature,
+                    freeze_ends=freeze_ends
                 )
             except Exception:
                 print(traceback.format_exc())

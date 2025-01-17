@@ -34,6 +34,10 @@ class ConjugateGradient(Optimizer):
         alpha = self.timestep
         gradient_failed = True
         nretries = 0
+        for i, (node, grad) in enumerate(zip(chain.nodes, chain_gradients)):
+            if node.converged:
+                chain_gradients[i] = np.zeros_like(grad)
+
         while gradient_failed and nretries < 10:
             try:
                 g_new = chain_gradients.flatten()

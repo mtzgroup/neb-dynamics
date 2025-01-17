@@ -229,10 +229,6 @@ def compute_NEB_gradient(chain: Chain, geodesic_tangent: bool = False) -> NDArra
     grads = pe_grads_nudged - spring_forces_nudged
 
     # endpoints have 0 gradient because we freeze them
-    if len(grads) == 0:
-        print(
-            f"WTAF: \n\n{chain.gradients=}\n\n{pe_grads_nudged=}\n\n{spring_forces_nudged=}"
-        )
     zero = np.zeros_like(grads[0])
     grads = np.insert(grads, 0, zero, axis=0)
     grads = np.insert(grads, len(grads), zero, axis=0)

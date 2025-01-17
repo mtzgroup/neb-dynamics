@@ -37,9 +37,9 @@ failcount = 0
 unsucc = []
 for sysn in allsys:
     try:
-        ngc = [float(l.split()[2]) for l in open(sysn / 'out_fsm_msmep').read().splitlines() if ">>>" in l][0]
-        ngc_geom = [float(l.split()[2]) for l in open(sysn / 'out_fsm_msmep').read().splitlines() if "<<<" in l][0]
-        ts_output = ProgramOutput.open(sysn / 'fsm_msmep_tsres_0.qcio')
+        ngc = [float(l.split()[2]) for l in open(sysn / 'out_xtb4_msmep').read().splitlines() if ">>>" in l][0]
+        ngc_geom = [float(l.split()[2]) for l in open(sysn / 'out_xtb4_msmep').read().splitlines() if "<<<" in l][0]
+        ts_output = ProgramOutput.open(sysn / 'xtb4_msmep_tsres_0.qcio')
         
         if not ts_output.success:
             print(f"*****{sysn}")
@@ -74,8 +74,6 @@ df.iloc[:, 1].mean(), df.iloc[:, 1].std(), df.iloc[:, 1].mean() ,df.iloc[:, 1].m
 
 df.sort_values(by='ts_dist',ascending=False).dropna()
 
-
-
 tsres = eng._compute_ts_result(h.ordered_leaves[0].data.chain_trajectory[-1].get_ts_node())
 
 inds = list(range(0, 125, 25))
@@ -85,9 +83,9 @@ succeses = []
 weird_failures = []
 for p in allsys:
     # print("\n\n\n\n\n\n\n\n\n\n***\n\n\n\n\n\n\n\n\n\n", p)
-    if not (p / "xtb_msmep").exists(): continue
+    if not (p / "xtb4_msmep").exists(): continue
     try:
-        h = TreeNode.read_from_disk(p / "xtb_msmep")
+        h = TreeNode.read_from_disk(p / "xtb4_msmep")
         # h = TreeNode.read_from_disk(p / "deb")
         sp = Structure.open(p / 'sp.xyz')
         for i in inds:
@@ -151,148 +149,59 @@ plt.legend()
 
 dataframe['sums'].argmin(),  dataframe['mins'].argmin(), dataframe['maxs'].argmin()
 
-len(df[df['ts_dist']>0.5])
-df[df['ts_dist']>0.5]
+n = NEB.read_from_disk('/home/jdep/for_kuke/bugfixed.xyz')
 
-n = NEB.read_from_disk("/home/kukier/projects/dioxetane/terachem-rework/neb/irc-guess/cc-f6/less-dissoc/twenty-beads/mep_output_neb.xyz")
+# pos = [ProgramOutput.open(lol) for lol in Path("/home/jdep/for_kuke/").glob("bugfixed*.qcio")]
+pos = [node._cached_result for node in n.optimized]
 
-n.optimized.energies
+for indx in range(len(pos)):
+    lines = pos[indx].stdout.split()
+    print([lines[i+1] for i, l in enumerate(lines) if "SQUARED" in l])
+
+from neb_dynamics.inputs import RunInputs
+ri = RunInputs.open("/home/jdep/for_kuke/toml2.toml")
+
+for node in n.optimized:
+    node._cached_energy = None
+
+
 
 # +
 
-pa = ProgramInput(keywords=kwds, model={'method':method, 'basis':basis}, structure=n.optimized[1].structure, calctype='energy')
+ri.engine.compute_energies(n.optimized)
 # -
 
-ri.program_kwds.keywords['guess'] = 'hcore'
-
-n.optimized[1]._cached_energy = None
-
-ri.engine.compute_energies([n.optimized[1]])
-
-ri = RunInputs.open("/home/kukier/software/neb-dynamics/diox-cc-f6.toml")
+n.optimized.plot_chain()
 
 c = n.optimized.copy()
 for node in c:
     node._cached_energy = None
 
-huh = [-2.286789222635999863e+02,
--2.286741163174999940e+02,
--2.286221265927999866e+02,
--2.286035979922000081e+02,
--2.285889732324000079e+02,
--2.285836811558999955e+02,
--2.285836463107999919e+02,
--2.285854023990999906e+02,
--2.285875434595000115e+02,
--2.285884957842999938e+02,
--2.285877607642999862e+02,
--2.285866934649000086e+02,
--2.285857247874000109e+02,
--2.285839660931000026e+02,
--2.285849953995000021e+02,
--2.285835751468999888e+02,
--2.285849529147000112e+02,
--2.286628515818999858e+02,
--2.287521525319000091e+02,
--2.287649087929999894e+02
-]
-
-ri.engine.program = 'terachem'
-
-out = ri.engine.compute_energies(c)
-
-po = ProgramOutput.open("/home/jdep/for_kuke
+ri = RunInputs.open("/home/jdep/for_kuke/toml2.toml")
 
 # +
 
-view.view(po)
+ri.engine.compute_energies(c)
+
+# +
+
+c.energies
 # -
 
-view.view(c[1]._cached_result)
+plt.plot(c.energies, label='truther')
+plt.plot(n.optimized.energies, label='faker')
+plt.legend()
 
-c2 = c.copy()
-for node in c2:
-    node._cached_energy = None
-out2 = RunInputs().engine.compute_energies(c2)
+opt_tr = ri.engine.compute_geometry_optimization(n.optimized[1])
 
-plt.plot((np.array(out)-out[0])*627.5,'o-')
-# plt.plot((np.array(out2)-out2[0])*627.5,'o-')
-plt.plot((np.array(huh)-huh[0])*627.5,'x-')
-
-plt.plot((np.array(out)-out[0])*627.5,'o-')
-# plt.plot((np.array(out2)-out2[0])*627.5,'o-')
-plt.plot((np.array(huh)-huh[0])*627.5,'x-')
-
-plt.plot((np.array(out)-out[0])*627.5,'o-')
-plt.plot((np.array(out2)-out2[0])*627.5,'o-')
-plt.plot((np.array(huh)-huh[0])*627.5,'x-')
+(opt_tr[-1].energy-n.optimized[0].energy)*627.5
 
 # +
-"""An example of how to create a FileInput object for a QC Program."""
 
-from pathlib import Path
-
-from qcio import FileInput, Structure
-
-from qcop import compute
-
-# Input files for QC Program
-inp_file = Path("/home/kukier/projects/dioxetane/terachem-rework/neb/irc-guess/cc-f6/less-dissoc/twenty-beads/opt-new-min/poss-new_min.inp").read_text()  # Or your own function to create tc.in
-
-# Structure object to XYZ file
-structure = Structure.open("/home/kukier/projects/dioxetane/terachem-rework/neb/irc-guess/cc-f6/less-dissoc/twenty-beads/opt-new-min/poss-new-minimum.xyz")
-xyz_str = structure.to_xyz()  # type: ignore
-
-# Create a FileInput object for TeraChem
-file_inp = FileInput(
-    files={"tc.in": inp_file, "coords.xyz": xyz_str}, cmdline_args=["tc.in"]
-)
-
-# +
-# This will write the files to disk in a temporary directory and then run
-# "terachem tc.in" in that directory.
-output = compute("terachem", file_inp, print_stdout=True)
-
-# Data
-output.stdout
-output.input_data
-output.results.files  # Has all the files terachem creates
-output.results.files.keys()  # Print out file names
-# Saves all outputs with the exact structure produced by the QC program
-output.results.save_files("to/this/directory")
+view.view(opt_tr[-1].structure, n.optimized[0].structure, show_indices=True)
 # -
 
-pa = ProgramInput(
-    keywords={'guess':'/home/kukier/projects/dioxetane/terachem-rework/crit-points/cartesian-qchem/wf-cartesian/diox-reac-p4-6-f6-0.c0a.qchem /home/kukier/projects/dioxetane/terachem-rework/crit-points/cartesian-qchem/wf-cartesian/diox-reac-p4-6-f6-0.c0b.qchem',
-              'purify': 'no', 
-          'precision': 'double', 
-          'mixguess': 0, 
-          'dftgrid': 2,
-          'convthre': 1e-06,
-          'steering': 'adaptive', 
-          'steeratom1': 4, 
-          'steeratom2': 6, 
-          'steerforce': 0.036413407958360185},
-        files={}, 
-    model={'method':'uwb97xd3', 'basis':'def2-svp'}, 
-calctype='energy',
-structure=n.optimized[1].structure)
-
-out = compute('terachem', pa, collect_stdout=True)
-
-view.view(out)
-
-n.optimized[1].structure.save("/home/jdep/for_kuke/hello.xyz")
-
-ch.visualize_chain(n.optimized)
-
-n.plot_opt_history(1)
-
-n.optimized.energies
-
-n.optimized.plot_chain()
-
-ch.visualize_chain(n.optimized)
+ch.visualize_chain(opt_tr)
 
 # h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/debug/wittig/fsm")
 # fp = Path("/home/jdep/T3D_data/msmep_draft/pes/ch4/results/")
@@ -301,28 +210,24 @@ ch.visualize_chain(n.optimized)
 # h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/debug/Claisen-Aromatic/mep_output_msmep/")
 # name = 'Semmler-Wolff-Reaction'
 # p = Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/') / name
-name = 'system25'
+name = 'system15'
 p = Path('/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/') / name
-# h = TreeNode.read_from_disk(p / "xtb_msmep")
-h = TreeNode.read_from_disk(p / "dft_msmep")
+h = TreeNode.read_from_disk(p / "xtb4_msmep")
+# h = TreeNode.read_from_disk(p / "dft_msmep")
 # h = TreeNode.read_from_disk(p / "deb")x
 sp = Structure.open(p / 'sp_terachem.xyz')
 # h = TreeNode.read_from_disk(p / "ref")
 
-a = Structure.open(p / 'sp_terachem_plus.xyz')
-
-view.view(a)
-
 visualize_chain(h.output_chain)
 
 # p = Path("/home/jdep/T3D_data/msmep_draft/debug/Claisen-Aromatic/")
-# po_names = list(p.glob("xtb_msmep_tsres*"))
-po_names = list(p.glob("dft_msmep_tsres*"))
+po_names = list(p.glob("xtb4_msmep_tsres*"))
+# po_names = list(p.glob("dft_msmep_tsres*"))
 # po_names = list(Path("/home/jdep/T3D_data/msmep_draft/pes/ch4/results").glob("*.qcio"))
 # po_names = list(p.glob("deb_tsres*"))
 pos = [ProgramOutput.open(name) for name in po_names]
 
-view.view(pos[0])
+view.view(pos[0].return_result, sp)
 
 eng = RunInputs().engine
 
@@ -333,16 +238,18 @@ tsres = eng._compute_hessian_result(StructureNode(structure=pos[0].return_result
 
 res = eng.compute_sd_irc(StructureNode(structure=pos[0].return_result))
 
-pos = [ProgramOutput.open(x) for x in Path("/home/jdep/T3D_data/msmep_draft/pes/ch4/results/").glob("*.qcio")]
+pos = [ProgramOutput.open(x) for x in Path("/home/jdep/T3D_data/msmep_draft/pes/ch4/results/").glob("*tsres*.qcio") ]
 
 tss = [po.return_result for po in pos if po.success]
 
 unique = [tss[0]]
 for structure in tss[1:]:
     dists = np.array([RMSD(structure.geometry, ref.geometry)[0] for ref in unique])
-    if all(dists >1.0):
+    if all(dists >0.1):
         unique.append(structure)
         
+
+len(unique)
 
 view.view(*unique)
 

@@ -9,6 +9,7 @@ from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.optimizers.cg import ConjugateGradient
 import tomli
 import tomli_w
+from pathlib import Path
 
 
 @dataclass
@@ -300,7 +301,15 @@ class RunInputs:
         with open(fp, 'rb') as f:
             data = tomli.load(f)
         # data_dict = json.loads(data)
-        return cls(**data)
+        obj = cls(**data)
+        file_keys = obj.program_kwds.files.keys()
+        if "ca0" in file_keys and "cb0" in file_keys:
+            obj.program_kwds.files['ca0'] = Path(
+                obj.program_kwds.files['ca0']).read_bytes()
+            obj.program_kwds.files['cb0'] = Path(
+                obj.program_kwds.files['cb0']).read_bytes()
+
+        return obj
 
     def save(self, fp):
         json_dict = self.__dict__.copy()
