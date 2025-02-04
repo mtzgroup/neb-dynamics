@@ -30,42 +30,35 @@ class ConjugateGradient(Optimizer):
             x: Approximate minimizer of the objective function.
         """
 
-        # Perform line search to find optimal step size (alpha)
         alpha = self.timestep
-        gradient_failed = True
-        nretries = 0
         for i, (node, grad) in enumerate(zip(chain.nodes, chain_gradients)):
             if node.converged:
                 chain_gradients[i] = np.zeros_like(grad)
 
-        while gradient_failed and nretries < 10:
-            try:
-                g_new = chain_gradients.flatten()
-                p = -chain_gradients.flatten()
+        g_new = chain_gradients.flatten()
+        p = -chain_gradients.flatten()
 
-                if self.g_old is not None:
-                    g = self.g_old.flatten().copy()
-                    # Fletcher-Reeves formula
-                    beta = np.dot(g_new, g_new) / np.dot(g, g)
-                    # beta = np.dot(g_new, g_new - g) / np.dot(g, g)  # Polak-Ribiere formula
-                    p = -g_new + beta * p
+        if self.g_old is not None:
+            g = self.g_old.flatten().copy()
+            # Fletcher-Reeves formula
+            # beta = np.dot(g_new, g_new) / np.dot(g, g)
+            beta = max(0, np.dot(g_new, g - g_new) /
+                       np.dot(g, g))  # Polak-Ribiere formula
+            # print("BETA---->", beta)
+            p = -g_new + beta * p
 
-                    g = g_new
-                else:
-                    self.g_old = g_new.reshape(chain_gradients.shape).copy()
+            g = g_new.copy()
+            self.g_old = g
+        else:
+            self.g_old = g_new.reshape(chain_gradients.shape).copy()
 
-                p = p.reshape(chain_gradients.shape)
-                new_chain_coordinates = chain.coordinates + alpha * p
-                new_nodes = []
-                for node, new_coords in zip(chain.nodes, new_chain_coordinates):
+        p = p.reshape(chain_gradients.shape)
+        new_chain_coordinates = chain.coordinates + alpha * p
+        new_nodes = []
+        for node, new_coords in zip(chain.nodes, new_chain_coordinates):
 
-                    new_nodes.append(node.update_coords(new_coords))
+            new_nodes.append(node.update_coords(new_coords))
 
-                new_chain = Chain(new_nodes, parameters=chain.parameters)
-                gradient_failed = False
-
-            except Exception as e:
-                nretries += 1
-                alpha *= .5
+        new_chain = Chain(new_nodes, parameters=chain.parameters)
 
         return new_chain

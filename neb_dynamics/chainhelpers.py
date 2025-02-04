@@ -165,6 +165,12 @@ def neighs_grad_func(
             next_node=next_node,
             unit_tan_path=unit_tan_path,
         )
+        if len(spring_forces_nudged.shape) > 1 and spring_forces_nudged.shape[1] >= 3:
+            spring_forces_nudged[0, :] = 0  # this atom cannot move
+            # this atom can only move in a line
+            spring_forces_nudged[1, :2] = 0
+            # this atom can only move in a plane
+            spring_forces_nudged[2, :1] = 0
 
     return pe_grads_nudged, spring_forces_nudged
 
@@ -211,11 +217,20 @@ def _k_between_nodes(
     parameters: ChainInputs,
 ):
     e_i = max(node1.energy, node0.energy)
+    alpha = (e_max - e_i) / (e_max - e_ref)
+    k_upper = k_max
+    k_lower = k_max - parameters.delta_k
+
     if e_i > e_ref:
-        new_k = k_max - parameters.delta_k * ((e_max - e_i) / (e_max - e_ref))
-    elif e_i <= e_ref:
-        new_k = k_max - parameters.delta_k
-    return new_k
+        return (1-alpha)*k_upper + alpha*k_lower
+    else:
+        return k_lower
+    # e_i = max(node1.energy, node0.energy)
+    # if e_i > e_ref:
+    #     new_k = k_max - parameters.delta_k * ((e_max - e_i) / (e_max - e_ref))
+    # elif e_i <= e_ref:
+    #     new_k = k_max - parameters.delta_k
+    # return new_k
 
 
 def compute_NEB_gradient(chain: Chain, geodesic_tangent: bool = False) -> NDArray:
@@ -271,6 +286,7 @@ def get_force_spring_nudged(
     next_node: Node,
     unit_tan_path: np.array,
 ):
+    natom = len(current_node.coords)
     parameters = chain.parameters
     k_max = max(parameters.k) if hasattr(
         parameters.k, "__iter__") else parameters.k
@@ -295,9 +311,16 @@ def get_force_spring_nudged(
         e_max=e_max,
         parameters=parameters,
     )
-    force_spring = k12 * np.linalg.norm(
+
+    # tightest_k = max(k12, k01)
+
+    force_spring = k12 * (np.linalg.norm(
         next_node.coords - current_node.coords
-    ) - k01 * np.linalg.norm(current_node.coords - prev_node.coords)
+    )/natom) - (k01 * np.linalg.norm(current_node.coords - prev_node.coords)/natom)
+
+    # force_spring = tightest_k * (np.linalg.norm(
+    #     next_node.coords - current_node.coords
+    # )/natom) - (tightest_k * np.linalg.norm(current_node.coords - prev_node.coords)/natom)
 
     return force_spring * unit_tan_path
 

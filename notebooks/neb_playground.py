@@ -23,6 +23,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 # -
 
+lolz = Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_manual/Beckmann-Rearrangement/network/reactant_conformers.qcio")
+
+lolz.suffix
+
 from neb_dynamics.inputs import ChainInputs
 
 from neb_dynamics.pathminimizers.dimer import DimerMethod3D
@@ -32,14 +36,15 @@ p = Path("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system1/")
 allsys = [p.parent / sys for sys in list(p.parent.glob("sys*"))]
 
 # +
+name = 'xtb4_msmep'
 data = []
 failcount = 0
 unsucc = []
 for sysn in allsys:
     try:
-        ngc = [float(l.split()[2]) for l in open(sysn / 'out_xtb4_msmep').read().splitlines() if ">>>" in l][0]
-        ngc_geom = [float(l.split()[2]) for l in open(sysn / 'out_xtb4_msmep').read().splitlines() if "<<<" in l][0]
-        ts_output = ProgramOutput.open(sysn / 'xtb4_msmep_tsres_0.qcio')
+        ngc = [float(l.split()[2]) for l in open(sysn / f'out_{name}').read().splitlines() if ">>>" in l][0]
+        ngc_geom = [float(l.split()[2]) for l in open(sysn / f'out_{name}').read().splitlines() if "<<<" in l][0]
+        ts_output = ProgramOutput.open(sysn / f'{name}_tsres_0.qcio')
         
         if not ts_output.success:
             print(f"*****{sysn}")
@@ -72,9 +77,9 @@ df = pd.DataFrame(data, columns=['name', 'ngc','geom', 'ts_dist'])
 
 df.iloc[:, 1].mean(), df.iloc[:, 1].std(), df.iloc[:, 1].mean() ,df.iloc[:, 1].max(), df.iloc[:, 1].min()
 
-df.sort_values(by='ts_dist',ascending=False).dropna()
+df['ts_dist'].plot(kind='hist')
 
-tsres = eng._compute_ts_result(h.ordered_leaves[0].data.chain_trajectory[-1].get_ts_node())
+df[df['ts_dist']>1.0]
 
 inds = list(range(0, 125, 25))
 eng = RunInputs().engine
@@ -107,16 +112,6 @@ for p in allsys:
                     succeses.append(conditions)
     except Exception:
         weird_failures.append((p, i))
-
-a = Structure.from_smiles("C")
-
-# +
-
-import itertools
-# -
-
-a = Structure.open("/home/jdep/T3D_data/msmep_draft/pes/ch4/structures/mol_0.xyz")
-b = Structure.open("/home/jdep/T3D_data/msmep_draft/pes/ch4/structures/mol_1.xyz")
 
 reshape = {}
 vals = [] 
@@ -210,22 +205,30 @@ ch.visualize_chain(opt_tr)
 # h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/debug/Claisen-Aromatic/mep_output_msmep/")
 # name = 'Semmler-Wolff-Reaction'
 # p = Path('/home/jdep/T3D_data/msmep_draft/comparisons_dft/structures/') / name
-name = 'system15'
+name = 'system25'
 p = Path('/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/') / name
-h = TreeNode.read_from_disk(p / "xtb4_msmep")
+# h = TreeNode.read_from_disk(p / "xtb4_msmep")
+h = TreeNode.read_from_disk(p / "debug")
 # h = TreeNode.read_from_disk(p / "dft_msmep")
 # h = TreeNode.read_from_disk(p / "deb")x
-sp = Structure.open(p / 'sp_terachem.xyz')
+sp = Structure.open(p / 'sp.xyz')
 # h = TreeNode.read_from_disk(p / "ref")
+
+h.data.plot_opt_history(1)
 
 visualize_chain(h.output_chain)
 
+h.data.plot_convergence_metrics()
+
 # p = Path("/home/jdep/T3D_data/msmep_draft/debug/Claisen-Aromatic/")
-po_names = list(p.glob("xtb4_msmep_tsres*"))
+# po_names = list(p.glob("xtb4_msmep_tsres*"))
+po_names = list(p.glob("debug*tsres*"))
 # po_names = list(p.glob("dft_msmep_tsres*"))
 # po_names = list(Path("/home/jdep/T3D_data/msmep_draft/pes/ch4/results").glob("*.qcio"))
 # po_names = list(p.glob("deb_tsres*"))
 pos = [ProgramOutput.open(name) for name in po_names]
+
+view.view(pos[0])
 
 view.view(pos[0].return_result, sp)
 
@@ -247,7 +250,7 @@ for structure in tss[1:]:
     dists = np.array([RMSD(structure.geometry, ref.geometry)[0] for ref in unique])
     if all(dists >0.1):
         unique.append(structure)
-        
+
 
 len(unique)
 

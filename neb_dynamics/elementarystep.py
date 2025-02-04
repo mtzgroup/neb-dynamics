@@ -14,7 +14,7 @@ from neb_dynamics.engines import Engine
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, is_identical
 
 
-SLOPE_THRESH = 0.01
+SLOPE_THRESH = 0.1
 
 
 @dataclass
@@ -117,7 +117,31 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
         fragment_rmsd_cutoff=inp_chain.parameters.node_rms_thre,
         kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
     )
-    minimizing_gives_endpoints = found_r and found_p
+
+    p_is_r = is_identical(
+        pseu_irc_results.found_product,
+        chain[0],
+        fragment_rmsd_cutoff=inp_chain.parameters.node_rms_thre,
+        kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
+    )
+
+    r_is_p = is_identical(
+        pseu_irc_results.found_reactant,
+        chain[-1],
+        fragment_rmsd_cutoff=inp_chain.parameters.node_rms_thre,
+        kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
+    )
+
+    if found_r and found_p:
+        minimizing_gives_endpoints = True
+    elif found_r and p_is_r:
+        print("Warning! Both geometries converged to reactant.")
+        minimizing_gives_endpoints = True
+    elif found_p and r_is_p:
+        print("Warning! Both geometries converged to product.")
+        minimizing_gives_endpoints = True
+    else:
+        minimizing_gives_endpoints = False
 
     elem_step = True if minimizing_gives_endpoints else False
 
@@ -225,9 +249,9 @@ def _converges_to_an_endpoints(
             import traceback
             print(traceback.format_exc())
             print(
-                f"Error in geometry optimization: {e}. Pretending this is an elem step."
+                f"Error in geometry optimization: {e}. Need to do more expensive check."
             )
-            return True
+            return False
 
         distances = [
             _distances_to_refs(ref1=chain[0], ref2=chain[-1], raw_node=n)
@@ -245,12 +269,13 @@ def _converges_to_an_endpoints(
 
         slope1_conv = abs(slopes_to_ref1) / slope_thresh > 1
         slope2_conv = abs(slopes_to_ref2) / slope_thresh > 1
+        print(f"{slope1_conv=} {slope2_conv=}")
         # slope1_conv = 1
         # slope2_conv = 1
 
         done = slope1_conv and slope2_conv
-        if len(total_traj) - 1 >= max_grad_calls:
-            done = True
+        if len(total_traj) - 1 >= max_grad_calls and not done:
+            return False, total_traj
     if direction == -1:
         return slopes_to_ref1 < 0 and slopes_to_ref2 > 0, total_traj
     elif direction == 1:
@@ -315,6 +340,7 @@ def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH)
 
                 slope1_conv = abs(slopes_to_ref1) / min_slope_thre > 1
                 slope2_conv = abs(slopes_to_ref2) / min_slope_thre > 1
+                print(f"{slope1_conv=} {slope2_conv=}")
 
                 done = slope1_conv and slope2_conv
                 if done:

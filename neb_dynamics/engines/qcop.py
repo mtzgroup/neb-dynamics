@@ -9,6 +9,7 @@ import numpy as np
 import qcop
 from qcio.models.inputs import DualProgramInput, ProgramInput, Structure, ProgramArgs
 from qcio import ProgramOutput
+import shutil
 
 from chemcloud import CCClient
 
@@ -205,25 +206,42 @@ class QCOPEngine(Engine):
         if "terachem" in self.program:
             prog = "terachem"
 
-        dpi = DualProgramInput(
-            calctype="hessian",  # type: ignore
-            structure=node.structure,
-            subprogram=prog,
-            subprogram_args={
-                "model": self.program_args.model,
-                "keywords": self.program_args.keywords,
-            },
-            keywords={},
-        )
         if use_bigchem:
+            dpi = DualProgramInput(
+                calctype="hessian",  # type: ignore
+                structure=node.structure,
+                subprogram=prog,
+                subprogram_args={
+                    "model": self.program_args.model,
+                    "keywords": self.program_args.keywords,
+                },
+                keywords={},
+            )
             client = CCClient()
             fres = client.compute("bigchem", dpi)
             output = fres.get()
         else:
-            output = self.compute_func('geometric', dpi)
+            proginp = ProgramInput(
+                structure=node.structure,
+                calctype='hessian', **self.program_args.__dict__)
+            output = self.compute_func(
+                self.program, proginp, collect_files=True)
         return output
 
-    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 200}, use_bigchem=False):
+    def _compute_conf_result(self, node: StructureNode):
+        assert shutil.which(
+            "crest") is not None, "crest not found in path. this currently only works with CREST"
+
+        pi = ProgramInput(
+            calctype="conformer_search",  # type: ignore
+            structure=node.structure,
+            model=self.program_args.model,
+            keywords=self.program_args.keywords,
+        )
+        output = self.compute_func('crest', pi)
+        return output
+
+    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 500}, use_bigchem=False):
         if use_bigchem:
             hess = self.compute_hessian(node=node)
             np.savetxt("/tmp/hess.txt", hess)
@@ -250,12 +268,12 @@ class QCOPEngine(Engine):
                 })
         return self.compute_func('geometric', dpi, collect_files=True)
 
-    def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500) -> List[List[StructureNode], List[StructureNode]]:
+    def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500, use_bigchem=False) -> List[List[StructureNode], List[StructureNode]]:
         """
         steepest descent IRC.
         """
         if hessres is None:
-            hessres = self._compute_hessian_result(ts)
+            hessres = self._compute_hessian_result(ts, use_bigchem=use_bigchem)
 
         self.compute_gradients([ts])
 
@@ -283,7 +301,11 @@ class QCOPEngine(Engine):
         output = self._compute_hessian_result(node)
         return output.return_result
 
-    def compute_transition_state(self, node: StructureNode, keywords={'maxiter': 200}):
+    def compute_conformers(self, node: StructureNode):
+        output = self._compute_conf_result(node)
+        return output.results.conformers
+
+    def compute_transition_state(self, node: StructureNode, keywords={'maxiter': 500}):
         output = self._compute_ts_result(node=node)
         if output.success:
             return StructureNode(structure=output.return_result)

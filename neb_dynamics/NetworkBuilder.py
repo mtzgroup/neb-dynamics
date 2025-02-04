@@ -12,11 +12,14 @@ from scipy.signal import argrelmin
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.helper_functions import RMSD, pairwise
-from neb_dynamics.Inputs import ChainInputs, NetworkInputs
+from neb_dynamics.inputs import ChainInputs, NetworkInputs
 from neb_dynamics.pot import Pot
-from neb_dynamics.tdstructure import TDStructure
-from neb_dynamics.trajectory import Trajectory
+from neb_dynamics.nodes.node import StructureNode
+from neb_dynamics.nodes.nodehelpers import molecule_to_structure, is_identical
 from neb_dynamics.molecule import Molecule
+from neb_dynamics.engines import Engine, QCOPEngine
+
+from qcio import Structure, ProgramArgs
 
 from typing import Union
 
@@ -28,78 +31,81 @@ class NetworkBuilder:
 
     data_dir: Path
 
-    start: Union[TDStructure, str, None] = None
-    end: Union[TDStructure, str, None] = None
+    start: Union[StructureNode, str, None] = None
+    end: Union[StructureNode, str, None] = None
 
+    charge: int = 0
+    spinmult: int = 1
+
+    engine: Engine = QCOPEngine(program='crest',
+                                program_args=ProgramArgs(
+                                    model={'method': 'gfn2'}, keywords={"calculation": {"level": [{"alpb": "h2o"}]}})
+                                )
     network_inputs: NetworkInputs = NetworkInputs()
     chain_inputs: ChainInputs = ChainInputs()
 
-    def __post_init__(self):
-        both_are_smi = isinstance(
-            self.start, str) and isinstance(self.end, str)
-        both_are_tds = isinstance(
-            self.start, TDStructure) and isinstance(self.end, TDStructure)
-        both_are_none = self.start is None and self.end is None
+    # def __post_init__(self):
+    #     both_are_smi = isinstance(
+    #         self.start, str) and isinstance(self.end, str)
+    #     both_are_tds = isinstance(
+    #         self.start, StructureNode) and isinstance(self.end, StructureNode)
+    #     both_are_none = self.start is None and self.end is None
 
-        assert both_are_smi or both_are_tds or both_are_none, 'Both inputs needs to be the same data type.'
+    #     assert both_are_smi or both_are_tds or both_are_none, 'Both inputs needs to be the same data type.'
 
-        if both_are_smi:
-            start_smi = self.start
-            end_smi = self.end
-            mapped_start, mapped_end = self.create_pairs_from_smiles(
-                smi1=start_smi, smi2=end_smi)
-            self.start = mapped_start
-            self.end = mapped_end
+    #     if both_are_smi:
+    #         start_smi = self.start
+    #         end_smi = self.end
+    #         mapped_start, mapped_end = self.create_pairs_from_smiles(
+    #             smi1=start_smi, smi2=end_smi)
+    #         self.start = mapped_start
+    #         self.end = mapped_end
 
-            new_start_changed = mapped_start.molecule_rp.smiles != start_smi
-            new_end_changed = mapped_end.molecule_rp.smiles != end_smi
-            if new_start_changed or new_end_changed:
-                print("Warning! Mapping endpoints indices changed smiles string.")
-                print(
-                    f"Input start: {start_smi}. Output start: {mapped_start.molecule_rp.smiles}")
-                print(
-                    f"Input end: {end_smi}. Output end: {mapped_end.molecule_rp.smiles}")
+    #         new_start_changed = mapped_start.structure.to_smiles() != start_smi
+    #         new_end_changed = mapped_end.structure.to_smiles() != end_smi
+    #         if new_start_changed or new_end_changed:
+    #             print("Warning! Mapping endpoints indices changed smiles string.")
+    #             print(
+    #                 f"Input start: {start_smi}. Output start: {mapped_start.structure.to_smiles()}")
+    #             print(
+    #                 f"Input end: {end_smi}. Output end: {mapped_end.structure.to_smiles()}")
 
-        self.data_dir.mkdir(exist_ok=True)
+    #     self.data_dir.mkdir(exist_ok=True)
 
-        self.start_confs_dd = self.data_dir / "start_confs"
-        self.start_confs_dd.mkdir(exist_ok=True)
+    #     self.start_confs_dd = self.data_dir / "start_confs"
+    #     self.start_confs_dd.mkdir(exist_ok=True)
 
-        self.end_confs_dd = self.data_dir / "end_confs"
-        self.end_confs_dd.mkdir(exist_ok=True)
+    #     self.end_confs_dd = self.data_dir / "end_confs"
+    #     self.end_confs_dd.mkdir(exist_ok=True)
 
-        self.pairs_data_dir = self.data_dir / "pairs_to_do"
-        self.pairs_data_dir.mkdir(exist_ok=True)
+    #     self.pairs_data_dir = self.data_dir / "pairs_to_do"
+    #     self.pairs_data_dir.mkdir(exist_ok=True)
 
-        self.msmep_data_dir = self.data_dir / "msmep_results"
-        self.msmep_data_dir.mkdir(exist_ok=True)
+    #     self.msmep_data_dir = self.data_dir / "msmep_results"
+    #     self.msmep_data_dir.mkdir(exist_ok=True)
 
-        self.submissions_dir = self.data_dir / "submissions"
-        self.submissions_dir.mkdir(exist_ok=True)
+    #     self.submissions_dir = self.data_dir / "submissions"
+    #     self.submissions_dir.mkdir(exist_ok=True)
 
-        self.leaf_objects = None
+    #     self.leaf_objects = None
 
-        if self.start is None:
-            start_fp = self.start_confs_dd / "start.xyz"
-            assert (
-                start_fp.exists()
-            ), f"Need to input a start geometry since {start_fp} does not exist"
-            print(
-                f"Warning: reading structure info from {start_fp}. Assuming charge=0 and spinmult=1"
-            )
-            self.start = TDStructure.from_xyz(start_fp)
+    #     if self.start is None:
+    #         start_fp = self.start_confs_dd / "start.xyz"
+    #         assert (
+    #             start_fp.exists()
+    #         ), f"Need to input a start geometry since {start_fp} does not exist"
+    #         self.start = StructureNode(structure=Structure.open(
+    #             start_fp, charge=self.charge, multiplicity=self.spinmult))
 
-        if self.end is None:
-            end_fp = self.end_confs_dd / "end.xyz"
-            assert (
-                start_fp.exists()
-            ), f"Need to input a start geometry since {end_fp} does not exist"
-            print(
-                f"Warning: reading structure info from {end_fp}. Assuming charge=0 and spinmult=1"
-            )
-            self.end = TDStructure.from_xyz(end_fp)
+    #     if self.end is None:
+    #         end_fp = self.end_confs_dd / "end.xyz"
+    #         assert (
+    #             start_fp.exists()
+    #         ), f"Need to input a start geometry since {end_fp} does not exist"
+    #         self.end = StructureNode(structure=Structure.open(
+    #             end_fp, charge=self.charge, multiplicity=self.spinmult))
 
-    @contextlib.contextmanager
+    @ contextlib.contextmanager
     def remember_cwd(self):
         curdir = os.getcwd()
         try:
@@ -107,7 +113,7 @@ class NetworkBuilder:
         finally:
             os.chdir(curdir)
 
-    @staticmethod
+    @ staticmethod
     def subselect_confomers(conformer_pool, n_max=20, rmsd_cutoff=0.5):
 
         subselected_pool = [conformer_pool[0]]
@@ -165,8 +171,10 @@ class NetworkBuilder:
         p = Molecule.from_mapped_smiles(p_smi)
 
         td_r, td_p = (
-            TDStructure.from_molecule(r, charge=charge, spinmult=spinmult),
-            TDStructure.from_molecule(p, charge=charge, spinmult=spinmult)
+            StructureNode(structure=molecule_to_structure(
+                r, charge=charge, spinmult=spinmult)),
+            StructureNode(structure=molecule_to_structure(
+                p, charge=charge, spinmult=spinmult))
         )
         return td_r, td_p
 
@@ -282,17 +290,16 @@ class NetworkBuilder:
         assert len(inds) >= 1, "No matches found. Network cannot be constructed."
         return inds[0]
 
+    def _equality_function(self, a: StructureNode, b: StructureNode):
+
+        return is_identical(a, b, fragment_rmsd_cutoff=self.chain_inputs.node_rms_thre, verbose=False,
+                            kcal_mol_cutoff=self.chain_inputs.node_ene_thre)
+
     def _get_ind_td(self, ref_list, td):
-        if self.network_inputs.network_nodes_are_conformers:
-            inds = np.where(
-                [a.is_identical(b) for a, b in list(
-                    itertools.product([td], ref_list))]
-            )[0]
-        else:
-            inds = np.where(
-                [a._is_connectivity_identical(b) for a, b in list(
-                    itertools.product([td], ref_list))]
-            )[0]
+        inds = np.where(
+            [self._equality_function(a, b) for a, b in list(
+                itertools.product([td], ref_list))]
+        )[0]
         assert len(inds) >= 1, "No matches found. Network cannot be constructed."
         return inds[0]
 
@@ -391,25 +398,25 @@ class NetworkBuilder:
 
                     elementary_step = n_minima == 0
                 if elementary_step:
+                    print("len(structures)", len(structures))
+                    reactant_comparison = all([not self._equality_function(
+                        reactant, reference) for reference in structures])
+                    product_comparison = all([not self._equality_function(
+                        product, reference) for reference in structures])
 
-                    if self.network_inputs.network_nodes_are_conformers:
-                        reactant_comparison = reactant not in structures
-                        product_comparison = product not in structures
-                    else:
-                        all_mols = [
-                            node.tdstructure.molecule_rp for node in structures]
-                        reactant_comparison = reactant.tdstructure.molecule_rp not in all_mols
-                        product_comparison = product.tdstructure.molecule_rp not in all_mols
+                    print("reactant_comparison", reactant_comparison,
+                          "product_comparison", product_comparison)
 
-                    if reactant_comparison:
+                    if reactant_comparison or len(structures) == 0:
                         structures.append(reactant)
-                    if product_comparison:
+                    if product_comparison or len(structures) == 1:
                         structures.append(product)
 
                     ind_r = self._get_ind_td(ref_list=structures, td=reactant)
                     ind_p = self._get_ind_td(ref_list=structures, td=product)
                     eA = leaf.get_eA_chain()
                     edge_name = f"{ind_r}-{ind_p}"
+                    print(f"EDGE: {edge_name}")
                     rev_edge_name = f"{ind_p}-{ind_r}"
                     rev_eA = (leaf.energies.max() - leaf[-1].energy) * 627.5
 
@@ -443,9 +450,9 @@ class NetworkBuilder:
 
             pot.graph.add_node(
                 node_ind,
-                molecule=mol_to_add.tdstructure.molecule_rp,
+                molecule=mol_to_add.graph,
                 converged=False,
-                td=mol_to_add.tdstructure,
+                td=mol_to_add,
                 node_energy=mol_to_add.energy,
                 node_energies=[
                     conformer.energy for conformer in relevant_conformers],
@@ -505,10 +512,11 @@ class NetworkBuilder:
                         )
         return pot
 
-    def create_rxn_network(self):
-        msmep_paths = list(self.msmep_data_dir.glob("results*_msmep"))
+    def create_rxn_network(self, file_pattern="results*_msmep"):
+        msmep_paths = list(self.msmep_data_dir.glob(file_pattern))
+        msmep_paths = [p for p in msmep_paths if p.is_dir()]
         structures, edges = self._load_network_data(msmep_paths=msmep_paths)
-        pot = Pot(root=self.start.molecule_rp)
+        pot = Pot(root=structures[0].graph)
         pot = self._add_all_nodes(pot, structures=structures)
         pot = self._add_all_edges(pot, structures=structures, edges=edges)
         return pot
@@ -550,14 +558,14 @@ class NetworkBuilder:
         return edge_data[best_ind]
 
     def get_mechanism_mols(self, chain, elem_step_len=12):
-        out_mols = [chain[0].tdstructure.molecule_rp]
+        out_mols = [chain[0].graph]
         nsteps = int(len(chain)/elem_step_len)
         for ind in range(nsteps):
-            r = chain[ind*elem_step_len].tdstructure.molecule_rp
+            r = chain[ind*elem_step_len].graph
             if r != out_mols[-1]:
                 out_mols.append(r)
 
-        p = chain[-1].tdstructure.molecule_rp
+        p = chain[-1].graph
         if p != out_mols[-1]:
             out_mols.append(p)
         return out_mols
@@ -575,7 +583,7 @@ class NetworkBuilder:
         return pot
 
 
-@dataclass
+@ dataclass
 class ReactionData:
     data: dict
 

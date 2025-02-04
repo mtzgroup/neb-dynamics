@@ -17,7 +17,7 @@ import neb_dynamics.helper_functions as hf
 from neb_dynamics.helper_functions import pairwise
 
 from neb_dynamics.d3_tools import draw_d3, forward_to_d3json
-from neb_dynamics.NEB import NEB
+from neb_dynamics.neb import NEB
 
 # from retropaths.molecules.molecular_formula import MolecularFormula
 from neb_dynamics.molecule import Molecule
@@ -155,7 +155,8 @@ class Pot:
     def __init__(self, root, target=Molecule(), multiplier=1, rxn_name=None):
         multiplied_root = root * multiplier
         self.target = target
-        self.multiplier = multiplier  # this needs to be here because it is needed when we calculates yield.
+        # this needs to be here because it is needed when we calculates yield.
+        self.multiplier = multiplier
         self.root = multiplied_root
         self.graph = nx.DiGraph()
         self.run_time = None
@@ -250,7 +251,8 @@ class Pot:
 {target_string}
 </div></div>"""
         totalstring += (
-            self.draw_leaves(string_mode=True, mode=mode, just=just) if leaves else ""
+            self.draw_leaves(string_mode=True, mode=mode,
+                             just=just) if leaves else ""
         )
         if string_mode:
             return totalstring
@@ -313,7 +315,8 @@ class Pot:
     def reactions_in_the_pot(self):
         """it returs a list of the unique reactions that happened in the pot"""
         return sorted(
-            list(set([self.graph.edges[x]["reaction"] for x in self.graph.edges]))
+            list(set([self.graph.edges[x]["reaction"]
+                 for x in self.graph.edges]))
         )
 
     def find_all_fathers(self, index):
@@ -336,7 +339,8 @@ class Pot:
         return smiles_unique
 
     def paths_from(self, node_ind):
-        simple_path = nx.all_simple_paths(self.graph, source=node_ind, target=0)
+        simple_path = nx.all_simple_paths(
+            self.graph, source=node_ind, target=0)
         return simple_path
 
     def subgraph_from(self, source, target=0):
@@ -412,7 +416,8 @@ class Pot:
         if not self.target.is_empty():
             list_of_nodes = self.in_which_node_is_this_molecule(self.target)
             if len(list_of_nodes) == 0:
-                raise ValueError("Target is not present in the reaction network.")
+                raise ValueError(
+                    "Target is not present in the reaction network.")
             return list_of_nodes
 
         else:
@@ -610,7 +615,8 @@ class Pot:
         else:
             stringZ = ""
             for ii, path in enumerate(paths_node_list_of_list):
-                pairswiZ = list(pairwise(path))  # AV: I have no idea what I did here
+                # AV: I have no idea what I did here
+                pairswiZ = list(pairwise(path))
                 names = list(
                     reversed(
                         [
@@ -622,7 +628,8 @@ class Pot:
                 )
                 molecules_list = list(
                     reversed(
-                        [self.graph.nodes[x]["molecule"] + env_molecules for x in path]
+                        [self.graph.nodes[x]["molecule"] +
+                            env_molecules for x in path]
                     )
                 )
                 stringZ += f"<h3>Path to {path[0]} n. {ii}:</h3>"
@@ -747,7 +754,8 @@ class Pot:
         """
         denominator = len(self.leaves) if len(self.leaves) > 0 else 1
         how_many_times = sum(
-            self.target.is_subgraph_isomorphic_to(self.graph.nodes[x]["molecule"])
+            self.target.is_subgraph_isomorphic_to(
+                self.graph.nodes[x]["molecule"])
             for x in self.leaves
         )
         score = how_many_times / denominator
@@ -803,4 +811,3 @@ class Pot:
         pot.run_time = read["run_time"]
         pot.rxn_name = read["rxn_name"]
         return pot
-

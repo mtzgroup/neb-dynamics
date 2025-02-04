@@ -3,7 +3,7 @@ from typing_extensions import Annotated
 
 import os
 from openbabel import openbabel
-from qcio import Structure
+from qcio import Structure, ProgramOutput
 import sys
 from pathlib import Path
 import time
@@ -14,6 +14,8 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.nodes.nodehelpers import displace_by_dr
 from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+
+from itertools import product
 
 
 ob_log_handler = openbabel.OBMessageHandler()
@@ -58,7 +60,10 @@ def run(
         print("Using arbalign to optimize index labelling for endpoints")
         end_structure = align_structures(
             start_structure, end_structure, distance_metric='RMSD')
+
+        all_structs = [start_structure, end_structure]
     else:
+
         if geometries is not None:
             try:
                 all_structs = read_multiple_structure_from_file(
@@ -114,6 +119,7 @@ def run(
     m = MSMEP(inputs=program_input)
 
     # Run the optimization
+
     if recursive:
         print(f"RUNNING AUTOSPLITTING {program_input.path_min_method}")
         history = m.run_recursive_minimize(chain)
@@ -310,6 +316,109 @@ def make_default_inputs(
     ri = RunInputs(path_min_method=path_min_method)
     out = Path(name)
     ri.save(out.parent / (out.stem+".toml"))
+
+
+@app.command()
+def run_netgen(
+        start: Annotated[str, typer.Option(
+            help='path to start conformers data')] = None,
+        end: Annotated[str, typer.Option(
+            help='path to end conformers data')] = None,
+
+        inputs: Annotated[str, typer.Option("--inputs", "-i",
+                                            help='path to RunInputs toml file')] = None,
+
+        name: str = None,
+        charge: int = 0,
+        multiplicity: int = 1
+
+):
+    start_time = time.time()
+
+    # load the RunInputs
+    if inputs is not None:
+        program_input = RunInputs.open(inputs)
+    else:
+        program_input = RunInputs(program='xtb', engine_name='qcop')
+    print(program_input)
+
+    # load the structures
+    print(Path(start).suffix, Path(end).suffix)
+    if Path(start).suffix == ".qcio" and Path(end).suffix == ".qcio":
+        start_structures = ProgramOutput.open(start).results.conformers
+        end_structures = ProgramOutput.open(end).results.conformers
+
+        start_nodes = [StructureNode(structure=s) for s in start_structures]
+        end_nodes = [StructureNode(structure=s) for s in end_structures]
+
+    elif Path(start).suffix == ".xyz" and Path(end).suffix == ".xyz":
+        start_structures = read_multiple_structure_from_file(
+            start, charge=charge, spinmult=multiplicity)
+        end_structures = read_multiple_structure_from_file(
+            end, charge=charge, spinmult=multiplicity)
+        if len(start_structures) == 1 and len(end_structures) == 1:
+            print("Only one structure in each file. Sampling using CREST!")
+            print("Sampling reactant...")
+            start_conf_result = program_input.engine._compute_conf_result(
+                StructureNode(structure=start_structures[0]))
+            start_conf_result.save(Path(start).resolve(
+            ).parent / (Path(start).stem + "_conformers.qcio"))
+
+            start_nodes = [StructureNode(structure=s)
+                           for s in start_conf_result.results.conformers]
+            print("Done!")
+
+            print("Sampling product...")
+            end_conf_result = program_input.engine._compute_conf_result(
+                StructureNode(structure=end_structures[0]))
+            end_conf_result.save(Path(end).resolve().parent /
+                                 (Path(end).stem + "_conformers.qcio"))
+            end_nodes = [StructureNode(structure=s)
+                         for s in end_conf_result.results.conformers]
+            print("Done!")
+    else:
+        raise ValueError(
+            f"Either both start and end must be .qcio files, or both must be .xyz files. Inputs: {start}, {end}")
+
+    sys.stdout.flush()
+
+    pairs = list(product(start_nodes, end_nodes))
+    for i, (start, end) in enumerate(pairs):
+        # create Chain
+        chain = Chain(
+            nodes=[start, end],
+            parameters=program_input.chain_inputs,
+        )
+
+        # define output names
+        fp = Path("mep_output")
+        if name is not None:
+            data_dir = Path(name).resolve().parent
+            foldername = data_dir / (name + f"_pair{i}")
+            filename = data_dir / (name + f"_pair{i}.xyz")
+
+        else:
+            data_dir = Path(os.getcwd())
+            foldername = data_dir / f"{fp.stem}_msmep_pair{i}"
+            filename = data_dir / f"{fp.stem}_msmep_pair{i}.xyz"
+
+        # create MSMEP object
+        m = MSMEP(inputs=program_input)
+
+        # Run the optimization
+
+        print(
+            f"RUNNING AUTOSPLITTING ON PAIR {i}/{len(pairs)} {program_input.path_min_method}")
+        if filename.exists():
+            print("already done. Skipping...")
+            continue
+        history = m.run_recursive_minimize(chain)
+
+        end_time = time.time()
+        history.output_chain.write_to_disk(filename)
+        history.write_to_disk(foldername)
+
+    print(f"***Walltime: {end_time - start_time} s")
 
 
 if __name__ == "__main__":

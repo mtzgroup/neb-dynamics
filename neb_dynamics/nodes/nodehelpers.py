@@ -15,6 +15,7 @@ def is_identical(
     global_rmsd_cutoff: float = 20.0,
     fragment_rmsd_cutoff: float = 1.0,
     kcal_mol_cutoff: float = 1.0,
+    verbose: bool = True,
 ) -> bool:
     """
     computes whether two nodes are identical.
@@ -29,13 +30,14 @@ def is_identical(
             other.has_molecular_graph
         ), "Both node objects must have computable molecular graphs."
         conditions = [
-            _is_connectivity_identical(self, other),
+            _is_connectivity_identical(self, other, verbose=verbose),
             _is_conformer_identical(
                 self,
                 other,
                 global_rmsd_cutoff=global_rmsd_cutoff,
                 fragment_rmsd_cutoff=fragment_rmsd_cutoff,
                 kcal_mol_cutoff=kcal_mol_cutoff,
+                verbose=verbose
             ),
         ]
     else:
@@ -46,6 +48,7 @@ def is_identical(
                 global_rmsd_cutoff=global_rmsd_cutoff,
                 fragment_rmsd_cutoff=fragment_rmsd_cutoff,
                 kcal_mol_cutoff=kcal_mol_cutoff,
+                verbose=verbose
             )
         ]
 
@@ -59,9 +62,11 @@ def _is_conformer_identical(
     global_rmsd_cutoff: float = 20.0,
     fragment_rmsd_cutoff: float = 0.5,
     kcal_mol_cutoff: float = 1.0,
+    verbose: bool = True,
 ) -> bool:
 
-    print("\n\tVerifying if two geometries are identical.")
+    if verbose:
+        print("\n\tVerifying if two geometries are identical.")
     if isinstance(self, XYNode):
         global_dist = np.linalg.norm(other.coords - self.coords)
     else:
@@ -71,18 +76,41 @@ def _is_conformer_identical(
 
     per_frag_dists = []
     if self.has_molecular_graph:
-        if not _is_connectivity_identical(self, other):
-            print("\t\tGraphs differed. Not identical.")
+        if not _is_connectivity_identical(self, other, verbose=verbose):
+            if verbose:
+                print("\t\tGraphs differed. Not identical.")
             return False
-        print("\t\tGraphs identical. Checking distances...")
+        if verbose:
+            print("\t\tGraphs identical. Checking distances...")
         self_frags = split_structure_into_frags(self.structure)
         other_frags = split_structure_into_frags(other.structure)
-        for frag_self, frag_other in zip(self_frags, other_frags):
+        if len(self_frags) != len(other_frags):
+            if verbose:
+                print("\t\tFragments differed in number. Not identical.")
+            return False
+
+        info_self = [(i, len(structure.geometry), structure.symbols)
+                     for i, structure in enumerate(self_frags)]  # index, sys_size, symbols
+
+        info_other = [(i, len(structure.geometry), structure.symbols)
+                      for i, structure in enumerate(other_frags)]
+
+        sorted_info_self = sorted(info_self, key=lambda x: (x[1], x[2]))
+        sorted_info_other = sorted(info_other, key=lambda x: (x[1], x[2]))
+
+        inds_self = [val[0] for val in sorted_info_self]
+        inds_other = [val[0] for val in sorted_info_other]
+
+        for i_self, i_other in zip(inds_self, inds_other):
+            frag_self = self_frags[i_self]
+            frag_other = other_frags[i_other]
+
             frag_dist, _ = align_geom(
                 refgeom=frag_self.geometry, geom=frag_other.geometry
             )
             per_frag_dists.append(frag_dist)
-            print(f"\t\t\tfrag dist: {frag_dist}")
+            if verbose:
+                print(f"\t\t\tfrag dist: {frag_dist}")
     else:
         per_frag_dists.append(global_dist)
 
@@ -93,14 +121,15 @@ def _is_conformer_identical(
     rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
     energies_identical = en_delta < kcal_mol_cutoff
 
-    print(f"\t\t{rmsd_identical=} {energies_identical=} {en_delta=}")
+    if verbose:
+        print(f"\t\t{rmsd_identical=} {energies_identical=} {en_delta=}")
     if rmsd_identical and energies_identical:
         return True
     else:
         return False
 
 
-def _is_connectivity_identical(self: Node, other: Node) -> bool:
+def _is_connectivity_identical(self: Node, other: Node, verbose: bool = True) -> bool:
     """
     checks graphs of both nodes and returns whether they are isomorphic
     to each other.
@@ -113,14 +142,17 @@ def _is_connectivity_identical(self: Node, other: Node) -> bool:
         smi1 = self.structure.to_smiles()
         smi2 = other.structure.to_smiles()
         stereochem_identical = smi1 == smi2
+
     except Exception as e:
-        print(traceback.format_exc())
-        print("Constructing smiles failed. Pretending this check succeeded.")
+        if verbose:
+            print(traceback.format_exc())
+            print("Constructing smiles failed. Pretending this check succeeded.")
         stereochem_identical = True
-    print(f"\t\tGraphs isomorphic to each other: {connectivity_identical}")
-    print(f"\t\tStereochemical smiles identical: {stereochem_identical}")
-    if not stereochem_identical:
-        print(f"\t{smi1} || {smi2}")
+    if verbose:
+        print(f"\t\tGraphs isomorphic to each other: {connectivity_identical}")
+        print(f"\t\tStereochemical smiles identical: {stereochem_identical}")
+        if not stereochem_identical:
+            print(f"\t{smi1} || {smi2}")
 
     return connectivity_identical and stereochem_identical
 

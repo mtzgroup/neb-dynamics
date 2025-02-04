@@ -252,6 +252,13 @@ class Chain:
         return np.array(rms_grads)
 
     @property
+    def springgradients(self):
+        import neb_dynamics.chainhelpers as ch
+
+        _, gsprings = ch.pe_grads_spring_forces_nudged(self)
+        return gsprings
+
+    @property
     def ts_triplet_gspring_infnorm(self):
         import neb_dynamics.chainhelpers as ch
 

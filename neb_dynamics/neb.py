@@ -40,6 +40,7 @@ IS_ELEM_STEP = ElemStepResults(
     number_grad_calls=0,)
 VELOCITY_SCALING = 0.3
 ACTIVATION_TOL = 100
+MAX_NRETRIES = 3
 
 
 @dataclass
@@ -125,8 +126,10 @@ class NEB(PathMinimizer):
 
         ind_ts_guess = np.argmax(chain.energies)
         ts_guess_grad = np.amax(np.abs(ch.get_g_perps(chain)[ind_ts_guess]))
+        springgrad_infnorm = np.amax(abs(chain.springgradients))
 
-        if ts_guess_grad < self.parameters.early_stop_force_thre:
+        # if ts_guess_grad < self.parameters.early_stop_force_thre:
+        if springgrad_infnorm < self.parameters.early_stop_force_thre:
 
             new_params = copy.deepcopy(self.parameters)
             new_params.early_stop_force_thre = 0.0
@@ -221,6 +224,7 @@ class NEB(PathMinimizer):
         chain_previous = self.initial_chain.copy()
         self.chain_trajectory.append(chain_previous)
         chain_previous._zero_velocity()
+        self.optimizer.g_old = None
 
         while nsteps < self.parameters.max_steps + 1:
             if nsteps > 1:
@@ -338,16 +342,34 @@ class NEB(PathMinimizer):
             for index in self.parameters.frozen_atom_indices:
                 grad_step[index] = np.array([0.0, 0.0, 0.0])
 
-        new_chain = self.optimizer.optimize_step(
-            chain=chain, chain_gradients=grad_step)
-        # need to copy the gradients from the converged nodes
-        for new_node, old_node in zip(new_chain.nodes, chain.nodes):
-            if old_node.converged:
-                new_node._cached_result = old_node._cached_result
-                new_node._cached_energy = old_node._cached_energy
-                new_node._cached_gradient = old_node._cached_gradient
+        alpha = 1.0
+        ntries = 0
+        grads_success = False
+        while not grads_success and ntries < MAX_NRETRIES:
+            try:
+                new_chain = self.optimizer.optimize_step(
+                    chain=chain, chain_gradients=grad_step*alpha)
 
-        self.engine.compute_gradients(new_chain)
+                # need to copy the gradients from the converged nodes
+                for new_node, old_node in zip(new_chain.nodes, chain.nodes):
+                    if old_node.converged:
+                        new_node._cached_result = old_node._cached_result
+                        new_node._cached_energy = old_node._cached_energy
+                        new_node._cached_gradient = old_node._cached_gradient
+
+                self.engine.compute_gradients(new_chain)
+                grads_success = True
+
+            except ExternalProgramError:
+                print("UH OH SPAGGHETIOooOOOO")
+                self.optimizer.g_old = None
+                alpha *= .8
+                ntries += 1
+        if not grads_success and ntries >= MAX_NRETRIES:
+            print("!!!Electronic structure error! Smoothing current chain with GI")
+            new_chain = ch.run_geodesic(
+                chain, chain_inputs=chain.parameters, nimages=len(chain))
+            self.engine.compute_gradients(new_chain)
 
         return new_chain
 
@@ -421,6 +443,7 @@ class NEB(PathMinimizer):
         avg_rms_g = []
         barr_height = []
         ts_gperp = []
+        grad_infnorm = []
 
         for ind in range(1, len(ct)):
             avg_rms_g.append(
@@ -433,6 +456,7 @@ class NEB(PathMinimizer):
             ts_node_ind = ct[ind].energies.argmax()
             ts_node_gperp = np.max(ch.get_g_perps(ct[ind])[ts_node_ind])
             ts_gperp.append(ts_node_gperp)
+            grad_infnorm.append(np.amax(abs(ch.compute_NEB_gradient(ct[ind]))))
 
         if do_indiv:
 
@@ -516,6 +540,11 @@ class NEB(PathMinimizer):
                     "ts_grad_thre",
                     "green",
                 ),
+                (grad_infnorm,
+                 "Grad infnorm",
+                 self.parameters.ts_grad_thre,
+                 "grad_infnorm",
+                 "gray")
             ]
 
             # Create subplots
