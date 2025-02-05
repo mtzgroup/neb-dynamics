@@ -486,30 +486,32 @@ class NetworkBuilder:
                     lowest_barrier_height_rev = self._get_lowest_barrier_height_pair(
                         edges, edgelabel)
 
-                if int(vals[0]) == node_ind and int(vals[1]) == node_ind:
-                    # skip whenever you have an 'in place' transition
+                if int(vals[1]) == node_ind:  # skipping to avoid self loops
                     continue
-                else:
-                    if lowest_barrier_height_fwd <= self.network_inputs.maximum_barrier_height:
-                        pot.graph.add_edge(
-                            int(vals[1]),
-                            node_ind,
-                            reaction=f"eA ({edgelabel}): {np.min(edges[edgelabel])}",
-                            list_of_nebs=self.leaf_objects[label],
-                            # barrier=np.min(edges[edgelabel]),
-                            barrier=lowest_barrier_height_fwd,
-                            exp_neg_barrier=np.exp(-np.min(edges[edgelabel])),
-                        )
-                    if lowest_barrier_height_rev <= self.network_inputs.maximum_barrier_height:
-                        pot.graph.add_edge(
-                            node_ind,
-                            int(vals[1]),
-                            reaction=f"eA ({label_rev}):{np.min(edges[label_rev])}",
-                            list_of_nebs=self.leaf_objects[label_rev],
-                            # barrier=np.min(edges[label_rev]),
-                            barrier=lowest_barrier_height_rev,
-                            exp_neg_barrier=np.exp(-np.min(edges[label_rev])),
-                        )
+
+                if lowest_barrier_height_fwd <= self.network_inputs.maximum_barrier_height:
+
+                    pot.graph.add_edge(
+                        int(vals[1]),
+                        node_ind,
+                        reaction=f"eA ({edgelabel}): {np.min(edges[edgelabel])}",
+                        list_of_nebs=self.leaf_objects[label],
+                        # barrier=np.min(edges[edgelabel]),
+                        barrier=lowest_barrier_height_fwd,
+                        exp_neg_barrier=np.exp(-np.min(edges[edgelabel])),
+                    )
+                if lowest_barrier_height_rev <= self.network_inputs.maximum_barrier_height:
+                    if int(vals[1]) == node_ind:
+                        continue
+                    pot.graph.add_edge(
+                        node_ind,
+                        int(vals[1]),
+                        reaction=f"eA ({label_rev}):{np.min(edges[label_rev])}",
+                        list_of_nebs=self.leaf_objects[label_rev],
+                        # barrier=np.min(edges[label_rev]),
+                        barrier=lowest_barrier_height_rev,
+                        exp_neg_barrier=np.exp(-np.min(edges[label_rev])),
+                    )
         return pot
 
     def create_rxn_network(self, file_pattern="results*_msmep"):

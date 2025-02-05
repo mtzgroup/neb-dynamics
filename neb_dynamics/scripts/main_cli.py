@@ -1,9 +1,12 @@
+from __future__ import annotations
+
 import typer
 from typing_extensions import Annotated
 
 import os
 from openbabel import openbabel
 from qcio import Structure, ProgramOutput
+from qcop.exceptions import ExternalSubprocessError
 import sys
 from pathlib import Path
 import time
@@ -14,7 +17,9 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.nodes.nodehelpers import displace_by_dr
 from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
-
+from neb_dynamics.NetworkBuilder import NetworkBuilder
+from neb_dynamics.inputs import NetworkInputs, ChainInputs
+from neb_dynamics.pot import plot_results_from_pot_obj
 from itertools import product
 
 
@@ -318,7 +323,49 @@ def make_default_inputs(
     ri.save(out.parent / (out.stem+".toml"))
 
 
-@app.command()
+@ app.command()
+def make_netgen_summary(
+        name: Annotated[str, typer.Option(
+            "--name", help='path to data directory')] = None,
+        verbose: bool = False,
+        inputs: Annotated[str, typer.Option("--inputs", "-i",
+                                            help='path to RunInputs toml file')] = None,
+        root_index: Annotated[str, typer.Option(
+            "--root", help='node index of starting structure')] = 0,
+        target_index: Annotated[str, typer.Option(
+            "--target", help='node index of final structure')] = None,
+
+):
+    if name is None:
+        name = Path(os.getcwd())
+
+    if inputs is not None:
+        ri = RunInputs.open(inputs)
+        chain_inputs = ri.chain_inputs
+    else:
+        chain_inputs = ChainInputs()
+
+    nb = NetworkBuilder(data_dir=name,
+                        start=None, end=None,
+                        network_inputs=NetworkInputs(verbose=verbose),
+                        chain_inputs=chain_inputs)
+
+    nb.msmep_data_dir = name
+
+    pot = nb.create_rxn_network(file_pattern="*")
+    plot_results_from_pot_obj(name / "netgen_summary.png", pot)
+
+    # write nodes to xyz file
+    nodes = [pot.graph.nodes[x]["td"] for x in pot.graph.nodes]
+    chain = Chain(nodes)
+    chain.write_to_disk(name / 'nodes.xyz')
+
+    # write best chain from network for queried path
+
+    #
+
+
+@ app.command()
 def run_netgen(
         start: Annotated[str, typer.Option(
             help='path to start conformers data')] = None,
@@ -330,7 +377,9 @@ def run_netgen(
 
         name: str = None,
         charge: int = 0,
-        multiplicity: int = 1
+        multiplicity: int = 1,
+        max_pairs: int = 500,
+        minimize_ends: bool = False
 
 ):
     start_time = time.time()
@@ -356,33 +405,52 @@ def run_netgen(
             start, charge=charge, spinmult=multiplicity)
         end_structures = read_multiple_structure_from_file(
             end, charge=charge, spinmult=multiplicity)
+
         if len(start_structures) == 1 and len(end_structures) == 1:
             print("Only one structure in each file. Sampling using CREST!")
+            if minimize_ends:
+                print("Minimizing endpoints...")
+                sys.stdout.flush()
+                start_structure = program_input.engine.compute_geometry_optimization(
+                    StructureNode(structure=start_structures[0]))[-1].structure
+                end_structure = program_input.engine.compute_geometry_optimization(
+                    StructureNode(structure=end_structures[0]))[-1].structure
+            else:
+                start_structure = start_structures[0]
+                end_structure = end_structures[0]
+
             print("Sampling reactant...")
-            start_conf_result = program_input.engine._compute_conf_result(
-                StructureNode(structure=start_structures[0]))
-            start_conf_result.save(Path(start).resolve(
-            ).parent / (Path(start).stem + "_conformers.qcio"))
+            sys.stdout.flush()
+            try:
+                start_conf_result = program_input.engine._compute_conf_result(
+                    StructureNode(structure=start_structure))
+                start_conf_result.save(Path(start).resolve(
+                ).parent / (Path(start).stem + "_conformers.qcio"))
 
-            start_nodes = [StructureNode(structure=s)
-                           for s in start_conf_result.results.conformers]
-            print("Done!")
+                start_nodes = [StructureNode(structure=s)
+                               for s in start_conf_result.results.conformers]
+                print("Done!")
 
-            print("Sampling product...")
-            end_conf_result = program_input.engine._compute_conf_result(
-                StructureNode(structure=end_structures[0]))
-            end_conf_result.save(Path(end).resolve().parent /
-                                 (Path(end).stem + "_conformers.qcio"))
-            end_nodes = [StructureNode(structure=s)
-                         for s in end_conf_result.results.conformers]
-            print("Done!")
+                print("Sampling product...")
+                sys.stdout.flush()
+                end_conf_result = program_input.engine._compute_conf_result(
+                    StructureNode(structure=end_structure))
+                end_conf_result.save(Path(end).resolve().parent /
+                                     (Path(end).stem + "_conformers.qcio"))
+                end_nodes = [StructureNode(structure=s)
+                             for s in end_conf_result.results.conformers]
+                print("Done!")
+                sys.stdout.flush()
+            except ExternalSubprocessError as e:
+                print(e.stdout)
+
     else:
         raise ValueError(
             f"Either both start and end must be .qcio files, or both must be .xyz files. Inputs: {start}, {end}")
 
     sys.stdout.flush()
 
-    pairs = list(product(start_nodes, end_nodes))
+    pairs = list(product(start_nodes, end_nodes))[:max_pairs]
     for i, (start, end) in enumerate(pairs):
         # create Chain
         chain = Chain(
@@ -412,12 +480,17 @@ def run_netgen(
         if filename.exists():
             print("already done. Skipping...")
             continue
-        history = m.run_recursive_minimize(chain)
+
+        try:
+            history = m.run_recursive_minimize(chain)
+
+            history.output_chain.write_to_disk(filename)
+            history.write_to_disk(foldername)
+        except Exception:
+            print(f"FAILED ON PAIR {i}")
+            continue
 
         end_time = time.time()
-        history.output_chain.write_to_disk(filename)
-        history.write_to_disk(foldername)
-
     print(f"***Walltime: {end_time - start_time} s")
 
 

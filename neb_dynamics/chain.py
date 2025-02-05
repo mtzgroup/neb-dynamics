@@ -15,6 +15,7 @@ from neb_dynamics.nodes.node import Node, StructureNode
 from neb_dynamics.constants import BOHR_TO_ANGSTROMS
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.fakeoutputs import FakeQCIOResults, FakeQCIOOutput
+from qcio import ProgramOutput
 from dataclasses import field
 from neb_dynamics.helper_functions import (
     linear_distance,
@@ -81,10 +82,14 @@ class Chain:
 
             gradients = gradients_flat.reshape(gradients_shape)
 
-            for node, (ene, grad) in zip(chain.nodes, zip(energies, gradients)):
-                fake_res = FakeQCIOResults(energy=ene, gradient=grad)
-                fake_output = FakeQCIOOutput(results=fake_res)
-                node._cached_result = fake_output
+            for i, (node, (ene, grad)) in enumerate(zip(chain.nodes, zip(energies, gradients))):
+                qcio_fp = Path(str(fp.stem)+f"_node_{i}.qcio")
+                if qcio_fp.exists():
+                    result = ProgramOutput.open(qcio_fp)
+                else:
+                    fake_res = FakeQCIOResults(energy=ene, gradient=grad)
+                    result = FakeQCIOOutput(results=fake_res)
+                node._cached_result = result
                 node._cached_energy = ene
                 node._cached_gradient = grad
         return chain
@@ -357,7 +362,7 @@ class Chain:
         if self._grads_already_computed:
             self.write_grad_info_to_disk(fp)
         for i, node in enumerate(self.nodes):
-            if node._cached_result is not None:
+            if isinstance(node._cached_result, ProgramOutput):
                 node._cached_result.save(
                     fp.parent / Path(str(fp.stem) + f"_node_{i}.qcio"))
 

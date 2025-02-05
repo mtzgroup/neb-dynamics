@@ -1,7 +1,3 @@
-
-"""
-this module contains helper general functions
-"""
 from __future__ import annotations
 
 import math
@@ -18,6 +14,8 @@ from rdkit import Chem
 from typing import List
 
 from neb_dynamics.elements import ElementData
+import matplotlib.pyplot as plt
+import networkx as nx
 
 
 warnings.filterwarnings("ignore")
