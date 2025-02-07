@@ -241,7 +241,7 @@ class NEB(PathMinimizer):
                 )
                 raise ElectronicStructureError(msg="QCOP failed.")
 
-            max_rms_grad_val = np.amax(new_chain.rms_gperps)
+            max_rms_grad_val = np.amax(new_chain.rms_gradients)
             ind_ts_guess = np.argmax(new_chain.energies)
             ts_guess_grad = np.amax(
                 np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
@@ -250,8 +250,6 @@ class NEB(PathMinimizer):
                 chain_new=new_chain,
                 parameters=self.parameters,
             )
-            if converged and self.parameters.v:
-                print("\nConverged!")
 
             n_nodes_frozen = 0
             for node in new_chain:
@@ -361,7 +359,7 @@ class NEB(PathMinimizer):
                 grads_success = True
 
             except ExternalProgramError:
-                print("UH OH SPAGGHETIOooOOOO")
+                print("SHRINKING")
                 self.optimizer.g_old = None
                 alpha *= .8
                 ntries += 1

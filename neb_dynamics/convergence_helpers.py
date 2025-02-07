@@ -112,7 +112,7 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
     ts_guess_grad = np.amax(np.abs(g_perps[ind_ts_guess]))
 
     criteria_converged = [
-        sum(rms_gperps)/len(chain_new.nodes) <= parameters.rms_grad_thre,
+        np.amax(rms_gperps) <= parameters.rms_grad_thre,
         sum(rms_gperps)/len(chain_new) <= parameters.rms_grad_thre,
         ts_guess_grad <= parameters.ts_grad_thre,
         ts_triplet_gspring <= parameters.ts_spring_thre,

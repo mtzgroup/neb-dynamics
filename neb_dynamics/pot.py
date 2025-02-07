@@ -8,24 +8,24 @@ from enum import Enum, auto
 from pathlib import Path
 from time import time
 
+from qcio import Structure
 import networkx as nx
 from IPython.core.display import HTML
-from pydantic import BaseModel
-from timeout_timer import TimeoutInterrupt, timeout
+from pydantic import BaseModel, Field, field_serializer
+from timeout_timer import TimeoutInterrupt
 
 import neb_dynamics.helper_functions as hf
 from neb_dynamics.helper_functions import pairwise
 
 from neb_dynamics.d3_tools import draw_d3, forward_to_d3json
-from neb_dynamics.neb import NEB
 
 # from retropaths.molecules.molecular_formula import MolecularFormula
 from neb_dynamics.molecule import Molecule
+from neb_dynamics.chain import Chain
+from neb_dynamics.nodes.node import StructureNode
 import matplotlib.pyplot as plt
 
-# from retropaths.molecules.utilities import give_me_free_index, naturals
-# from retropaths.reactions.conditions import Conditions
-# from retropaths.reactions.library import Library
+from typing import Any, Optional
 
 
 class TimeoutPot(TimeoutInterrupt):
@@ -148,23 +148,115 @@ class TooManyIterationError(Exception):
         self.message = message
 
 
-class Pot:
+class Pot(BaseModel):
     """
     The pot object is the chemical reactor.
     """
+    root:  Molecule = Field(serialization_fn=lambda m: m.to_serializable())
+    target: Molecule = Field(default_factory=lambda: Molecule(
+    ), serialization=lambda m: m.to_serializable())
+    # this needs to be here because it is needed when we calculates yield.
+    multiplier: int = 1
 
-    def __init__(self, root, target=Molecule(), multiplier=1, rxn_name=None):
-        multiplied_root = root * multiplier
-        self.target = target
-        # this needs to be here because it is needed when we calculates yield.
-        self.multiplier = multiplier
+    graph: nx.DiGraph = Field(default_factory=lambda: nx.DiGraph())
+    run_time: Optional[float] = None
+    rxn_name: Optional[str] = None
+
+    def write_to_disk(self, fp: Path):
+        if isinstance(fp, str):
+            fp = Path(fp)
+
+        dump = self.model_dump()
+        with open(fp, 'w+') as f:
+            json.dump(dump, f)
+        f.close()
+
+    @classmethod
+    def read_from_disk(cls, fp: Path):
+        if isinstance(fp, str):
+            fp = Path(fp)
+        loaded = json.load(open(fp))
+        return cls.from_dict(loaded)
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    def model_dump(self, **kwargs):
+        data = super().model_dump(**kwargs)
+        # Convert Molecule objects in graph nodes to serializable format
+        data['root'] = data['root'].to_serializable()
+        data['target'] = data['target'].to_serializable()
+        for node_data in data['graph']['nodes']:
+            if 'molecule' in node_data:
+                node_data['molecule'] = node_data['molecule'].to_serializable()
+            if "conformers" in node_data:
+                for conformer in node_data["conformers"]:
+
+                    conformer['graph'] = conformer['graph'].to_serializable()
+            if "td" in node_data:
+                node_data['td']['graph'] = node_data['td']['graph'].to_serializable()
+
+        link_data = data['graph']["links"]
+        for i, _ in enumerate(link_data):
+            for j, _ in enumerate(link_data[i]['list_of_nebs']):
+                neb = self.graph.edges[(link_data[i]['source'],
+                                        link_data[i]['target'])]['list_of_nebs'][j]
+                link_data[i]['list_of_nebs'][j] = neb.model_dump()
+
+        return data
+
+    def model_post_init(self, __context):
+        multiplied_root = self.root * self.multiplier
         self.root = multiplied_root
-        self.graph = nx.DiGraph()
-        self.run_time = None
-        self.rxn_name = rxn_name
         self.graph.add_node(
             0, molecule=multiplied_root, converged=False, root=True
         )  # root=True is for drawing
+
+    @ field_serializer("graph")
+    def serialize_graph(self, graph: nx.DiGraph, _info):
+        return nx.node_link_data(graph)
+
+    @ classmethod
+    def from_dict(cls, data):
+        graph = nx.node_link_graph(data['graph'])
+        for node, node_data in graph.nodes(data=True):
+            if 'molecule' in node_data:
+                node_data['molecule'] = Molecule.from_serializable(
+                    node_data['molecule'])
+
+            if "conformers" in node_data:
+                for i, conformer in enumerate(node_data["conformers"]):
+                    node_data['conformers'][i] = StructureNode.from_serializable(
+                        conformer)
+                    # conformer['graph'] = Molecule.from_serializable(
+                    #     conformer['graph'])
+                    # conformer['structure'] = Structure(
+                    #     **conformer['structure'])
+
+            if "td" in node_data:
+                node_data['td'] = StructureNode.from_serializable(
+                    node_data['td'])
+
+        link_data = data['graph']['links']
+        for i, _ in enumerate(link_data):
+            for j, _ in enumerate(link_data[i]['list_of_nebs']):
+                nodes = link_data[i]['list_of_nebs'][j]['nodes']
+                nodes = [StructureNode.from_serializable(n) for n in nodes]
+                link_data[i]['list_of_nebs'][j]['nodes'] = nodes
+                link_data[i]['list_of_nebs'][j] = Chain.model_validate(
+                    link_data[i]['list_of_nebs'][j])
+
+        root = Molecule.from_serializable(data['root'])
+        target = Molecule.from_serializable(data['target'])
+
+        return cls(
+            root=root,
+            target=target,
+            multiplier=data.get('multiplier', 1),
+            graph=graph,
+            run_time=data.get('run_time'),
+            rxn_name=data.get('rxn_name')
+        )
 
     def create_name_solvent_multiplier(self, root_string):
         """
@@ -236,9 +328,8 @@ class Pot:
 {self.target.draw(string_mode=True, percentage=percentage, size=size, mode=mode)}
 </div>"""
 
-        runtime_string = f"- Time: {float(self.run_time):.2} s" if self.run_time else ""
+        # runtime_string = f"- Time: {float(self.run_time):.2} s" if self.run_time else ""
 
-        # totalstring = f'''<h2>POT</h2><h3>Score {self.score:.2f} | Status: {self.status.name}</h3><p>Conditions: {self.conditions.draw_reaction_arrow()}</p>
         totalstring = f"""<h3>Pot name: {self.rxn_name}  </h3>
 <div style="width: 70%; display: table;"> <div style="display: table-row;">
 <div style="width: 20%; display: table-cell; border: 1px solid black;">
@@ -696,10 +787,15 @@ class Pot:
 
     def draw_mol_and_subgraph_from_node(self, N, string_mode=False):
         html = f"List of paths: {list(self.paths_from(N))}"
-        html += f"""<div style="width: 40%; display: table;"> <div style="display: table-row;"><div style="width: 50%; display: table-cell;">
-        <p style="text-align: center; font-weight: bold;">Molecule</p>{self.graph.nodes[N]['molecule'].draw(string_mode=True)}</div>
+        html += f"""<div style="width: 40%; display: table;"> <div style="display: table-row;"><div style="width: 50%; \
+            display: table-cell;">
+        <p style="text-align: center; font-weight: bold;">Molecule</p>{self.graph.nodes[N]['molecule'].draw(
+            string_mode=True)}</div>
         <div style="width: 50%; display: table-cell;">
-        <p style="text-align: center; font-weight: bold;">Subgraph</p>{self.draw_reaction_subgraphs(N, size=(400,400), percentage=1, string_mode=True)}</div>"""
+        <p style="text-align: center; font-weight: bold;">Subgraph</p>{self.draw_reaction_subgraphs(N, size=(400,400),
+                                                                                                    percentage=1,
+                                                                                                    string_mode=True)}
+                                                                                                    </div>"""
         if string_mode:
             return html
         else:
@@ -789,27 +885,6 @@ class Pot:
     def from_json(cls, fn):
         read = json.load(open(fn, "r"))
         pot = cls.from_dict(read)
-        return pot
-
-    @classmethod
-    def from_dict(cls, read):
-        pot = cls(Molecule.from_smiles(read["root"]))
-        pot.target = Molecule.from_smiles(read["target"])
-
-        try:
-            pot.encountered_species = read["encountered_species"]
-        except KeyError:
-            # pass
-            print(
-                "ALESSIO PLEASE FIX THIS"
-            )  # TODO Take out this try/except when you do not use anymore USPTO jsons without this key
-        pot.graph = pot_graph_serializer_from_smiles_to_molecules(
-            nx.node_link_graph(read["graph"])
-        )
-        pot.status = PotStatus[read["status"]]
-        pot.multiplier = read["multiplier"]
-        pot.run_time = read["run_time"]
-        pot.rxn_name = read["rxn_name"]
         return pot
 
 

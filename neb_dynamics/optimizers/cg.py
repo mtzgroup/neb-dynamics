@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from neb_dynamics.optimizers.optimizer import Optimizer
-from neb_dynamics.errors import ElectronicStructureError
 
 
 import numpy as np
@@ -16,7 +15,6 @@ class ConjugateGradient(Optimizer):
         self.g_old = None
 
     def optimize_step(self, chain, chain_gradients):
-        from neb_dynamics.chain import Chain
         """
         Performs the Conjugate Gradient method to minimize a function.
 
@@ -59,6 +57,7 @@ class ConjugateGradient(Optimizer):
 
             new_nodes.append(node.update_coords(new_coords))
 
-        new_chain = Chain(new_nodes, parameters=chain.parameters)
+        new_chain = chain.model_copy(
+            update={"nodes": new_nodes, "parameters": chain.parameters})
 
         return new_chain

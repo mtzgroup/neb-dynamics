@@ -143,7 +143,7 @@ def _is_connectivity_identical(self: Node, other: Node, verbose: bool = True) ->
         smi2 = other.structure.to_smiles()
         stereochem_identical = smi1 == smi2
 
-    except Exception as e:
+    except Exception:
         if verbose:
             print(traceback.format_exc())
             print("Constructing smiles failed. Pretending this check succeeded.")
@@ -163,7 +163,7 @@ def update_node_cache(node_list, results):
     """
     for node, result in zip(node_list, results):
         node._cached_result = result
-        if result.success:
+        if result is not None:
             node._cached_energy = result.results.energy
             node._cached_gradient = result.results.gradient
         else:

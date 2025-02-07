@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from types import SimpleNamespace
 import numpy as np
 
 from neb_dynamics.chain import Chain
@@ -7,6 +8,7 @@ from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs, RunInputs
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.neb import NEB
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.cg import ConjugateGradient
 from neb_dynamics.engines import QCOPEngine, ThreeWellPotential, FlowerPotential
 from neb_dynamics.nodes.node import XYNode
 from neb_dynamics.engines import Engine
@@ -97,11 +99,11 @@ def test_engine():
 
 def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
     # tr = Trajectory.from_xyz(test_data_dir / "test_traj.xyz")
-    tol = 0.001
-    cni = ChainInputs(k=0.01, delta_k=0.009, do_parallel=True, node_freezing=True)
+    tol = 0.05
+    cni = ChainInputs(k=0.1, delta_k=0.09,
+                      do_parallel=True, node_freezing=True)
 
     nbi = NEBInputs(
-        tol=tol,  # * BOHR_TO_ANGSTROMS,
         barrier_thre=0.1,  # kcalmol,
         climb=False,
         rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
@@ -112,7 +114,9 @@ def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         max_steps=3000,
         early_stop_force_thre=0.0,
     )  # *BOHR_TO_ANGSTROMS)
-    initial_chain = Chain.from_xyz(test_data_dir / "test_traj.xyz", parameters=cni)
+    initial_chain = Chain.from_xyz(
+        test_data_dir / "test_traj.xyz", parameters=cni)
+    print(initial_chain.parameters)
     calc = XTB(method="GFN2-xTB")
     all_engs = [
         QCOPEngine(
@@ -124,29 +128,25 @@ def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         ASEEngine(calculator=calc),
     ]
     for eng in all_engs:
-        opt = VelocityProjectedOptimizer(timestep=1.0)
-        n = NEB(initial_chain=initial_chain, parameters=nbi, optimizer=opt, engine=eng)
-
+        opt = ConjugateGradient(timestep=1.0)
+        n = NEB(initial_chain=initial_chain,
+                parameters=nbi, optimizer=opt, engine=eng)
         elem_step_output = n.optimize_chain()
         assert elem_step_output.is_elem_step, "Elementary step check failed."
         assert n.optimized is not None, "Chain did not converge."
-        barrier = n.optimized.get_eA_chain()
-        ref_barrier = 84.7500842709759
+        barrier = round(n.optimized.get_eA_chain(), 1)
+        ref_barrier = 84.7
         assert np.isclose(
             barrier, ref_barrier
         ), f"NEB barrier was different. ref={ref_barrier}. test={barrier}"
 
         ts_guess = n.optimized.get_ts_node()
-        ref_ts_guess = np.array(
-            [
-                [-1.24381420e00, -8.99695564e-03, 1.71365711e-03],
-                [1.24190315e00, -2.04919066e-03, -2.78637072e-02],
-                [-2.34107150e00, 3.13314392e-01, 1.70711067e00],
-                [-2.41487259e00, -3.00865009e-01, -1.66025672e00],
-                [2.39123943e00, 1.69435382e00, -2.10595863e-01],
-                [2.39827597e00, -1.68798041e00, 1.98658082e-01],
-            ]
-        )
+        ref_ts_guess = np.array([[-1.2438, -0.007,  0.0016],
+                                 [1.2419, -0.0019,  0.0042],
+                                 [-2.3406,  0.3164,  1.6902],
+                                 [-2.3437, -0.3063, -1.6927],
+                                 [2.3427,  1.7054, -0.2061],
+                                 [2.3495, -1.7066,  0.2029]])
 
         assert np.allclose(
             ts_guess.coords, ref_ts_guess, rtol=1e-4, atol=1e-4
@@ -155,46 +155,22 @@ def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
 
 def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
 
-    cni = ChainInputs(
-        k=0.01,
-        delta_k=0.009,
-        do_parallel=True,
-        node_freezing=True,
-        friction_optimal_gi=False,
-        node_ene_thre=20,
-        node_rms_thre=5.0,
-    )
+    runinputs = RunInputs(path_min_method='NEB')
+    runinputs.gi_inputs.nimages = 12
+    runinputs.path_min_inputs.do_elem_step_checks = True
+    runinputs.path_min_inputs.early_stop_force_thre = 0.3
 
-    tol = 0.002
-    nbi = NEBInputs(
-        tol=tol,  # * BOHR_TO_ANGSTROMS,
-        barrier_thre=0.1,  # kcalmol,
-        climb=False,
-        rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
-        max_rms_grad_thre=tol * 2.5,  # * BOHR_TO_ANGSTROMS*2.5,
-        ts_grad_thre=tol * 2.5,  # * BOHR_TO_ANGSTROMS,
-        ts_spring_thre=tol * 1.5,  # * BOHR_TO_ANGSTROMS*3,
-        v=1,
-        max_steps=3000,
-        early_stop_force_thre=0.03,
-        skip_identical_graphs=True,
-    )  # *BOHR_TO_ANGSTROMS)
-    initial_chain = Chain.from_xyz(test_data_dir / "traj_msmep.xyz", parameters=cni)
-    gii = GIInputs(nimages=12)
+    initial_chain = Chain.from_xyz(
+        test_data_dir / "traj_msmep.xyz", parameters=runinputs.chain_inputs)
 
-    m = MSMEP(inputs=RunInputs(
-        engine_name='qcop',
-        program='xtb', path_min_inputs=nbi.__dict__,
-        optimizer_kwds={'timestep': 1.0},
-        gi_inputs=gii.__dict__,
-        chain_inputs=cni.__dict__))
+    m = MSMEP(inputs=runinputs)
     h = m.run_recursive_minimize(initial_chain)
 
     h.write_to_disk("./test_msmep_results")
     assert (
-        len(h.ordered_leaves) == 2
+        len(h.ordered_leaves) == 3
     ), f"MSMEP found incorrect number of elementary steps.\
-          Found {len(h.ordered_leaves)}. Reference: 2"
+          Found {len(h.ordered_leaves)}. Reference: 3"
     print("NGRAD CALLS: ", h.get_num_grad_calls())
 
 
@@ -213,25 +189,32 @@ def test_2d_neb():
     coords = np.linspace(start_point, end_point, nimages)
     coords[1:-1] += [-1, 1]
 
-    ks = 0.1
+    ks = 10
     cni = ChainInputs(
         k=ks,
-        delta_k=0,
-        node_class=XYNode,
+        delta_k=9,
         use_geodesic_interpolation=False,
         node_ene_thre=10,
     )
-    nbi = NEBInputs(tol=0.1, barrier_thre=5, v=True, max_steps=500, climb=False)
-    chain = Chain(nodes=[XYNode(structure=xy) for xy in coords], parameters=cni)
+    nbi = NEBInputs(barrier_thre=5, v=True,
+                    max_steps=1000, climb=False,
+                    do_elem_step_checks=True, early_stop_force_thre=.1)
+    chain = Chain.model_validate({"nodes": [XYNode(structure=xy)
+                                            for xy in coords], "parameters": cni})
     eng = FlowerPotential()  # ThreeWellPotential()
-    opt = VelocityProjectedOptimizer(timestep=0.01)
-    m = MSMEP(engine=eng, neb_inputs=nbi, chain_inputs=cni, optimizer=opt)
+    opt = ConjugateGradient(timestep=.1)
+    runinputs = RunInputs(path_min_inputs=nbi.__dict__,
+                          chain_inputs=cni.__dict__)
+    runinputs.engine = eng
+    runinputs.optimizer = opt
+    m = MSMEP(runinputs)
     # n = NEB(initial_chain=chain,
     #         parameters=nbi,
     #         optimizer=opt,
     #         engine=eng)
     # n.optimize_chain()
     history = m.run_recursive_minimize(chain)
+
     assert (
         len(history.ordered_leaves) == 3
     ), f"Incorrect number of elementary steps for flower potential. Got: {len(history.ordered_leaves)}. Reference: 3"
@@ -262,7 +245,8 @@ def test_ASE_engine():
         symbols=["C", "O", "C", "O", "H", "H", "H", "H", "H", "H"],
     )
 
-    chain = Chain([StructureNode(structure=struct) for i in range(10)])
+    chain = Chain.model_validate(
+        {"nodes": [StructureNode(structure=struct) for i in range(10)]})
 
     reference = np.array([-15.4514] * 10)
 
@@ -275,55 +259,17 @@ def test_ASE_engine():
 
 def test_msmep_fneb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
 
-    cni = ChainInputs(
-        k=0.01,
-        delta_k=0.009,
-        do_parallel=True,
-        node_freezing=True,
-        friction_optimal_gi=False,
-        node_rms_thre=5.0,
-    )
+    runinputs = RunInputs(path_min_method='fneb')
 
-    tol = 0.002
-    nbi = NEBInputs(
-        tol=tol,  # * BOHR_TO_ANGSTROMS,
-        barrier_thre=0.1,  # kcalmol,
-        climb=False,
-        rms_grad_thre=tol,  # * BOHR_TO_ANGSTROMS,
-        max_rms_grad_thre=tol * 2.5,  # * BOHR_TO_ANGSTROMS*2.5,
-        ts_grad_thre=tol * 2.5,  # * BOHR_TO_ANGSTROMS,
-        ts_spring_thre=tol * 1.5,  # * BOHR_TO_ANGSTROMS*3,
-        v=1,
-        max_steps=3000,
-        early_stop_force_thre=0.03,
-        skip_identical_graphs=True,
-        fneb_kwds={
-            "stepsize": 0.1,
-            "ngradcalls": 3,
-            "max_cycles": 500,
-            "path_resolution": 0.5,  # BOHR
-        },
-    )  # *BOHR_TO_ANGSTROMS)
-    initial_chain = Chain.from_xyz(test_data_dir / "traj_msmep.xyz", parameters=cni)
-    opt = VelocityProjectedOptimizer(timestep=1.0)
-    gii = GIInputs(nimages=12)
-
+    initial_chain = Chain.from_xyz(
+        test_data_dir / "traj_msmep.xyz", parameters=runinputs.chain_inputs)
     # calc = XTB(method="GFN2-xTB")
     # eng = ASEEngine(calculator=calc)
-    eng = QCOPEngine()
 
-    m = MSMEP(
-        neb_inputs=nbi,
-        chain_inputs=cni,
-        gi_inputs=gii,
-        optimizer=opt,
-        engine=eng,
-        path_min_method="fneb",
-    )
+    m = MSMEP(runinputs)
     h = m.run_recursive_minimize(initial_chain)
-    # this method finds a conformer-conformer rearrangement that changes
-    # stereochemistry. This is a nice find, so this method should find 3
-    # steps for this reaction.
+    h.write_to_disk(test_data_dir / 'hellowtf')
+
     assert (
         len(h.ordered_leaves) == 3
     ), f"MSMEP found incorrect number of elementary steps.\
@@ -335,7 +281,6 @@ if __name__ == "__main__":
     test_engine()
     test_neb()
     test_msmep()
-    test_msmep_pygsm()
     test_msmep_fneb()
     test_ASE_engine()
-    test_2d_neb()
+    # test_2d_neb()

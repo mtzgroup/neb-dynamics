@@ -64,6 +64,26 @@ class Molecule(nx.Graph):
             rep = self.__str__()
         return rep
 
+    def to_serializable(self):
+        # Convert graph to JSON-serializable format
+        return nx.node_link_data(self)
+
+    @classmethod
+    def from_serializable(cls, data):
+        molecule = cls()
+        if isinstance(data, dict):
+            if 'nodes' in data and 'edges' in data:
+                for node, attrs in data['nodes']:
+                    molecule.add_node(node, **attrs)
+                for edge in data['edges']:
+                    molecule.add_edge(*edge[:2], **edge[2])
+            elif 'directed' in data and 'multigraph' in data and 'graph' in data:
+                for node in data['nodes']:
+                    molecule.add_node(node.pop('id'), **node)
+                for link in data['links']:
+                    molecule.add_edge(link['source'], link['target'], **link)
+        return molecule
+
     def indices_are_identical(self, b: Molecule):
         res = self.remove_Hs().get_subgraph_isomorphisms_of(b.remove_Hs())
         if len(res) > 1:

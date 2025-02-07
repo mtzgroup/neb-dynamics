@@ -518,7 +518,7 @@ class NetworkBuilder:
         msmep_paths = list(self.msmep_data_dir.glob(file_pattern))
         msmep_paths = [p for p in msmep_paths if p.is_dir()]
         structures, edges = self._load_network_data(msmep_paths=msmep_paths)
-        pot = Pot(root=structures[0].graph)
+        pot = Pot.model_validate({'root': structures[0].graph})
         pot = self._add_all_nodes(pot, structures=structures)
         pot = self._add_all_edges(pot, structures=structures, edges=edges)
         return pot
@@ -583,31 +583,3 @@ class NetworkBuilder:
         pot = self.create_rxn_network()
         print("Done!")
         return pot
-
-
-@ dataclass
-class ReactionData:
-    data: dict
-
-    def get_all_TS(self, reaction_key: str):
-        return Trajectory([c.get_ts_guess() for c in self.data[reaction_key]])
-
-    def get_all_paths(self, reaction_key: str, barrier_thre=200):
-        paths = []
-        for c in self.data[reaction_key]:
-            if c.get_eA_chain() <= barrier_thre:
-                paths.append(c)
-        return paths
-
-    def plot_all_paths(self, reaction_key: str, barrier_thre=200):
-        s = 6
-        f, ax = plt.subplots(figsize=(1.61 * s, s))
-        fs = 18
-        paths = self.get_all_paths(reaction_key, barrier_thre)
-        for c in paths:
-            plt.plot(c.path_length, c.energies, "-", alpha=1)
-        plt.xticks(fontsize=fs)
-        plt.yticks(fontsize=fs)
-        plt.ylabel("Energies (Hartree)", fontsize=fs)
-        plt.xlabel("Path length", fontsize=fs)
-        plt.show()

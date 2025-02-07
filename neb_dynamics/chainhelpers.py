@@ -346,7 +346,7 @@ def get_nudged_pe_grad(unit_tangent: np.array, gradient: np.array):
     return pe_grad_nudged
 
 
-def gi_path_to_chain(
+def gi_path_to_nodes(
     xyz_coords: np.array, parameters: ChainInputs, symbols: list, charge=0, spinmult=1
 ):
     from qcio import Structure
@@ -358,8 +358,8 @@ def gi_path_to_chain(
         )
         node = StructureNode(structure=struct)
         new_nodes.append(node)
-    chain_copy = Chain(nodes=new_nodes, parameters=parameters)
-    return chain_copy
+
+    return new_nodes
 
 
 def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, **kwargs):
@@ -368,19 +368,23 @@ def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, **
         #     "Warning! You input a list of nodes to interpolate and no ChainInputs. Will use defaults ChainInputs"
         # )
         chain_inputs = ChainInputs()
+        chain = Chain.model_validate(
+            {'nodes': chain, 'parameters': chain_inputs})
     elif isinstance(chain, Chain):
         chain_inputs = chain.parameters
     coords = np.array([node.coords for node in chain])
     xyz_coords = run_geodesic_py((chain[0].symbols, coords), **kwargs)
     charge = chain[0].structure.charge
     spinmult = chain[0].structure.multiplicity
-    chain_copy = gi_path_to_chain(
+
+    chain_nodes = gi_path_to_nodes(
         xyz_coords=xyz_coords,
         parameters=chain_inputs.copy(),
         symbols=chain[0].symbols,
         charge=charge,
         spinmult=spinmult,
     )
+    chain_copy = chain.model_copy(update={"nodes": chain_nodes})
     return chain_copy
 
 

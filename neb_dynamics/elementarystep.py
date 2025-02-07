@@ -7,14 +7,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Tuple
 from neb_dynamics.chain import Chain
+import neb_dynamics.chainhelpers as ch
 from neb_dynamics.nodes.node import Node
-from neb_dynamics.nodes.nodehelpers import is_identical
 import numpy as np
 from neb_dynamics.engines import Engine
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, is_identical
 
 
 SLOPE_THRESH = 0.1
+# SLOPE_THRESH = 20
 
 
 @dataclass
@@ -157,6 +158,19 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     )
 
 
+def _upsample_around_ts_guess(chain, ts_index):
+    tang = ch.calculate_geodesic_tangent(
+        list_of_nodes=chain, ref_node_ind=ts_index)
+    tang[0].converged = False
+    tang[2].converged = False
+
+    nodes = chain.nodes
+    nodes.insert(ts_index, tang[0])
+    nodes.insert(ts_index+2, tang[2])
+    chain_for_opt = chain.model_copy(update={"nodes": nodes})
+    return chain_for_opt
+
+
 def is_approx_elem_step(
     chain: Chain, engine: Engine, slope_thresh=SLOPE_THRESH
 ) -> Tuple[bool, int]:
@@ -178,17 +192,29 @@ def is_approx_elem_step(
         return True, 0
 
     arg_max = np.argmax(chain.energies)
+    if len(chain) == 3 or arg_max == 1 or arg_max == len(chain)-2:
+        print("Chain TS neighboring nodes need to be approximated. ")
+
+        chain_for_opt = _upsample_around_ts_guess(
+            chain=chain, ts_index=arg_max)
+
+        arg_max = arg_max + 1  # now the TS index is different
+        engine.compute_energies(
+            [chain_for_opt.nodes[arg_max-1], chain_for_opt.nodes[arg_max+1]])
+
+    else:
+        chain_for_opt = chain.copy()
 
     try:
         r_passes_opt, r_traj = _converges_to_an_endpoints(
-            chain=chain,
+            chain=chain_for_opt,
             engine=engine,
             node_index=(arg_max - 1),
             direction=-1,
             slope_thresh=slope_thresh,
         )
         p_passes_opt, p_traj = _converges_to_an_endpoints(
-            chain=chain,
+            chain=chain_for_opt,
             engine=engine,
             node_index=(arg_max + 1),
             direction=+1,
@@ -410,11 +436,20 @@ def pseudo_irc(chain: Chain, engine: Engine):
             found_product=chain[len(chain) - 1],
             number_grad_calls=n_grad_calls,
         )
+    elif len(chain) == 3 or arg_max == 1 or arg_max == len(chain)-2:
+        chain_for_opt = _upsample_around_ts_guess(
+            chain=chain, ts_index=arg_max)
+        engine.compute_energies(
+            [chain_for_opt.nodes[arg_max-1], chain_for_opt.nodes[arg_max+1]]
+        )
+        arg_max = arg_max+1
 
+    else:
+        chain_for_opt = chain
     try:
 
-        candidate_r = chain[arg_max - 1]
-        candidate_p = chain[arg_max + 1]
+        candidate_r = chain_for_opt[arg_max - 1]
+        candidate_p = chain_for_opt[arg_max + 1]
 
         r_traj = _run_geom_opt(candidate_r, engine=engine)
         r = r_traj[-1]

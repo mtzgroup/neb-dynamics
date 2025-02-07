@@ -28,7 +28,7 @@ IS_ELEM_STEP = ElemStepResults(
     number_grad_calls=0,)
 
 
-KCAL_MOL_CUTOFF = 10.0
+KCAL_MOL_CUTOFF = 5.0
 GRAD_TOL = 0.03  # Hartree/Bohr
 
 
@@ -107,14 +107,14 @@ class FreezingNEB(PathMinimizer):
             print("\tgrowing nodes")
             node1, node2 = self._get_innermost_nodes(chain)
             d0 = self._distance_function(node1, node2)
-            add_two_nodes = True
+            # add_two_nodes = True
             dr = self.parameters.path_resolution
             # dr = d0 / 2
 
             if (d0 <= 2 * dr):
                 print(
                     f"Distance innermost is: {d0}. 2dr: {2*dr} Only adding one node. ")
-                add_two_nodes = False
+                # add_two_nodes = False
                 dr = d0 / 2
 
             # grown_chain = self.grow_nodes(
@@ -430,7 +430,7 @@ class FreezingNEB(PathMinimizer):
         if not min_two_nodes:
             # print("POPOTE", np.array([node1.converged, node2.converged]))
             ind_to_opt = np.where(
-                np.array([node1.converged, node2.converged]) == False)[0][0]
+                np.array([node1.converged, node2.converged]) is False)[0][0]
 
             chain_opt = self._min_node(
                 raw_chain,
@@ -547,7 +547,7 @@ class FreezingNEB(PathMinimizer):
                     #     nimages=nimg,
                     #     sweep=sweep,
                     # )
-                    interpolated = ch.gi_path_to_chain(
+                    interpolated = ch.gi_path_to_nodes(
                         xyz_coords=smoother.path,
                         parameters=sub_chain.parameters.copy(),
                         symbols=sub_chain.symbols,
@@ -715,7 +715,7 @@ class FreezingNEB(PathMinimizer):
         """
         reference_index = self._get_closest_node_ind(
             smoother_obj=smoother, reference=reference_node.coords)
-        input_chain = chain.copy()
+        # input_chain = chain.copy()
         if direction == -1:
             subset_chain = chain.nodes[:(reference_index+1)]
             enum_start = 1
@@ -724,7 +724,7 @@ class FreezingNEB(PathMinimizer):
             enum_start = 0
         # print(f"REFERENCE INDEX: {reference_index} || {len(subset_chain)}")
 
-        start_node = input_chain[0]
+        # start_node = input_chain[0]
         best_node = None
         best_dist_err = 10000.0
 
@@ -738,7 +738,7 @@ class FreezingNEB(PathMinimizer):
                 end = (reference_index) + 1
                 # node = subset_chain[start-1]
                 node = chain[start-1]
-                subnode = subset_chain[i-1]
+                # subnode = subset_chain[i-1]
 
             elif direction == 1:
                 start = reference_index + 1
@@ -746,7 +746,7 @@ class FreezingNEB(PathMinimizer):
                 # node = subset_chain[end - 1]
 
                 node = chain[end-1]
-                subnode = subset_chain[i]
+                # subnode = subset_chain[i]
 
             if start == end or start == 0 or end == 0:
                 continue

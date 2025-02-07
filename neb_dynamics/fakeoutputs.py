@@ -1,18 +1,18 @@
 from dataclasses import dataclass
-import numpy as np
+from pydantic import BaseModel
+
 
 @dataclass
-class FakeQCIOResults:
+class FakeQCIOResults(BaseModel):
     energy: float
-    gradient: np.array
+    gradient: list
+
 
 @dataclass
-class FakeQCIOOutput:
+class FakeQCIOOutput(BaseModel):
     """
     class that has an attribute results that has another attribute `energy` and `gradient`
     for returning previously cached properties. Class exists to add order across different
     node types that were not created with QCIO.
     """
     results: FakeQCIOResults
-
-

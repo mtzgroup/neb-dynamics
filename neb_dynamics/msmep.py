@@ -147,8 +147,8 @@ class MSMEP:
                 node.update_coords(c)
                 for node, c in zip([chain.nodes[0]] * len(coords), coords)
             ]
-            interpolation = Chain(
-                nodes=nodes, parameters=copy.deepcopy(self.inputs.chain_inputs))
+            interpolation = Chain.model_validate({
+                "nodes": nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
         return interpolation
 
     def _construct_path_minimizer(self, initial_chain: Chain):
@@ -341,7 +341,8 @@ class MSMEP:
             print(
                 f"step {nsteps} // argmax(|TS gperp|) {np.amax(np.abs(ts_guess_grad))} // \
                     max rms grad {max_rms_grad_val} // armax(|TS_triplet_gsprings|) \
-                        {new_chain.ts_triplet_gspring_infnorm} // temperature={np.linalg.norm(new_chain.velocity)}//{' '*20}",
+                        {new_chain.ts_triplet_gspring_infnorm} // \
+                            temperature={np.linalg.norm(new_chain.velocity)}//{' '*20}",
                 end="\r",
             )
             chain_trajectory.append(new_chain)
@@ -353,7 +354,7 @@ class MSMEP:
     def _make_chain_frag(self, chain: Chain, geom_pair, ind_pair):
         start_ind, end_ind = ind_pair
         opt_start, opt_end = geom_pair
-        chain_frag_nodes = chain.nodes[start_ind: end_ind + 1]
+        # chain_frag_nodes = chain.nodes[start_ind: end_ind + 1]
         # chain_frag = Chain(
         #     nodes=[opt_start] + chain_frag_nodes + [opt_end],
         #     parameters=self.inputs.chain_inputs,
@@ -361,10 +362,9 @@ class MSMEP:
 
         # JDEP 01132025: Going to not recycle fragment nodes. Want a fresh
         # interpolation
-        chain_frag = Chain(
-            nodes=[opt_start, opt_end],
-            parameters=self.inputs.chain_inputs,
-        )
+        chain_frag = chain.model_copy(update={
+            "nodes": [opt_start, opt_end],
+            "parameters": self.inputs.chain_inputs})
         # opt_start = chain[start].do_geometry_optimization()
         # opt_end = chain[end].do_geometry_optimization()
 

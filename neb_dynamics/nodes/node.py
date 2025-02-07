@@ -11,7 +11,7 @@ from qcio.models.structure import Structure
 
 from neb_dynamics.errors import (EnergiesNotComputedError,
                                  GradientsNotComputedError)
-from neb_dynamics.fakeoutputs import FakeQCIOOutput
+from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 
@@ -105,7 +105,7 @@ class StructureNode(Node):
     has_molecular_graph: bool = True
     converged: bool = False
     _cached_energy: float = None
-    _cached_gradient: NDArray = None
+    _cached_gradient: list = None
 
     _cached_result: Union[ProgramOutput, FakeQCIOOutput] = None
     graph: Molecule = None
@@ -116,7 +116,32 @@ class StructureNode(Node):
             self._cached_energy = self._cached_result.results.energy
             self._cached_gradient = self._cached_result.results.gradient
 
-    @property
+    @classmethod
+    def from_serializable(cls, data):
+        data['graph'] = Molecule.from_serializable(data['graph'])
+        data['structure'] = Structure(**data['structure'])
+        if '_cached_result' in data:
+            if len(data['_cached_result'].keys()) > 2:
+                data['_cached_result'] = ProgramOutput(
+                    **data['_cached_result'])
+            else:
+                d = data['_cached_result']
+                res = FakeQCIOOutput.model_validate({
+                    "results": FakeQCIOResults.model_validate(
+                        {"energy": d['results']['energy'],
+                         "gradient": d['results']['gradient']})})
+                data['_cached_result'] = res
+        return cls(**data)
+
+    def to_serializable(self):
+        data = self.__dict__.copy()
+        data['structure'] = data['structure'].model_dump()
+        data["_cached_result"] = data["_cached_result"].model_dump()
+        if hasattr(self, 'graph'):
+            data['graph'] = data['graph'].to_serializable()
+        return data
+
+    @ property
     def coords(self) -> np.array:
         """
         shortcut to coordinates stored in Structure.geometry
@@ -137,7 +162,7 @@ class StructureNode(Node):
         copy_node.structure = Structure(**new_struct_dict)
         return copy_node
 
-    @property
+    @ property
     def symbols(self):
         return self.structure.symbols
 

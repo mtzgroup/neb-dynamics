@@ -115,9 +115,9 @@ def run(
         print("Done!")
 
     # create Chain
-    chain = Chain(
-        nodes=all_nodes,
-        parameters=program_input.chain_inputs,
+    chain = Chain.model_validate({
+        "nodes": all_nodes,
+        "parameters": program_input.chain_inputs}
     )
 
     # create MSMEP object
@@ -315,7 +315,8 @@ def make_default_inputs(
         name: Annotated[str, typer.Option(
             "--name", help='path to output toml file')] = None,
         path_min_method: Annotated[str, typer.Option("--path-min-method", "-pmm",
-                                                     help='name of path minimization. Options are: [neb, fneb]')] = "neb"):
+                                                     help='name of path minimization.\
+                                                          Options are: [neb, fneb]')] = "neb"):
     if name is None:
         name = Path(Path(os.getcwd()) / 'default_inputs')
     ri = RunInputs(path_min_method=path_min_method)
@@ -357,7 +358,7 @@ def make_netgen_summary(
 
     # write nodes to xyz file
     nodes = [pot.graph.nodes[x]["td"] for x in pot.graph.nodes]
-    chain = Chain(nodes)
+    chain = Chain.model_validate({"nodes": nodes})
     chain.write_to_disk(name / 'nodes.xyz')
 
     # write best chain from network for queried path
@@ -391,33 +392,30 @@ def run_netgen(
         program_input = RunInputs(program='xtb', engine_name='qcop')
     print(program_input)
 
+    valid_suff = ['.qcio', '.xyz']
+    assert (Path(start).suffix in valid_suff and Path(
+        end).suffix in valid_suff), "Invalid file type. Make sure they are .qcio or .xyz files"
+
     # load the structures
     print(Path(start).suffix, Path(end).suffix)
-    if Path(start).suffix == ".qcio" and Path(end).suffix == ".qcio":
+    if Path(start).suffix == ".qcio":
         start_structures = ProgramOutput.open(start).results.conformers
-        end_structures = ProgramOutput.open(end).results.conformers
-
         start_nodes = [StructureNode(structure=s) for s in start_structures]
-        end_nodes = [StructureNode(structure=s) for s in end_structures]
-
-    elif Path(start).suffix == ".xyz" and Path(end).suffix == ".xyz":
+    elif Path(start).suffix == ".xyz":
         start_structures = read_multiple_structure_from_file(
             start, charge=charge, spinmult=multiplicity)
-        end_structures = read_multiple_structure_from_file(
-            end, charge=charge, spinmult=multiplicity)
-
-        if len(start_structures) == 1 and len(end_structures) == 1:
-            print("Only one structure in each file. Sampling using CREST!")
+        if len(start_structures) != 1:
+            start_nodes = [StructureNode(structure=s)
+                           for s in start_structures]
+        else:
+            print("Only one structure in reactant file. Sampling using CREST!")
             if minimize_ends:
                 print("Minimizing endpoints...")
                 sys.stdout.flush()
                 start_structure = program_input.engine.compute_geometry_optimization(
                     StructureNode(structure=start_structures[0]))[-1].structure
-                end_structure = program_input.engine.compute_geometry_optimization(
-                    StructureNode(structure=end_structures[0]))[-1].structure
             else:
                 start_structure = start_structures[0]
-                end_structure = end_structures[0]
 
             print("Sampling reactant...")
             sys.stdout.flush()
@@ -431,32 +429,50 @@ def run_netgen(
                                for s in start_conf_result.results.conformers]
                 print("Done!")
 
-                print("Sampling product...")
-                sys.stdout.flush()
-                end_conf_result = program_input.engine._compute_conf_result(
-                    StructureNode(structure=end_structure))
-                end_conf_result.save(Path(end).resolve().parent /
-                                     (Path(end).stem + "_conformers.qcio"))
-                end_nodes = [StructureNode(structure=s)
-                             for s in end_conf_result.results.conformers]
-                print("Done!")
-                sys.stdout.flush()
             except ExternalSubprocessError as e:
                 print(e.stdout)
 
-    else:
-        raise ValueError(
-            f"Either both start and end must be .qcio files, or both must be .xyz files. Inputs: {start}, {end}")
+    if Path(end).suffix == ".qcio":
+        end_structures = ProgramOutput.open(end).results.conformers
+        end_nodes = [StructureNode(structure=s) for s in end_structures]
+    elif Path(end).suffix == ".xyz":
+        end_structures = read_multiple_structure_from_file(
+            end, charge=charge, spinmult=multiplicity)
+
+        if len(end_structures) != 1:
+            end_nodes = [StructureNode(structure=s)
+                         for s in end_structures]
+        else:
+            print("Only one structure in product file. Sampling using CREST!")
+            if minimize_ends:
+                print("Minimizing endpoints...")
+                sys.stdout.flush()
+
+                end_structure = program_input.engine.compute_geometry_optimization(
+                    StructureNode(structure=end_structures[0]))[-1].structure
+            else:
+                end_structure = end_structures[0]
+
+            print("Sampling product...")
+            sys.stdout.flush()
+            end_conf_result = program_input.engine._compute_conf_result(
+                StructureNode(structure=end_structure))
+            end_conf_result.save(Path(end).resolve().parent /
+                                 (Path(end).stem + "_conformers.qcio"))
+            end_nodes = [StructureNode(structure=s)
+                         for s in end_conf_result.results.conformers]
+            print("Done!")
+            sys.stdout.flush()
 
     sys.stdout.flush()
 
     pairs = list(product(start_nodes, end_nodes))[:max_pairs]
     for i, (start, end) in enumerate(pairs):
         # create Chain
-        chain = Chain(
-            nodes=[start, end],
-            parameters=program_input.chain_inputs,
-        )
+        chain = Chain.model_validate({
+            "nodes": [start, end],
+            "parameters": program_input.chain_inputs,
+        })
 
         # define output names
         fp = Path("mep_output")

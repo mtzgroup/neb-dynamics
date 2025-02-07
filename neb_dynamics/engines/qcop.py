@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 import numpy as np
 
 import qcop
-from qcio.models.inputs import DualProgramInput, ProgramInput, Structure, ProgramArgs
+from qcio.models.inputs import DualProgramInput, ProgramInput, ProgramArgs
 from qcio import ProgramOutput
 import shutil
 
@@ -268,7 +268,8 @@ class QCOPEngine(Engine):
                 })
         return self.compute_func('geometric', dpi, collect_files=True)
 
-    def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500, use_bigchem=False) -> List[List[StructureNode], List[StructureNode]]:
+    def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500,
+                       use_bigchem=False) -> List[List[StructureNode], List[StructureNode]]:
         """
         steepest descent IRC.
         """
