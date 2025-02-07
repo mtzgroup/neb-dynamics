@@ -2,10 +2,10 @@ import numpy as np
 from neb_dynamics.nodes.node import Node, XYNode
 from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
-from neb_dynamics.molecule import Molecule
-from neb_dynamics.qcio_structure_helpers import molecule_to_structure
+# from neb_dynamics.molecule import Molecule
+# from neb_dynamics.qcio_structure_helpers import molecule_to_structure
 import traceback
-from rxnmapper import RXNMapper
+# from rxnmapper import RXNMapper
 
 
 def is_identical(
@@ -172,21 +172,23 @@ def update_node_cache(node_list, results):
 
 
 def create_pairs_from_smiles(smi1: str, smi2: str, spinmult=1):
-    rxnsmi = f"{smi1}>>{smi2}"
-    rxn_mapper = RXNMapper()
-    rxn = [rxnsmi]
-    result = rxn_mapper.get_attention_guided_atom_maps(rxn)[0]
-    mapped_smi = result["mapped_rxn"]
-    r_smi, p_smi = mapped_smi.split(">>")
-    print(r_smi, p_smi)
-    r = Molecule.from_mapped_smiles(r_smi)
-    p = Molecule.from_mapped_smiles(p_smi)
+    raise NotImplementedError(
+        "Latest RXNMapper update has made this feature incompatible. Need to fix compatibility.")
+    # rxnsmi = f"{smi1}>>{smi2}"
+    # rxn_mapper = RXNMapper()
+    # rxn = [rxnsmi]
+    # result = rxn_mapper.get_attention_guided_atom_maps(rxn)[0]
+    # mapped_smi = result["mapped_rxn"]
+    # r_smi, p_smi = mapped_smi.split(">>")
+    # print(r_smi, p_smi)
+    # r = Molecule.from_mapped_smiles(r_smi)
+    # p = Molecule.from_mapped_smiles(p_smi)
 
-    td_r, td_p = (
-        molecule_to_structure(r, charge=r.charge, spinmult=spinmult),
-        molecule_to_structure(p, charge=p.charge, spinmult=spinmult),
-    )
-    return td_r, td_p
+    # td_r, td_p = (
+    #     molecule_to_structure(r, charge=r.charge, spinmult=spinmult),
+    #     molecule_to_structure(p, charge=p.charge, spinmult=spinmult),
+    # )
+    # return td_r, td_p
 
 
 def displace_by_dr(node: Node, displacement: np.array, dr: float = 0.1) -> Node:

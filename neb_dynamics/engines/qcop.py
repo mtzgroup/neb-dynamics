@@ -273,10 +273,11 @@ class QCOPEngine(Engine):
         """
         steepest descent IRC.
         """
-        if hessres is None:
-            hessres = self._compute_hessian_result(ts, use_bigchem=use_bigchem)
-
         self.compute_gradients([ts])
+
+        if hessres is None:
+            hessres = self._compute_hessian_result(
+                node=ts, use_bigchem=use_bigchem)
 
         nimaginary = 0
         for freq in hessres.results.freqs_wavenumber:

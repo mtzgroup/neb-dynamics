@@ -141,7 +141,7 @@ class StructureNode(Node):
             data['graph'] = data['graph'].to_serializable()
         return data
 
-    @ property
+    @property
     def coords(self) -> np.array:
         """
         shortcut to coordinates stored in Structure.geometry
@@ -162,7 +162,7 @@ class StructureNode(Node):
         copy_node.structure = Structure(**new_struct_dict)
         return copy_node
 
-    @ property
+    @property
     def symbols(self):
         return self.structure.symbols
 

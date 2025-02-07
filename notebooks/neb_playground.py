@@ -17,17 +17,14 @@ from qcio import Structure, view, ProgramOutput
 import neb_dynamics.chainhelpers as ch
 import pandas as pd
 
+
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 import numpy as np
 
 import matplotlib.pyplot as plt
 # -
 
-lolz = Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_manual/Beckmann-Rearrangement/network/reactant_conformers.qcio")
 
-lolz.suffix
-
-from neb_dynamics.inputs import ChainInputs
 
 from neb_dynamics.pathminimizers.dimer import DimerMethod3D
 

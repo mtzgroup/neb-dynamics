@@ -10,6 +10,7 @@ from qcop.exceptions import ExternalSubprocessError
 import sys
 from pathlib import Path
 import time
+import traceback
 
 from neb_dynamics.inputs import RunInputs
 from neb_dynamics.nodes.node import StructureNode
@@ -19,8 +20,12 @@ from neb_dynamics.nodes.nodehelpers import displace_by_dr
 from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
 from neb_dynamics.NetworkBuilder import NetworkBuilder
 from neb_dynamics.inputs import NetworkInputs, ChainInputs
+from neb_dynamics.helper_functions import compute_irc_chain
+from neb_dynamics.pot import Pot
 from neb_dynamics.pot import plot_results_from_pot_obj
 from itertools import product
+from typing import List
+import networkx as nx
 
 
 ob_log_handler = openbabel.OBMessageHandler()
@@ -46,9 +51,13 @@ def run(
         recursive: bool = False,
         name: str = None,
         charge: int = 0,
-        multiplicity: int = 1
+        multiplicity: int = 1,
+        create_irc: Annotated[bool, typer.Option(
+            help='whether to run and output an IRC chain. Need to set --use_tsopt also, otherwise\
+                will attempt use the guess structure.')] = False,
+        use_bigchem: Annotated[bool, typer.Option(
+            help='whether to use chemcloud to compute hessian for ts opt and irc jobs')] = False):
 
-):
     start_time = time.time()
     # load the structures
     if use_smiles:
@@ -161,6 +170,18 @@ def run(
                 if tsres.success:
                     tsres.return_result.save(
                         data_dir / (filename.stem+f"_ts_{i}.xyz"))
+                    if create_irc:
+                        try:
+                            irc = compute_irc_chain(ts_node=StructureNode(
+                                structure=tsres.return_result), engine=program_input.engine)
+                            irc.write_to_disk(
+                                filename.stem+f"_tsres_{i}_IRC.xyz")
+
+                        except Exception:
+                            print(traceback.format_exc())
+                            print("IRC failed. Continuing...")
+                else:
+                    print("TS optimization did not converge...")
 
         tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
         geom_grad_calls = sum(
@@ -198,13 +219,27 @@ def run(
                 tsres.return_result.save(
                     data_dir / (filename.stem+"_ts.xyz"))
 
+                if create_irc:
+                    try:
+                        irc = compute_irc_chain(ts_node=StructureNode(
+                            structure=tsres.return_result), engine=program_input.engine)
+                        irc.write_to_disk(
+                            filename.stem+"_tsres_IRC.xyz")
+
+                    except Exception:
+                        print(traceback.format_exc())
+                        print("IRC failed. Continuing...")
+
+            else:
+                print("TS optimization failed.")
+
         tot_grad_calls = n.grad_calls_made
         print(f">>> Made {tot_grad_calls} gradient calls total.")
 
     print(f"***Walltime: {end_time - start_time} s")
 
 
-@ app.command()
+@app.command()
 def ts(
     geometry: Annotated[str, typer.Argument(help='path to geometry file tpo optimize')],
     inputs: Annotated[str, typer.Option("--inputs", "-i",
@@ -251,7 +286,7 @@ def ts(
     print("Done!")
 
 
-@ app.command()
+@app.command()
 def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file tpo optimize')],
             inputs: Annotated[str, typer.Option("--inputs", "-i",
                                                 help='path to RunInputs toml file')] = None,
@@ -310,7 +345,27 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
     print("Done!")
 
 
-@ app.command()
+@app.command()
+def make_netgen_path(
+    name: Annotated[Path, typer.Option("--name", help='path to json file containing network objet')],
+    inds: Annotated[List[int], typer.Option("--inds", help="sequence of node indices on network \
+                                                               to create path for.")]):
+    name = Path(name)
+    assert name.exists(), f"{name.resolve()} does not exist."
+    pot = Pot.read_from_disk(name)
+    if len(inds) > 2:
+        p = inds
+    else:
+        print("Computing shortest path weighed by barrier heights")
+        p = nx.shortest_path(pot.graph, weight='barrier',
+                             source=inds[0], target=inds[1])
+    print(f"Path: {p}")
+    chain = pot.path_to_chain(path=p)
+    chain.write_to_disk(
+        name.parent / f"path_{'-'.join([str(a) for a in inds])}.xyz")
+
+
+@app.command()
 def make_default_inputs(
         name: Annotated[str, typer.Option(
             "--name", help='path to output toml file')] = None,
@@ -324,49 +379,7 @@ def make_default_inputs(
     ri.save(out.parent / (out.stem+".toml"))
 
 
-@ app.command()
-def make_netgen_summary(
-        name: Annotated[str, typer.Option(
-            "--name", help='path to data directory')] = None,
-        verbose: bool = False,
-        inputs: Annotated[str, typer.Option("--inputs", "-i",
-                                            help='path to RunInputs toml file')] = None,
-        root_index: Annotated[str, typer.Option(
-            "--root", help='node index of starting structure')] = 0,
-        target_index: Annotated[str, typer.Option(
-            "--target", help='node index of final structure')] = None,
-
-):
-    if name is None:
-        name = Path(os.getcwd())
-
-    if inputs is not None:
-        ri = RunInputs.open(inputs)
-        chain_inputs = ri.chain_inputs
-    else:
-        chain_inputs = ChainInputs()
-
-    nb = NetworkBuilder(data_dir=name,
-                        start=None, end=None,
-                        network_inputs=NetworkInputs(verbose=verbose),
-                        chain_inputs=chain_inputs)
-
-    nb.msmep_data_dir = name
-
-    pot = nb.create_rxn_network(file_pattern="*")
-    plot_results_from_pot_obj(name / "netgen_summary.png", pot)
-
-    # write nodes to xyz file
-    nodes = [pot.graph.nodes[x]["td"] for x in pot.graph.nodes]
-    chain = Chain.model_validate({"nodes": nodes})
-    chain.write_to_disk(name / 'nodes.xyz')
-
-    # write best chain from network for queried path
-
-    #
-
-
-@ app.command()
+@app.command()
 def run_netgen(
         start: Annotated[str, typer.Option(
             help='path to start conformers data')] = None,
@@ -381,6 +394,7 @@ def run_netgen(
         multiplicity: int = 1,
         max_pairs: int = 500,
         minimize_ends: bool = False
+
 
 ):
     start_time = time.time()
@@ -508,6 +522,49 @@ def run_netgen(
 
         end_time = time.time()
     print(f"***Walltime: {end_time - start_time} s")
+
+
+@app.command()
+def make_netgen_summary(
+        directory: Annotated[str, typer.Option(
+            "--directory", help='path to data directory')] = None,
+        verbose: bool = False,
+        inputs: Annotated[str, typer.Option("--inputs", "-i",
+                                            help='path to RunInputs toml file')] = None,
+        name: Annotated[str, typer.Option(
+            "--name", help='name of pot and summary file')] = 'netgen'
+
+):
+    if directory is None:
+        directory = Path(os.getcwd())
+    else:
+        directory = Path(directory).resolve()
+    if inputs is not None:
+        ri = RunInputs.open(inputs)
+        chain_inputs = ri.chain_inputs
+    else:
+        chain_inputs = ChainInputs()
+
+    nb = NetworkBuilder(data_dir=directory,
+                        start=None, end=None,
+                        network_inputs=NetworkInputs(verbose=verbose),
+                        chain_inputs=chain_inputs)
+
+    nb.msmep_data_dir = directory
+    pot_fp = Path(directory / (name+".json"))
+    if not pot_fp.exists():
+        pot = nb.create_rxn_network(file_pattern="*")
+        pot.write_to_disk(pot_fp)
+    else:
+        print(f"{pot_fp} already exists. Loading")
+        pot = Pot.read_from_disk(pot_fp)
+
+    plot_results_from_pot_obj(directory / "netgen_summary.png", pot)
+
+    # write nodes to xyz file
+    nodes = [pot.graph.nodes[x]["td"] for x in pot.graph.nodes]
+    chain = Chain.model_validate({"nodes": nodes})
+    chain.write_to_disk(directory / 'nodes.xyz')
 
 
 if __name__ == "__main__":

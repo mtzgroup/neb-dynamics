@@ -7,8 +7,8 @@ from ast import literal_eval
 from enum import Enum, auto
 from pathlib import Path
 from time import time
+import numpy as np
 
-from qcio import Structure
 import networkx as nx
 from IPython.core.display import HTML
 from pydantic import BaseModel, Field, field_serializer
@@ -25,7 +25,7 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.nodes.node import StructureNode
 import matplotlib.pyplot as plt
 
-from typing import Any, Optional
+from typing import Optional
 
 
 class TimeoutPot(TimeoutInterrupt):
@@ -199,8 +199,8 @@ class Pot(BaseModel):
         link_data = data['graph']["links"]
         for i, _ in enumerate(link_data):
             for j, _ in enumerate(link_data[i]['list_of_nebs']):
-                neb = self.graph.edges[(link_data[i]['source'],
-                                        link_data[i]['target'])]['list_of_nebs'][j]
+                neb = self.graph.edges[(link_data[i]['target'],
+                                        link_data[i]['source'])]['list_of_nebs'][j]
                 link_data[i]['list_of_nebs'][j] = neb.model_dump()
 
         return data
@@ -212,11 +212,11 @@ class Pot(BaseModel):
             0, molecule=multiplied_root, converged=False, root=True
         )  # root=True is for drawing
 
-    @ field_serializer("graph")
+    @field_serializer("graph")
     def serialize_graph(self, graph: nx.DiGraph, _info):
         return nx.node_link_data(graph)
 
-    @ classmethod
+    @classmethod
     def from_dict(cls, data):
         graph = nx.node_link_graph(data['graph'])
         for node, node_data in graph.nodes(data=True):
@@ -325,7 +325,8 @@ class Pot(BaseModel):
         else:
             target_string = f"""<div style="width: 20%; display: table-cell; border: 1px solid black;">
 <p style="text-align: center; font-weight: bold;">Target Molecule</p>
-{self.target.draw(string_mode=True, percentage=percentage, size=size, mode=mode)}
+{self.target.draw(string_mode=True, percentage=percentage,
+                  size=size, mode=mode)}
 </div>"""
 
         # runtime_string = f"- Time: {float(self.run_time):.2} s" if self.run_time else ""
@@ -338,7 +339,8 @@ class Pot(BaseModel):
 </div>
 <div style="width: 20%; display: table-cell; border: 1px solid black;">
 <p style="text-align: center; font-weight: bold;">Pot reaction graph</p>
-{self.draw_reaction_graph(size=size_graph, percentage=percentage, string_mode=True)}
+{self.draw_reaction_graph(
+    size=size_graph, percentage=percentage, string_mode=True)}
 </div>
 {target_string}
 </div></div>"""
@@ -628,7 +630,7 @@ class Pot(BaseModel):
         """
         # A generator
         g = self.graph
-        path = nx.shortest_path(g, source=0, target=node, weight=weight)
+        path = nx.shortest_path(g, source=node, target=0, weight=weight)
         path.reverse()
         return self.draw_from_single_path(path=path,
                                           string_mode=string_mode,
@@ -886,6 +888,23 @@ class Pot(BaseModel):
         read = json.load(open(fn, "r"))
         pot = cls.from_dict(read)
         return pot
+
+    def _get_lowest_barrier_height_pair(self, source: int, target: int):
+        barriers = [c.get_eA_chain()
+                    for c in self.graph.edges[(source, target)]['list_of_nebs']]
+        barriers_rev = [c.get_eA_chain()
+                        for c in self.graph.edges[(target, source)]['list_of_nebs']]
+        ind = np.argmin([a+b for a, b in zip(barriers, barriers_rev)])
+        return self.graph.edges[(target, source)]['list_of_nebs'][ind]
+
+    def path_to_chain(self, path):
+        pairs = list(pairwise(path))
+        node_list = []
+        for a, b in pairs:
+            node_list.extend(
+                self._get_lowest_barrier_height_pair(source=a, target=b))
+        c = Chain.model_validate({"nodes": node_list})
+        return c
 
 
 def plot_results_from_pot_obj(fp_out: Path, pot):

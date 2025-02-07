@@ -15,7 +15,8 @@ from neb_dynamics.helper_functions import RMSD, pairwise
 from neb_dynamics.inputs import ChainInputs, NetworkInputs
 from neb_dynamics.pot import Pot
 from neb_dynamics.nodes.node import StructureNode
-from neb_dynamics.nodes.nodehelpers import molecule_to_structure, is_identical
+from neb_dynamics.nodes.nodehelpers import is_identical
+from neb_dynamics.qcio_structure_helpers import molecule_to_structure
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.engines import Engine, QCOPEngine
 
@@ -105,7 +106,7 @@ class NetworkBuilder:
     #         self.end = StructureNode(structure=Structure.open(
     #             end_fp, charge=self.charge, multiplicity=self.spinmult))
 
-    @ contextlib.contextmanager
+    @contextlib.contextmanager
     def remember_cwd(self):
         curdir = os.getcwd()
         try:
@@ -113,7 +114,7 @@ class NetworkBuilder:
         finally:
             os.chdir(curdir)
 
-    @ staticmethod
+    @staticmethod
     def subselect_confomers(conformer_pool, n_max=20, rmsd_cutoff=0.5):
 
         subselected_pool = [conformer_pool[0]]
@@ -492,8 +493,8 @@ class NetworkBuilder:
                 if lowest_barrier_height_fwd <= self.network_inputs.maximum_barrier_height:
 
                     pot.graph.add_edge(
-                        int(vals[1]),
                         node_ind,
+                        int(vals[1]),
                         reaction=f"eA ({edgelabel}): {np.min(edges[edgelabel])}",
                         list_of_nebs=self.leaf_objects[label],
                         # barrier=np.min(edges[edgelabel]),
@@ -504,8 +505,8 @@ class NetworkBuilder:
                     if int(vals[1]) == node_ind:
                         continue
                     pot.graph.add_edge(
-                        node_ind,
                         int(vals[1]),
+                        node_ind,
                         reaction=f"eA ({label_rev}):{np.min(edges[label_rev])}",
                         list_of_nebs=self.leaf_objects[label_rev],
                         # barrier=np.min(edges[label_rev]),

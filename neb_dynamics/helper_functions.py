@@ -641,3 +641,25 @@ def get_fsm_tsg_from_chain(chain):
                   chain.energies[ind_guesses[1]], chain.energies[ind_guesses[2]]]
     ind_tsg = ind_guesses[np.argmax(enes_guess)]
     return chain[ind_tsg]
+
+
+def compute_irc_chain(ts_node, engine, use_bigchem: bool = False):
+    from neb_dynamics.chain import Chain
+
+    engine.compute_energies([ts_node])
+    irc_negative, irc_positive = engine.compute_sd_irc(
+        ts=ts_node,
+        use_bigchem=use_bigchem)
+
+    min_negative = engine.compute_geometry_optimization(
+        irc_negative[-1])[-1]
+    min_positive = engine.compute_geometry_optimization(
+        irc_positive[-1])[-1]
+    irc_negative.append(min_negative)
+    irc_positive.append(min_positive)
+    irc_negative.reverse()
+    irc_nodes = irc_negative + \
+        [ts_node]+irc_positive
+    irc = Chain.model_validate(
+        {"nodes": irc_nodes})
+    return irc
