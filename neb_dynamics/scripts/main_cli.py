@@ -559,7 +559,10 @@ def make_netgen_summary(
         print(f"{pot_fp} already exists. Loading")
         pot = Pot.read_from_disk(pot_fp)
 
-    plot_results_from_pot_obj(directory / "netgen_summary.png", pot)
+    plot_results_from_pot_obj(
+        fp_out=(directory / f"{Path(name).stem+'.png'}"), pot=pot, include_pngs=True)
+    plot_results_from_pot_obj(
+        fp_out=(directory / f"{Path(name).stem+'.png'}"), pot=pot, include_pngs=False)
 
     # write nodes to xyz file
     nodes = [pot.graph.nodes[x]["td"] for x in pot.graph.nodes]

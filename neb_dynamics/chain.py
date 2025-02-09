@@ -111,7 +111,7 @@ class Chain(BaseModel):
                 node._cached_gradient = grad
         return chain
 
-    @ classmethod
+    @classmethod
     def from_list_of_chains(cls, list_of_chains, parameters) -> Chain:
         """
         Joins a list of Chains into a single chain
@@ -121,7 +121,7 @@ class Chain(BaseModel):
             nodes.extend(chain.nodes)
         return cls.model_validate({"nodes": nodes, "parameters": parameters})
 
-    @ property
+    @property
     def _path_len_coords(self) -> np.array:
         import neb_dynamics.chainhelpers as ch
 
@@ -137,7 +137,7 @@ class Chain(BaseModel):
         else:
             return linear_distance(coords1, coords2)
 
-    @ property
+    @property
     def integrated_path_length(self) -> np.array:
         coords = self._path_len_coords
         cum_sums = [0]
@@ -153,7 +153,7 @@ class Chain(BaseModel):
         int_path_len = cum_sums / cum_sums[-1]
         return np.array(int_path_len)
 
-    @ property
+    @property
     def geodesic_path_length(self) -> np.array:
         import neb_dynamics.chainhelpers as ch
 
@@ -167,7 +167,7 @@ class Chain(BaseModel):
             )
         return np.array(distances)
 
-    @ property
+    @property
     def path_length(self) -> np.array:
         coords = self._path_len_coords
         cum_sums = [0]
@@ -228,12 +228,12 @@ class Chain(BaseModel):
         chain_copy = self.model_copy(update={'nodes': list_of_nodes})
         return chain_copy
 
-    @ property
+    @property
     def _energies_already_computed(self) -> bool:
         all_ens = [node.energy for node in self.nodes]
         return all([val is not None for val in all_ens])
 
-    @ property
+    @property
     def energies(self) -> np.array:
         if not self._energies_already_computed:
             raise EnergiesNotComputedError(
@@ -246,16 +246,16 @@ class Chain(BaseModel):
         ), f"Ens: Chain contains images with energies that did not converge: {out_ens}"
         return out_ens
 
-    @ property
+    @property
     def energies_kcalmol(self) -> np.array:
         return (self.energies - self.energies[0]) * 627.5
 
-    @ property
+    @property
     def _grads_already_computed(self) -> bool:
         all_grads = [node.gradient for node in self.nodes]
         return np.all([g is not None for g in all_grads])
 
-    @ property
+    @property
     def gradients(self) -> np.array:
         if not self._grads_already_computed:
             raise GradientsNotComputedError(
@@ -263,7 +263,7 @@ class Chain(BaseModel):
         grads = [node.gradient for node in self.nodes]
         return grads
 
-    @ property
+    @property
     def rms_gradients(self):
         grads = self.gradients
         rms_grads = []
@@ -272,14 +272,14 @@ class Chain(BaseModel):
             rms_grads.append(rms_gradient)
         return np.array(rms_grads)
 
-    @ property
+    @property
     def springgradients(self):
         import neb_dynamics.chainhelpers as ch
 
         _, gsprings = ch.pe_grads_spring_forces_nudged(self)
         return gsprings
 
-    @ property
+    @property
     def ts_triplet_gspring_infnorm(self):
         import neb_dynamics.chainhelpers as ch
 
@@ -296,7 +296,7 @@ class Chain(BaseModel):
         infnorms = [np.amax(abs(gspr)) for gspr in triplet]
         return max(infnorms)
 
-    @ property
+    @property
     def rms_gperps(self):
         # imported here to avoid circular imports
         import neb_dynamics.chainhelpers as ch
@@ -308,19 +308,19 @@ class Chain(BaseModel):
             rms_grads.append(rms_gradient)
         return np.array(rms_grads)
 
-    @ property
+    @property
     def gperps(self):
         import neb_dynamics.chainhelpers as ch
         gperps, gsprings = ch.pe_grads_spring_forces_nudged(self)
         return gperps
 
-    @ property
+    @property
     def gsprings(self):
         import neb_dynamics.chainhelpers as ch
         gperps, gsprings = ch.pe_grads_spring_forces_nudged(self)
         return gsprings
 
-    @ property
+    @property
     def unit_tangents(self):
         tan_list = []
         for prev_node, current_node, next_node in self.iter_triplets():
@@ -332,11 +332,11 @@ class Chain(BaseModel):
 
         return tan_list
 
-    @ property
+    @property
     def coordinates(self) -> np.array:
         return np.array([node.coords for node in self.nodes])
 
-    @ property
+    @property
     def symbols(self) -> List[str]:
         """
         returns the system symbols, if Node objects have
@@ -349,7 +349,7 @@ class Chain(BaseModel):
                 f"Node object {self.nodes[0]} does not have `symbols` attribute."
             )
 
-    @ property
+    @property
     def energies_are_monotonic(self):
         arg_max = self.energies.argmax()
         return arg_max == len(self) - 1 or arg_max == 0

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 
 import itertools
 import json
@@ -8,6 +9,8 @@ from enum import Enum, auto
 from pathlib import Path
 from time import time
 import numpy as np
+from rdkit.Chem import Draw
+
 
 import networkx as nx
 from IPython.core.display import HTML
@@ -191,7 +194,6 @@ class Pot(BaseModel):
                 node_data['molecule'] = node_data['molecule'].to_serializable()
             if "conformers" in node_data:
                 for conformer in node_data["conformers"]:
-
                     conformer['graph'] = conformer['graph'].to_serializable()
             if "td" in node_data:
                 node_data['td']['graph'] = node_data['td']['graph'].to_serializable()
@@ -907,9 +909,26 @@ class Pot(BaseModel):
         return c
 
 
-def plot_results_from_pot_obj(fp_out: Path, pot):
+def to_rdkit(structure):
+    from rdkit.Chem import rdDetermineBonds, MolFromXYZBlock
+    mol = MolFromXYZBlock(structure.to_xyz())
+    try:
+        rdDetermineBonds.DetermineBonds(
+            mol, charge=structure.charge, allowChargedFragments=True)
+    except Exception:
+        pass
+
+    return mol
+
+
+def plot_results_from_pot_obj(fp_out: Path, pot, include_pngs: bool = True):
 
     s = 15
+    ns = 4800
+    img_size = 80
+    mols = [to_rdkit(pot.graph.nodes[node]['td'].structure)
+            for node in pot.graph.nodes]
+    imgs = [Draw.MolToImage(m) for m in mols]
     fig, ax = plt.subplots(figsize=(1.16*s, s))
 
     G = pot.graph
@@ -921,10 +940,11 @@ def plot_results_from_pot_obj(fp_out: Path, pot):
 
     curved_edges = [edge for edge in G.edges() if reversed(edge) in G.edges()]
     straight_edges = list(set(G.edges()) - set(curved_edges))
-    nx.draw_networkx_edges(G, pos, ax=ax, edgelist=straight_edges)
+    nx.draw_networkx_edges(
+        G, pos, ax=ax, edgelist=straight_edges, node_size=ns)
     arc_rad = 0.25
     nx.draw_networkx_edges(G, pos, ax=ax, edgelist=curved_edges,
-                           connectionstyle=f'arc3, rad = {arc_rad}')
+                           connectionstyle=f'arc3, rad = {arc_rad}', node_size=ns)
 
     edge_weights = nx.get_edge_attributes(G, 'barrier')
     for key, val in edge_weights.items():
@@ -939,6 +959,18 @@ def plot_results_from_pot_obj(fp_out: Path, pot):
     nx.draw_networkx_edge_labels(G, pos, ax=ax, edge_labels=straight_edge_labels,
                                  rotate=False)
 
+    if include_pngs:
+        # Draw nodes with PNG images
+        for img, (_, (x, y)) in zip(imgs, pos.items()):
+            img.thumbnail((img_size, img_size))  # Resize the image if needed
+            imagebox = OffsetImage(img, zoom=1.0)  # Adjust zoom as needed
+            ab = AnnotationBbox(imagebox, (x, y), frameon=False)
+            ax.add_artist(ab)
+            ab = AnnotationBbox(imagebox, (x, y), frameon=False)
+            ax.add_artist(ab)
+
+    if include_pngs:
+        fp_out = fp_out.parent / (fp_out.stem+"_with_pngs")
     fig.savefig(fp_out)
     fig.savefig(fp_out.parent / (fp_out.stem+".svg"))
 
