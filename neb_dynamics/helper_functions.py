@@ -430,13 +430,14 @@ def get_fsm_tsg_from_chain(chain):
     return chain[ind_tsg]
 
 
-def compute_irc_chain(ts_node, engine, use_bigchem: bool = False):
+def compute_irc_chain(ts_node, engine, use_bigchem: bool = False, **kwargs):
     from neb_dynamics.chain import Chain
 
     engine.compute_energies([ts_node])
     irc_negative, irc_positive = engine.compute_sd_irc(
         ts=ts_node,
-        use_bigchem=use_bigchem)
+        use_bigchem=use_bigchem,
+        **kwargs)
 
     min_negative = engine.compute_geometry_optimization(
         irc_negative[-1])[-1]
@@ -450,3 +451,36 @@ def compute_irc_chain(ts_node, engine, use_bigchem: bool = False):
     irc = Chain.model_validate(
         {"nodes": irc_nodes})
     return irc
+
+
+def get_maxene_node(arr, engine):
+    """
+    Perform binary search to find the maximum value in a unimodal array.
+
+    :param arr: List of numbers where the values increase to a maximum and then decrease.
+    :return: The maximum value in the array.
+    """
+    ngcs = 0
+    left, right = 0, len(arr) - 1
+
+    while left < right:
+        mid = left + (right - left) // 2
+
+        # Check if the midpoint is the maximum
+        engine.compute_energies([arr[mid], arr[mid+1]])
+        ngcs += 2
+
+        if arr[mid].energy > arr[mid + 1].energy:
+            # The maximum is in the left half (including mid)
+            right = mid
+        else:
+            # The maximum is in the right half (excluding mid)
+            left = mid + 1
+
+    # When left == right, we've found the maximum
+    print("binary search cost: ", ngcs, ' grad calls')
+    return {
+        "node": arr[left],
+        "grad_calls": ngcs,
+        "index": left
+    }

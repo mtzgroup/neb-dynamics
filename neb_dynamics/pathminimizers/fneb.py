@@ -10,7 +10,7 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
 from neb_dynamics.engines.qcop import QCOPEngine
 from neb_dynamics.nodes.node import StructureNode
-from neb_dynamics.helper_functions import RMSD
+from neb_dynamics.helper_functions import RMSD, get_maxene_node
 from neb_dynamics.pathminimizers.pathminimizer import PathMinimizer
 from neb_dynamics.optimizers.optimizer import Optimizer
 from neb_dynamics.elementarystep import check_if_elem_step, ElemStepResults
@@ -210,8 +210,15 @@ class FreezingNEB(PathMinimizer):
                 if self.parameters.verbosity > 1:
                     print(f"{prev_iter_ene=}")
 
+                # output = ch.calculate_geodesic_tangent(
+                #     list_of_nodes=raw_chain, ref_node_ind=ind_node, nimages=nimg1, nimages2=nimg2,
+                #     tangent_err=self.parameters.tang_err,
+                #     max_ntries=self.parameters.max_tang_tries)
+
                 output = ch.calculate_geodesic_tangent(
-                    list_of_nodes=raw_chain, ref_node_ind=ind_node, nimages=nimg1, nimages2=nimg2,
+                    list_of_nodes=[
+                        raw_chain[ind_node-1], raw_chain[ind_node], raw_chain[ind_node+1]], ref_node_ind=1,
+                    nimages=nimg1, nimages2=nimg2,
                     tangent_err=self.parameters.tang_err,
                     max_ntries=self.parameters.max_tang_tries)
 
@@ -243,17 +250,16 @@ class FreezingNEB(PathMinimizer):
 
                 # add a spring force
                 kconst = raw_chain.parameters.k
-                # kconst = 0
-                # if self.parameters.use_geodesic_tangent:
-                #     fspring = kconst * np.linalg.norm(
-                #         next_node.coords - node_to_opt.coords) - \
-                #         kconst * \
-                #         np.linalg.norm(node_to_opt.coords - prev_node.coords)
-                # else:
-                fspring = kconst * np.linalg.norm(
-                    raw_chain[ind_node+1].coords -
-                    node_to_opt.coords
-                ) - kconst * np.linalg.norm(node_to_opt.coords - raw_chain[ind_node-1].coords)
+
+                # this uses the RMSD distance between neighboring nodes
+                # fspring = kconst * np.linalg.norm(
+                #     raw_chain[ind_node+1].coords -
+                #     node_to_opt.coords
+                # ) - kconst * np.linalg.norm(node_to_opt.coords - raw_chain[ind_node-1].coords)
+
+                # this uses the geodesic distance between neighboring nodes
+                fspring = kconst * d2 - kconst * d1
+
                 gperp1 -= fspring*unit_tan
                 print(f"***{fspring=}")
 
@@ -339,23 +345,25 @@ class FreezingNEB(PathMinimizer):
         """
         if last_grown_ind == 0:  # initial case
             gi = ch.run_geodesic([chain[0], chain[-1]], nimages=nimg)
-            eng = RunInputs(program='xtb').engine
-            eng.compute_energies(gi)
+            # eng = RunInputs(program='xtb').engine
+            # eng.compute_energies(gi)
             # deleteme
-            gi.write_to_disk(f"/tmp/gi1_{len(chain)}.xyz")
 
             grown_chain = chain.copy()
-            ind_max = gi.energies.argmax()
+            maxnode_data = get_maxene_node(gi, engine=self.engine)
+            ind_max = maxnode_data['index']
+            self.grad_calls_made += maxnode_data['grad_calls']
 
             if ind_max == 0 or ind_max == len(chain)-1:
                 print("No TS found between endpoints. Returning input chain.")
                 return chain, 1, ind_max
 
-            node = gi[ind_max]
-            node._cached_energy = None
-            node._cached_gradient = None
-            self.engine.compute_energies([node])
-            self.grad_calls_made += 1
+            # node = gi[ind_max]
+            node = maxnode_data['node']
+            # node._cached_energy = None
+            # node._cached_gradient = None
+            # self.engine.compute_energies([node])
+            # self.grad_calls_made += 1
             grown_chain.nodes = [chain[0], node, chain[-1]]
             new_ind = 1
 
@@ -367,14 +375,27 @@ class FreezingNEB(PathMinimizer):
                                   chain[last_grown_ind+1]],
                                   nimages=nimg)
 
-            eng = RunInputs(program='xtb').engine
-            eng.compute_energies(gi1)
-            eng.compute_energies(gi2)
+            # eng = RunInputs(program='xtb').engine
+            # eng.compute_energies(gi1)
+            # eng.compute_energies(gi2)
 
-            deltaEs = [gi1.get_eA_chain(), gi2.get_eA_chain()]
+            # deltaEs = [gi1.get_eA_chain(), gi2.get_eA_chain()]
+            maxnode1_data = get_maxene_node(gi1, engine=self.engine)
+            maxnode2_data = get_maxene_node(gi2, engine=self.engine)
 
-            ind_max_left = gi1.energies.argmax()
-            ind_max_right = gi2.energies.argmax()
+            self.grad_calls_made += maxnode1_data['grad_calls']
+            self.grad_calls_made += maxnode2_data['grad_calls']
+
+            deltaEs = [(maxnode1_data['node'].energy -
+                        chain[last_grown_ind].energy)*627.5,
+                       (maxnode2_data['node'].energy -
+                        chain[last_grown_ind].energy)*627.5
+                       ]
+
+            # ind_max_left = gi1.energies.argmax()
+            # ind_max_right = gi2.energies.argmax()
+            ind_max_left = maxnode1_data['index']
+            ind_max_right = maxnode2_data['index']
             # if all([dE < KCAL_MOL_CUTOFF for dE in deltaEs]):
 
             if all([dE < self.parameters.barrier_thre for dE in deltaEs]):
@@ -393,8 +414,10 @@ class FreezingNEB(PathMinimizer):
 
             if not left_side_converged and not right_side_converged:
                 print("Two potential directions found. Choosing highest ascent")
-                left = gi1.energies.max()
-                right = gi2.energies.max()
+                # left = gi1.energies.max()
+                # right = gi2.energies.max()
+                left = maxnode1_data['node'].energy
+                right = maxnode2_data['node'].energy
                 if left > right:
                     right_side_converged = True
                     ind_max = ind_max_left
@@ -410,11 +433,12 @@ class FreezingNEB(PathMinimizer):
             elif left_side_converged and not right_side_converged:
                 print("Growing rightwards...")
                 grown_chain = chain.copy()
-                node = gi2[gi2.energies.argmax()]
-                node._cached_energy = None
-                node._cached_gradient = None
-                self.engine.compute_energies([node])
-                self.grad_calls_made += 1
+                # node = gi2[gi2.energies.argmax()]
+                node = maxnode2_data['node']
+                # node._cached_energy = None
+                # node._cached_gradient = None
+                # self.engine.compute_energies([node])
+                # self.grad_calls_made += 1
 
                 grown_chain.nodes.insert(
                     last_grown_ind+1, node)
@@ -425,11 +449,12 @@ class FreezingNEB(PathMinimizer):
             elif not left_side_converged and right_side_converged:
                 print("Growing leftwards...")
                 grown_chain = chain.copy()
-                node = gi1[gi1.energies.argmax()]
-                node._cached_energy = None
-                node._cached_gradient = None
-                self.engine.compute_energies([node])
-                self.grad_calls_made += 1
+                # node = gi1[gi1.energies.argmax()]
+                node = maxnode1_data['node']
+                # node._cached_energy = None
+                # node._cached_gradient = None
+                # self.engine.compute_energies([node])
+                # self.grad_calls_made += 1
 
                 grown_chain.nodes.insert(
                     last_grown_ind, node)

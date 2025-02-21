@@ -23,18 +23,6 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 # -
-po = ProgramOutput.open("/home/jdep/T3D_data/fneb_draft/draft_data/system20/ub3lyp_321gs_tsres.qcio")
-
-
-len(po.results.trajectory) - 66
-
-# +
-
-po.pstdout
-# -
-
-view.view(po)
-
 
 
 # +
