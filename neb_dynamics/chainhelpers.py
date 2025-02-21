@@ -111,7 +111,7 @@ def _get_mass_weighed_coords(chain: Chain):
     return mass_weighed_coords
 
 
-def iter_triplets(chain: Chain) -> list[list[Node]]:
+def iter_triplets(chain: Chain):
     for i in range(1, len(chain.nodes) - 1):
         yield chain.nodes[i - 1: i + 2]
 
@@ -133,7 +133,7 @@ def neighs_grad_func(
         )
     unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
-    pe_grad = current_node.gradient
+    pe_grad = np.array(current_node.gradient)
 
     # remove rotations and translations
     # if we have at least 3 atoms
@@ -314,15 +314,19 @@ def get_force_spring_nudged(
 
     # tightest_k = max(k12, k01)
 
-    force_spring = k12 * (np.linalg.norm(
+    force_spring = (k12*natom) * (np.linalg.norm(
         next_node.coords - current_node.coords
-    )/natom) - (k01 * np.linalg.norm(current_node.coords - prev_node.coords)/natom)
+    )) - (k01*natom * np.linalg.norm(current_node.coords - prev_node.coords))
 
     # force_spring = tightest_k * (np.linalg.norm(
     #     next_node.coords - current_node.coords
     # )/natom) - (tightest_k * np.linalg.norm(current_node.coords - prev_node.coords)/natom)
 
-    return force_spring * unit_tan_path
+    force_vector = force_spring * unit_tan_path
+    for i, atom in enumerate(force_vector):
+        if np.linalg.norm(atom) > chain.parameters.k:
+            force_vector[i] = (atom / np.linalg.norm(atom))*chain.parameters.k
+    return force_vector
 
 
 def _select_split_method(self, conditions: dict, irc_results, concavity_results):
@@ -404,27 +408,88 @@ def calculate_geodesic_distance(
 
 
 def calculate_geodesic_tangent(
-    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages=15, nudge=0.1
+    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages: int = 15, nudge=0.1, nimages2: int = None,
+    tangent_err: float = 1.0, max_ntries: int = 5
 ):
     """
     will create a high density geodesic, then output a triplet of images corresponding to
     a previous image, an adjusted current image, and a next image, forming a piecewise tangent.
     ref_node_ind is the indewx of the node we want to build a tangent around
     """
+    ref_node = list_of_nodes[ref_node_ind]
 
-    inp_obj = [list_of_nodes[0].symbols, [n.coords for n in list_of_nodes]]
-    smoother = run_geodesic_get_smoother(
-        input_object=inp_obj,
+    inp_obj1 = [list_of_nodes[0].symbols, [
+        n.coords for n in list_of_nodes[:ref_node_ind+1]]]
+
+    # inp_obj1 = [list_of_nodes[0].symbols, [
+    #     n.coords for n in [list_of_nodes[0], ref_node]]]
+
+    # print(f"{inp_obj1=}")
+
+    # print(f"{nimages=}")
+
+    smoother1 = run_geodesic_get_smoother(
+        input_object=inp_obj1,
         nudge=nudge,
         nimages=nimages,
     )
-    ref_node = list_of_nodes[ref_node_ind]
-    ind = _get_closest_node_ind(smoother.path, reference=ref_node.coords)
-    new0 = ref_node.update_coords(smoother.path[ind-1])
-    new1 = ref_node.update_coords(smoother.path[ind])
-    new2 = ref_node.update_coords(smoother.path[ind+1])
+    if nimages2 is None:
+        nimages2 = nimages
 
-    return [new0, new1, new2]
+    # print(f"{nimages2=}")
+
+    inp_obj2 = [list_of_nodes[0].symbols, [
+        n.coords for n in list_of_nodes[ref_node_ind:]]]
+    # inp_obj2 = [list_of_nodes[0].symbols, [
+    #     n.coords for n in [ref_node, list_of_nodes[-1]]]]
+    smoother2 = run_geodesic_get_smoother(
+        input_object=inp_obj2,
+        nudge=nudge,
+        nimages=nimages2,
+    )
+
+    # print(f"{inp_obj2=}")
+
+    # nimg = nimages
+    # tang_err = 1e10
+    # ntries = 0
+    # # while tang_err > TANGERR_TOL and ntries < MAXTANG_NTRIES:
+    # while tang_err > tangent_err and \
+    #         ntries < max_ntries:
+
+    # inp_obj = [list_of_nodes[0].symbols, [n.coords for n in list_of_nodes]]
+    # smoother = run_geodesic_get_smoother(
+    #     input_object=inp_obj,
+    #     nudge=nudge,
+    #     nimages=nimages,
+    # )
+
+    #     ind = _get_closest_node_ind(smoother.path, reference=ref_node.coords)
+    #     aligned0 = align_geom(ref_node.coords, smoother.path[ind-1])[1]
+    #     aligned1 = align_geom(ref_node.coords, smoother.path[ind])[1]
+    #     aligned2 = align_geom(ref_node.coords, smoother.path[ind+1])[1]
+
+    #     new0 = ref_node.update_coords(aligned0)
+    #     new1 = ref_node.update_coords(aligned1)
+    #     new2 = ref_node.update_coords(aligned2)
+
+    #     tang_err = RMSD(new1.coords, ref_node.coords)[0]
+
+    #     print(
+    #         f"TANGENT ERROR: {tang_err})")
+    #     nimg += 10
+    # ntries += 1
+
+    aligned0 = align_geom(ref_node.coords, smoother1.path[-2])[1]
+    aligned2 = align_geom(ref_node.coords, smoother2.path[1])[1]
+
+    new0 = ref_node.update_coords(aligned0)
+    new2 = ref_node.update_coords(aligned2)
+
+    d1 = smoother1.length
+    d2 = smoother2.length
+
+    return [new0, ref_node, new2], (d1, d2)
 
 
 def _get_closest_node_ind(xyz_path, reference):
@@ -473,7 +538,7 @@ def _update_cache(self, chain: Chain, gradients: NDArray, energies: NDArray) -> 
 
 
 def create_friction_optimal_gi(
-    chain: Chain, gi_inputs: GIInputs, chain_inputs: ChainInputs()
+    chain: Chain, gi_inputs: GIInputs, chain_inputs: ChainInputs
 ):
     from neb_dynamics.engines.qcop import QCOPEngine
     print("GI: Optimizing friction parameter")
@@ -594,7 +659,7 @@ def generate_neb_plot(
     """
     try:
         energies = _energies_kcalmol(chain)
-    except:
+    except Exception:
         print("Cannot plot energies.")
         return ""
 
@@ -695,14 +760,16 @@ def build_correlation_matrix(node_list, ts_vector):
 def get_rxn_coordinate(c: Chain):
     mat = build_correlation_matrix(
         c, ts_vector=c.get_ts_node().coords.flatten())
+    # mat = build_correlation_matrix(
+    #     c, ts_vector=c[0].coords.flatten())
     evals, evecs = np.linalg.eigh(mat)
     print(evals)
     return evecs[:, -1]
 
 
 def get_projections(c: Chain, eigvec):
-    ind_ts = c.energies.argmax()
-    # ind_ts = 0
+    # ind_ts = c.energies.argmax()
+    ind_ts = 0
 
     all_dists = []
     for i, node in enumerate(c):

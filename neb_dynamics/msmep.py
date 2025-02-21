@@ -60,6 +60,9 @@ class MSMEP:
             the root chain was split.
         """
         import neb_dynamics.chainhelpers as ch
+        if isinstance(input_chain, list):
+            input_chain = Chain.model_validate(
+                {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
 
         if self.inputs.path_min_inputs.skip_identical_graphs and input_chain[0].has_molecular_graph:
             if _is_connectivity_identical(input_chain[0], input_chain[-1]):
@@ -177,6 +180,7 @@ class MSMEP:
                 initial_chain=initial_chain,
                 engine=self.inputs.engine,
                 parameters=self.inputs.path_min_inputs,
+                optimizer=self.inputs.optimizer
             )
 
         else:
@@ -396,12 +400,14 @@ class MSMEP:
         all_inds.extend(ind_minima)
         all_inds.append(len(chain) - 1)
 
-        pairs_inds = list(pairwise(all_inds))
+        # pairs_inds = list(pairwise(all_inds))
         pairs_geoms = list(pairwise(all_geometries))
 
         chains = []
-        for geom_pair, ind_pair in zip(pairs_geoms, pairs_inds):
-            chains.append(self._make_chain_frag(chain, geom_pair, ind_pair))
+        # for geom_pair, ind_pair in zip(pairs_geoms, pairs_inds):
+        for geom_pair in pairs_geoms:
+            chains.append(self._make_chain_frag(
+                chain=chain, geom_pair=geom_pair, ind_pair=(None, None)))
 
         return chains
 

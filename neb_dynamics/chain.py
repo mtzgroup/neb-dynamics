@@ -268,6 +268,7 @@ class Chain(BaseModel):
         grads = self.gradients
         rms_grads = []
         for grad in grads:
+            grad = np.array(grad)
             rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / len(grad))
             rms_grads.append(rms_gradient)
         return np.array(rms_grads)
@@ -304,6 +305,7 @@ class Chain(BaseModel):
         grads = ch.get_g_perps(self)
         rms_grads = []
         for grad in grads:
+            grad = np.array(grad)
             rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / len(grad))
             rms_grads.append(rms_gradient)
         return np.array(rms_grads)

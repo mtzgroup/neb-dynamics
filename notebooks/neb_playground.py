@@ -13,7 +13,7 @@ from neb_dynamics.helper_functions import RMSD, get_fsm_tsg_from_chain
 from neb_dynamics.inputs import RunInputs
 
 from qcio import Structure, view, ProgramOutput
-
+from neb_dynamics.helper_functions import compute_irc_chain
 import neb_dynamics.chainhelpers as ch
 import pandas as pd
 
@@ -23,10 +23,163 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 # -
+po = ProgramOutput.open("/home/jdep/T3D_data/fneb_draft/draft_data/system20/ub3lyp_321gs_tsres.qcio")
 
 
+len(po.results.trajectory) - 66
+
+# +
+
+po.pstdout
+# -
+
+view.view(po)
+
+
+
+# +
+
+view.view(tsres)
+# -
 
 from neb_dynamics.pathminimizers.dimer import DimerMethod3D
+
+h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_manual/Semmler-Wolff-Reaction/wtf/")
+
+tsreses = [ProgramOutput.open(fp) for fp in Path("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_manual/Semmler-Wolff-Reaction/").glob("wtf*tsres*")]
+
+# +
+
+view.view(tsreses[1])
+# -
+
+ch.visualize_chain(h.output_chain)
+
+for i, g in enumerate(h.children[0].data.chain_trajectory[200].springgradients):
+    print(i, np.dot(abs(g.flatten()), abs(g.flatten())) / len(g))
+
+h.children[0].data.plot_opt_history(1)
+
+
+
+visualize_chain(h.output_chain)
+
+# +
+
+# h = TreeNode.read_from_disk("/home/jdep/T3D_data/msmep_draft/comparisons_dft/results_manual/Rupe-Rearrangement/mep_output_msmep")
+# h = TreeNode.read_from_disk("/u/jdep/click_fsm/mep_output_msmep_pair0", charge=2)
+# sysns = []
+# for i in range(1, 122):
+# sysn = i
+sysn = 97
+start = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system{sysn}/react.xyz")
+end = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system{sysn}/prod.xyz")
+sp = Structure.open(f"/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system{sysn}/sp.xyz")
+sn = StructureNode(structure=start)
+en = StructureNode(structure=end)
+sysns.append(len(sp.geometry))
+# -
+
+from neb_dynamics.msmep import MSMEP
+
+import pandas as pd
+
+ri = RunInputs.open("/u/jdep/click_fsm/default_inputs.toml")
+
+# +
+
+gtols  = np.arange(0, 1.1, step=.1)
+
+# +
+
+DATA = []
+gtols  = np.arange(0, 1, step=.1)
+for gt in gtols:
+    ri.path_min_inputs.ngradcalls = 20
+    ri.chain_inputs.friction_optimal_gi = False
+    ri.chain_inputs.k = 1
+    ri.path_min_inputs.stepsize=1
+    ri.path_min_inputs.grad_tol = gt
+    ri.chain_inputs.node_rms_thre = 1
+    ri.path_min_inputs.skip_identical_graphs = False
+    
+    m = MSMEP(ri)
+    
+    # h.data.initial_chain.parameters.k = 1
+    # h2 = m.run_recursive_minimize(h.data.initial_chain)
+    try:
+        h2 = m.run_recursive_minimize(Chain.model_validate({"nodes":[sn, en], "parameters":ri.chain_inputs}))
+    except Exception:
+        DATA.append([gt]+[None]*2)
+        continue
+    try:
+        tsres = ri.engine._compute_ts_result(h2.ordered_leaves[0].data.optimized.get_ts_node())
+    except Exception as e:
+        tsres = e.program_output
+    hessres = ri.engine._compute_hessian_result(h2.ordered_leaves[0].data.optimized.get_ts_node(),use_bigchem=False)
+    
+    DATA.append([gt, h2, tsres, hessres ])
+# -
+
+
+all_cs = [d[1].output_chain for d in DATA if d[1]]
+
+for i, d in enumerate(DATA):
+    if d[1]:
+        c = d[1].output_chain
+        plt.plot(c.integrated_path_length, c.energies_kcalmol, 'o-', label=f"gtol:{DATA[i][0]}")
+plt.legend()
+
+ngcs = [d[1].data.grad_calls_made if d[1] else None for d in DATA ]
+
+tsreses = [d[2] if d[2] else None for d in DATA ]
+
+ngcs_tot = []
+for a,b in zip(ngcs, tsreses):
+    if b:
+        if b.success:
+            hesscalls = int(b.stdout.split("\n")[2].split("(")[1].split()[0])
+            ngcs_tot.append(a+len(b.results.trajectory)-hesscalls)
+            continue
+    ngcs_tot.append(None)
+
+
+nfreqs = [sum(np.array(d[-1].results.freqs_wavenumber) < 0) for d in DATA if d[1]]
+
+nfreqs
+
+plt.scatter(x=gtols, y=ngcs_tot)
+
+ch.visualize_chain(DATA[-2][1].output_chain)
+
+view.view(tsreses[-2])
+# view.view(tsreses[-2])
+
+gtols[np.argmin(ngcs_tot)]
+
+ngcs
+
+# +
+# hessres = ri.engine._compute_hessian_result(StructureNode(structure=tsres.return_result), use_bigchem=False)
+# hessres = ri.engine._compute_hessian_result(h2.ordered_leaves[0].data.optimized[2], use_bigchem=False)
+
+# +
+# hessres.results.freqs_wavenumber
+# -
+
+tsres.pstdout
+
+view.view(tsres)
+# view.view(hessres)
+
+irc = compute_irc_chain(ts_node=StructureNode(structure=tsres.return_result), engine=ri.engine)
+
+ch.visualize_chain(h2.ordered_leaves[0].data.optimized)
+# ch.visualize_chain(irc)
+
+view.view(h.output_chain[-1].structure, show_indices=True)
+
+ch.visualize_chain(h.output_chain)
 
 p = Path("/home/jdep/T3D_data/msmep_draft/comparisons_benchmark/system1/")
 

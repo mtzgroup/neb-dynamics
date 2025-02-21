@@ -11,7 +11,7 @@ from qcio.models.inputs import DualProgramInput, ProgramInput, ProgramArgs
 from qcio import ProgramOutput
 import shutil
 
-from chemcloud import CCClient
+from chemcloud import compute as cc_compute
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
@@ -23,6 +23,7 @@ from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 import copy
 
 AVAIL_PROGRAMS = ["qcop", "chemcloud"]
+CCQUEUE = 'celery'
 
 
 @dataclass
@@ -84,9 +85,7 @@ class QCOPEngine(Engine):
         if self.compute_program == "qcop":
             return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
-            client = CCClient()
-            return client.compute(*args,
-                                  **kwargs).get()
+            return cc_compute(*args, **kwargs)
         else:
             raise ValueError(
                 f"Invalid compute program: {self.compute_program}. Must be one of: {AVAIL_PROGRAMS}"
@@ -170,32 +169,34 @@ class QCOPEngine(Engine):
         """
         this will return a ProgramOutput from qcio geom opt call.
         """
-        # if "terachem" not in self.program:
-        dpi = DualProgramInput(
-            calctype="optimization",  # type: ignore
-            structure=node.structure,
-            subprogram=self.program,
-            subprogram_args={
-                "model": self.program_args.model,
-                "keywords": self.program_args.keywords,
-            },
-            keywords={},
-        )
+        if "terachem" not in self.program:
 
-        output = self.compute_func(self.geometry_optimizer, dpi)
+            dpi = DualProgramInput(
+                calctype="optimization",  # type: ignore
+                structure=node.structure,
+                subprogram=self.program,
+                subprogram_args={
+                    "model": self.program_args.model,
+                    "keywords": self.program_args.keywords,
+                },
+                keywords={},
+            )
 
-        # else:
-        #     prog_input = ProgramInput(
-        #         structure=structure,
-        #         # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
-        #         calctype="optimization",  # type: ignore
-        #         model=self.program_args.model,
-        #         keywords={
-        #             "purify": "no",
-        #             "new_minimizer": "yes",
-        #         },  # new_minimizer yes is required
-        #     )
-        #     output = self.compute_func("terachem", prog_input)
+            output = self.compute_func(self.geometry_optimizer, dpi)
+
+        else:
+            prog_input = ProgramInput(
+                structure=node.structure,
+                # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
+                calctype="optimization",  # type: ignore
+                model=self.program_args.model,
+                keywords={
+                    "purify": "no",
+                    "new_minimizer": "yes",
+                },  # new_minimizer yes is required
+            )
+
+            output = self.compute_func("terachem", prog_input)
 
         return output
 
@@ -218,7 +219,7 @@ class QCOPEngine(Engine):
                 keywords={},
             )
             client = CCClient()
-            fres = client.compute("bigchem", dpi)
+            fres = client.compute("bigchem", dpi, queue=CCQUEUE)
             output = fres.get()
         else:
             proginp = ProgramInput(

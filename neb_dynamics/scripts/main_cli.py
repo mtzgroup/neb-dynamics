@@ -135,6 +135,7 @@ def run(
     # Run the optimization
 
     if recursive:
+        program_input.path_min_inputs.do_elem_step_checks = True
         print(f"RUNNING AUTOSPLITTING {program_input.path_min_method}")
         history = m.run_recursive_minimize(chain)
 

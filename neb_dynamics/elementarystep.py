@@ -159,7 +159,7 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
 
 
 def _upsample_around_ts_guess(chain, ts_index):
-    tang = ch.calculate_geodesic_tangent(
+    tang, distances = ch.calculate_geodesic_tangent(
         list_of_nodes=chain, ref_node_ind=ts_index)
     tang[0].converged = False
     tang[2].converged = False
@@ -373,6 +373,7 @@ def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH)
                     is_r = slopes_to_ref1 < 0 and slopes_to_ref2 > 0
                     is_p = slopes_to_ref1 > 0 and slopes_to_ref2 < 0
                     kinked_chain = is_r or is_p
+                    minimas_is_r_or_p.append(kinked_chain)
 
                 elif not done or not kinked_chain:
                     opt_traj = _run_geom_opt(chain[i], engine=engine)
@@ -413,6 +414,8 @@ def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH)
                 number_grad_calls=n_grad_calls,
             )
         else:
+            assert len(
+                opt_results) > 0, "chain is not elementary step but minima were not stored"
             return ConcavityResults(
                 is_concave=False,
                 minimization_results=opt_results,

@@ -212,20 +212,17 @@ class RunInputs:
 
         elif self.path_min_method.upper() == "FNEB":
             default_kwds = {
-                "stepsize": 1.0,
-                "ngradcalls": 3,
-                "max_cycles": 500,
-                "path_resolution": 1 / 10,  # BOHR,
-                "max_atom_displacement": 0.5,
-                "early_stop_scaling": 3,
-                "use_geodesic_tangent": True,
-                "dist_err": 0.1,
-                "min_images": 5,
-                "distance_metric": "GEODESIC",
+                "max_min_iter": 20,
+                "max_grow_iter": 50,
                 "verbosity": 1,
                 "skip_identical_graphs": True,
-                "naive_grow": False,
                 "do_elem_step_checks": True,
+                "grad_tol": 0.01,  # Hartree/Bohr,
+                "barrier_thre": 5,  # kcal/mol,
+                "tang_err": 0.3,  # Bohr,
+                "max_tang_tries": 5,
+
+
             }
         #     default_kwds = FSMInputs()
         # elif self.path_min_method.upper() == "PYGSM":

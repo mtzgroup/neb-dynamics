@@ -657,13 +657,13 @@ files = [
 
 [[package]]
 name = "chemcloud"
-version = "0.12.2"
+version = "0.13.1"
 description = "Fast, secure, scalable quantum chemistry. A Python client for the the ChemCloud server."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "chemcloud-0.12.2-py3-none-any.whl", hash = "sha256:6105ae748dacd6173456890fc16a6d5c1c3f8373efe46dd9c4d57d2c349ca3ec"},
-    {file = "chemcloud-0.12.2.tar.gz", hash = "sha256:0ec2aa19edcc157a9d6aca3c8986fce0aa7b96c1b41d3614ea464820949641e3"},
+    {file = "chemcloud-0.13.1-py3-none-any.whl", hash = "sha256:49ed8aac34b83a57e27baab38ba1e28b4b623361f3fbe562ebddefec4b8b85dc"},
+    {file = "chemcloud-0.13.1.tar.gz", hash = "sha256:259a32e2ef6fcdef6589bf8ab32cf097883c3a30fb657d182dd50483855faa6d"},
 ]
 
 [package.dependencies]
@@ -4012,13 +4012,13 @@ cffi = {version = "*", markers = "implementation_name == \"pypy\""}
 
 [[package]]
 name = "qcio"
-version = "0.12.4"
+version = "0.13.0"
 description = "Beautiful and user friendly data structures for quantum chemistry."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "qcio-0.12.4-py3-none-any.whl", hash = "sha256:eb58cff9797be60fe638913240a133330b605ffa9d7a025a25ce35cae318a1dd"},
-    {file = "qcio-0.12.4.tar.gz", hash = "sha256:f1c15fc14245f09a17d2d2e6927897b91aac02f9424f200bc8d005eba1c18335"},
+    {file = "qcio-0.13.0-py3-none-any.whl", hash = "sha256:9e5a791171b78eea00ad515feffeb62852d8d86ac9b5fac23273ce60d02c2469"},
+    {file = "qcio-0.13.0.tar.gz", hash = "sha256:d72174773ec6716c248c488093c31be14c438aacef025ea72c6697636a94695c"},
 ]
 
 [package.dependencies]
@@ -4037,13 +4037,13 @@ view = ["ipython (>=8.0.0)", "matplotlib (>=3.0.0)", "py3Dmol (>=2.2.1)", "rdkit
 
 [[package]]
 name = "qcop"
-version = "0.9.5"
+version = "0.9.6"
 description = "A package for operating Quantum Chemistry programs using qcio standardized data structures. Compatible with TeraChem, psi4, QChem, NWChem, ORCA, Molpro, geomeTRIC and many more."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "qcop-0.9.5-py3-none-any.whl", hash = "sha256:0339639236262346cc812c2106f07cd48e86199aa14502fbfe1e387ee792f6e2"},
-    {file = "qcop-0.9.5.tar.gz", hash = "sha256:84614f84798234aafeafa6668b85b0750cffcd917d109d2169ccaab40c19ca93"},
+    {file = "qcop-0.9.6-py3-none-any.whl", hash = "sha256:008af6391794bc193adaedb9c3932363a7c246b86e41962df32489e7e6d1b2b9"},
+    {file = "qcop-0.9.6.tar.gz", hash = "sha256:68e335da4435df83abdb42a096d9ce246e15679a5b779ec7e1f5c68dc0675015"},
 ]
 
 [package.dependencies]
@@ -4060,13 +4060,13 @@ xtb = ["xtb (>=22.1,<23.0)"]
 
 [[package]]
 name = "qcparse"
-version = "0.7.2"
+version = "0.7.3"
 description = "A package for parsing Quantum Chemistry program file outputs into structured qcio data objects."
 optional = false
 python-versions = "<4.0,>=3.9"
 files = [
-    {file = "qcparse-0.7.2-py3-none-any.whl", hash = "sha256:4acc1ff231429f154b04325531f1043f4c42c31c37e0db93dcf5a07a3594f598"},
-    {file = "qcparse-0.7.2.tar.gz", hash = "sha256:604accfb0421e3ecf37e42ca761cc6f0090aae471b829ff810150de0769c1179"},
+    {file = "qcparse-0.7.3-py3-none-any.whl", hash = "sha256:656555b71c589569803706f1e0b335fcc3df4096fa183e5dc6bd977f24e3c93d"},
+    {file = "qcparse-0.7.3.tar.gz", hash = "sha256:a1143e817a7b45ff6c2dab37f9898dbf5197780b262c5e046968c04b9a6548e9"},
 ]
 
 [package.dependencies]
