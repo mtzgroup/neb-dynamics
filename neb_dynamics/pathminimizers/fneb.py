@@ -20,7 +20,7 @@ import traceback
 
 import sys
 
-GI_NIMG = 10
+GI_NIMG = 30
 MINIMGS = 3
 
 
@@ -241,6 +241,10 @@ class FreezingNEB(PathMinimizer):
                 gperp1 = ch.get_nudged_pe_grad(
                     unit_tangent=unit_tan, gradient=grad1)
 
+                gperp1[0, :] = 0  # this atom cannot move
+                gperp1[1, :2] = 0  # this atom can only move in a line
+                gperp1[2, :1] = 0  # this atom can only move in a plane
+
                 grad_inf_norm = np.amax(abs(gperp1))
                 print("MIN: ", grad_inf_norm)
                 # if grad_inf_norm <= GRAD_TOL:
@@ -308,6 +312,7 @@ class FreezingNEB(PathMinimizer):
             max_iter=self.parameters.max_min_iter,
             ind_ts_gi=ind_ts_gi
         )
+        self.engine.g_old = None  # reset the conjugate gradient memory
         return chain_opt
 
     def _get_innermost_nodes_inds(self, chain: Chain):
@@ -344,7 +349,7 @@ class FreezingNEB(PathMinimizer):
         If no node is added, will return the input chain.
         """
         if last_grown_ind == 0:  # initial case
-            gi = ch.run_geodesic([chain[0], chain[-1]], nimages=nimg)
+            gi = ch.run_geodesic([chain[0], chain[-1]], nimages=nimg, nudge=0)
             # eng = RunInputs(program='xtb').engine
             # eng.compute_energies(gi)
             # deleteme
@@ -370,10 +375,10 @@ class FreezingNEB(PathMinimizer):
         else:
             gi1 = ch.run_geodesic([chain[last_grown_ind-1],
                                   chain[last_grown_ind]],
-                                  nimages=nimg)
+                                  nimages=nimg, nudge=0)
             gi2 = ch.run_geodesic([chain[last_grown_ind],
                                   chain[last_grown_ind+1]],
-                                  nimages=nimg)
+                                  nimages=nimg, nudge=0)
 
             # eng = RunInputs(program='xtb').engine
             # eng.compute_energies(gi1)

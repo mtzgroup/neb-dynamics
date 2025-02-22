@@ -408,7 +408,7 @@ def calculate_geodesic_distance(
 
 
 def calculate_geodesic_tangent(
-    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages: int = 15, nudge=0.1, nimages2: int = None,
+    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages: int = 15, nudge=0.0, nimages2: int = None,
     tangent_err: float = 1.0, max_ntries: int = 5
 ):
     """
