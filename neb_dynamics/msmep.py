@@ -13,7 +13,7 @@ from neb_dynamics.chain import Chain
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 from neb_dynamics.elementarystep import ElemStepResults
-from neb_dynamics.neb import NEB, PYGSM, NoneConvergedException
+from neb_dynamics.neb import NEB, NoneConvergedException
 from neb_dynamics.nodes.nodehelpers import is_identical
 
 from neb_dynamics.TreeNode import TreeNode
@@ -26,7 +26,7 @@ import traceback
 import copy
 
 
-PATH_METHODS = ["NEB", "PYGSM", "FNEB"]
+PATH_METHODS = ["NEB", "FNEB"]
 
 
 @dataclass
@@ -166,13 +166,13 @@ class MSMEP:
                 optimizer=self.inputs.optimizer,
                 engine=self.inputs.engine,
             )
-        elif self.inputs.path_min_method.upper() == "PYGSM":
-            print("Using PYGSM optimizer")
-            n = PYGSM(
-                initial_chain=initial_chain,
-                engine=self.inputs.engine,
-                pygsm_kwds=self.inputs.path_min_inputs,
-            )
+        # elif self.inputs.path_min_method.upper() == "PYGSM":
+        #     print("Using PYGSM optimizer")
+        #     n = PYGSM(
+        #         initial_chain=initial_chain,
+        #         engine=self.inputs.engine,
+        #         pygsm_kwds=self.inputs.path_min_inputs,
+        #     )
 
         elif self.inputs.path_min_method.upper() == "FNEB":
             print("Using Freezing NEB optimizer")
