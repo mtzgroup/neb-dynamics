@@ -19,7 +19,7 @@ from neb_dynamics.elementarystep import ElemStepResults, check_if_elem_step
 from neb_dynamics.engines import Engine
 from neb_dynamics.engines.ase import ASEEngine
 from neb_dynamics.errors import ElectronicStructureError, NoneConvergedException
-from neb_dynamics.gsm_helper import minimal_wrapper_de_gsm, gsm_to_ase_atoms
+# from neb_dynamics.gsm_helper import minimal_wrapper_de_gsm, gsm_to_ase_atoms
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.nodes.node import StructureNode, Node
 from neb_dynamics.optimizers.optimizer import Optimizer
@@ -621,42 +621,3 @@ class NEB(PathMinimizer):
             engine=engine,
         )
         return n
-
-
-@dataclass
-class PYGSM(PathMinimizer):
-    initial_chain: Chain
-    engine: ASEEngine  # incompatible with other Engines right now
-    chain_trajectory: list[Chain] = field(default_factory=list)
-    pygsm_kwds: dict = field(default_factory=dict)
-
-    def optimize_chain(self) -> ElemStepResults:
-        start = self.initial_chain[0]
-        end = self.initial_chain[-1]
-        start_ase = structure_to_ase_atoms(start.structure)
-        end_ase = structure_to_ase_atoms(end.structure)
-
-        gsm = minimal_wrapper_de_gsm(
-            atoms_reactant=start_ase,
-            atoms_product=end_ase,
-            num_nodes=len(self.initial_chain),
-            calculator=self.engine.calculator,
-            **self.pygsm_kwds,
-        )
-
-        ase_frames, ase_ts = gsm_to_ase_atoms(gsm=gsm)
-        charge = self.initial_chain[0].structure.charge
-        multiplicity = self.initial_chain[0].structure.multiplicity
-        frames = [
-            ase_atoms_to_structure(
-                atoms=frame, charge=charge, multiplicity=multiplicity
-            )
-            for frame in ase_frames
-        ]
-        nodes = [StructureNode(structure=struct) for struct in frames]
-        out_chain = Chain(
-            nodes=nodes, parameters=self.initial_chain.parameters.copy())
-        self.engine.compute_energies(out_chain)
-        self.chain_trajectory.append(out_chain)
-        self.optimized = out_chain
-        return check_if_elem_step(out_chain, engine=self.engine)
