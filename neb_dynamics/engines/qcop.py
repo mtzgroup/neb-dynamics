@@ -15,7 +15,7 @@ from chemcloud import compute as cc_compute
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
-from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
+from neb_dynamics.errors import GradientsNotComputedError, ElectronicStructureError
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import update_node_cache, displace_by_dr
 from neb_dynamics.qcio_structure_helpers import _change_prog_input_property
@@ -41,6 +41,13 @@ class QCOPEngine(Engine):
 
         except GradientsNotComputedError:
             node_list = self._run_calc(chain=chain, calctype="gradient")
+            if not all([node._cached_gradient is not None for node in node_list]):
+                failed_results = []
+                for node in node_list:
+                    if node._cached_result is not None and node._cached_gradient is None:
+                        failed_results.append(node._cached_result)
+                raise ElectronicStructureError(
+                    msg="Gradient calculation failed.", obj=failed_results)
             grads = np.array([node.gradient for node in node_list])
 
         if self.biaser:
@@ -53,19 +60,8 @@ class QCOPEngine(Engine):
         return grads
 
     def compute_energies(self, chain: Chain) -> NDArray:
-        try:
-            enes = np.array([node.energy for node in chain])
-        except EnergiesNotComputedError:
-            node_list = self._run_calc(
-                chain=chain, calctype="gradient"
-            )  # need the gradients to be cached anyway
-            enes = np.array([node.energy for node in node_list])
-
-        except AttributeError:
-            node_list = self._run_calc(
-                chain=chain, calctype="gradient"
-            )  # need the gradients to be cached anyway
-            enes = np.array([node.energy for node in node_list])
+        self.compute_gradients(chain)
+        enes = np.array([node.energy for node in chain])
 
         if self.biaser:
             new_enes = enes.copy()
@@ -253,7 +249,7 @@ class QCOPEngine(Engine):
                                    calctype="transition_state",
                                    subprogram='terachem',
                                    subprogram_args={
-                                            "model": self.program_args.model,
+                                       "model": self.program_args.model,
                                             "keywords": self.program_args.keywords,
                                    },
                                    files={'hessian.txt': open("/tmp/hess.txt").read()})

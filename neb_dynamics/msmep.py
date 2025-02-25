@@ -180,7 +180,8 @@ class MSMEP:
                 initial_chain=initial_chain,
                 engine=self.inputs.engine,
                 parameters=self.inputs.path_min_inputs,
-                optimizer=self.inputs.optimizer
+                optimizer=self.inputs.optimizer,
+                gi_inputs=self.inputs.gi_inputs
             )
 
         else:
@@ -224,13 +225,17 @@ class MSMEP:
                 out_chain, engine=self.inputs.engine)
 
         except ElectronicStructureError as e:
-            print(traceback.format_exc())
+            # print(traceback.format_exc())
 
             print(
                 "\nWarning! A chain has electronic structure errors. \
                     Returning an unoptimized chain..."
             )
-            print(e)
+            # print(e)
+            if e.obj is not None:
+                for i, po in enumerate(e.obj):
+                    print(f"Traceback {i}:")
+                    po.ptraceback
             out_chain = n.chain_trajectory[-1]
             elem_step_results = ElemStepResults(
                 is_elem_step=True,
