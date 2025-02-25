@@ -164,8 +164,9 @@ def update_node_cache(node_list, results):
     for node, result in zip(node_list, results):
         node._cached_result = result
         if result is not None:
-            node._cached_energy = result.results.energy
-            node._cached_gradient = result.results.gradient
+            if result.success:
+                node._cached_energy = result.results.energy
+                node._cached_gradient = result.results.gradient
         else:
             node._cached_energy = None
             node._cached_gradient = None
