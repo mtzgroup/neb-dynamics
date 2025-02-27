@@ -41,7 +41,8 @@ class Geodesic(object):
         self.atoms = atoms
 
         if self.path.ndim != 3:
-            raise ValueError("The path to be interpolated must have 3 dimensions")
+            raise ValueError(
+                "The path to be interpolated must have 3 dimensions")
         self.nimages, self.natoms, _ = self.path.shape
         # Construct coordinates
         self.threshold = threshold
@@ -65,7 +66,7 @@ class Geodesic(object):
             )
         else:
             self.rij_list, self.re = get_bond_list(
-                self.path[index - 1 : index + 2],
+                self.path[index - 1: index + 2],
                 self.atoms,
                 threshold=self.threshold,
                 min_neighbors=self.min_neighbors,
@@ -91,7 +92,8 @@ class Geodesic(object):
         gradients of internal coordinates."""
         for i, (X, w, dwdR) in enumerate(zip(self.path, self.w, self.dwdR)):
             if w is None:
-                self.w[i], self.dwdR[i] = compute_wij(X, self.rij_list, self.scaler)
+                self.w[i], self.dwdR[i] = compute_wij(
+                    X, self.rij_list, self.scaler)
         for i, (X0, X1, w) in enumerate(zip(self.path, self.path[1:], self.w_mid)):
             if w is None:
                 self.X_mid[i] = Xm = (X0 + X1) / 2
@@ -120,11 +122,11 @@ class Geodesic(object):
         # Calculate displacement vectors in each segment, and the total length
         vecs_l = [
             wm - wl
-            for wl, wm in zip(self.w[start - 1 : end], self.w_mid[start - 1 : end])
+            for wl, wm in zip(self.w[start - 1: end], self.w_mid[start - 1: end])
         ]
         vecs_r = [
             wr - wm
-            for wr, wm in zip(self.w[start : end + 1], self.w_mid[start - 1 : end])
+            for wr, wm in zip(self.w[start: end + 1], self.w_mid[start - 1: end])
         ]
         self.length = np.sum(np.linalg.norm(vecs_l, axis=1)) + np.sum(
             np.linalg.norm(vecs_r, axis=1)
@@ -149,7 +151,7 @@ class Geodesic(object):
         self.grad0 = self.grad[: length * 2 * self.nrij]
         grad_shape = (length, self.nrij, end - start, 3 * self.natoms)
         grad_l = self.grad[: length * self.nrij].reshape(grad_shape)
-        grad_r = self.grad[length * self.nrij : length * self.nrij * 2].reshape(
+        grad_r = self.grad[length * self.nrij: length * self.nrij * 2].reshape(
             grad_shape
         )
         for i, image in enumerate(range(start, end)):
@@ -302,7 +304,8 @@ class Geodesic(object):
             if max_dL < tol:  # Check for convergence.
 
                 break
-            curr_tol = max(tol * 0.5, max_dL * 0.2)  # Adjust micro-iteration threshold
+            # Adjust micro-iteration threshold
+            curr_tol = max(tol * 0.5, max_dL * 0.2)
             images = list(reversed(images))  # Alternate sweeping direction.
 
         rmsd, self.path = align_path(self.path)

@@ -366,7 +366,7 @@ def gi_path_to_nodes(
     return new_nodes
 
 
-def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, **kwargs):
+def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, return_smoother: bool = False, **kwargs):
     if isinstance(chain, list) and chain_inputs is None:
         # print(
         #     "Warning! You input a list of nodes to interpolate and no ChainInputs. Will use defaults ChainInputs"
@@ -377,7 +377,8 @@ def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, **
     elif isinstance(chain, Chain):
         chain_inputs = chain.parameters
     coords = np.array([node.coords for node in chain])
-    xyz_coords = run_geodesic_py((chain[0].symbols, coords), **kwargs)
+    smoother = run_geodesic_get_smoother((chain[0].symbols, coords), **kwargs)
+    xyz_coords = smoother.path
     charge = chain[0].structure.charge
     spinmult = chain[0].structure.multiplicity
 
@@ -389,6 +390,8 @@ def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, **
         spinmult=spinmult,
     )
     chain_copy = chain.model_copy(update={"nodes": chain_nodes})
+    if return_smoother:
+        return chain_copy, smoother
     return chain_copy
 
 
@@ -408,8 +411,8 @@ def calculate_geodesic_distance(
 
 
 def calculate_geodesic_tangent(
-    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages: int = 15, nudge=0.0, nimages2: int = None,
-    tangent_err: float = 1.0, max_ntries: int = 5
+    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages: int = 15, nudge=0.1, nimages2: int = None,
+    tangent_err: float = 1.0, max_ntries: int = 5, random_seed: int = 0
 ):
     """
     will create a high density geodesic, then output a triplet of images corresponding to
@@ -427,11 +430,11 @@ def calculate_geodesic_tangent(
     # print(f"{inp_obj1=}")
 
     # print(f"{nimages=}")
-
+    np.random.seed(random_seed)
     smoother1 = run_geodesic_get_smoother(
         input_object=inp_obj1,
         nudge=nudge,
-        nimages=nimages,
+        nimages=nimages
     )
     if nimages2 is None:
         nimages2 = nimages

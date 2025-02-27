@@ -34,6 +34,7 @@ class QCOPEngine(Engine):
     geometry_optimizer: str = "geometric"
     compute_program: str = "qcop"
     biaser: ChainBiaser = None
+    collect_files: bool = False
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:
@@ -102,8 +103,7 @@ class QCOPEngine(Engine):
             node_list = chain
         else:
             raise ValueError(
-                f"Input needs to be a Chain or a List. You input a: {type(chain)}"
-            )
+                f"Input needs to be a Chain or a List. You input a: {type(chain)}")
 
         # first make sure the program input has calctype set to input calctype
         prog_inp = ProgramInput(
@@ -238,31 +238,33 @@ class QCOPEngine(Engine):
         output = self.compute_func('crest', pi)
         return output
 
-    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 500}, use_bigchem=False):
-        if use_bigchem:
+    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 500}, use_bigchem=False,
+                           hessres: ProgramOutput = None):
+        if hessres is not None:
+            np.savetxt("/tmp/hess.txt", hessres.results.hessian)
+            kwds = keywords.copy()
+            kwds["hessian"] = "file:hessian.txt"
+            files = {'hessian.txt': open("/tmp/hess.txt").read()}
+        elif hessres is None and use_bigchem:
             hess = self.compute_hessian(node=node)
             np.savetxt("/tmp/hess.txt", hess)
             kwds = keywords.copy()
             kwds["hessian"] = "file:hessian.txt"
-            dpi = DualProgramInput(keywords=kwds,
-                                   structure=node.structure,
-                                   calctype="transition_state",
-                                   subprogram='terachem',
-                                   subprogram_args={
-                                       "model": self.program_args.model,
-                                            "keywords": self.program_args.keywords,
-                                   },
-                                   files={'hessian.txt': open("/tmp/hess.txt").read()})
+            files = {'hessian.txt': open("/tmp/hess.txt").read()}
+
         else:
-            dpi = DualProgramInput(
-                keywords=keywords.copy(),
-                structure=node.structure,
-                calctype="transition_state",
-                subprogram=self.program,
-                subprogram_args={
-                    "model": self.program_args.model,
-                    "keywords": self.program_args.keywords,
-                })
+            kwds = keywords.copy()
+            files = {}
+
+        dpi = DualProgramInput(keywords=kwds,
+                               structure=node.structure,
+                               calctype="transition_state",
+                               subprogram=self.program,
+                               subprogram_args={
+                                   "model": self.program_args.model,
+                                   "keywords": self.program_args.keywords,
+                               },
+                               files=files)
         return self.compute_func('geometric', dpi, collect_files=True)
 
     def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500,
