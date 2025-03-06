@@ -23,7 +23,8 @@ from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 import copy
 
 AVAIL_PROGRAMS = ["qcop", "chemcloud"]
-CCQUEUE = 'celery'
+# CCQUEUE = 'celery'
+CCQUEUE = 'gq-alt'
 
 
 @dataclass
@@ -80,9 +81,9 @@ class QCOPEngine(Engine):
 
     def compute_func(self, *args, **kwargs):
         if self.compute_program == "qcop":
-            return qcop.compute(*args, **kwargs)
+            return qcop.compute(*args, collect_files=self.collect_files, **kwargs)
         elif self.compute_program == "chemcloud":
-            return cc_compute(*args, **kwargs)
+            return cc_compute(*args, collect_files=self.collect_files, **kwargs)
         else:
             raise ValueError(
                 f"Invalid compute program: {self.compute_program}. Must be one of: {AVAIL_PROGRAMS}"

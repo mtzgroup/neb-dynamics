@@ -271,6 +271,9 @@ class Chain(BaseModel):
             grad = np.array(grad)
             rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / len(grad))
             rms_grads.append(rms_gradient)
+
+        rms_grads[0] = 0
+        rms_grads[-1] = 0
         return np.array(rms_grads)
 
     @property
