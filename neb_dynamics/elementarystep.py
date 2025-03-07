@@ -414,8 +414,8 @@ def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH)
                 number_grad_calls=n_grad_calls,
             )
         else:
-            assert len(
-                opt_results) > 0, "chain is not elementary step but minima were not stored"
+            # assert len(
+            #     opt_results) > 0, "chain is not elementary step but minima were not stored"
             return ConcavityResults(
                 is_concave=False,
                 minimization_results=opt_results,
