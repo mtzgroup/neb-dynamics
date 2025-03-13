@@ -25,12 +25,12 @@ pydantic = "^2.8.2"
 scikit-learn = "^1.5.1"
 setuptools = "^70.3.0"
 chemcloud = ">=0.12.0"
-qcop = {extras = ["geometric"], version = "^0.9.5"}
+qcop = {extras = ["geometric"], version = ">=0.9.5"}
 qcio = ">=0.11.10"
 bigchem = ">=0.10.0"
 rxnmapper = "^0.3.0"  # needed for NetworkBuilder is you want smi->smi network
 typer = "^0.12.5"
-qcparse = "^0.7.2"
+qcparse = ">=0.7.2"
 
 
 [tool.poetry.group.dev.dependencies]
