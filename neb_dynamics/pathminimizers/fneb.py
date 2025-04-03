@@ -114,10 +114,12 @@ class FreezingNEB(PathMinimizer):
             result = self.grow_nodes_maxene(
                 chain, last_grown_ind=last_grown_ind, nimg=self.gi_inputs.nimages, nudge=self.gi_inputs.nudge)
             grown_chain, node_ind, ind_ts_gi = result[0], result[1], result[2]
-            if self.parameters.use_dqdr:
-                smoother = result[3]
-            else:
-                smoother = None
+            # if self.parameters.use_dqdr:
+            #     smoother = result[3]
+            # else:
+            #     smoother = None
+
+            smoother = None
 
             no_growth = len(grown_chain) == len(chain)
             # no_barrier_change = abs(grown_chain.get_eA_chain(
@@ -129,6 +131,14 @@ class FreezingNEB(PathMinimizer):
                 print(
                     f"Converged!\n\tNo growth?: {no_growth}\n\tNo barrier change?: {no_barrier_change}")
                 converged = True
+                if hasattr(self.parameters, 'supertightconv_dip'):
+                    print("Doing dips thing")
+                    self.parameters.grad_tol /= 10
+                    grown_chain[node_ind].converged = False
+                    min_chain = self.minimize_node_maxene(
+                        chain=grown_chain, node_ind=node_ind,
+                        ind_ts_gi=ind_ts_gi, smoother=smoother)
+                    self.chain_trajectory.append(min_chain)
                 break
             else:
 
@@ -221,103 +231,123 @@ class FreezingNEB(PathMinimizer):
                 if self.parameters.verbosity > 1:
                     print(f"{prev_iter_ene=}")
 
-                # output = ch.calculate_geodesic_tangent(
-                #     list_of_nodes=raw_chain, ref_node_ind=ind_node, nimages=nimg1, nimages2=nimg2,
-                #     tangent_err=self.parameters.tang_err,
-                #     max_ntries=self.parameters.max_tang_tries)
-
-                if smoother is None:
+                if self.parameters.use_dqdr:
                     print("nimg1: ", nimg1, ' nimg2: ', nimg2)
-                    output = ch.calculate_geodesic_tangent(
-                        list_of_nodes=[
-                            raw_chain[ind_node-1], raw_chain[ind_node], raw_chain[ind_node+1]], ref_node_ind=1,
-                        nimages=nimg1, nimages2=nimg2,
-                        tangent_err=self.parameters.tang_err,
-                        max_ntries=self.parameters.max_tang_tries)
+                    gi1, smoother1 = ch.run_geodesic(
+                        [raw_chain[ind_node], raw_chain[ind_node-1]], nimages=nimg1, return_smoother=True)
 
-                    prev_node, curr_node, next_node = output[0]
-                    d1, d2 = output[1]
-                    # print(f"{d1=} || {d2=}")
+                    gi2, smoother2 = ch.run_geodesic(
+                        [raw_chain[ind_node], raw_chain[ind_node+1]], nimages=nimg2, return_smoother=True)
 
+                    d1, d2 = smoother1.length, smoother2.length
                     dtot = d1+d2
                     nimg1 = max(int((d1/dtot)*self.gi_inputs.nimages), MINIMGS)
                     nimg2 = max(self.gi_inputs.nimages - nimg1, MINIMGS)
 
-                    # tangent = ((node_to_opt.coords - prev_node.coords) +
-                    #            (next_node.coords - node_to_opt.coords)) / 2
-                    tangent1 = (node_to_opt.coords - prev_node.coords)
-                    tangent2 = (next_node.coords - node_to_opt.coords)
+                    grad = grad1.copy().reshape(-1)
 
-                    # unit_tan = tangent / np.linalg.norm(tangent)
-                    unit_tan1 = tangent1 / np.linalg.norm(tangent1)
-                    unit_tan2 = tangent2 / np.linalg.norm(tangent2)
+                    dwdr1 = smoother1.dwdR[0]
+                    dwdr2 = smoother2.dwdR[0]
 
-                    # grad1 = self.engine.compute_gradients([node_to_opt])
-
-                    # gperp1 = ch.get_nudged_pe_grad(
-                    #     unit_tangent=unit_tan, gradient=grad1)
-                    gperp1 = ch.get_nudged_pe_grad(
-                        unit_tangent=unit_tan1, gradient=grad1)
-                    gperp1 = ch.get_nudged_pe_grad(
-                        unit_tangent=unit_tan2, gradient=gperp1)
-
-                    gperp1[0, :] = 0  # this atom cannot move
-                    gperp1[1, :2] = 0  # this atom can only move in a line
-                    gperp1[2, :1] = 0  # this atom can only move in a plane
-
-                else:
-                    print("Using geodesic SMOOTHER for tangent...")
-                    # OPTION1
-                    ind = ind_ts_gi
-                    grad = grad1.copy().flatten()
-                    dwdr = smoother.dwdR[ind]
-
-                    fwd_grad = smoother.w[ind+1] - smoother.w[ind]
+                    fwd_grad = smoother2.w[1] - smoother2.w[0]
+                    # fwd_grad = smoother2.w[0]
                     fwd_grad /= np.linalg.norm(fwd_grad)
 
-                    back_grad = smoother.w[ind] - smoother.w[ind-1]
+                    back_grad = smoother1.w[1] - smoother1.w[0]
+                    # back_grad = smoother1.w[0]
                     back_grad /= np.linalg.norm(back_grad)
+                    back_grad *= -1  # we constructed this geodesic backwards, so need to flip it
 
-                    back_tang = (back_grad@dwdr)
+                    # back_tang = (back_grad@dwdr1)
+                    # back_tang /= np.linalg.norm(back_tang)
+
+                    # proj_back = np.dot(grad, back_tang)
+                    grad_back_internal = grad @ dwdr1.T
+                    print(f"\n\n\n{grad=}\n{grad_back_internal=}")
+                    proj_back = np.dot(grad_back_internal, back_grad)
+
+                    # proj_grad_back = proj_back*back_tang
+                    proj_grad_back = proj_back*back_grad
+                    # gperp_internal = grad - proj_back*back_tang
+                    # gperp_internal = grad - proj_grad_back
+                    gperp_internal_back = grad_back_internal - proj_grad_back
+                    gperp_internal = gperp_internal_back @ dwdr1
+
+                    # fwd_tang = (fwd_grad@dwdr2)
+                    # fwd_tang /= np.linalg.norm(fwd_tang)
+                    gperp_internal_fwd = gperp_internal@dwdr2.T
+                    # proj_fwd = np.dot(gperp_internal, fwd_tang)
+                    proj_fwd = np.dot(gperp_internal_fwd, fwd_grad)
+                    # print(f"--->{proj_fwd=}{proj_back=}")
+                    proj_grad_fwd = proj_fwd*fwd_grad
+
+                    # gperp_internal = gperp_internal - proj_grad_fwd
+                    gperp_internal_fwd = gperp_internal_fwd - proj_grad_fwd
+                    print(f"-->{np.amax(abs(gperp_internal_fwd))=}")
+                    gperp_internal = gperp_internal_fwd@dwdr2
+
+                    grad_final = gperp_internal
+                    # grad_final = gperp_internal - \
+                    #     ((proj_grad_fwd@dwdr2)+(proj_grad_back@dwdr1))
+
+                    # gperp_internal -= proj_fwd*fwd_tang
+                    # gperp_internal += 2*proj_fwd*fwd_tang  # climb along tangent!
+
+                    # gperp1 = gperp_internal.reshape(grad1.shape)
+                    gperp1 = grad_final.reshape(grad1.shape)
+
+                    gperp1 = gperp1-gperp1[0, :]
+
+                    # gperp1[0, :] = 0  # this atom cannot move
+                    # gperp1[1, :2] = 0  # this atom can only move in a line
+                    # gperp1[2, :1] = 0  # this atom can only move in a plane
+
+                    # print(
+                    #     f"Angle: {np.arccos(np.dot(back_grad, fwd_grad))}\n{proj_back=}\n{proj_fwd=}")
+
+                else:
+                    print("nimg1: ", nimg1, ' nimg2: ', nimg2)
+                    gi1, smoother1 = ch.run_geodesic(
+                        [raw_chain[ind_node], raw_chain[ind_node-1]], nimages=nimg1, return_smoother=True)
+
+                    gi2, smoother2 = ch.run_geodesic(
+                        [raw_chain[ind_node], raw_chain[ind_node+1]], nimages=nimg2, return_smoother=True)
+
+                    d1, d2 = smoother1.length, smoother2.length
+                    dtot = d1+d2
+                    nimg1 = max(int((d1/dtot)*self.gi_inputs.nimages), MINIMGS)
+                    nimg2 = max(self.gi_inputs.nimages - nimg1, MINIMGS)
+
+                    grad = grad1.copy().flatten()
+
+                    fwd_tang = gi2[1].coords.flatten() - \
+                        gi2[0].coords.flatten()
+                    fwd_tang /= np.linalg.norm(fwd_tang)
+
+                    back_tang = gi1[1].coords.flatten() - \
+                        gi1[0].coords.flatten()
+                    back_tang /= np.linalg.norm(back_tang)
+                    back_tang *= -1  # we constructed this geodesic backwards, so need to flip it
+
                     proj_back = np.dot(grad, back_tang)
-                    gperp_internal = grad - proj_back*back_tang
 
-                    fwd_tang = (fwd_grad@dwdr)
+                    proj_grad_back = proj_back*back_tang
+                    gperp_internal = grad - proj_grad_back
+
                     proj_fwd = np.dot(gperp_internal, fwd_tang)
+                    proj_grad_fwd = proj_fwd*fwd_tang
 
-                    gperp_internal -= proj_fwd*fwd_tang
-                    gperp1 = gperp_internal.reshape(grad1.shape)
+                    gperp_internal = gperp_internal - proj_grad_fwd
 
-                    print(
-                        f"Angle: {np.arccos(np.dot(back_grad, fwd_grad))}\n{proj_back=}\n{proj_fwd}")
+                    grad_final = gperp_internal
+                    # grad_final = gperp_internal-(proj_grad_fwd+proj_grad_back)
+                    # gperp_internal -= proj_fwd*fwd_tang
+                    # gperp_internal += 2*proj_fwd*fwd_tang  # climb along tangent!
 
-                    # OPTION 2.1
-                    # grad = grad1.copy()
-                    # dwdr = smoother.dwdR[ind_ts_gi]
+                    # gperp1 = gperp_internal.reshape(grad1.shape)
+                    gperp1 = grad_final.reshape(grad1.shape)
 
-                    # grad_internal = grad.reshape(-1)@dwdr.T
-
-                    # tangent_internal = smoother.w[ind_ts_gi]
-                    # tangent_internal /= np.linalg.norm(tangent_internal)
-
-                    # gperp_internal = grad_internal - \
-                    #     np.dot(grad_internal, tangent_internal) * \
-                    #     tangent_internal
-
-                    # OPTION 2.2
-                    # fwd_tangent = smoother.w[ind_ts_gi+1] - smoother.w[ind_ts_gi]
-                    # fwd_tangent /= np.linalg.norm(fwd_tangent)
-
-                    # back_tangent = smoother.w[ind_ts_gi] - \
-                    #     smoother.w[ind_ts_gi - 1]
-                    # back_tangent /= np.linalg.norm(back_tangent)
-
-                    # gperp_internal = grad_internal - \
-                    #     np.dot(grad_internal, fwd_tangent)*fwd_tangent
-                    # gperp_internal -= np.dot(grad_internal,
-                    #                          back_tangent)*back_tangent
-
-                    # gperp1 = (gperp_internal@dwdr).reshape(grad.shape)
+                    gperp1 = gperp1-gperp1[0, :]
 
                 grad_inf_norm = np.amax(abs(gperp1))
                 print("MIN: ", grad_inf_norm)
@@ -330,38 +360,17 @@ class FreezingNEB(PathMinimizer):
                 kconst = raw_chain.parameters.k * \
                     len(gperp1)  # scaled by number of atoms
 
-                # this uses the RMSD distance between neighboring nodes
-                # fspring = kconst * np.linalg.norm(
-                #     raw_chain[ind_node+1].coords -
-                #     node_to_opt.coords
-                # ) - kconst * np.linalg.norm(node_to_opt.coords - raw_chain[ind_node-1].coords)
-
                 # this uses the geodesic distance between neighboring nodes
-                # fspring = kconst * d2 - kconst * d1
-
+                fspring = -(kconst * d2)*back_tang + (kconst * d1)*(fwd_tang)
+                fspring = fspring.reshape(gperp1.shape)
+                gperp1 += fspring
                 # gperp1 -= fspring*unit_tan
-                # print(f"***{fspring=}")
+                print(f"***{np.linalg.norm(fspring)=}")
 
                 out_chain = self.optimizer.optimize_step(
                     chain=Chain.model_validate({"nodes": [node_to_opt]}),
                     chain_gradients=np.array([gperp1]))
 
-                # direction = -1 * gperp1 * ss
-                # direction_scaled = direction.copy()
-                # for i_atom, vector in enumerate(direction):
-                #     length = np.linalg.norm(vector)
-                #     if length > max_atom_displacement:
-                #         if len(direction.shape) > 1:
-                #             direction_scaled[i_atom, :] = (
-                #                 vector / length
-                #             ) * max_atom_displacement
-                #         else:
-                #             direction_scaled[i_atom] = (
-                #                 vector / length
-                #             ) * max_atom_displacement
-
-                # new_node1_coords = node_to_opt.coords + direction_scaled
-                # new_node1 = node_to_opt.update_coords(new_node1_coords)
                 new_node1 = out_chain.nodes[0]
                 self.engine.compute_energies([new_node1])
                 self.grad_calls_made += 1
@@ -505,10 +514,12 @@ class FreezingNEB(PathMinimizer):
                     right_side_converged = True
                     ind_max = ind_max_left
                     smoother = smoother1
+                    smoother = None  # CHANGEME
                 else:
                     left_side_converged = True
                     ind_max = ind_max_right
                     smoother = smoother2
+                    smoother = None
 
             if left_side_converged and right_side_converged:
                 print("TS guess found. Returning input chain.")
@@ -531,6 +542,7 @@ class FreezingNEB(PathMinimizer):
                 new_ind = last_grown_ind+1
                 ind_max = ind_max_right
                 smoother = smoother2
+                smoother = None
 
             elif not left_side_converged and right_side_converged:
                 print("Growing leftwards...")
@@ -548,6 +560,7 @@ class FreezingNEB(PathMinimizer):
                 new_ind = last_grown_ind
                 ind_max = ind_max_left
                 smoother = smoother1
+                smoother = None
 
         return grown_chain, new_ind, ind_max, smoother
 
