@@ -212,15 +212,17 @@ class RunInputs:
 
         elif self.path_min_method.upper() == "FNEB":
             default_kwds = {
-                "max_min_iter": 20,
-                "max_grow_iter": 50,
+                "max_min_iter": 100,
+                "max_grow_iter": 20,
                 "verbosity": 1,
                 "skip_identical_graphs": True,
                 "do_elem_step_checks": True,
-                "grad_tol": 0.01,  # Hartree/Bohr,
+                "grad_tol": 0.05,  # Hartree/Bohr,
                 "barrier_thre": 5,  # kcal/mol,
-                "tang_err": 0.3,  # Bohr,
-                "max_tang_tries": 5,
+                "tangent": 'geodesic',
+                "tangent_alpha": 1.0,  # mixing coefficient for tangents,
+                "use_xtb_grow": True
+
 
 
             }

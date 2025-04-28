@@ -38,7 +38,7 @@ class Engine(ABC):
     def steepest_descent(
         self,
         node: Node,
-        ss=1,
+        ss=1.0,
         max_steps=500,
         ene_thre: float = 1e-6,
         grad_thre: float = 1e-4,
@@ -53,7 +53,7 @@ class Engine(ABC):
         converged = False
         while curr_step < max_steps and not converged:
             grad = last_node.gradient
-            new_coords = last_node.coords - 1 * ss * grad
+            new_coords = last_node.coords - 1.0 * ss * grad
             node_new = last_node.update_coords(new_coords)
             grads = self.compute_gradients([node_new])
             ene = self.compute_energies([node_new])

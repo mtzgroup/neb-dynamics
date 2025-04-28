@@ -137,10 +137,11 @@ def neighs_grad_func(
 
     # remove rotations and translations
     # if we have at least 3 atoms
-    if len(pe_grad.shape) > 1 and pe_grad.shape[1] >= 3:
-        pe_grad[0, :] = 0  # this atom cannot move
-        pe_grad[1, :2] = 0  # this atom can only move in a line
-        pe_grad[2, :1] = 0  # this atom can only move in a plane
+    # if len(pe_grad.shape) > 1 and pe_grad.shape[1] >= 3:
+    #     pe_grad[0, :] = 0  # this atom cannot move
+    #     pe_grad[1, :2] = 0  # this atom can only move in a line
+    #     pe_grad[2, :1] = 0  # this atom can only move in a plane
+    pe_grad = pe_grad-pe_grad[0, :]  # remove force from 0th atom
 
     if current_node.do_climb:
         pe_along_path_const = np.dot(
@@ -165,12 +166,23 @@ def neighs_grad_func(
             next_node=next_node,
             unit_tan_path=unit_tan_path,
         )
-        if len(spring_forces_nudged.shape) > 1 and spring_forces_nudged.shape[1] >= 3:
-            spring_forces_nudged[0, :] = 0  # this atom cannot move
-            # this atom can only move in a line
-            spring_forces_nudged[1, :2] = 0
-            # this atom can only move in a plane
-            spring_forces_nudged[2, :1] = 0
+
+        # spring_forces_nudged = get_force_spring_om(
+        #     chain=chain,
+        #     prev_node=prev_node,
+        #     current_node=current_node,
+        #     next_node=next_node,
+        #     unit_tan_path=unit_tan_path,
+        # )
+
+        # if len(spring_forces_nudged.shape) > 1 and spring_forces_nudged.shape[1] >= 3:
+        #     spring_forces_nudged[0, :] = 0  # this atom cannot move
+        #     # this atom can only move in a line
+        #     spring_forces_nudged[1, :2] = 0
+        #     # this atom can only move in a plane
+        #     spring_forces_nudged[2, :1] = 0
+        spring_forces_nudged = spring_forces_nudged - \
+            spring_forces_nudged[0, :]
 
     return pe_grads_nudged, spring_forces_nudged
 
@@ -327,6 +339,74 @@ def get_force_spring_nudged(
         if np.linalg.norm(atom) > chain.parameters.k:
             force_vector[i] = (atom / np.linalg.norm(atom))*chain.parameters.k
     return force_vector
+
+
+def get_force_spring_om(
+    chain: Chain,
+    prev_node: Node,
+    current_node: Node,
+    next_node: Node,
+    unit_tan_path: np.array,
+):
+    """
+    Will generate the spring force as per:
+    https://pubs.aip.org/aip/jcp/article/155/7/074103/484665
+    Uses Onsager-machlup action to define the spring force.
+    Args:
+        chain (Chain): _description_
+        prev_node (Node): _description_
+        current_node (Node): _description_
+        next_node (Node): _description_
+        unit_tan_path (np.array): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    natom = len(current_node.coords)
+    parameters = chain.parameters
+    # k_om = k_max*natom
+    timestep = 50
+    freq = 1
+
+    mass = np.zeros((natom, natom))
+    for i in range(natom):
+        mass[i, i] = get_mass(chain.nodes[0].symbols[i])
+
+    k_om = (mass*freq) / (2*timestep)
+
+    invmass = np.zeros((natom, natom))
+    for i in range(natom):
+        invmass[i, i] = 1/get_mass(chain.nodes[0].symbols[i])
+
+    # lagrange_prev = -1*(timestep/(mass*freq))@prev_node.gradient
+    lagrange_prev = -1*(invmass@prev_node.gradient)
+    # print(invmass.shape, prev_node.gradient.shape)
+    # print(f"{lagrange_prev=}")
+    # lagrange_current = -1*(timestep/mass*freq)@current_node.gradient
+    lagrange_current = -1*(invmass@current_node.gradient)
+    # print(f"{k_om=}")
+    f_om = k_om@(next_node.coords + prev_node.coords - 2 *
+                 current_node.coords + lagrange_prev - lagrange_current)
+
+    f_om_parallel = np.dot(
+        f_om.flatten(), unit_tan_path.flatten()) * unit_tan_path
+
+    vec_next = next_node.coords - current_node.coords
+    vec_next /= np.linalg.norm(vec_next)
+
+    vec_prev = current_node.coords - prev_node.coords
+    vec_prev /= np.linalg.norm(vec_prev)
+
+    cosphi = np.dot(vec_next.flatten(), vec_prev.flatten())
+    if np.arccos(cosphi) >= 0 and np.arccos(cosphi) <= (np.pi / 2):
+        f_phi = .5*(1 + np.cos(np.pi*cosphi))
+    else:
+        f_phi = 1
+    f_om_perp = f_phi * (f_om - f_om_parallel)
+
+    # print(f"{np.amax(abs(f_om_parallel))=}|{np.amax(abs(f_om_perp))=}")
+    # print(f_om_parallel + f_om_perp)
+    return f_om_parallel + f_om_perp
 
 
 def _select_split_method(self, conditions: dict, irc_results, concavity_results):
@@ -753,7 +833,7 @@ def build_correlation_matrix(node_list, ts_vector):
     for i in range(mat.shape[0]):
         for j in range(mat.shape[0]):
             products = sum([vec[i]*vec[j]
-                           for vec in node_list]) / len(node_list)
+                            for vec in node_list]) / len(node_list)
             sums = sum([vec[i] for vec in node_list])*sum([vec[j]
                                                            for vec in node_list]) / (len(node_list)**2)
             mat[i, j] = products - sums
@@ -766,17 +846,18 @@ def get_rxn_coordinate(c: Chain):
     # mat = build_correlation_matrix(
     #     c, ts_vector=c[0].coords.flatten())
     evals, evecs = np.linalg.eigh(mat)
-    print(evals)
+    print('eigenvalues: ', evals)
     return evecs[:, -1]
 
 
-def get_projections(c: Chain, eigvec):
-    # ind_ts = c.energies.argmax()
-    ind_ts = 0
+def get_projections(c: Chain, eigvec, ts_geom=None):
+    if ts_geom is None:
+        ind_ts = c.energies.argmax()
+        ts_geom = c[ind_ts]
 
     all_dists = []
     for i, node in enumerate(c):
-        displacement = c[i].coords.flatten() - c[ind_ts].coords.flatten()
+        displacement = c[i].coords.flatten() - ts_geom.coords.flatten()
         all_dists.append(np.dot(displacement, eigvec))
     # plt.plot(all_dists)
     return all_dists
@@ -892,3 +973,56 @@ def plot_opt_history(chain_trajectory: List[Chain], do_3d=False):
         plt.xticks(fontsize=fs)
         plt.yticks(fontsize=fs)
         plt.show()
+
+
+def animate_trajectory(traj, c_irc, xmin=-0.1, xmax=1.1, ymin=-1, ymax=200, return_anim=False, flip_chains=False):
+    import matplotlib.pyplot as plt
+    import matplotlib.animation
+    import numpy as np
+    from IPython.display import HTML
+
+    x = [chain for chain in traj]
+    y = [list(chain.energies_kcalmol) for chain in traj]
+
+    fig, ax = plt.subplots()
+    fs = 18
+
+    l, = ax.plot([], [], 'o-', label='fsm')
+    if c_irc:
+        rxn_coord = get_rxn_coordinate(c_irc)
+        disps = np.array(get_projections(c_irc, rxn_coord))
+        # disps = c_irc.integrated_path_length
+
+        ax.plot(disps, c_irc.energies_kcalmol, '-', color='black', label='irc')
+        ax.scatter([disps[c_irc.energies.argmax()]], [
+                   max(c_irc.energies_kcalmol)], marker='x', color='black', s=50, label='TS')
+
+    # ax.axis([0,1,0,100])
+    ax.set_xlim(xmin, xmax)
+    ax.set_ylim(ymin, ymax)
+
+    frontconst = 1
+    if flip_chains:
+        frontconst = -1
+
+    def animate(i):
+        if c_irc:
+            disps = np.array(get_projections(
+                traj[i], rxn_coord, ts_geom=c_irc.get_ts_node()))
+            l.set_data(frontconst*disps, traj[i].energies_kcalmol)
+        else:
+            l.set_data(traj[i].integrated_path_length,
+                       traj[i].energies_kcalmol)
+            # l.set_data(traj[i].geodesic_path_length, traj[i].energies_kcalmol)
+
+    ani = matplotlib.animation.FuncAnimation(fig, animate, frames=len(traj))
+    plt.ylabel("Energies (kcal/mol)", fontsize=fs)
+    plt.xlabel("Reaction coordinate", fontsize=fs)
+    plt.xticks(fontsize=fs)
+    plt.yticks(fontsize=fs)
+    plt.legend(fontsize=fs)
+    plt.tight_layout()
+    if return_anim:
+        return ani
+    else:
+        return HTML(ani.to_jshtml())

@@ -81,9 +81,9 @@ class QCOPEngine(Engine):
 
     def compute_func(self, *args, **kwargs):
         if self.compute_program == "qcop":
-            return qcop.compute(*args, collect_files=self.collect_files, **kwargs)
+            return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
-            return cc_compute(*args, collect_files=self.collect_files, **kwargs)
+            return cc_compute(*args, **kwargs)
         else:
             raise ValueError(
                 f"Invalid compute program: {self.compute_program}. Must be one of: {AVAIL_PROGRAMS}"
@@ -127,7 +127,7 @@ class QCOPEngine(Engine):
 
             def helper(inp):
                 prog, prog_inp = inp
-                return self.compute_func(prog, prog_inp)
+                return self.compute_func(prog, prog_inp, collect_files=self.collect_files)
 
             iterables = [(self.program, inp) for inp in non_frozen_prog_inps]
             with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
@@ -138,17 +138,17 @@ class QCOPEngine(Engine):
             if len(non_frozen_prog_inps) == 1:
                 non_frozen_prog_inps = non_frozen_prog_inps[0]
                 non_frozen_results = self.compute_func(
-                    self.program, non_frozen_prog_inps
+                    self.program, non_frozen_prog_inps, collect_files=self.collect_files
                 )
                 non_frozen_results = [non_frozen_results]
             else:
                 non_frozen_results = self.compute_func(
-                    self.program, non_frozen_prog_inps
+                    self.program, non_frozen_prog_inps, collect_files=self.collect_files
                 )
 
         else:
             non_frozen_results = [
-                self.compute_func(self.program, pi) for pi in non_frozen_prog_inps
+                self.compute_func(self.program, pi, collect_files=self.collect_files) for pi in non_frozen_prog_inps
             ]
 
         # merge the results
@@ -162,7 +162,7 @@ class QCOPEngine(Engine):
         update_node_cache(node_list=node_list, results=all_results)
         return node_list
 
-    def _compute_geom_opt_result(self, node: StructureNode):
+    def _compute_geom_opt_result(self, node: StructureNode, keywords={}):
         """
         this will return a ProgramOutput from qcio geom opt call.
         """
@@ -176,10 +176,11 @@ class QCOPEngine(Engine):
                     "model": self.program_args.model,
                     "keywords": self.program_args.keywords,
                 },
-                keywords={},
+                keywords=keywords,
             )
 
-            output = self.compute_func(self.geometry_optimizer, dpi)
+            output = self.compute_func(
+                self.geometry_optimizer, dpi, collect_files=self.collect_files)
 
         else:
             prog_input = ProgramInput(
@@ -193,7 +194,8 @@ class QCOPEngine(Engine):
                 },  # new_minimizer yes is required
             )
 
-            output = self.compute_func("terachem", prog_input)
+            output = self.compute_func(
+                "terachem", prog_input, collect_files=self.collect_files)
 
         return output
 
@@ -223,7 +225,7 @@ class QCOPEngine(Engine):
                 structure=node.structure,
                 calctype='hessian', **self.program_args.__dict__)
             output = self.compute_func(
-                self.program, proginp, collect_files=True)
+                self.program, proginp, collect_files=self.collect_files)
         return output
 
     def _compute_conf_result(self, node: StructureNode):
@@ -236,10 +238,11 @@ class QCOPEngine(Engine):
             model=self.program_args.model,
             keywords=self.program_args.keywords,
         )
-        output = self.compute_func('crest', pi)
+        output = self.compute_func(
+            'crest', pi, collect_files=self.collect_files)
         return output
 
-    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 500}, use_bigchem=False,
+    def _compute_ts_result(self, node: StructureNode, keywords={'maxiter': 1000}, use_bigchem=False,
                            hessres: ProgramOutput = None):
         if hessres is not None:
             np.savetxt("/tmp/hess.txt", hessres.results.hessian)
@@ -266,10 +269,10 @@ class QCOPEngine(Engine):
                                    "keywords": self.program_args.keywords,
                                },
                                files=files)
-        return self.compute_func('geometric', dpi, collect_files=True)
+        return self.compute_func('geometric', dpi, collect_files=self.collect_files)
 
     def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500,
-                       use_bigchem=False) -> List[List[StructureNode], List[StructureNode]]:
+                       use_bigchem=False, ss=1.0) -> List[List[StructureNode], List[StructureNode]]:
         """
         steepest descent IRC.
         """
@@ -295,8 +298,9 @@ class QCOPEngine(Engine):
             node=ts, dr=-1*dr, displacement=hessres.results.normal_modes_cartesian[0])
 
         self.compute_gradients([ts, node_plus, node_minus])
-        sd_plus = self.steepest_descent(node_plus, max_steps=max_steps)
-        sd_minus = self.steepest_descent(node_minus, max_steps=max_steps)
+        sd_plus = self.steepest_descent(node_plus, max_steps=max_steps, ss=ss)
+        sd_minus = self.steepest_descent(
+            node_minus, max_steps=max_steps, ss=ss)
         return [sd_minus, sd_plus]
 
     def compute_hessian(self, node: StructureNode):
@@ -314,12 +318,12 @@ class QCOPEngine(Engine):
         else:
             return output
 
-    def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:
+    def compute_geometry_optimization(self, node: StructureNode, keywords={}) -> list[StructureNode]:
         """
         will run a geometry optimization call and parse the output into
         a list of Node objects
         """
-        output = self._compute_geom_opt_result(node=node)
+        output = self._compute_geom_opt_result(node=node, keywords=keywords)
         all_outputs = output.results.trajectory
         structures = [output.input_data.structure for output in all_outputs]
         return [

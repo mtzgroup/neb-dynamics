@@ -430,7 +430,7 @@ def get_fsm_tsg_from_chain(chain):
     return chain[ind_tsg]
 
 
-def compute_irc_chain(ts_node, engine, use_bigchem: bool = False, **kwargs):
+def compute_irc_chain(ts_node, engine, use_bigchem: bool = False, keywords={}, **kwargs):
     from neb_dynamics.chain import Chain
 
     engine.compute_energies([ts_node])
@@ -440,9 +440,9 @@ def compute_irc_chain(ts_node, engine, use_bigchem: bool = False, **kwargs):
         **kwargs)
 
     min_negative = engine.compute_geometry_optimization(
-        irc_negative[-1])[-1]
+        irc_negative[-1], keywords=keywords)[-1]
     min_positive = engine.compute_geometry_optimization(
-        irc_positive[-1])[-1]
+        irc_positive[-1], keywords=keywords)[-1]
     irc_negative.append(min_negative)
     irc_positive.append(min_positive)
     irc_negative.reverse()

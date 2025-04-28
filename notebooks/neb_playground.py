@@ -22,7 +22,6 @@ from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 import numpy as np
 
 import matplotlib.pyplot as plt
-# -
 
 
 # +

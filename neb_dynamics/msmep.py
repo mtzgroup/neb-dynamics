@@ -191,6 +191,9 @@ class MSMEP:
         return n
 
     def run_minimize_chain(self, input_chain: Chain) -> Tuple[NEB, ElemStepResults]:
+        if isinstance(input_chain, list):
+            input_chain = Chain.model_validate(
+                {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
 
         # make sure the chain parameters are reset
         # if they come from a converged chain

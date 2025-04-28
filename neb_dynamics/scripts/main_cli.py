@@ -6,7 +6,7 @@ from typing_extensions import Annotated
 import os
 from openbabel import openbabel
 from qcio import Structure, ProgramOutput
-from qcop.exceptions import ExternalSubprocessError
+from qcop.exceptions import ExternalProgramError
 import sys
 from pathlib import Path
 import time
@@ -115,11 +115,11 @@ def run(
     if minimize_ends:
         print("Minimizing input endpoints...")
         start_tr = program_input.engine.compute_geometry_optimization(
-            StructureNode(structure=all_structs[0]))
+            StructureNode(structure=all_structs[0]), keywords={'coordsys': 'cart'})
 
         all_nodes[0] = start_tr[-1]
         end_tr = program_input.engine.compute_geometry_optimization(
-            StructureNode(structure=all_structs[-1]))
+            StructureNode(structure=all_structs[-1]), keywords={'coordsys': 'cart'})
         all_nodes[-1] = end_tr[-1]
         print("Done!")
 
@@ -444,7 +444,7 @@ def run_netgen(
                                for s in start_conf_result.results.conformers]
                 print("Done!")
 
-            except ExternalSubprocessError as e:
+            except ExternalProgramError as e:
                 print(e.stdout)
 
     if Path(end).suffix == ".qcio":
