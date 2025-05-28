@@ -16,10 +16,14 @@ from scipy.signal import argrelextrema
 from neb_dynamics.chain import Chain
 from neb_dynamics.nodes.node import StructureNode, Node, XYNode
 from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
-from neb_dynamics.geodesic_interpolation.geodesic import (
-    run_geodesic_py,
+# from neb_dynamics.geodesic_interpolation.geodesic import (
+#     run_geodesic_get_smoother,
+# )
+
+from neb_dynamics.geodesic_interpolation2.morsegeodesic import (
     run_geodesic_get_smoother,
 )
+
 from neb_dynamics.errors import ElectronicStructureError
 from neb_dynamics.helper_functions import get_mass
 from neb_dynamics.inputs import ChainInputs, GIInputs
@@ -431,9 +435,11 @@ def get_nudged_pe_grad(unit_tangent: np.array, gradient: np.array):
 
 
 def gi_path_to_nodes(
-    xyz_coords: np.array, parameters: ChainInputs, symbols: list, charge=0, spinmult=1
+    xyz_coords: np.array, symbols: list, charge=0, spinmult=1, parameters: ChainInputs = None
 ):
     from qcio import Structure
+    if parameters is None:
+        parameters = ChainInputs()
 
     new_nodes = []
     for new_coords in xyz_coords:
@@ -444,6 +450,27 @@ def gi_path_to_nodes(
         new_nodes.append(node)
 
     return new_nodes
+
+
+def sample_shortest_geodesic(chain: Union[Chain, List[StructureNode]],
+                             chain_inputs=None,
+                             nsamples: int = 5, **kwargs):
+
+    shortest_path = 1000
+    best_smoother = None
+    for i in range(nsamples):
+        smoother = run_geodesic_get_smoother(
+            input_object=[
+                chain[0].symbols,
+                [chain[0].coords, chain[-1].coords],
+            ],
+            **kwargs,
+        )
+        if smoother.length < shortest_path:
+            best_smoother = smoother
+            shortest_path = smoother.length
+
+    return best_smoother
 
 
 def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, return_smoother: bool = False, **kwargs):

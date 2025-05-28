@@ -16,3 +16,4 @@ class FakeQCIOOutput(BaseModel):
     node types that were not created with QCIO.
     """
     results: FakeQCIOResults
+    success: bool = True

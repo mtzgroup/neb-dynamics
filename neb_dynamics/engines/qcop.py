@@ -7,6 +7,7 @@ from numpy.typing import NDArray
 import numpy as np
 
 import qcop
+from qcop.exceptions import ExternalProgramError
 from qcio.models.inputs import DualProgramInput, ProgramInput, ProgramArgs
 from qcio import ProgramOutput
 import shutil
@@ -81,7 +82,13 @@ class QCOPEngine(Engine):
 
     def compute_func(self, *args, **kwargs):
         if self.compute_program == "qcop":
-            return qcop.compute(*args, **kwargs)
+            try:
+                return qcop.compute(*args, **kwargs)
+            except ExternalProgramError as e:
+                print(e.stdout)
+                e.program_output.save("/tmp/failed_calc.qcio")
+                raise ElectronicStructureError(
+                    msg="QCOP computation failed.", obj=e)
         elif self.compute_program == "chemcloud":
             return cc_compute(*args, **kwargs)
         else:
@@ -203,8 +210,10 @@ class QCOPEngine(Engine):
         from chemcloud import CCClient
 
         prog = self.program
+        collect_files = self.collect_files
         if "terachem" in self.program:
             prog = "terachem"
+            collect_files = True
 
         if use_bigchem:
             dpi = DualProgramInput(
@@ -225,7 +234,7 @@ class QCOPEngine(Engine):
                 structure=node.structure,
                 calctype='hessian', **self.program_args.__dict__)
             output = self.compute_func(
-                self.program, proginp, collect_files=self.collect_files)
+                self.program, proginp, collect_files=collect_files)
         return output
 
     def _compute_conf_result(self, node: StructureNode):
@@ -281,9 +290,15 @@ class QCOPEngine(Engine):
         if hessres is None:
             hessres = self._compute_hessian_result(
                 node=ts, use_bigchem=use_bigchem)
+        if self.program == 'terachem':
+            from neb_dynamics.helper_functions import parse_nma_freq_data
+            normal_modes, freqs = parse_nma_freq_data(hessres)
+        else:
+            normal_modes = hessres.results.normal_modes_cartesian
+            freqs = hessres.results.freqs_wavenumber
 
         nimaginary = 0
-        for freq in hessres.results.freqs_wavenumber:
+        for freq in freqs:
             if freq < 0:
                 nimaginary += 1
 
@@ -292,10 +307,10 @@ class QCOPEngine(Engine):
                 "WARNING: More than one imaginary frequency detected. This is not a TS.")
 
         node_plus = displace_by_dr(
-            node=ts, dr=dr, displacement=hessres.results.normal_modes_cartesian[0])
+            node=ts, dr=dr, displacement=normal_modes[0])
 
         node_minus = displace_by_dr(
-            node=ts, dr=-1*dr, displacement=hessres.results.normal_modes_cartesian[0])
+            node=ts, dr=-1*dr, displacement=normal_modes[0])
 
         self.compute_gradients([ts, node_plus, node_minus])
         sd_plus = self.steepest_descent(node_plus, max_steps=max_steps, ss=ss)
@@ -318,7 +333,7 @@ class QCOPEngine(Engine):
         else:
             return output
 
-    def compute_geometry_optimization(self, node: StructureNode, keywords={}) -> list[StructureNode]:
+    def compute_geometry_optimization(self, node: StructureNode, keywords={'coordsys': 'cart', 'maxit': 500}) -> list[StructureNode]:
         """
         will run a geometry optimization call and parse the output into
         a list of Node objects

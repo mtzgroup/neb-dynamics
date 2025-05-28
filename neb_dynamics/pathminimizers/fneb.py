@@ -3,12 +3,12 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from neb_dynamics.geodesic_interpolation.geodesic import Geodesic
+# from neb_dynamics.geodesic_interpolation.geodesic import Geodesic
+from neb_dynamics.geodesic_interpolation2.morsegeodesic import MorseGeodesic
 
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
-from neb_dynamics.engines.qcop import QCOPEngine
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.helper_functions import RMSD, get_maxene_node
 from neb_dynamics.pathminimizers.pathminimizer import PathMinimizer
@@ -62,7 +62,7 @@ class FreezingNEB(PathMinimizer):
         if self.parameters.distance_metric.upper() == "RMSD":
             return RMSD(node1.coords, node2.coords)[0]
         elif self.parameters.distance_metric.upper() == "GEODESIC":
-            return ch.calculate_geodesic_distance(node1, node2)
+            return min([ch.calculate_geodesic_distance(node1, node2, nudge=0.01, nimages=self.gi_inputs.nimages) for i in range(5)])
         elif self.parameters.distance_metric.upper() == "LINEAR":
             return np.linalg.norm(node1.coords - node2.coords)
         elif self.parameters.distance_metric.upper() == "XTBGI":
@@ -98,6 +98,10 @@ class FreezingNEB(PathMinimizer):
         chain.nodes[1].converged = True
         self.chain_trajectory = [chain]
 
+        d0 = self._distance_function(chain[0], chain[1])
+        # +1 so that if only one image is requested, node is placed at 50% of path
+        dr = d0 / (self.parameters.min_images+1)
+
         converged = False
         nsteps = 0
         last_grown_ind = 0
@@ -107,110 +111,112 @@ class FreezingNEB(PathMinimizer):
             # grow nodes
             print("\tgrowing nodes")
 
-            # grown_chain = self.grow_nodes(
-            #     chain, dr=self.parameters.path_resolution
-            # )
-            result = self.grow_nodes_maxene(
-                chain, last_grown_ind=last_grown_ind, nimg=self.gi_inputs.nimages, nudge=self.gi_inputs.nudge)
-            grown_chain, node_ind, ind_ts_gi = result[0], result[1], result[2]
-            # if self.parameters.use_dqdr:
-            #     smoother = result[3]
-            # else:
-            #     smoother = None
+            if self.parameters.todd_way:
+                print(f"gonna grow at {last_grown_ind}")
+                grown_chain, tangents, idx_grown, dr = self.grow_nodes(
+                    chain, dr=dr, indices=(last_grown_ind, last_grown_ind+1)
+                )
+                self.chain_trajectory.append(grown_chain.copy())
 
-            smoother = None
+                # this section will stop opt if grown nodes are too low in energy
+                node0_done = grown_chain[idx_grown[0]
+                                         ].energy < grown_chain.get_ts_node().energy
+                node1_done = True
+                if idx_grown[1] is not None:
+                    node1_done = grown_chain[idx_grown[1]
+                                             ].energy < grown_chain.get_ts_node().energy
 
-            no_growth = len(grown_chain) == len(chain)
-            # no_barrier_change = abs(grown_chain.get_eA_chain(
-            # ) - chain.get_eA_chain()) < KCAL_MOL_CUTOFF
-            no_barrier_change = abs(grown_chain.get_eA_chain(
-            ) - chain.get_eA_chain()) < self.parameters.barrier_thre
+                if node0_done and node1_done:
+                    if nsteps == 0:  # if this is the first step, we need to make sure that the grown nodes are higher than both endpoints
+                        result = self.grow_nodes_maxene(
+                            chain, last_grown_ind=last_grown_ind, nimg=self.gi_inputs.nimages, nudge=self.gi_inputs.nudge)
+                        grown_chain, node_ind, ind_ts_gi = result[0], result[1], result[2]
+                        print(
+                            "Initial grown node was lower than endpoints. Using max-ene growth.")
+                        self.chain_trajectory.append(grown_chain.copy())
+                    else:
+                        print(
+                            "Grown nodes are lower in energy than TS guess. Stopping optimization.")
+                        converged = True
+                        break
 
-            if no_growth or no_barrier_change:
-                print(
-                    f"Converged!\n\tNo growth?: {no_growth}\n\tNo barrier change?: {no_barrier_change}")
-                converged = True
-                if hasattr(self.parameters, 'supertightconv_dip'):
-                    print("Doing dips thing")
-                    self.parameters.grad_tol /= 10
-                    grown_chain[node_ind].converged = False
+                min_chain = self.minimize_nodes(
+                    chain=grown_chain, node_tangents=tangents, dr=dr, idx_grown=idx_grown
+                )
+                # check convergence
+                print("\tchecking convergence")
+                converged, last_grown_ind = self.chain_converged(
+                    min_chain, dr, indices=idx_grown)
+
+                # last_grown_ind = idx_grown[0]
+                print(f"LAST GROWN INDEX WAS: {last_grown_ind}")
+
+                self.optimizer.g_old = None
+            else:
+                result = self.grow_nodes_maxene(
+                    chain, last_grown_ind=last_grown_ind, nimg=self.gi_inputs.nimages, nudge=self.gi_inputs.nudge)
+                grown_chain, node_ind, ind_ts_gi = result[0], result[1], result[2]
+                # if self.parameters.use_dqdr:
+                #     smoother = result[3]
+                # else:
+                #     smoother = None
+
+                smoother = None
+
+                no_growth = len(grown_chain) == len(chain)
+                # no_barrier_change = abs(grown_chain.get_eA_chain(
+                # ) - chain.get_eA_chain()) < KCAL_MOL_CUTOFF
+                no_barrier_change = abs(grown_chain.get_eA_chain(
+                ) - chain.get_eA_chain()) < self.parameters.barrier_thre
+
+                if no_growth or no_barrier_change:
+                    print(
+                        f"Converged!\n\tNo growth?: {no_growth}\n\tNo barrier change?: {no_barrier_change}")
+                    converged = True
+                    break
+                else:
+
+                    self.chain_trajectory.append(grown_chain.copy())
+
+                    # minimize nodes
+                    print("\tminimizing nodes")
                     min_chain = self.minimize_node_maxene(
                         chain=grown_chain, node_ind=node_ind,
                         ind_ts_gi=ind_ts_gi, smoother=smoother)
-                    self.chain_trajectory.append(min_chain)
-                break
+
+                    self.chain_trajectory.append(min_chain.copy())
+                    last_grown_ind = node_ind
+                    print(f"LAST GROWN INDEX WAS: {last_grown_ind}")
+
+            chain = min_chain.copy()
+            nsteps += 1
+
+            self.optimized = self.chain_trajectory[-1]
+            print(f"Converged? {converged}")
+            if self.parameters.do_elem_step_checks:
+                short_chain = Chain.model_validate(
+                    {"nodes": [chain[0], chain.get_ts_node(), chain[-1]], "parameters": chain.parameters})
+                elem_step_results = check_if_elem_step(
+                    short_chain, engine=self.engine)
+                # elem_step_results = check_if_elem_step(chain, engine=self.engine)
+                self.geom_grad_calls_made += elem_step_results.number_grad_calls
             else:
-
-                self.chain_trajectory.append(grown_chain.copy())
-
-                # minimize nodes
-                print("\tminimizing nodes")
-                # min_chain = self.minimize_nodes(
-                #     chain=grown_chain, d0=d0, min_two_nodes=add_two_nodes
-                # )
-                min_chain = self.minimize_node_maxene(
-                    chain=grown_chain, node_ind=node_ind,
-                    ind_ts_gi=ind_ts_gi, smoother=smoother)
-                self.chain_trajectory.append(min_chain.copy())
-                last_grown_ind = node_ind
-                print(f"LAST GROWN INDEX WAS: {last_grown_ind}")
-
-                # check convergence
-                # print("\tchecking convergence")
-                # converged, inner_bead_distance = self.chain_converged(min_chain)
-                # dr = self.parameters.path_resolution
-                # dr = self._distance_function(
-                #     min_chain[0], min_chain[-1]) / self.parameters.min_images
-
-                # smoother = run_geodesic_get_smoother(
-                #     input_object=[min_chain[0].symbols, [node.coords for node in min_chain]])
-                # dr = smoother.length / self.parameters.min_images
-                # print(f"---> current dr: {dr}")
-                # if inner_bead_distance <= self.parameters.early_stop_scaling * dr:
-                #     new_params = SimpleNamespace(**self.parameters.__dict__)
-                #     new_params.early_stop_scaling = 0.0
-                #     self.parameters = new_params
-
-                #     if self.parameters.do_elem_step_checks:
-                #         elem_step_results = check_if_elem_step(
-                #             inp_chain=min_chain, engine=self.engine
-                #         )
-                #     else:
-                #         print("Not doing Elem step check. Pretending elem step.")
-                #         elem_step_results = IS_ELEM_STEP
-                #     if not elem_step_results.is_elem_step:
-                #         print("Stopping early because chain is multistep.")
-                #         self.optimized = min_chain
-                #         return elem_step_results
-                chain = min_chain.copy()
-                nsteps += 1
-
-        self.optimized = self.chain_trajectory[-1]
-        print(f"Converged? {converged}")
-        if self.parameters.do_elem_step_checks:
-            short_chain = Chain.model_validate(
-                {"nodes": [chain[0], chain.get_ts_node(), chain[-1]], "parameters": chain.parameters})
-            elem_step_results = check_if_elem_step(
-                short_chain, engine=self.engine)
-            # elem_step_results = check_if_elem_step(chain, engine=self.engine)
-            self.geom_grad_calls_made += elem_step_results.number_grad_calls
-        else:
-            elem_step_results = IS_ELEM_STEP
+                elem_step_results = IS_ELEM_STEP
         return elem_step_results
 
     def _min_node_maxene(
         self,
         raw_chain: Chain,
-        max_iter: int,
         ind_ts_gi: int,
         ind_node: int = 0,
-        smoother: Geodesic = None
+        smoother: MorseGeodesic = None
 
     ):
         """
         ind_node: index of node to minimize
         """
         converged = False
+        max_iter = self.parameters.max_min_iter
         nsteps = 1  # we already made one gradient call when growing the node.
 
         nimg1 = ind_ts_gi + 1
@@ -218,10 +224,10 @@ class FreezingNEB(PathMinimizer):
         fwd_tang_old = None
         back_tang_old = None
 
-        init_d1 = RMSD(raw_chain[ind_node].coords,
-                       raw_chain[ind_node-1].coords)[0]
-        init_d2 = RMSD(raw_chain[ind_node].coords,
-                       raw_chain[ind_node+1].coords)[0]
+        init_d1 = self._distance_function(
+            raw_chain[ind_node], raw_chain[ind_node-1])
+        init_d2 = self._distance_function(
+            raw_chain[ind_node], raw_chain[ind_node+1])
 
         gi1, smoother1 = ch.run_geodesic(
             [raw_chain[ind_node], raw_chain[ind_node-1]], nimages=nimg1, return_smoother=True)
@@ -232,11 +238,16 @@ class FreezingNEB(PathMinimizer):
         d1, d2 = smoother1.length, smoother2.length
         dtot = d1+d2
 
-        smoother1.compute_disps(start=1, end=2)
-        d1_neighbor = smoother1.length
+        # smoother1._compute_disps(start=1, end=2)
+        # sm1_len = smoother1.length
+        sm1_len = sum(smoother1.segment_lengths[:2])
+        d1_neighbor = sm1_len
 
-        smoother2.compute_disps(start=1, end=2)
-        d2_neighbor = smoother2.length
+        # smoother2._compute_disps(start=1, end=2)
+        # sm2_len = smoother2.length
+        sm2_len = sum(smoother2.segment_lengths[:2])
+        d2_neighbor = sm2_len
+
         if self.parameters.tangent == 'geodesic':
             print("nimg1: ", nimg1, ' nimg2: ', nimg2)
 
@@ -272,14 +283,15 @@ class FreezingNEB(PathMinimizer):
                 (1-self.parameters.tangent_alpha)*back_tang_old
 
         while not converged:
-            curr_d1 = RMSD(raw_chain[ind_node].coords,
-                           raw_chain[ind_node-1].coords)[0]
-            curr_d2 = RMSD(raw_chain[ind_node].coords,
-                           raw_chain[ind_node+1].coords)[0]
+            curr_d1 = self._distance_function(
+                raw_chain[ind_node], raw_chain[ind_node-1])
+            curr_d2 = self._distance_function(raw_chain[ind_node],
+                                              raw_chain[ind_node+1])
             print(
                 f"Current d1: {curr_d1} || Current d2: {curr_d2} || {init_d1=} || {init_d2=}")
-            if curr_d1 <= 0.5*init_d1 or curr_d2 <= 0.5*init_d2:
-                print("Distance between nodes is shrinking. Stopping minimization.")
+            if curr_d1 <= 0.75*init_d1 or curr_d2 <= 0.75*init_d2:
+                # if curr_d1 <= 0.5*init_d1 or curr_d2 <= 0.5*init_d2:
+                print("Node fell more than 25% to one direction. Stopping minimization.")
                 converged = True
                 break
 
@@ -426,13 +438,141 @@ class FreezingNEB(PathMinimizer):
         raw_chain.nodes[ind_node].converged = True
         return raw_chain
 
-    def minimize_node_maxene(self, chain: Chain, node_ind: int, ind_ts_gi: int, smoother: Geodesic):
+    def minimize_nodes(self, chain: Chain, node_tangents: list, dr, idx_grown: tuple):
+        raw_chain = chain.copy()
+        idx1, idx2 = idx_grown
+        # return raw_chain
+        chain_opt1 = self._min_node(
+            raw_chain,
+            tangent=node_tangents[0],
+            ind_node=idx1,
+            dr=dr
+
+        )
+        if idx2 is not None:
+            chain_opt2 = self._min_node(
+                chain_opt1,
+                tangent=node_tangents[1],
+                ind_node=idx2,
+                dr=dr
+
+            )
+        else:
+            chain_opt2 = chain_opt1
+
+        return chain_opt2
+
+    def _min_node(
+        self,
+        raw_chain: Chain,
+        tangent: np.array,
+        dr: float,
+        ind_node: int,
+    ):
+        """
+        ind_node: index of the node to minimze. 0 if you want the optimize the leftmost inner node. 1
+        if you want the rightmost inner node.
+        """
+        # node1_ind, node2_ind = self._get_innermost_nodes_inds(raw_chain)
+        node1_ind, node2_ind = ind_node, ind_node+1
+        node1 = raw_chain[node1_ind]
+        node2 = raw_chain[node2_ind]
+        converged = False
+        max_iter = self.parameters.max_min_iter
+        nsteps = 1  # we already made one gradient call when growing the node.
+
+        # init_d1d2 = self._distance_function(node1, node2)
+        init_d1 = self._distance_function(
+            raw_chain[ind_node], raw_chain[ind_node-1])
+        init_d2 = self._distance_function(raw_chain[ind_node],
+                                          raw_chain[ind_node+1])
+
+        while not converged:
+            try:
+
+                node1 = raw_chain[node1_ind]
+                node2 = raw_chain[node2_ind]
+
+                curr_d1 = self._distance_function(
+                    raw_chain[ind_node], raw_chain[ind_node-1])
+                curr_d2 = self._distance_function(raw_chain[ind_node],
+                                                  raw_chain[ind_node+1])
+                print(
+                    f"Current d1: {curr_d1} || Current d2: {curr_d2} || {init_d1=} || {init_d2=}")
+                if curr_d1 <= 0.75*init_d1 or curr_d2 <= 0.75*init_d2:
+                    print(
+                        "Node fell more than 25% to one direction. Stopping minimization.")
+                    converged = True
+                    break
+
+                # curr_d1d2 = self._distance_function(node1, node2)
+                # print(
+                #     f"Current d1d2: {curr_d1d2} || init d1d2: {init_d1d2} || dr: {dr}")
+
+                # if curr_d1d2 > (init_d1d2+.5*dr):
+                #     print("Distance between nodes is growing. Stopping minimization.")
+                #     converged = True
+                #     break
+
+                if nsteps >= max_iter:
+                    converged = True
+                    break
+
+                node_to_opt = node1
+                node_to_opt_ind = ind_node
+
+                prev_iter_ene = node_to_opt.energy
+                if self.parameters.verbosity > 1:
+                    print(f"{prev_iter_ene=}")
+
+                if tangent is None:
+                    tangent = node2.coords - node1.coords
+                unit_tan = tangent / np.linalg.norm(tangent)
+
+                # grad1 = self.engine.compute_gradients([node_to_opt])
+                grad1 = node_to_opt.gradient
+                gperp1 = ch.get_nudged_pe_grad(
+                    unit_tangent=unit_tan, gradient=grad1)
+
+                direction = gperp1
+                out_chain = self.optimizer.optimize_step(
+                    chain=Chain.model_validate({"nodes": [node_to_opt]}),
+                    chain_gradients=np.array([direction]))
+
+                new_node1 = out_chain.nodes[0]
+                self.engine.compute_energies([new_node1])
+                self.grad_calls_made += 1
+
+                prev_node_ind = node_to_opt_ind
+                if ind_node == 0:
+                    prev_node_ind -= 1
+                    # opp_node = node2
+                elif ind_node == 1:
+                    prev_node_ind += 1
+                    # opp_node = node1
+
+                raw_chain.nodes[node_to_opt_ind] = new_node1
+                self.chain_trajectory.append(raw_chain.copy())
+                nsteps += 1
+
+                grad_inf_norm = np.amax(abs(gperp1))
+                print("MIN: ", grad_inf_norm)
+                if grad_inf_norm <= self.parameters.grad_tol:
+                    converged = True
+                    break
+
+            except Exception:
+                print(traceback.format_exc())
+                return raw_chain
+        print(f"\t converged in {nsteps}")
+        return raw_chain
+
+    def minimize_node_maxene(self, chain: Chain, node_ind: int, ind_ts_gi: int, smoother: MorseGeodesic):
         raw_chain = chain.copy()
         # print("SMOOTHER IS: ", smoother)
         chain_opt = self._min_node_maxene(
             raw_chain,
             ind_node=node_ind,
-            max_iter=self.parameters.max_min_iter,
             ind_ts_gi=ind_ts_gi,
             smoother=smoother
         )
@@ -465,6 +605,128 @@ class FreezingNEB(PathMinimizer):
 
         return out_chain
 
+    def grow_nodes(self, chain: Chain, dr: float, indices: tuple = None):
+        sub_chain = [chain[indices[0]], chain[indices[1]]]
+
+        found_nodes = False
+        add_two_nodes = True
+        nalready_grown = len(chain)-2
+        nimg_to_grow = self.parameters.min_images+2 - nalready_grown
+        # nimg_todo = max([nimg, 3])
+
+        d0 = self._distance_function(sub_chain[0], sub_chain[1])
+        # dr_new = d0 / (nimg_todo-1)
+        # dr = max([dr, dr_new])
+
+        # nimg = self.parameters.min_images+2
+        # nimg = 20
+        nimg = self.gi_inputs.nimages
+
+        final_node1 = None
+        final_node1_tan = None
+        final_node2 = None
+        final_node2_tan = None
+
+        if (d0 <= 2 * dr) or nimg_to_grow == 3:
+            add_two_nodes = False
+            dr = d0 / 2
+
+        while not found_nodes:
+            if self.parameters.tangent.upper() == "LINEAR":
+                node1, node2 = sub_chain[0].coords, sub_chain[1].coords
+                direction = (node2 - node1) / np.linalg.norm((node2 - node1))
+                new_node1 = node1 + direction * dr
+                new_node2 = node2 - direction * dr
+                final_node1 = sub_chain[0].update_coords(new_node1)
+                final_node2 = sub_chain[1].update_coords(new_node2)
+                found_nodes = True
+
+            elif self.parameters.tangent.upper() == "GEODESIC":
+                if self.parameters.verbosity > 1:
+                    print(f"\t\t***trying with {nimg=}")
+                if self.parameters.naive_grow:
+
+                    interpolated = ch.run_geodesic(
+                        chain=sub_chain, nimages=nimg)
+                    final_node1 = interpolated[1]
+                    if add_two_nodes:
+                        final_node2 = interpolated[-2]
+
+                    found_nodes = True
+                    sys.stdout.flush()
+                else:
+
+                    smoother = ch.sample_shortest_geodesic(
+                        sub_chain, nsamples=5, nimages=nimg)
+                    interpolated = ch.gi_path_to_nodes(
+                        xyz_coords=smoother.path,
+                        symbols=sub_chain[0].structure.symbols,
+                        charge=sub_chain[0].structure.charge,
+                        spinmult=sub_chain[0].structure.multiplicity,
+                    )
+                    # dr = smoother.length / (nimg_todo-1)
+                    print("\t\tlength_smoother: ", smoother.length, "dr: ", dr)
+                    sys.stdout.flush()
+
+                    if not final_node1 or not final_node2:
+                        node1, tan1 = self._select_node_at_dist(
+                            chain=interpolated,
+                            dist=dr,
+                            direction=1,
+                            dist_err=self.parameters.dist_err
+                            * dr,
+                            smoother=smoother,
+                        )
+                        if node1:
+                            final_node1 = node1
+                            final_node1_tan = tan1
+
+                        if add_two_nodes:
+                            node2, tan2 = self._select_node_at_dist(
+                                chain=interpolated,
+                                dist=dr,
+                                direction=-1,
+                                dist_err=self.parameters.dist_err
+                                * dr,
+                                smoother=smoother,
+                            )
+
+                            if node2:
+                                final_node2 = node2
+                                final_node2_tan = tan2
+
+                    if add_two_nodes and (final_node1 and final_node2):
+                        found_nodes = True
+                    elif not add_two_nodes and final_node1:
+                        found_nodes = True
+                    else:
+                        nimg += 10
+                        self.gi_inputs.nimages = nimg
+            else:
+                raise ValueError(
+                    f"Invalid tangent type: {self.parameters.tangent}. Use one of LINEAR or GEODESIC"
+                )
+
+        if add_two_nodes:
+            self.engine.compute_energies([final_node2, final_node1])
+            self.grad_calls_made += 2
+        else:
+            self.engine.compute_energies([final_node1])
+            self.grad_calls_made += 1
+        self.grad_calls_made += 2
+
+        grown_chain = chain.copy()
+        # insert_index = int(len(grown_chain) / 2)
+        insert_index = indices[1]
+        idx2 = None
+        if add_two_nodes:
+            grown_chain.nodes.insert(insert_index, final_node2)
+            idx2 = insert_index + 1
+        grown_chain.nodes.insert(insert_index, final_node1)
+        idx1 = insert_index
+
+        return grown_chain, [final_node1_tan, final_node2_tan], (idx1, idx2), dr
+
     def grow_nodes_maxene(self, chain: Chain, last_grown_ind: int = 0, nimg: int = 20, nudge=0.1):
         """
         will return a chain with 1 new node which is the highest energy interpolated
@@ -474,8 +736,14 @@ class FreezingNEB(PathMinimizer):
         """
         smoother = None
         if last_grown_ind == 0:  # initial case
-            gi, smoother = ch.run_geodesic([chain[0], chain[-1]], return_smoother=True,
-                                           nimages=nimg, nudge=nudge)
+            smoother = ch.sample_shortest_geodesic([chain[0], chain[-1]],
+                                                   nimages=nimg, nudge=nudge, nsamples=5)
+            gi = ch.gi_path_to_nodes(
+                xyz_coords=smoother.path,
+                symbols=chain[0].symbols,
+                charge=chain[0].structure.charge,
+                spinmult=chain[0].structure.multiplicity,
+            )
             # eng = RunInputs(program='xtb').engine
             # eng.compute_energies(gi)
             print("LENGI: ", len(gi))
@@ -514,12 +782,24 @@ class FreezingNEB(PathMinimizer):
             new_ind = 1
 
         else:
-            gi1, smoother1 = ch.run_geodesic([chain[last_grown_ind-1],
-                                              chain[last_grown_ind]],
-                                             nimages=nimg, nudge=nudge, return_smoother=True)
-            gi2, smoother2 = ch.run_geodesic([chain[last_grown_ind],
-                                              chain[last_grown_ind+1]],
-                                             nimages=nimg, nudge=nudge, return_smoother=True)
+            smoother1 = ch.sample_shortest_geodesic([chain[last_grown_ind-1],
+                                                     chain[last_grown_ind]],
+                                                    nimages=nimg, nudge=nudge, nsamples=5)
+            gi1 = ch.gi_path_to_nodes(
+                xyz_coords=smoother1.path,
+                symbols=chain[0].symbols,
+                charge=chain[0].structure.charge,
+                spinmult=chain[0].structure.multiplicity,
+            )
+            smoother2 = ch.sample_shortest_geodesic([chain[last_grown_ind],
+                                                     chain[last_grown_ind+1]],
+                                                    nimages=nimg, nudge=nudge, nsamples=5)
+            gi2 = ch.gi_path_to_nodes(
+                xyz_coords=smoother2.path,
+                symbols=chain[0].symbols,
+                charge=chain[0].structure.charge,
+                spinmult=chain[0].structure.multiplicity,
+            )
 
             # eng = RunInputs(program='xtb').engine
             # eng.compute_energies(gi1)
@@ -651,95 +931,119 @@ class FreezingNEB(PathMinimizer):
 
     def _select_node_at_dist(
         self,
-        reference_node: StructureNode,
         chain: Chain,
         dist: float,
         direction: int,
-        smoother: Geodesic = None,
+        smoother: MorseGeodesic = None,
         dist_err: float = 0.1,
     ):
         """
         will iterate through chain and select the node that is 'dist' away up to 'dist_err'
 
-        dist --> the requested distance where you want the nodes
-        direction --> whether to go forward (1) or backwards (-1). if forward, will pick the requested node
+        dist - -> the requested distance where you want the nodes
+        direction - -> whether to go forward(1) or backwards(-1). if forward, will pick the requested node
                     to the first node. if backwards, will pick the requested node to the last node
 
         """
-        reference_index = self._get_closest_node_ind(
-            smoother_obj=smoother, reference=reference_node.coords)
-        # input_chain = chain.copy()
+        input_chain = [node.copy() for node in chain]
         if direction == -1:
-            subset_chain = chain.nodes[:(reference_index+1)]
-            enum_start = 1
-        else:
-            subset_chain = chain.nodes[reference_index:]
-            enum_start = 0
-        # print(f"REFERENCE INDEX: {reference_index} || {len(subset_chain)}")
+            input_chain.reverse()
 
-        # start_node = input_chain[0]
+        start_node = input_chain[0]
         best_node = None
         best_dist_err = 10000.0
-
-        eng = QCOPEngine()
-        enes = eng.compute_energies(subset_chain)
-        enes = enes - enes[0]
-
-        for i, _ in enumerate(subset_chain, start=enum_start):
-            if direction == -1:
-                start = (reference_index - i) + 1
-                end = (reference_index) + 1
-                # node = subset_chain[start-1]
-                node = chain[start-1]
-                # subnode = subset_chain[i-1]
-
-            elif direction == 1:
-                start = reference_index + 1
-                end = (reference_index + i) + 1
-                # node = subset_chain[end - 1]
-
-                node = chain[end-1]
-                # subnode = subset_chain[i]
-
-            if start == end or start == 0 or end == 0:
-                continue
-
+        best_node_tangent = None
+        for i, node in enumerate(input_chain[1:-1], start=1):
             if self.parameters.distance_metric.upper() == "GEODESIC":
-                smoother.compute_disps(start=start, end=end)
-                curr_dist = smoother.length
-            # elif self.parameters.distance_metric.upper() == "XTBGI":
-            #     curr_dist = abs(subnode.energy -
-            #                     subset_chain[reference_index].energy)*627.5
+                if direction == -1:
+                    start = len(smoother.path) - i
+                    end = -1
+
+                elif direction == 1:
+                    start = 1
+                    end = i + 1
+
+                # smoother._compute_disps(start=start, end=end)
+                # curr_dist = smoother.length
+                curr_dist = smoother.segment_lengths[start-1:end-1].sum()
             else:
                 curr_dist = self._distance_function(
-                    node1=reference_node, node2=node)
+                    node1=start_node, node2=node)
             curr_dist_err = np.abs(curr_dist - dist)
             if self.parameters.verbosity > 1:
                 print(f"\t{curr_dist_err=} vs {dist_err=} || {direction=}")
 
             if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
-                if self.parameters.distance_metric.upper() == 'XTBGI' and best_node is not None:
-                    new_dist, _ = RMSD(node.coords, reference_node.coords)
-                    best_dist, _ = RMSD(
-                        best_node.coords, reference_node.coords)
-                    if best_dist < new_dist:
-                        continue
-
                 best_node = node
                 best_dist_err = curr_dist_err
+                prev_node = input_chain[i - 1]
+                next_node = input_chain[i + 1]
+                if self.parameters.tangent == "geodesic":
+                    # raise NotImplementedError("Not done yet.")
+                    # self.engine.compute_energies([prev_node, node, next_node])
+                    # self.grad_calls_made += 3
+                    tau_plus = next_node.coords - node.coords
+                    tau_minus = node.coords - prev_node.coords
+                    best_node_tangent = (tau_plus + tau_minus) / 2
+                    # best_node_tangent = ch._create_tangent_path(
+                    #     prev_node=prev_node,
+                    #     current_node=node,
+                    #     next_node=next_node,
+                    # )
+                else:
 
-                break
+                    best_node_tangent = None
 
-        return best_node
+                # break
 
-    def chain_converged(self, chain: Chain):
-        dr = self.parameters.path_resolution
-        node1, node2 = self._get_innermost_nodes(chain)
-        dist = self._distance_function(node1, node2)
+        return best_node, best_node_tangent
+
+    def _check_nodes_converged(
+        self, node, prev_node, opposite_node, prev_iter_ene: float, d0
+    ):
+        curr_iter_ene = node.energy
+        d = self._distance_function(node, opposite_node)
+        s = self._distance_function(node, prev_node)
+        # print(d, d0, s, d0 + 0.5*s, curr_iter_ene, prev_iter_ene)
+        distance_exceeded = d > d0 + 0.5 * s
+        energy_exceeded = curr_iter_ene > prev_iter_ene
+        if self.parameters.verbosity > 1:
+            print(f"{distance_exceeded=} {energy_exceeded=}")
+        return distance_exceeded or energy_exceeded
+
+    def chain_converged(self, chain: Chain, dr: float, indices):
+        # node1, node2 = self._get_innermost_nodes(chain)
+        node1_ind, node2_ind = indices
+        print("INDICES: ", indices)
+        node2_ind = node1_ind + 1
+
+        node1 = chain[node1_ind]
+        node2 = chain[node2_ind]
+
+        next_grow_ind = node1_ind
+
+        if indices[1] is None:
+            node2_1 = chain[node1_ind + 1]
+            node2_2 = chain[node1_ind - 1]
+
+            dist_1 = self._distance_function(node1, node2_1)
+            enedist_1 = abs(node1.energy - node2_1.energy)
+            dist_2 = self._distance_function(node1, node2_2)
+            enedist_2 = abs(node1.energy - node2_2.energy)
+            print(f"distances: {dist_1} {dist_2}")
+            # if dist_1 > dist_2:
+            if enedist_1 > enedist_2:
+                dist = dist_1
+            else:
+                next_grow_ind = node1_ind - 1
+                dist = dist_2
+        else:
+            dist = self._distance_function(node1, node2)
         print(f"distance between innermost nodes {dist}")
-        if dist <= dr + (self.parameters.dist_err * self.parameters.path_resolution):
+        # if dist <= dr + (self.parameters.dist_err * dr):
+        if dist <= dr:
             result = True
         else:
             result = False
 
-        return result, dist
+        return result, next_grow_ind

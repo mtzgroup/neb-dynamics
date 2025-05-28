@@ -277,7 +277,7 @@ def _converges_to_an_endpoints(
             print(
                 f"Error in geometry optimization: {e}. Need to do more expensive check."
             )
-            return False
+            return False, None
 
         distances = [
             _distances_to_refs(ref1=chain[0], ref2=chain[-1], raw_node=n)
@@ -327,7 +327,10 @@ def _run_geom_opt(node: Node, engine: Engine):
     Descent.
     """
     try:
-        opt_traj = engine.compute_geometry_optimization(node)
+        kwds = {}
+        if engine.geometry_optimizer == "geometric":
+            kwds = {'coord_sys': "cart"}
+        opt_traj = engine.compute_geometry_optimization(node, keywords=kwds)
     except AttributeError:
         opt_traj = engine.steepest_descent(node, max_steps=500, ss=0.001)
 

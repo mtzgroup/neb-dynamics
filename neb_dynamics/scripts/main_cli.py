@@ -86,18 +86,22 @@ def run(
                 all_structs = read_multiple_structure_from_file(
                     geometries, charge=None, spinmult=None)
         elif start is not None and end is not None:
-            try:
-                start_structure = Structure.open(
-                    start, charge=charge, multiplicity=multiplicity)
-                end_structure = Structure.open(
-                    end, charge=charge, multiplicity=multiplicity)
-                all_structs = [start_structure, end_structure]
-            except ValueError:
-                start_structure = Structure.open(
-                    start, charge=None, multiplicity=None)
-                end_structure = Structure.open(
-                    end, charge=None, multiplicity=None)
-                all_structs = [start_structure, end_structure]
+            # try:
+            print("CHARGE", charge)
+            print("MULTIPLICITY", multiplicity)
+            start_structure = Structure.open(
+                start, charge=charge, multiplicity=multiplicity)
+            end_structure = Structure.open(
+                end, charge=charge, multiplicity=multiplicity)
+            all_structs = [start_structure, end_structure]
+
+            print(type(start_structure.charge), end_structure.charge)
+            # except ValueError:
+            #     start_structure = Structure.open(
+            #         start, charge=None, multiplicity=None)
+            #     end_structure = Structure.open(
+            #         end, charge=None, multiplicity=None)
+            #     all_structs = [start_structure, end_structure]
         else:
             raise ValueError(
                 "Either 'geometries' or 'start' and 'end' flags must be populated!")
@@ -195,7 +199,7 @@ def run(
 
     else:
         print(f"RUNNING REGULAR {program_input.path_min_method}")
-
+        [print(node.structure.charge) for node in chain]
         n, elem_step_results = m.run_minimize_chain(input_chain=chain)
         fp = Path("mep_output")
         data_dir = Path(os.getcwd())

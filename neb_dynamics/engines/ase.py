@@ -158,13 +158,16 @@ class ASEEngine(Engine):
                 -1
             )  # eV / Angstroms
             grad = (grad_ev_ang / ANGSTROM_TO_BOHR) / Hartree  # Hartree / Bohr
-
-            res = FakeQCIOResults(energy=ene, gradient=grad)
-            return FakeQCIOOutput(results=res)
-        except Exception:
+            res = FakeQCIOResults.model_validate(
+                {"energy": ene, "gradient": grad})
+            return FakeQCIOOutput.model_validate({"results": res})
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"Error in ASE calculation: {e}")
             raise ElectronicStructureError(msg="Electronic structure failed.")
 
-    def compute_geometry_optimization(self, node: StructureNode) -> list[StructureNode]:
+    def compute_geometry_optimization(self, node: StructureNode, keywords={}) -> list[StructureNode]:
         """
         Computes a geometry optimization using ASE calculation and optimizer
         """
@@ -198,8 +201,9 @@ class ASEEngine(Engine):
         gradients = [(-1 * obj.get_forces() / ANGSTROM_TO_BOHR) for obj in aT]
         all_results = []
         for ene, grad in zip(energies, gradients):
-            res = FakeQCIOResults(energy=ene, gradient=grad)
-            out = FakeQCIOOutput(results=res)
+            res = FakeQCIOResults.model_validate(
+                {"energy": ene, "gradient": grad})
+            out = FakeQCIOOutput.model_validate({"results": res})
             all_results.append(out)
         Path(tmp.name).unlink()
         node_list = [StructureNode(structure=struct) for struct in traj_list]

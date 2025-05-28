@@ -52,8 +52,8 @@ class Engine(ABC):
         curr_step = 0
         converged = False
         while curr_step < max_steps and not converged:
-            grad = last_node.gradient
-            new_coords = last_node.coords - 1.0 * ss * grad
+            grad = np.array(last_node.gradient)
+            new_coords = last_node.coords - ((1.0 * ss) * grad)
             node_new = last_node.update_coords(new_coords)
             grads = self.compute_gradients([node_new])
             ene = self.compute_energies([node_new])

@@ -484,3 +484,27 @@ def get_maxene_node(arr, engine):
         "grad_calls": ngcs,
         "index": left
     }
+
+
+def parse_nma_freq_data(hessres):
+    modes = []
+    freqs = []
+
+    coords = []
+    for i, line in enumerate(hessres.results.files['scr.geometry/Mass.weighted.modes.dat'].split("\n")):
+        if len(line) == 0:
+            continue
+        if line[0] == '=':
+            freqs.append(float(line.split()[3]))
+            if i > 0:
+                modes.append(coords)
+                coords = []
+        else:
+            coords.append(float(line))
+
+    refshape = hessres.input_data.structure.geometry.shape
+    reshaped_normal_modes = []
+    for mode in modes:
+        reshaped_normal_modes.append(np.array(mode).reshape(refshape))
+
+    return reshaped_normal_modes, freqs
