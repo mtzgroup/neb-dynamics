@@ -21,7 +21,7 @@ from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
 # )
 
 from neb_dynamics.geodesic_interpolation2.morsegeodesic import (
-    run_geodesic_get_smoother,
+    run_geodesic_get_smoother, MorseGeodesic
 )
 
 from neb_dynamics.errors import ElectronicStructureError
@@ -429,7 +429,8 @@ def get_nudged_pe_grad(unit_tangent: np.array, gradient: np.array):
     Returns the component of the gradient that acts perpendicular to the path tangent
     """
     pe_grad = gradient
-    pe_grad_nudged_const = np.dot(pe_grad.flatten(), unit_tangent.flatten())
+    pe_grad_nudged_const = np.dot(
+        np.array(pe_grad).flatten(), np.array(unit_tangent).flatten())
     pe_grad_nudged = pe_grad - pe_grad_nudged_const * unit_tangent
     return pe_grad_nudged
 
@@ -503,103 +504,20 @@ def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, re
 
 
 def calculate_geodesic_distance(
-    node1: StructureNode, node2: StructureNode, nimages=12, nudge=0.1
+    node1: StructureNode, node2: StructureNode, nimages=12, nudge=0.1,
+    nsamples=5
 ):
     from neb_dynamics.helper_functions import RMSD
 
     rmsd_dist, _ = RMSD(node1.coords, node2.coords)
     nudge = min(rmsd_dist, nudge)
-    smoother = run_geodesic_get_smoother(
-        input_object=[node1.symbols, [node1.coords, node2.coords]],
+    smoother = sample_shortest_geodesic(
+        Chain.model_validate({'nodes': [node1, node2]}),
         nudge=nudge,
         nimages=nimages,
+        nsamples=nsamples
     )
     return smoother.length
-
-
-def calculate_geodesic_tangent(
-    list_of_nodes: List[StructureNode], ref_node_ind: int, nimages: int = 15, nudge=0.1, nimages2: int = None,
-    tangent_err: float = 1.0, max_ntries: int = 5, random_seed: int = 0
-):
-    """
-    will create a high density geodesic, then output a triplet of images corresponding to
-    a previous image, an adjusted current image, and a next image, forming a piecewise tangent.
-    ref_node_ind is the indewx of the node we want to build a tangent around
-    """
-    ref_node = list_of_nodes[ref_node_ind]
-
-    inp_obj1 = [list_of_nodes[0].symbols, [
-        n.coords for n in list_of_nodes[:ref_node_ind+1]]]
-
-    # inp_obj1 = [list_of_nodes[0].symbols, [
-    #     n.coords for n in [list_of_nodes[0], ref_node]]]
-
-    # print(f"{inp_obj1=}")
-
-    # print(f"{nimages=}")
-    np.random.seed(random_seed)
-    smoother1 = run_geodesic_get_smoother(
-        input_object=inp_obj1,
-        nudge=nudge,
-        nimages=nimages
-    )
-    if nimages2 is None:
-        nimages2 = nimages
-
-    # print(f"{nimages2=}")
-
-    inp_obj2 = [list_of_nodes[0].symbols, [
-        n.coords for n in list_of_nodes[ref_node_ind:]]]
-    # inp_obj2 = [list_of_nodes[0].symbols, [
-    #     n.coords for n in [ref_node, list_of_nodes[-1]]]]
-    smoother2 = run_geodesic_get_smoother(
-        input_object=inp_obj2,
-        nudge=nudge,
-        nimages=nimages2,
-    )
-
-    # print(f"{inp_obj2=}")
-
-    # nimg = nimages
-    # tang_err = 1e10
-    # ntries = 0
-    # # while tang_err > TANGERR_TOL and ntries < MAXTANG_NTRIES:
-    # while tang_err > tangent_err and \
-    #         ntries < max_ntries:
-
-    # inp_obj = [list_of_nodes[0].symbols, [n.coords for n in list_of_nodes]]
-    # smoother = run_geodesic_get_smoother(
-    #     input_object=inp_obj,
-    #     nudge=nudge,
-    #     nimages=nimages,
-    # )
-
-    #     ind = _get_closest_node_ind(smoother.path, reference=ref_node.coords)
-    #     aligned0 = align_geom(ref_node.coords, smoother.path[ind-1])[1]
-    #     aligned1 = align_geom(ref_node.coords, smoother.path[ind])[1]
-    #     aligned2 = align_geom(ref_node.coords, smoother.path[ind+1])[1]
-
-    #     new0 = ref_node.update_coords(aligned0)
-    #     new1 = ref_node.update_coords(aligned1)
-    #     new2 = ref_node.update_coords(aligned2)
-
-    #     tang_err = RMSD(new1.coords, ref_node.coords)[0]
-
-    #     print(
-    #         f"TANGENT ERROR: {tang_err})")
-    #     nimg += 10
-    # ntries += 1
-
-    aligned0 = align_geom(ref_node.coords, smoother1.path[-2])[1]
-    aligned2 = align_geom(ref_node.coords, smoother2.path[1])[1]
-
-    new0 = ref_node.update_coords(aligned0)
-    new2 = ref_node.update_coords(aligned2)
-
-    d1 = smoother1.length
-    d2 = smoother2.length
-
-    return [new0, ref_node, new2], (d1, d2)
 
 
 def _get_closest_node_ind(xyz_path, reference):
@@ -1053,3 +971,74 @@ def animate_trajectory(traj, c_irc, xmin=-0.1, xmax=1.1, ymin=-1, ymax=200, retu
         return ani
     else:
         return HTML(ani.to_jshtml())
+
+
+def _select_node_at_dist(
+    chain: Chain,
+    dist: float,
+    direction: int,
+    smoother: MorseGeodesic = None,
+    dist_err: float = 0.1,
+):
+    """
+    will iterate through chain and select the node that is 'dist' away up to 'dist_err'
+
+    dist - -> the requested distance where you want the nodes
+    direction - -> whether to go forward(1) or backwards(-1). if forward, will pick the requested node
+                to the first node. if backwards, will pick the requested node to the last node
+
+    """
+    input_chain = [node.copy() for node in chain]
+    if direction == -1:
+        input_chain.reverse()
+
+    best_node = None
+    best_dist_err = 10000.0
+    for i, node in enumerate(input_chain[1:-1], start=1):
+
+        start = 1
+        end = i + 1
+
+        curr_dist = smoother.segment_lengths[start-1:end-1].sum()
+        print('distawnces from ', start-1, ' to', end-1, curr_dist)
+        curr_dist_err = np.abs(curr_dist - dist)
+        print(curr_dist_err)
+
+        if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
+            best_node = input_chain[i]
+            best_dist_err = curr_dist_err
+            print('\t', best_dist_err)
+
+    return best_node
+
+
+def calculate_geodesic_tangent(
+        list_of_nodes, ref_node_ind: int,
+        dr: float,
+        nimages=20):
+    ref_node = list_of_nodes[ref_node_ind]
+
+    segment1 = list_of_nodes[ref_node_ind-1:ref_node_ind+1].copy()
+    # segment1 = list_of_nodes[0:ref_node_ind+1].copy()
+    segment1.reverse()
+    smoother1 = sample_shortest_geodesic(segment1, nimages=nimages)
+    gi1 = gi_path_to_nodes(smoother1.path, symbols=ref_node.symbols,
+                           charge=ref_node.structure.charge, spinmult=ref_node.structure.multiplicity)
+
+    smoother2 = sample_shortest_geodesic(
+        list_of_nodes[ref_node_ind:ref_node_ind+2], nimages=nimages)
+    # smoother2 = sample_shortest_geodesic(
+    #     list_of_nodes[ref_node_ind:], nimages=nimages)
+
+    gi2 = gi_path_to_nodes(smoother2.path, symbols=ref_node.symbols,
+                           charge=ref_node.structure.charge, spinmult=ref_node.structure.multiplicity)
+
+    new0 = _select_node_at_dist(
+        gi1, dist=dr, direction=1, smoother=smoother1)
+
+    new0 = new0.update_coords(align_geom(ref_node.coords, new0.coords)[1])
+    new2 = _select_node_at_dist(
+        gi2, dist=dr, direction=1, smoother=smoother2)
+    new2 = new2.update_coords(align_geom(ref_node.coords, new2.coords)[1])
+
+    return [new0, ref_node, new2]

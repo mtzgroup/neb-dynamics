@@ -25,10 +25,8 @@ def is_identical(
     are within a windos (default: 1.0 kcal/mol).
     otherwise, will only check distances.
     """
-    if self.has_molecular_graph:
-        assert (
-            other.has_molecular_graph
-        ), "Both node objects must have computable molecular graphs."
+    if self.has_molecular_graph and other.has_molecular_graph:
+        print("elemsteps: Using graph and distance based comparison")
         conditions = [
             _is_connectivity_identical(self, other, verbose=verbose),
             _is_conformer_identical(
@@ -41,6 +39,7 @@ def is_identical(
             ),
         ]
     else:
+        print("elemsteps: Using distance based comparison, no graphs")
         conditions = [
             _is_conformer_identical(
                 self,
@@ -138,15 +137,20 @@ def _is_connectivity_identical(self: Node, other: Node, verbose: bool = True) ->
     connectivity_identical = self.graph.remove_Hs().is_bond_isomorphic_to(
         other.graph.remove_Hs()
     )
-    try:
-        smi1 = self.structure.to_smiles()
-        smi2 = other.structure.to_smiles()
-        stereochem_identical = smi1 == smi2
+    natom = len(self.coords)
+    if natom < 100:  # arbitrary number, else this takes too long
+        try:
+            smi1 = self.structure.to_smiles()
+            smi2 = other.structure.to_smiles()
+            stereochem_identical = smi1 == smi2
 
-    except Exception:
-        if verbose:
-            print(traceback.format_exc())
-            print("Constructing smiles failed. Pretending this check succeeded.")
+        except Exception:
+            if verbose:
+                print(traceback.format_exc())
+                print("Constructing smiles failed. Pretending this check succeeded.")
+            stereochem_identical = True
+    else:
+        print("System too large. Not checking stereochemistry.")
         stereochem_identical = True
     if verbose:
         print(f"\t\tGraphs isomorphic to each other: {connectivity_identical}")

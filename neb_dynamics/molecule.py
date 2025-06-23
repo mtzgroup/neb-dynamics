@@ -507,7 +507,7 @@ class Molecule(nx.Graph):
         means that a is a subgraph of b
         """
         GM = SubGraphMatcher(mol, timeout_seconds=timeout_seconds)
-        boolean = GM.is_subgraph_isomorphic(self.remove_r_groups())
+        boolean = GM.is_subgraph_isomorphic(self)
         return boolean
 
     def get_subgraph_isomorphisms_of(

@@ -33,7 +33,8 @@ def read_multiple_structure_from_file(
     symbols, coords = read_xyz(fp)
     coords_bohr = [c * ANGSTROM_TO_BOHR for c in coords]
     return [
-        Structure(geometry=c, symbols=symbols, charge=charge, multiplicity=spinmult)
+        Structure(geometry=c, symbols=symbols,
+                  charge=charge, multiplicity=spinmult)
         for c in coords_bohr
     ]
 
@@ -86,7 +87,8 @@ def structure_to_molecule(structure: Structure) -> Molecule:
     # create molecule object from this OBmol
     new_mol = Molecule()
     for i, (y, z) in enumerate(_atom_iter(obmol)):
-        new_mol.add_node(i, neighbors=0, element=from_number_to_element(y), charge=z)
+        new_mol.add_node(
+            i, neighbors=0, element=from_number_to_element(y), charge=z)
     for i, j, k in _edge_iter(obmol=obmol):
         if k == 4:
             k_prime = 1.5
@@ -246,6 +248,10 @@ def structure_to_ase_atoms(structure: Structure):
         charges=[structure.charge] + [0] * (len(pos) - 1),
         magmoms=[structure.multiplicity] + [0] * (len(pos) - 1),
     )
+
+    # this is for OMOL25 compatibility
+    atoms.info["charge"] = structure.charge
+    atoms.info["spin"] = structure.multiplicity
     return atoms
 
 

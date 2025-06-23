@@ -21,6 +21,8 @@ import traceback
 import sys
 
 MINIMGS = 3
+DRSTEP = 0.1
+TESTING_GI_TANG = True
 
 DISTANCE_METRICS = ["GEODESIC", "RMSD", "LINEAR"]
 IS_ELEM_STEP = ElemStepResults(
@@ -62,7 +64,7 @@ class FreezingNEB(PathMinimizer):
         if self.parameters.distance_metric.upper() == "RMSD":
             return RMSD(node1.coords, node2.coords)[0]
         elif self.parameters.distance_metric.upper() == "GEODESIC":
-            return min([ch.calculate_geodesic_distance(node1, node2, nudge=0.01, nimages=self.gi_inputs.nimages) for i in range(5)])
+            return min([ch.calculate_geodesic_distance(node1, node2, nudge=0.1, nimages=self.gi_inputs.nimages) for i in range(5)])
         elif self.parameters.distance_metric.upper() == "LINEAR":
             return np.linalg.norm(node1.coords - node2.coords)
         elif self.parameters.distance_metric.upper() == "XTBGI":
@@ -173,7 +175,7 @@ class FreezingNEB(PathMinimizer):
                     print(
                         f"Converged!\n\tNo growth?: {no_growth}\n\tNo barrier change?: {no_barrier_change}")
                     converged = True
-                    break
+                    min_chain = grown_chain.copy()
                 else:
 
                     self.chain_trajectory.append(grown_chain.copy())
@@ -193,15 +195,16 @@ class FreezingNEB(PathMinimizer):
 
             self.optimized = self.chain_trajectory[-1]
             print(f"Converged? {converged}")
-            if self.parameters.do_elem_step_checks:
-                short_chain = Chain.model_validate(
-                    {"nodes": [chain[0], chain.get_ts_node(), chain[-1]], "parameters": chain.parameters})
-                elem_step_results = check_if_elem_step(
-                    short_chain, engine=self.engine)
-                # elem_step_results = check_if_elem_step(chain, engine=self.engine)
-                self.geom_grad_calls_made += elem_step_results.number_grad_calls
-            else:
-                elem_step_results = IS_ELEM_STEP
+
+        if self.parameters.do_elem_step_checks:
+            short_chain = Chain.model_validate(
+                {"nodes": [chain[0], chain.get_ts_node(), chain[-1]], "parameters": chain.parameters})
+            elem_step_results = check_if_elem_step(
+                short_chain, engine=self.engine)
+            # elem_step_results = check_if_elem_step(chain, engine=self.engine)
+            self.geom_grad_calls_made += elem_step_results.number_grad_calls
+        else:
+            elem_step_results = IS_ELEM_STEP
         return elem_step_results
 
     def _min_node_maxene(
@@ -442,25 +445,221 @@ class FreezingNEB(PathMinimizer):
         raw_chain = chain.copy()
         idx1, idx2 = idx_grown
         # return raw_chain
-        chain_opt1 = self._min_node(
-            raw_chain,
-            tangent=node_tangents[0],
-            ind_node=idx1,
-            dr=dr
-
-        )
         if idx2 is not None:
-            chain_opt2 = self._min_node(
-                chain_opt1,
-                tangent=node_tangents[1],
-                ind_node=idx2,
-                dr=dr
-
-            )
+            chain_opt = self._min_two_nodes(raw_chain,
+                                            tangents=node_tangents,
+                                            ind_node1=idx1,
+                                            ind_node2=idx2,
+                                            dr=dr
+                                            )
         else:
-            chain_opt2 = chain_opt1
+            chain_opt = self._min_node(
+                raw_chain,
+                tangent=node_tangents[0],
+                ind_node=idx1,
+                dr=dr
+            )
 
-        return chain_opt2
+        # chain_opt1 = self._min_node(
+        #     raw_chain,
+        #     tangent=node_tangents[0],
+        #     ind_node=idx1,
+        #     dr=dr
+
+        # )
+        # if idx2 is not None:
+        #     chain_opt2 = self._min_node(
+        #         chain_opt1,
+        #         tangent=node_tangents[1],
+        #         ind_node=idx2,
+        #         dr=dr
+
+        #     )
+        # else:
+        #     chain_opt2 = chain_opt1
+
+        # return chain_opt2
+        return chain_opt
+
+    def _min_two_nodes(
+        self,
+        raw_chain: 'Chain',  # Type hint for Chain
+        tangents: np.array,
+        dr: float,  # Kept for signature compatibility, but not used in this version
+        ind_node1: int,
+        ind_node2: int,
+    ):
+        """
+        Minimizes two nodes simultaneously within a chemical chain.
+
+        Args:
+            raw_chain: The Chain object containing the nodes.
+            tangent: A numpy array representing the tangent direction for nudging.
+                     If None, a local tangent will be derived from ind_node1's context.
+                     This tangent is used to project out the component of the gradient
+                     along the chain, ensuring movement is perpendicular to the chain direction.
+            dr: A float, typically a step size or distance increment.
+                (Note: This parameter is kept for signature compatibility but is not
+                directly used in the minimization logic for two nodes in this version,
+                as the specific distance-based stopping conditions from the original
+                single-node function have been removed.)
+            ind_node1: Index of the first node to minimize.
+            ind_node2: Index of the second node to minimize.
+        """
+        # --- Input Validation ---
+        if ind_node1 == ind_node2:
+            print(
+                "Error: ind_node1 and ind_node2 must be different. Cannot minimize the same node twice.")
+            return raw_chain
+        if not (0 <= ind_node1 < len(raw_chain.nodes) and 0 <= ind_node2 < len(raw_chain.nodes)):
+            print(
+                "Error: One or both node indices are out of bounds for the given chain.")
+            return raw_chain
+
+        # --- Initialization ---
+        node1_opt = raw_chain[ind_node1]
+        node2_opt = raw_chain[ind_node2]
+
+        tangent1 = tangents[0]
+        tangent2 = tangents[1]
+
+        if TESTING_GI_TANG:
+            drstep = DRSTEP
+            # drstep = max(dr/5, 0.008)
+            print("drstep: ", drstep)
+            # drstep = dr / 5
+            # drstep = dr / 2
+            geoms1 = ch.calculate_geodesic_tangent(
+                raw_chain, ind_node1, dr=drstep, nimages=self.gi_inputs.nimages)
+            # unit1 = geoms1[1].coords - geoms1[0].coords
+            # unit1 /= np.linalg.norm(unit1)
+            # unit2 = geoms1[2].coords - geoms1[1].coords
+            # unit2 /= np.linalg.norm(unit2)
+            # tangent1 = (unit1 + unit2) / 2
+            tangent1 = (geoms1[2].coords - geoms1[0].coords)/2
+
+            geoms2 = ch.calculate_geodesic_tangent(
+                raw_chain, ind_node2, dr=drstep, nimages=self.gi_inputs.nimages)
+            # unit1 = geoms2[1].coords - geoms2[0].coords
+            # unit1 /= np.linalg.norm(unit1)
+            # unit2 = geoms2[2].coords - geoms2[1].coords
+            # unit2 /= np.linalg.norm(unit2)
+            # tangent2 = (unit1 + unit2) / 2
+            tangent2 = (geoms2[2].coords - geoms2[0].coords)/2
+
+        converged = False
+        max_iter = self.parameters.max_min_iter
+        nsteps = 1  # Account for an implicit initial gradient call if this is part of a larger process
+
+        # The original distance-based stopping conditions (e.g., node falling more than 25%)
+        # are removed here. These were specific to a single node's relationship with its
+        # immediate neighbors. For simultaneous minimization of two potentially
+        # non-adjacent nodes, these checks would need to be re-evaluated and adapted
+        # to the desired behavior of the two optimized nodes relative to their own neighbors
+        # or each other.
+        init_d = self._distance_function(node1_opt, node2_opt)
+
+        # --- Minimization Loop ---
+        while not converged:
+            try:
+                # Re-fetch nodes from raw_chain in each iteration. This ensures we're
+                # always working with the latest coordinates in case raw_chain is
+                # modified elsewhere or by previous optimization steps within this loop.
+                node1_opt = raw_chain[ind_node1]
+                node2_opt = raw_chain[ind_node2]
+                new_d = self._distance_function(node1_opt, node2_opt)
+                print(f"{new_d=} || {init_d=} || {dr=}")
+                # if new_d >= init_d + 0.5*dr:
+                # print("nodes are falling. Stopping minimization.")
+                # if new_d >= init_d + 0.80*dr:
+                thresh = 5.0
+                if new_d >= init_d + thresh * dr:
+                    print(
+                        f"nodes fell by {thresh} times dr. Stopping minimization.")
+                    converged = True
+                    break
+
+                # Check for maximum iterations
+                if nsteps >= max_iter:
+                    print(
+                        f"Stopping minimization: Reached maximum iterations ({max_iter}).")
+                    converged = True
+                    break
+
+                # --- Determine Unit Tangent for Nudging ---
+                # If a tangent is provided, normalize it.
+                # If tangent is None, derive a local tangent from ind_node1's context.
+                # This assumes 'self.chain_helper' is available and provides 'get_nudged_pe_grad'.
+                unit_tan1 = None
+                if tangent1 is not None:
+                    unit_tan1 = tangent1 / np.linalg.norm(tangent1)
+
+                unit_tan2 = None
+                if tangent2 is not None:
+                    unit_tan2 = tangent2 / np.linalg.norm(tangent2)
+
+                # --- Compute Gradients for Both Nodes ---
+                grad1 = node1_opt.gradient
+                grad2 = node2_opt.gradient
+
+                direction1 = ch.get_nudged_pe_grad(
+                    unit_tangent=unit_tan1, gradient=grad1)
+                direction2 = ch.get_nudged_pe_grad(
+                    unit_tangent=unit_tan2, gradient=grad2)
+
+                # --- Optimize Both Nodes Simultaneously ---
+                # Create a temporary Chain object containing only the nodes to be optimized.
+                nodes_to_optimize_chain = Chain.model_validate(
+                    {"nodes": [node1_opt, node2_opt]})
+                # Combine their gradients into a single array for the optimizer.
+                gradients_for_optimization = np.array([direction1, direction2])
+
+                out_chain = self.optimizer.optimize_step(
+                    chain=nodes_to_optimize_chain,
+                    chain_gradients=gradients_for_optimization
+                )
+
+                # Extract the newly optimized nodes from the output chain.
+                new_node1 = out_chain.nodes[0]
+                new_node2 = out_chain.nodes[1]
+
+                # --- Update Energies and Gradient Call Count ---
+                # Compute energies for the newly optimized nodes.
+                self.engine.compute_energies([new_node1, new_node2])
+                # Increment the count of gradient calls (2 nodes optimized per step).
+                self.grad_calls_made += 2
+
+                # --- Update Raw Chain and Trajectory ---
+                # Update the original raw_chain with the optimized nodes.
+                raw_chain.nodes[ind_node1] = new_node1
+                raw_chain.nodes[ind_node2] = new_node2
+                # Record the state of the chain for trajectory tracking.
+                self.chain_trajectory.append(raw_chain.copy())
+                nsteps += 1
+
+                # --- Check for Convergence ---
+                # Calculate the infinite norm (maximum absolute component) of the gradients
+                # for both optimized nodes and take the maximum of these two values.
+                grad_inf_norm1 = np.amax(abs(direction1))
+                grad_inf_norm2 = np.amax(abs(direction2))
+                combined_grad_inf_norm = max(grad_inf_norm1, grad_inf_norm2)
+
+                if self.parameters.verbosity > 0:
+                    print(
+                        f"MIN: Node1 Grad: {grad_inf_norm1:.4f} | Node2 Grad: {grad_inf_norm2:.4f} | Combined Max Grad: {combined_grad_inf_norm:.4f}")
+
+                # If the combined maximum gradient is below the tolerance, consider it converged.
+                if combined_grad_inf_norm <= self.parameters.grad_tol:
+                    converged = True
+                    break
+
+            except Exception:
+                # Catch any exceptions during the minimization process and print traceback.
+                print(traceback.format_exc())
+                return raw_chain  # Return the current state of the chain on error
+
+        print(f"\t Minimization converged in {nsteps} steps.")
+        return raw_chain
 
     def _min_node(
         self,
@@ -499,9 +698,12 @@ class FreezingNEB(PathMinimizer):
                                                   raw_chain[ind_node+1])
                 print(
                     f"Current d1: {curr_d1} || Current d2: {curr_d2} || {init_d1=} || {init_d2=}")
-                if curr_d1 <= 0.75*init_d1 or curr_d2 <= 0.75*init_d2:
+                # if curr_d1 <= 0.75*init_d1 or curr_d2 <= 0.75*init_d2:
+                # print(
+                # "Node fell more than 25% to one direction. Stopping minimization.")
+                if curr_d1 <= 0.25*init_d1 or curr_d2 <= 0.25*init_d2:
                     print(
-                        "Node fell more than 25% to one direction. Stopping minimization.")
+                        "Node fell more than 75% to one direction. Stopping minimization.")
                     converged = True
                     break
 
@@ -525,8 +727,16 @@ class FreezingNEB(PathMinimizer):
                 if self.parameters.verbosity > 1:
                     print(f"{prev_iter_ene=}")
 
-                if tangent is None:
-                    tangent = node2.coords - node1.coords
+                if TESTING_GI_TANG:
+                    # drstep = max(dr/5, 0.008)
+                    drstep = DRSTEP
+                    print("drstep: ", drstep)
+                    # drstep = dr / 2
+                    # drstep = dr / 5
+                    geoms = ch.calculate_geodesic_tangent(raw_chain[node1_ind-1:node1_ind+2], ref_node_ind=1,
+                                                          dr=drstep,
+                                                          nimages=self.gi_inputs.nimages)
+                    tangent = geoms[2].coords - geoms[0].coords
                 unit_tan = tangent / np.linalg.norm(tangent)
 
                 # grad1 = self.engine.compute_gradients([node_to_opt])
@@ -664,6 +874,9 @@ class FreezingNEB(PathMinimizer):
                         charge=sub_chain[0].structure.charge,
                         spinmult=sub_chain[0].structure.multiplicity,
                     )
+                    for node in interpolated:
+                        node.has_molecular_graph = chain[0].has_molecular_graph
+
                     # dr = smoother.length / (nimg_todo-1)
                     print("\t\tlength_smoother: ", smoother.length, "dr: ", dr)
                     sys.stdout.flush()
@@ -713,7 +926,6 @@ class FreezingNEB(PathMinimizer):
         else:
             self.engine.compute_energies([final_node1])
             self.grad_calls_made += 1
-        self.grad_calls_made += 2
 
         grown_chain = chain.copy()
         # insert_index = int(len(grown_chain) / 2)

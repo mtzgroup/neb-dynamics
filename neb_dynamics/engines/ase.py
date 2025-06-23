@@ -60,17 +60,17 @@ class ASEEngine(Engine):
 
     calculator: Calculator
     ase_optimizer: Optimizer = None
-    ase_opt_str: str = "LBFGSLineSearch"
+    geometry_optimizer: str = "LBFGS"
     biaser: ChainBiaser = None
 
     def __post_init__(self):
         if self.ase_optimizer is None:
             assert (
-                self.ase_opt_str is not None and self.ase_opt_str in AVAIL_OPTS.keys()
+                self.geometry_optimizer is not None and self.geometry_optimizer in AVAIL_OPTS.keys()
             ), f"Must input either an ase optimizer or a string name for an\
              available optimizer: {AVAIL_OPTS.keys()}"
 
-            self.ase_optimizer = AVAIL_OPTS[self.ase_opt_str]
+            self.ase_optimizer = AVAIL_OPTS[self.geometry_optimizer]
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:

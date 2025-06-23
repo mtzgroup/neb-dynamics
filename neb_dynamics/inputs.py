@@ -263,9 +263,12 @@ class RunInputs:
                     keywords={})
             else:
                 raise ValueError("Need to specify program arguments")
-        else:
+
+            if self.engine_name in ['qcop', 'chemcloud']:
+                self.program_kwds = program_args
+        elif self.program_kwds is not None and self.engine_name in ['qcop', 'chemcloud']:
             program_args = ProgramArgs(**self.program_kwds)
-        self.program_kwds = program_args
+            self.program_kwds = program_args
 
         if self.chain_inputs is None:
             self.chain_inputs = ChainInputs()
@@ -284,8 +287,15 @@ class RunInputs:
                              )
         elif self.engine_name == 'ase':
             from neb_dynamics.engines.ase import ASEEngine
-            assert self.program == 'xtb', f"{self.program} not yet supported with ASEEngine"
-            calc = XTB()
+            ase_progs = ['xtb', 'omol25']
+            assert self.program in ase_progs, f"{self.program} not yet supported with ASEEngine. Use one of {ase_progs} instead."
+            if self.program == 'xtb':
+                calc = XTB()
+            elif self.program == 'omol25':
+                from fairchem.core import pretrained_mlip, FAIRChemCalculator
+                predictor = pretrained_mlip.load_predict_unit(
+                    "/home/diptarka/fairchem/esen_sm_conserving_all.pt", device="cuda")
+                calc = FAIRChemCalculator(predictor, task_name="omol")
             eng = ASEEngine(calculator=calc)
         else:
             raise ValueError(f"Unsupported engine: {self.engine_name}")
@@ -301,12 +311,13 @@ class RunInputs:
             data = tomli.load(f)
         # data_dict = json.loads(data)
         obj = cls(**data)
-        file_keys = obj.program_kwds.files.keys()
-        if "ca0" in file_keys and "cb0" in file_keys:
-            obj.program_kwds.files['ca0'] = Path(
-                obj.program_kwds.files['ca0']).read_bytes()
-            obj.program_kwds.files['cb0'] = Path(
-                obj.program_kwds.files['cb0']).read_bytes()
+        if hasattr(obj.program_kwds, 'files') and obj.program_kwds.files is not None:
+            file_keys = obj.program_kwds.files.keys()
+            if "ca0" in file_keys and "cb0" in file_keys:
+                obj.program_kwds.files['ca0'] = Path(
+                    obj.program_kwds.files['ca0']).read_bytes()
+                obj.program_kwds.files['cb0'] = Path(
+                    obj.program_kwds.files['cb0']).read_bytes()
 
         return obj
 

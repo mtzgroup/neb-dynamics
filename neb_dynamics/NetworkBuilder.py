@@ -24,7 +24,7 @@ from qcio import Structure, ProgramArgs
 
 from typing import Union
 
-from rxnmapper import RXNMapper
+# from rxnmapper import RXNMapper
 
 
 @dataclass

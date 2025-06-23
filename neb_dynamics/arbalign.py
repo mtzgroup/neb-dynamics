@@ -11,7 +11,7 @@ from qcio import Structure
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics import StructureNode
 
-NIMG = 5
+NIMG = 50
 
 
 def align_structures(structure1: Structure, structure2: Structure, distance_metric="rmsd", return_distance: bool = False):

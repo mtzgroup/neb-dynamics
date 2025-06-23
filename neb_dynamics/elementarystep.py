@@ -159,8 +159,8 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
 
 
 def _upsample_around_ts_guess(chain, ts_index):
-    tang, distances = ch.calculate_geodesic_tangent(
-        list_of_nodes=chain, ref_node_ind=ts_index)
+    tang = ch.calculate_geodesic_tangent(
+        list_of_nodes=chain, ref_node_ind=ts_index, dr=0.1)
     tang[0].converged = False
     tang[2].converged = False
 

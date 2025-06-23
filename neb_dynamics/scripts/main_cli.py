@@ -26,6 +26,15 @@ from neb_dynamics.pot import plot_results_from_pot_obj
 from itertools import product
 from typing import List
 import networkx as nx
+import logging
+
+
+class _SuppressWarningFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno != logging.WARNING
+
+
+logging.getLogger().addFilter(_SuppressWarningFilter())
 
 
 ob_log_handler = openbabel.OBMessageHandler()
@@ -89,13 +98,23 @@ def run(
             # try:
             print("CHARGE", charge)
             print("MULTIPLICITY", multiplicity)
-            start_structure = Structure.open(
-                start, charge=charge, multiplicity=multiplicity)
-            end_structure = Structure.open(
-                end, charge=charge, multiplicity=multiplicity)
-            all_structs = [start_structure, end_structure]
 
-            print(type(start_structure.charge), end_structure.charge)
+            start_ref = Structure.open(start)
+            end_ref = Structure.open(end)
+
+            if start_ref.charge != charge or start_ref.multiplicity != multiplicity:
+                raise ValueError(
+                    f"WARNING: {start} has charge {start_ref.charge} and multiplicity {start_ref.multiplicity}.\
+                        Using {charge} and {multiplicity} instead."
+                )
+            if end_ref.charge != charge or end_ref.multiplicity != multiplicity:
+                raise ValueError(
+                    f"WARNING: {end} has charge {end_ref.charge} and multiplicity {end_ref.multiplicity}"
+                )
+
+            all_structs = [start_ref, end_ref]
+
+            print(type(start_ref.charge), end_ref.charge)
             # except ValueError:
             #     start_structure = Structure.open(
             #         start, charge=None, multiplicity=None)
