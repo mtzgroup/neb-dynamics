@@ -122,21 +122,24 @@ class MSMEP:
         import neb_dynamics.chainhelpers as ch
 
         if self.inputs.chain_inputs.use_geodesic_interpolation:
-            if self.inputs.chain_inputs.friction_optimal_gi:
-                interpolation = ch.create_friction_optimal_gi(
-                    chain=chain,
-                    gi_inputs=copy.deepcopy(self.inputs.gi_inputs),
-                    chain_inputs=copy.deepcopy(self.inputs.chain_inputs),
-                )
-            else:
-                interpolation = ch.run_geodesic(
-                    chain=chain,
-                    chain_inputs=copy.deepcopy(self.inputs.chain_inputs),
-                    nimages=self.inputs.gi_inputs.nimages,
-                    friction=self.inputs.gi_inputs.friction,
-                    nudge=self.inputs.gi_inputs.nudge,
-                    **self.inputs.gi_inputs.extra_kwds,
-                )
+
+            smoother = ch.sample_shortest_geodesic(
+                chain=chain,
+                chain_inputs=copy.deepcopy(self.inputs.chain_inputs),
+                nimages=self.inputs.gi_inputs.nimages,
+                friction=self.inputs.gi_inputs.friction,
+                nudge=self.inputs.gi_inputs.nudge,
+                **self.inputs.gi_inputs.extra_kwds,
+            )
+            interpolation = ch.gi_path_to_nodes(xyz_coords=smoother.path,
+                                                symbols=chain.symbols,
+                                                parameters=copy.deepcopy(
+                                                    self.inputs.chain_inputs),
+                                                charge=chain[0].structure.charge,
+                                                spinmult=chain[0].structure.multiplicity)
+            interpolation = Chain.model_validate({
+                "nodes": interpolation,
+                "parameters": copy.deepcopy(self.inputs.chain_inputs)})
 
             interpolation._zero_velocity()
 
