@@ -30,7 +30,7 @@ class Engine(ABC):
         self, chain: Union[Chain, List]
     ) -> Union[FakeQCIOOutput, ProgramOutput]:
         """
-        returns the gradients for each node in the chain as
+        returns the energies for each node in the chain as
         specified by the object inputs
         """
         ...

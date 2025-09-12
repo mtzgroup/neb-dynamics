@@ -390,8 +390,10 @@ class Chain(BaseModel):
     def get_ts_node(self) -> Node:
         """
         return the node corresponding to the transition state guess.
+        will ignore endpoints.
         """
-        ind_ts_guess = self.energies.argmax()
+        # Find the index of the transition state guess, ignoring the endpoints
+        ind_ts_guess = self.energies[1:-1].argmax() + 1
         return self[ind_ts_guess]
 
     def get_eA_chain(self):

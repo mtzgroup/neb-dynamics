@@ -89,11 +89,13 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
             # psave(d,'d.p')
             result = least_squares(
                 lambda x: np.concatenate(
-                    [compute_wij(x, rijlist, scaler)[0] - w, (x - x0) * friction]
+                    [compute_wij(x, rijlist, scaler)[0] -
+                     w, (x - x0) * friction]
                 ),
                 x0,
                 lambda x: np.vstack(
-                    [compute_wij(x, rijlist, scaler)[1], np.identity(x.size) * friction]
+                    [compute_wij(x, rijlist, scaler)[1],
+                     np.identity(x.size) * friction]
                 ),
                 ftol=tol,
                 gtol=tol,
@@ -102,7 +104,8 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
             x_mid = result["x"].reshape(-1, 3)
             # Take the interpolated geometry, construct new pair list and check for new contacts
             new_list = geom_list + [x_mid]
-            new_rij, _ = get_bond_list(new_list, threshold=threshold, min_neighbors=0)
+            new_rij, _ = get_bond_list(
+                new_list, threshold=threshold, min_neighbors=0)
             extras = set(new_rij) - set(rijlist)
             if extras:
 
@@ -116,7 +119,8 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
             )
             smoother.compute_disps()
             width = max(
-                [np.sqrt(np.mean((g - smoother.path[1]) ** 2)) for g in [geom1, geom2]]
+                [np.sqrt(np.mean((g - smoother.path[1]) ** 2))
+                 for g in [geom1, geom2]]
             )
             dist, x_mid = width + smoother.length, smoother.path[1]
 
@@ -127,7 +131,7 @@ def mid_point(atoms, geom1, geom2, tol=1e-2, nudge=0.01, threshold=4, ntries=1):
     return x_min
 
 
-def redistribute(atoms, geoms, nimages, tol=1e-2, nudge=0.1, ntries=1):
+def redistribute(atoms, geoms, nimages, tol=1e-2, nudge=0.1, ntries=1, align=True):
     """Add or remove images so that the path length matches the desired number.
 
     If the number is too few, new points are added by bisecting the largest RMSD. If too numerous,
@@ -141,24 +145,30 @@ def redistribute(atoms, geoms, nimages, tol=1e-2, nudge=0.1, ntries=1):
     Returns:
         An aligned and redistributed path with has the correct number of images.
     """
-    _, geoms = align_path(geoms)
+    if align:
+        _, geoms = align_path(geoms)
     geoms = list(geoms)
     # If there are too few images, add bisection points
     while len(geoms) < nimages:
-        dists = [np.sqrt(np.mean((g1 - g2) ** 2)) for g1, g2 in zip(geoms[1:], geoms)]
+        dists = [np.sqrt(np.mean((g1 - g2) ** 2))
+                 for g1, g2 in zip(geoms[1:], geoms)]
         max_i = np.argmax(dists)
 
         insertion = mid_point(
-            atoms, geoms[max_i], geoms[max_i + 1], tol, nudge=nudge, ntries=ntries
+            atoms, geoms[max_i], geoms[max_i +
+                                       1], tol, nudge=nudge, ntries=ntries
         )
         _, insertion = align_geom(geoms[max_i], insertion)
         geoms.insert(max_i + 1, insertion)
-        geoms = list(align_path(geoms)[1])
+        if align:
+            geoms = list(align_path(geoms)[1])
     # If there are too many images, remove points
     while len(geoms) > nimages:
-        dists = [np.sqrt(np.mean((g1 - g2) ** 2)) for g1, g2 in zip(geoms[2:], geoms)]
+        dists = [np.sqrt(np.mean((g1 - g2) ** 2))
+                 for g1, g2 in zip(geoms[2:], geoms)]
         min_i = np.argmin(dists)
 
         del geoms[min_i + 1]
-        geoms = list(align_path(geoms)[1])
+        if align:
+            geoms = list(align_path(geoms)[1])
     return geoms

@@ -129,7 +129,9 @@ class MSMEP:
                 nimages=self.inputs.gi_inputs.nimages,
                 friction=self.inputs.gi_inputs.friction,
                 nudge=self.inputs.gi_inputs.nudge,
+                align=self.inputs.gi_inputs.align,
                 **self.inputs.gi_inputs.extra_kwds,
+
             )
             interpolation = ch.gi_path_to_nodes(xyz_coords=smoother.path,
                                                 symbols=chain.symbols,

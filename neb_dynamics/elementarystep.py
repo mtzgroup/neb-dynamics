@@ -326,13 +326,13 @@ def _run_geom_opt(node: Node, engine: Engine):
     geometry optimization function. If not, it will just run Steepest
     Descent.
     """
-    try:
-        kwds = {}
-        if engine.geometry_optimizer == "geometric":
-            kwds = {'coord_sys': "cart"}
-        opt_traj = engine.compute_geometry_optimization(node, keywords=kwds)
-    except AttributeError:
-        opt_traj = engine.steepest_descent(node, max_steps=500, ss=0.001)
+    # try:
+    kwds = {}
+    if engine.geometry_optimizer == "geometric":
+        kwds = {'coord_sys': "cart", 'maxiter': 1000}
+    opt_traj = engine.compute_geometry_optimization(node, keywords=kwds)
+    # except AttributeError:
+    #     opt_traj = engine.steepest_descent(node, max_steps=500, ss=0.001)
 
     return opt_traj
 

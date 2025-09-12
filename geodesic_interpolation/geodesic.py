@@ -20,6 +20,7 @@ class Geodesic(object):
         threshold=3,
         min_neighbors=4,
         friction=1e-3,
+        align=True
     ):
         """Initialize the interpolater
         Args:
@@ -36,10 +37,15 @@ class Geodesic(object):
             friction:   Friction term in the target function which regularizes the optimization step
                         size to prevent explosion.
         """
-        _, self.path = align_path(path)
+        self.align = align
+        if align:
+            _, self.path = align_path(path)
+        else:
+            self.path = path
         self.atoms = atoms
         if self.path.ndim != 3:
-            raise ValueError("The path to be interpolated must have 3 dimensions")
+            raise ValueError(
+                "The path to be interpolated must have 3 dimensions")
         self.nimages, self.natoms, _ = self.path.shape
         # Construct coordinates
         self.threshold = threshold
@@ -88,7 +94,8 @@ class Geodesic(object):
         gradients of internal coordinates."""
         for i, (X, w, dwdR) in enumerate(zip(self.path, self.w, self.dwdR)):
             if w is None:
-                self.w[i], self.dwdR[i] = compute_wij(X, self.rij_list, self.scaler)
+                self.w[i], self.dwdR[i] = compute_wij(
+                    X, self.rij_list, self.scaler)
         for i, (X0, X1, w) in enumerate(zip(self.path, self.path[1:], self.w_mid)):
             if w is None:
                 self.X_mid[i] = Xm = (X0 + X1) / 2
@@ -252,7 +259,8 @@ class Geodesic(object):
                 loss="soft_l1",
             )
             self.update_geometry(result["x"], start, end)
-        rmsd, self.path = align_path(self.path)
+        if self.align:
+            _, self.path = align_path(self.path)
         return self.path
 
     def sweep(
@@ -302,7 +310,8 @@ class Geodesic(object):
             self.compute_disps()  # Compute final length after sweep
             if max_dL < tol:  # Check for convergence.
                 break
-            curr_tol = max(tol * 0.5, max_dL * 0.2)  # Adjust micro-iteration threshold
+            # Adjust micro-iteration threshold
+            curr_tol = max(tol * 0.5, max_dL * 0.2)
             images = list(reversed(images))  # Alternate sweeping direction.
 
         _, self.path = align_path(self.path)
@@ -333,15 +342,18 @@ def run_geodesic_py(
 
     # First redistribute number of images.  Perform interpolation if too few and subsampling if too many
     # images are given
-    raw = redistribute(symbols, X, nimages=nimages, tol=tol * 5, nudge=nudge, ntries=ntries)
+    raw = redistribute(symbols, X, nimages=nimages,
+                       tol=tol * 5, nudge=nudge, ntries=ntries)
     # Perform smoothing by minimizing distance in Cartesian coordinates with redundant internal metric
     # to find the appropriate geodesic curve on the hyperspace.
-    smoother = Geodesic(symbols, raw, scaling, threshold=dist_cutoff, friction=friction, min_neighbors=min_neighbors)
+    smoother = Geodesic(symbols, raw, scaling, threshold=dist_cutoff,
+                        friction=friction, min_neighbors=min_neighbors)
     if sweep is None:
         sweep = len(symbols) > 35
     try:
         if sweep:
-            smoother.sweep(tol=tol, max_iter=maxiter, micro_iter=microiter, reconstruct=reconstruct)
+            smoother.sweep(tol=tol, max_iter=maxiter,
+                           micro_iter=microiter, reconstruct=reconstruct)
         else:
             smoother.smooth(tol=tol, max_iter=maxiter)
     finally:

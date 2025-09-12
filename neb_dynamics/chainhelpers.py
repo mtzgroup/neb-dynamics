@@ -303,6 +303,7 @@ def get_force_spring_nudged(
     unit_tan_path: np.array,
 ):
     natom = len(current_node.coords)
+    sqrtN = np.sqrt(natom)
     parameters = chain.parameters
     k_max = max(parameters.k) if hasattr(
         parameters.k, "__iter__") else parameters.k
@@ -330,9 +331,9 @@ def get_force_spring_nudged(
 
     # tightest_k = max(k12, k01)
 
-    force_spring = (k12*natom) * (np.linalg.norm(
+    force_spring = (k12) * (np.linalg.norm(
         next_node.coords - current_node.coords
-    )) - (k01*natom * np.linalg.norm(current_node.coords - prev_node.coords))
+    ))/sqrtN - (k01 * np.linalg.norm(current_node.coords - prev_node.coords))/sqrtN
 
     # force_spring = tightest_k * (np.linalg.norm(
     #     next_node.coords - current_node.coords
@@ -771,7 +772,7 @@ def _energies_kcalmol(chain: List[Node]):
     return (enes - enes[0]) * 627.5
 
 
-def build_correlation_matrix(node_list, ts_vector):
+def build_covariance_matrix(node_list, ts_vector):
     node_list = [(node.coords.flatten() - ts_vector) for node in node_list]
     a = node_list[0]
     mat = np.zeros(shape=(len(a), len(a)))
@@ -785,9 +786,11 @@ def build_correlation_matrix(node_list, ts_vector):
     return mat
 
 
-def get_rxn_coordinate(c: Chain):
-    mat = build_correlation_matrix(
-        c, ts_vector=c.get_ts_node().coords.flatten())
+def get_rxn_coordinate(c: Chain, ts_vector=None):
+    if ts_vector is None:
+        ts_vector = c.get_ts_node().coords.flatten()
+    mat = build_covariance_matrix(
+        c, ts_vector=ts_vector)
     # mat = build_correlation_matrix(
     #     c, ts_vector=c[0].coords.flatten())
     evals, evecs = np.linalg.eigh(mat)
@@ -978,7 +981,6 @@ def _select_node_at_dist(
     dist: float,
     direction: int,
     smoother: MorseGeodesic = None,
-    dist_err: float = 0.1,
 ):
     """
     will iterate through chain and select the node that is 'dist' away up to 'dist_err'
@@ -994,20 +996,45 @@ def _select_node_at_dist(
 
     best_node = None
     best_dist_err = 10000.0
+
+    # best_neg_node = None
+    # best_pos_node = None
+    # best_neg_dist_err = 10000.0
+    # best_pos_dist_err = 10000.0
+
     for i, node in enumerate(input_chain[1:-1], start=1):
 
         start = 1
         end = i + 1
 
         curr_dist = smoother.segment_lengths[start-1:end-1].sum()
-        print('distawnces from ', start-1, ' to', end-1, curr_dist)
-        curr_dist_err = np.abs(curr_dist - dist)
-        print(curr_dist_err)
+        curr_dist_err = curr_dist - dist
 
-        if curr_dist_err <= dist_err and curr_dist_err < best_dist_err:
-            best_node = input_chain[i]
-            best_dist_err = curr_dist_err
-            print('\t', best_dist_err)
+        if abs(curr_dist_err) < best_dist_err:
+            best_node = node.copy()
+            best_dist_err = abs(curr_dist_err)
+
+        # if abs(curr_dist_err) < best_neg_dist_err and curr_dist_err < 0:
+        #     best_neg_node = input_chain[i]
+        #     best_neg_dist_err = abs(curr_dist_err)
+        #     # print('\t', best_neg_dist_err)
+
+        # if abs(curr_dist_err) < best_pos_dist_err and curr_dist_err > 0:
+        #     best_pos_node = input_chain[i]
+        #     best_pos_dist_err = curr_dist_err
+        #     # print('\t', best_pos_dist_err)
+
+    # if best_neg_node is not None and best_pos_node is not None:
+    #     a = 1
+    #     b = (dist - best_neg_dist_err) / best_pos_dist_err
+    #     best_node_coords = a*best_neg_node.coords + b*best_pos_node.coords
+    #     best_node = best_neg_node.update_coords(best_node_coords)
+    # elif best_neg_node is not None and best_pos_node is None:
+    #     print("Only negative node found, returning it")
+    #     best_node = best_neg_node
+    # elif best_neg_node is None and best_pos_node is not None:
+    #     print("Only positive node found, returning it")
+    #     best_node = best_pos_node
 
     return best_node
 
@@ -1015,18 +1042,29 @@ def _select_node_at_dist(
 def calculate_geodesic_tangent(
         list_of_nodes, ref_node_ind: int,
         dr: float,
-        nimages=20):
-    ref_node = list_of_nodes[ref_node_ind]
+        nimages=20, min_nimages=5):
 
+    ref_node = list_of_nodes[ref_node_ind]
     segment1 = list_of_nodes[ref_node_ind-1:ref_node_ind+1].copy()
-    # segment1 = list_of_nodes[0:ref_node_ind+1].copy()
     segment1.reverse()
-    smoother1 = sample_shortest_geodesic(segment1, nimages=nimages)
+    d1 = calculate_geodesic_distance(
+        segment1[0], segment1[1], nimages=nimages)
+
+    segment2 = list_of_nodes[ref_node_ind:ref_node_ind+2].copy()
+    d2 = calculate_geodesic_distance(
+        segment2[0], segment2[1], nimages=nimages)
+
+    dtot = d1 + d2
+    nimg1 = max(int(nimages * (d1 / dtot)), min_nimages)
+    nimg2 = max(int(nimages * (d2 / dtot)), min_nimages)
+    print("-> using nimg1:", nimg1, "nimg2:", nimg2, " for the tangent")
+
+    smoother1 = sample_shortest_geodesic(segment1, nimages=nimg1)
     gi1 = gi_path_to_nodes(smoother1.path, symbols=ref_node.symbols,
                            charge=ref_node.structure.charge, spinmult=ref_node.structure.multiplicity)
 
     smoother2 = sample_shortest_geodesic(
-        list_of_nodes[ref_node_ind:ref_node_ind+2], nimages=nimages)
+        segment2, nimages=nimg2)
     # smoother2 = sample_shortest_geodesic(
     #     list_of_nodes[ref_node_ind:], nimages=nimages)
 

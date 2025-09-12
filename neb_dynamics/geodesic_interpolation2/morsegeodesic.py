@@ -68,7 +68,8 @@ class MorseGeodesic(object):
         log_level: int = logging.INFO,
         friction: float = MAIN_DEFAULTS["friction"],
         rij_list_external: Optional[List[Tuple[int, int]]] = None,
-        eq_distances_external: Optional[np.ndarray] = None
+        eq_distances_external: Optional[np.ndarray] = None,
+        align: bool = True
     ):
         """
         Initializes the MorseGeodesic object.
@@ -89,6 +90,7 @@ class MorseGeodesic(object):
             eq_distances_external (Optional[np.ndarray]): Optionally, corresponding equilibrium
                 distances for `rij_list_external`. Must be provided if `rij_list_external` is.
         """
+        self.align = align
 
         # Ensure path is a NumPy float array
         path_arr = np.array(path, dtype=float)
@@ -107,7 +109,12 @@ class MorseGeodesic(object):
                 f"Input path must contain at least one image. Got {path_arr.shape[0]}.")
 
         # --- Initial Path Alignment and Basic Setup ---
-        rmsd0, self.path = align_path(path_arr)  # Align the input path
+        if self.align:
+            rmsd0, self.path = align_path(path_arr)  # Align the input path
+        else:
+            # Initial RMSD
+            rmsd0 = np.sqrt(np.mean(np.square(path_arr[-1] - path_arr[0])))
+            self.path = path_arr
         self.nimages, self.natoms, _ = self.path.shape
         self.atoms: List[str] = atoms
         self.num_cart_coords: int = self.natoms * 3  # Cartesian DOFs per image
@@ -1193,7 +1200,12 @@ class MorseGeodesic(object):
 
         # --- Finalize Path ---
         # Re-align the entire path after optimization
-        rmsd_final_alignment, self.path = align_path(self.path)
+        if self.align:
+            rmsd_final_alignment, self.path = align_path(self.path)
+        else:
+            # RMSD between first and last images
+            rmsd_final_alignment = np.sqrt(
+                np.mean(np.square(self.path[-1] - self.path[0])))
         self._clear_caches_and_reset_state(
             True)  # Clear caches after alignment
         # Recompute disps for the final aligned path using the base friction
@@ -1258,7 +1270,8 @@ def run_geodesic_py(
     microiter=20,
     reconstruct=None,
     nimages=5,
-    min_neighbors=4
+    min_neighbors=4,
+    align=True
 ):
     from .interpolation import redistribute
 
@@ -1269,11 +1282,11 @@ def run_geodesic_py(
     # First redistribute number of images.  Perform interpolation if too few and subsampling if too many
     # images are given
     raw = redistribute(symbols, X, nimages=nimages,
-                       tol=tol * 5, nudge=nudge, ntries=ntries)
+                       tol=tol * 5, nudge=nudge, ntries=ntries, align=align)
     # Perform smoothing by minimizing distance in Cartesian coordinates with redundant internal metric
     # to find the appropriate geodesic curve on the hyperspace.
     smoother = MorseGeodesic(symbols, raw, scaling, threshold=dist_cutoff,
-                             friction=friction, min_neighbors=min_neighbors)
+                             friction=friction, min_neighbors=min_neighbors, align=align)
     try:
         smoother.smooth(tol=tol, max_iter=maxiter)
     finally:
@@ -1294,6 +1307,7 @@ def run_geodesic_get_smoother(
     reconstruct=None,
     nimages=5,
     min_neighbors=4,
+    align=True
 ):
     from neb_dynamics.geodesic_interpolation.interpolation import redistribute
 
@@ -1306,7 +1320,7 @@ def run_geodesic_get_smoother(
     # First redistribute number of images.  Perform interpolation if too few and subsampling if too many
     # images are given
     raw = redistribute(
-        symbols, X, nimages=nimages, tol=tol * 5, nudge=nudge, ntries=ntries
+        symbols, X, nimages=nimages, tol=tol * 5, nudge=nudge, ntries=ntries, align=align
     )
     # Perform smoothing by minimizing distance in Cartesian coordinates with redundant internal metric
     # to find the appropriate geodesic curve on the hyperspace.
@@ -1317,6 +1331,7 @@ def run_geodesic_get_smoother(
         threshold=dist_cutoff,
         friction=friction,
         min_neighbors=min_neighbors,
+        align=align
     )
     # return smoother
 

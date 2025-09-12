@@ -207,7 +207,6 @@ class QCOPEngine(Engine):
         return output
 
     def _compute_hessian_result(self, node: StructureNode, use_bigchem=True):
-        from chemcloud import CCClient
 
         prog = self.program
         collect_files = self.collect_files
@@ -226,8 +225,7 @@ class QCOPEngine(Engine):
                 },
                 keywords={},
             )
-            client = CCClient()
-            fres = client.compute("bigchem", dpi, queue=CCQUEUE)
+            fres = cc_compute("bigchem", dpi)
             output = fres.get()
         else:
             proginp = ProgramInput(
@@ -313,9 +311,10 @@ class QCOPEngine(Engine):
             node=ts, dr=-1*dr, displacement=normal_modes[0])
 
         self.compute_gradients([ts, node_plus, node_minus])
-        sd_plus = self.steepest_descent(node_plus, max_steps=max_steps, ss=ss)
+        sd_plus = self.steepest_descent(
+            node_plus, max_steps=max_steps, ss=ss, grad_thre=1e-7)
         sd_minus = self.steepest_descent(
-            node_minus, max_steps=max_steps, ss=ss)
+            node_minus, max_steps=max_steps, ss=ss, grad_thre=1e-7)
         return [sd_minus, sd_plus]
 
     def compute_hessian(self, node: StructureNode):

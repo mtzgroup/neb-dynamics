@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.optimizers.cg import ConjugateGradient
+from neb_dynamics.optimizers.lbfgs import LBFGS
 import tomli
 import tomli_w
 from pathlib import Path
@@ -148,15 +149,16 @@ class GIInputs:
     `friction`: value for friction parameter. influences the penalty for \
         pairwise distances becoming too large. (default: 0.01)
 
-    `nudge`: value for nudge parameter. (default: 0.001)
+    `nudge`: value for nudge parameter. (default: 0.1)
 
     `extra_kwds`: dictionary containing other keywords geodesic interpolation might use.
     """
 
     nimages: int = 10
     friction: float = 0.01
-    nudge: float = 0.001
+    nudge: float = 0.1
     extra_kwds: dict = field(default_factory=dict)
+    align: bool = True
 
     def copy(self) -> GIInputs:
         return GIInputs(**self.__dict__)
@@ -303,6 +305,7 @@ class RunInputs:
         self.engine = eng
         # self.optimizer = VelocityProjectedOptimizer(**self.optimizer_kwds)
         self.optimizer = ConjugateGradient(**self.optimizer_kwds)
+        # self.optimizer = LBFGS(**self.optimizer_kwds)
 
     @classmethod
     def open(cls, fp):

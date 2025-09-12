@@ -103,14 +103,23 @@ def run(
             end_ref = Structure.open(end)
 
             if start_ref.charge != charge or start_ref.multiplicity != multiplicity:
-                raise ValueError(
+                print(
                     f"WARNING: {start} has charge {start_ref.charge} and multiplicity {start_ref.multiplicity}.\
                         Using {charge} and {multiplicity} instead."
                 )
+                start_ref = Structure(geometry=start_ref.geometry,
+                                      charge=charge,
+                                      multiplicity=multiplicity,
+                                      symbols=start_ref.symbols)
             if end_ref.charge != charge or end_ref.multiplicity != multiplicity:
-                raise ValueError(
-                    f"WARNING: {end} has charge {end_ref.charge} and multiplicity {end_ref.multiplicity}"
+                print(
+                    f"WARNING: {end} has charge {end_ref.charge} and multiplicity {end_ref.multiplicity}.\
+                        Using {charge} and {multiplicity} instead."
                 )
+                end_ref = Structure(geometry=end_ref.geometry,
+                                    charge=charge,
+                                    multiplicity=multiplicity,
+                                    symbols=end_ref.symbols)
 
             all_structs = [start_ref, end_ref]
 
@@ -138,11 +147,11 @@ def run(
     if minimize_ends:
         print("Minimizing input endpoints...")
         start_tr = program_input.engine.compute_geometry_optimization(
-            StructureNode(structure=all_structs[0]), keywords={'coordsys': 'cart'})
+            all_nodes[0], keywords={'coordsys': 'cart'})
 
         all_nodes[0] = start_tr[-1]
         end_tr = program_input.engine.compute_geometry_optimization(
-            StructureNode(structure=all_structs[-1]), keywords={'coordsys': 'cart'})
+            all_nodes[-1], keywords={'coordsys': 'cart'})
         all_nodes[-1] = end_tr[-1]
         print("Done!")
 

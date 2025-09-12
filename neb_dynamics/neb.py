@@ -69,10 +69,10 @@ class NEB(PathMinimizer):
         self.n_steps_still_chain = 0
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
-        if self.parameters.frozen_atom_indices is not None:
-            if isinstance(self.parameters.frozen_atom_indices, str):
-                self.parameters.frozen_atom_indices = [
-                    int(x) for x in self.parameters.frozen_atom_indices.split(",") if x]
+        # if self.parameters.frozen_atom_indices is not None:
+        #     if isinstance(self.parameters.frozen_atom_indices, str):
+        #         self.parameters.frozen_atom_indices = [
+        #             int(x) for x in self.parameters.frozen_atom_indices.split(",") if x]
 
     def set_climbing_nodes(self, chain: Chain) -> None:
         """Iterates through chain and sets the nodes that should climb.
@@ -336,9 +336,9 @@ class NEB(PathMinimizer):
 
         grad_step = ch.compute_NEB_gradient(
             chain, geodesic_tangent=self.parameters.use_geodesic_tangent)
-        if self.parameters.frozen_atom_indices:
-            for index in self.parameters.frozen_atom_indices:
-                grad_step[index] = np.array([0.0, 0.0, 0.0])
+        # if self.parameters.frozen_atom_indices:
+        #     for index in self.parameters.frozen_atom_indices:
+        #         grad_step[index] = np.array([0.0, 0.0, 0.0])
 
         alpha = 1.0
         ntries = 0
