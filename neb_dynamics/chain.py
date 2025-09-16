@@ -383,7 +383,7 @@ class Chain(BaseModel):
         if self._grads_already_computed:
             self.write_grad_info_to_disk(fp)
         for i, node in enumerate(self.nodes):
-            if isinstance(node._cached_result, ProgramOutput):
+            if node._cached_result is not None:
                 node._cached_result.save(
                     fp.parent / Path(str(fp.stem) + f"_node_{i}.qcio"))
 

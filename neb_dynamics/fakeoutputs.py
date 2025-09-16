@@ -6,6 +6,8 @@ from pydantic import BaseModel
 class FakeQCIOResults(BaseModel):
     energy: float
     gradient: list
+    def save(self, filename):
+        pass
 
 
 @dataclass
