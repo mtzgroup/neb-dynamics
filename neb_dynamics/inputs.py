@@ -1,5 +1,4 @@
 from __future__ import annotations
-from xtb.ase.calculator import XTB
 import shutil
 from qcio import ProgramArgs
 from types import SimpleNamespace
@@ -289,15 +288,15 @@ class RunInputs:
                              )
         elif self.engine_name == 'ase':
             from neb_dynamics.engines.ase import ASEEngine
-            ase_progs = ['xtb', 'omol25']
+            ase_progs = ['omol25']
             assert self.program in ase_progs, f"{self.program} not yet supported with ASEEngine. Use one of {ase_progs} instead."
-            if self.program == 'xtb':
-                calc = XTB()
-            elif self.program == 'omol25':
+            if self.program == 'omol25':
                 from fairchem.core import pretrained_mlip, FAIRChemCalculator
                 predictor = pretrained_mlip.load_predict_unit(
                     "/home/diptarka/fairchem/esen_sm_conserving_all.pt", device="cuda")
                 calc = FAIRChemCalculator(predictor, task_name="omol")
+            else:
+                raise ValueError(f"Unsupported program: {self.program}")
             eng = ASEEngine(calculator=calc)
         else:
             raise ValueError(f"Unsupported engine: {self.engine_name}")
