@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class FakeQCIOResults(BaseModel):
     energy: float
     gradient: list
+
     def save(self, filename):
         pass
 
@@ -19,3 +20,6 @@ class FakeQCIOOutput(BaseModel):
     """
     results: FakeQCIOResults
     success: bool = True
+
+    def save(self, filename):
+        pass
