@@ -18,14 +18,10 @@ from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import is_identical
 from neb_dynamics.qcio_structure_helpers import molecule_to_structure
 from neb_dynamics.molecule import Molecule
-from neb_dynamics.engines import Engine, QCOPEngine
-
-from qcio import Structure, ProgramArgs
 
 from typing import Union
 
 # from rxnmapper import RXNMapper
-
 
 @dataclass
 class NetworkBuilder:
@@ -38,14 +34,15 @@ class NetworkBuilder:
     charge: int = 0
     spinmult: int = 1
 
-    engine: Engine = QCOPEngine(program='crest',
-                                program_args=ProgramArgs(
-                                    model={'method': 'gfn2'}, keywords={"calculation": {"level": [{"alpb": "h2o"}]}})
-                                )
-    network_inputs: NetworkInputs = NetworkInputs()
-    chain_inputs: ChainInputs = ChainInputs()
+    network_inputs: NetworkInputs = None
+    chain_inputs: ChainInputs = None
 
-    # def __post_init__(self):
+    def __post_init__(self):
+        if self.network_inputs is None:
+            self.network_inputs = NetworkInputs()
+
+        if self.chain_inputs is None:
+            self.chain_inputs = ChainInputs()
     #     both_are_smi = isinstance(
     #         self.start, str) and isinstance(self.end, str)
     #     both_are_tds = isinstance(

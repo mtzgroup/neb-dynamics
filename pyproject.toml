@@ -1,3 +1,34 @@
+[project]
+name = "neb-dynamics"
+version = "0.1.0"
+description = "Package for minimization of MEPs and reaction path exploration"
+authors = [{name = "Jan", email = "janestrada7@gmail.com"}]
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "ase>=3.26.0",
+    "chemcloud>=0.16.0",
+    "click>=8.2.1",
+    "geometric>=1.1",
+    "ipython>=8.37.0",
+    "ipywidgets>=8.1.7",
+    "joblib>=1.5.2",
+    "networkx>=3.4.2",
+    "numpy>=2.2.6",
+    "openbabel-wheel>=3.1.1.22",
+    "pysmiles>=2.0.0",
+    "qcio[view]>=0.14.0",
+    "qcop>=0.10.2",
+    "rdkit>=2025.3.6",
+    "scipy>=1.15.3",
+    "timeout-timer>=0.2.0",
+    "tomli>=2.2.1",
+    "tomli-w>=1.2.0",
+    "tqdm>=4.67.1",
+    "typer>=0.17.4",
+]
+
 [tool.poetry]
 name = "neb-dynamics"
 version = "0.1.0"

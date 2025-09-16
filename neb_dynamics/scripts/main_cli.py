@@ -156,6 +156,7 @@ def run(
         print("Done!")
 
     # create Chain
+    print('nodes!', [node.structure.charge for node in all_nodes])
     chain = Chain.model_validate({
         "nodes": all_nodes,
         "parameters": program_input.chain_inputs}
