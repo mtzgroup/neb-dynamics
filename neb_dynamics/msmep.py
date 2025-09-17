@@ -115,7 +115,8 @@ class MSMEP:
                     new_tree_node_index = out_history.max_index + 1
                 return history
 
-        except ElectronicStructureError:
+        except ElectronicStructureError as e:
+            e.obj.save("/tmp/failed_output.qcio")
             return TreeNode(data=None, children=[], index=tree_node_index)
 
     def _create_interpolation(self, chain: Chain):

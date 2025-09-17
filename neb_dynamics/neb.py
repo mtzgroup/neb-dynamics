@@ -235,11 +235,12 @@ class NEB(PathMinimizer):
                     return elem_step_results
             try:
                 new_chain = self.update_chain(chain=chain_previous)
-            except ExternalProgramError:
+            except ExternalProgramError as e:
                 elem_step_results = check_if_elem_step(
                     inp_chain=chain_previous, engine=self.engine
                 )
-                raise ElectronicStructureError(msg="QCOP failed.")
+                raise ElectronicStructureError(msg="QCOP failed.",
+                                               obj=e.program_output)
 
             max_rms_grad_val = np.amax(new_chain.rms_gradients)
             ind_ts_guess = np.argmax(new_chain.energies)
