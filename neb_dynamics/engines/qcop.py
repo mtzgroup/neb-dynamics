@@ -173,36 +173,36 @@ class QCOPEngine(Engine):
         """
         this will return a ProgramOutput from qcio geom opt call.
         """
-        if "terachem" not in self.program:
+        # if "terachem" not in self.program:
 
-            dpi = DualProgramInput(
-                calctype="optimization",  # type: ignore
-                structure=node.structure,
-                subprogram=self.program,
-                subprogram_args={
-                    "model": self.program_args.model,
-                    "keywords": self.program_args.keywords,
-                },
-                keywords=keywords,
-            )
+        dpi = DualProgramInput(
+            calctype="optimization",  # type: ignore
+            structure=node.structure,
+            subprogram=self.program,
+            subprogram_args={
+                "model": self.program_args.model,
+                "keywords": self.program_args.keywords,
+            },
+            keywords=keywords,
+        )
 
-            output = self.compute_func(
-                self.geometry_optimizer, dpi, collect_files=self.collect_files)
+        output = self.compute_func(
+            self.geometry_optimizer, dpi, collect_files=self.collect_files)
 
-        else:
-            prog_input = ProgramInput(
-                structure=node.structure,
-                # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
-                calctype="optimization",  # type: ignore
-                model=self.program_args.model,
-                keywords={
-                    "purify": "no",
-                    "new_minimizer": "yes",
-                },  # new_minimizer yes is required
-            )
+        # else:  OCT062025: bug where terachem optimizations werent being passed.
+            # prog_input = ProgramInput(
+            #     structure=node.structure,
+            #     # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
+            #     calctype="optimization",  # type: ignore
+            #     model=self.program_args.model,
+            #     keywords={
+            #         "purify": "no",
+            #         "new_minimizer": "yes",
+            #     },  # new_minimizer yes is required
+            # )
 
-            output = self.compute_func(
-                "terachem", prog_input, collect_files=self.collect_files)
+            # output = self.compute_func(
+            #     "terachem", prog_input, collect_files=self.collect_files)
 
         return output
 
@@ -279,7 +279,7 @@ class QCOPEngine(Engine):
         return self.compute_func('geometric', dpi, collect_files=self.collect_files)
 
     def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500,
-                       use_bigchem=False, ss=1.0) -> List[List[StructureNode], List[StructureNode]]:
+                       use_bigchem=False, ss=1.0, **kwargs) -> List[List[StructureNode], List[StructureNode]]:
         """
         steepest descent IRC.
         """
@@ -303,6 +303,7 @@ class QCOPEngine(Engine):
         if nimaginary > 1:
             print(
                 "WARNING: More than one imaginary frequency detected. This is not a TS.")
+            print(f"frequencies: {freqs}")
 
         node_plus = displace_by_dr(
             node=ts, dr=dr, displacement=normal_modes[0])
@@ -312,9 +313,9 @@ class QCOPEngine(Engine):
 
         self.compute_gradients([ts, node_plus, node_minus])
         sd_plus = self.steepest_descent(
-            node_plus, max_steps=max_steps, ss=ss, grad_thre=1e-7)
+            node_plus, max_steps=max_steps, ss=ss, grad_thre=1e-7, **kwargs)
         sd_minus = self.steepest_descent(
-            node_minus, max_steps=max_steps, ss=ss, grad_thre=1e-7)
+            node_minus, max_steps=max_steps, ss=ss, grad_thre=1e-7, **kwargs)
         return [sd_minus, sd_plus]
 
     def compute_hessian(self, node: StructureNode):

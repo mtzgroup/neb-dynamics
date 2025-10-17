@@ -69,7 +69,8 @@ class MorseGeodesic(object):
         friction: float = MAIN_DEFAULTS["friction"],
         rij_list_external: Optional[List[Tuple[int, int]]] = None,
         eq_distances_external: Optional[np.ndarray] = None,
-        align: bool = True
+        align: bool = True,
+        ignore_atoms: list = None
     ):
         """
         Initializes the MorseGeodesic object.
@@ -178,6 +179,7 @@ class MorseGeodesic(object):
                 alpha=float(scaler),
                 beta=morse_beta_val
             )
+
             logger.debug(
                 f"Using default Morse scaler: alpha={scaler}, beta={morse_beta_val}")
         elif callable(scaler):  # User has provided a custom scaler function
@@ -188,6 +190,10 @@ class MorseGeodesic(object):
                 "`scaler` must be a number (Morse alpha parameter) or a callable function "
                 "of the form `scaler(r_values) -> (wij, dw_drij)`."
             )
+
+        # Set ignore_atoms attribute if provided
+        if ignore_atoms is not None:
+            self.scaler_func.ignore_atoms = ignore_atoms
 
         # --- Other Instance Variables ---
         # Base friction coefficient for regularization
@@ -620,13 +626,47 @@ class MorseGeodesic(object):
         if num_rows_friction_jac > 0:
             # The friction term in `disps` is `active_fric_coeff * (R_segment - R_segment_ref)`.
             # Its derivative w.r.t. `R_segment` is `active_fric_coeff * Identity_matrix`.
+            # However, if some atoms are marked as ignored/frozen (via scaler_func.ignore_atoms),
+            # those atom Cartesian coordinates must not receive friction-derived diagonal entries
+            # (otherwise the friction term will move them). Build the diagonal data and then
+            # filter out near-zero elements to maintain sparsity.
             diag_indices = np.arange(num_cart_coords_varied_segment)
-            temp_coo_data_arrays.append(
-                np.full(num_cart_coords_varied_segment, active_fric_coeff, dtype=float))
-            # Rows for the friction term start after rows for internal displacements
-            temp_coo_rows_arrays.append(num_rows_internal_disps + diag_indices)
-            # Columns correspond to the Cartesian coordinates of the varied segment
-            temp_coo_cols_arrays.append(diag_indices)
+
+            # Start with full diagonal entries
+            diag_data = np.full(num_cart_coords_varied_segment, active_fric_coeff, dtype=float)
+
+            # If ignore_atoms list exists on the scaler, zero the corresponding columns
+            ign_atoms = None
+            if hasattr(self, "scaler_func") and hasattr(self.scaler_func, "ignore_atoms"):
+                try:
+                    ign_atoms = set(int(x) for x in getattr(self.scaler_func, "ignore_atoms") or [])
+                except Exception:
+                    ign_atoms = None
+
+            if ign_atoms:
+                # For each ignored atom index `a` and for each varied image offset `s`,
+                # zero out columns: s*num_cart_coords + a*3 + {0,1,2}
+                ia_arr = np.fromiter(ign_atoms, dtype=np.int32)
+                # Keep only valid atom indices
+                ia_arr = ia_arr[(ia_arr >= 0) & (ia_arr < (self.natoms if hasattr(self, 'natoms') else (self.num_cart_coords // 3)))]
+                if ia_arr.size > 0:
+                    # image offsets within the varied segment
+                    image_offsets = np.arange(num_varied_images, dtype=np.int32)
+                    # Compute all column indices to zero
+                    # cols = [s*num_cart_coords + a*3 + c for s in image_offsets for a in ia_arr for c in (0,1,2)]
+                    cols = (image_offsets[:, None] * self.num_cart_coords)[..., None] + (ia_arr[None, :, None] * 3) + np.array([0, 1, 2], dtype=np.int32)
+                    cols_flat = cols.ravel()
+                    # Create a boolean mask for diag_indices that are in cols_flat
+                    mask = np.isin(diag_indices, cols_flat)
+                    if np.any(mask):
+                        diag_data[mask] = 0.0
+
+            # Filter out near-zero diagonal entries to keep sparsity
+            significant_mask = np.abs(diag_data) > COO_NON_ZERO_EPSILON
+            if np.any(significant_mask):
+                temp_coo_data_arrays.append(diag_data[significant_mask])
+                temp_coo_rows_arrays.append(num_rows_internal_disps + diag_indices[significant_mask])
+                temp_coo_cols_arrays.append(diag_indices[significant_mask])
 
         # If Jacobian is entirely zero (e.g., nrij=0 and no friction)
         if not temp_coo_data_arrays:
@@ -1307,7 +1347,8 @@ def run_geodesic_get_smoother(
     reconstruct=None,
     nimages=5,
     min_neighbors=4,
-    align=True
+    align=True,
+    ignore_atoms: list = None
 ):
     from neb_dynamics.geodesic_interpolation.interpolation import redistribute
 
@@ -1331,8 +1372,10 @@ def run_geodesic_get_smoother(
         threshold=dist_cutoff,
         friction=friction,
         min_neighbors=min_neighbors,
-        align=align
+        align=align,
+        ignore_atoms=ignore_atoms
     )
+
     # return smoother
 
     try:

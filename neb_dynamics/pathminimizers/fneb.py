@@ -10,7 +10,7 @@ import neb_dynamics.chainhelpers as ch
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
 from neb_dynamics.nodes.node import StructureNode
-from neb_dynamics.helper_functions import RMSD, get_maxene_node
+from neb_dynamics.helper_functions import RMSD, get_maxene_node, project_rigid_body_forces
 from neb_dynamics.pathminimizers.pathminimizer import PathMinimizer
 from neb_dynamics.optimizers.optimizer import Optimizer
 from neb_dynamics.elementarystep import check_if_elem_step, ElemStepResults
@@ -19,14 +19,16 @@ from neb_dynamics.inputs import RunInputs
 import traceback
 
 import sys
-MIN_KCAL_ASCENT = 1.0
+MIN_KCAL_ASCENT = -1000000
 DRSTEP = 0.001
 BACKDROP_THRE = 0.0
-PHI = 5.0
+PHI = 0.5
+# PHI = 0.5
 TESTING_GI_TANG = True
-KCONST = 0.5  # Hartree/mol/Bohr
+KCONST = 0.0  # Hartree/mol/Bohr
 MIN_TWO_NODES_SIMUL = True
 MAX_BARRIER_REPEAT = 20000
+
 
 # BACKDROP_THRE = 0.0
 # TESTING_GI_TANG = False
@@ -39,9 +41,7 @@ IS_ELEM_STEP = ElemStepResults(
     minimization_results=None,
     number_grad_calls=0,)
 
-GRAD_TOL = 0.01  # Hartree/Bohr
-TANGERR_TOL = 0.3  # Bohr
-MAXTANG_NTRIES = 5
+
 
 
 @dataclass
@@ -70,7 +70,7 @@ class FreezingNEB(PathMinimizer):
         if self.parameters.distance_metric.upper() == "RMSD":
             return RMSD(node1.coords, node2.coords)[0]
         elif self.parameters.distance_metric.upper() == "GEODESIC":
-            return min([ch.calculate_geodesic_distance(node1, node2, nudge=0.1, nimages=self.gi_inputs.nimages) for i in range(5)])
+            return ch.calculate_geodesic_distance(node1, node2, nudge=self.gi_inputs.nudge, nimages=self.gi_inputs.nimages)
         elif self.parameters.distance_metric.upper() == "LINEAR":
             return np.linalg.norm(node1.coords - node2.coords)
         elif self.parameters.distance_metric.upper() == "XTBGI":
@@ -421,8 +421,7 @@ class FreezingNEB(PathMinimizer):
                     break
 
                 # add a spring force
-                kconst = raw_chain.parameters.k * \
-                    len(gperp1)  # scaled by number of atoms
+                kconst = raw_chain.parameters.k
 
                 print(f"{d1_neighbor=} {d2_neighbor=}")
                 if d1_neighbor < d2_neighbor:
@@ -439,7 +438,8 @@ class FreezingNEB(PathMinimizer):
                 gperp1 += grad_spring
                 # gperp1 -= fspring*unit_tan
                 print(f"***{np.linalg.norm(grad_spring)=}")
-
+                gperp1 = project_rigid_body_forces(
+                        node_to_opt.coords, gperp1, masses=None)
                 out_chain = self.optimizer.optimize_step(
                     chain=Chain.model_validate({"nodes": [node_to_opt]}),
                     chain_gradients=np.array([gperp1]))
@@ -537,7 +537,6 @@ class FreezingNEB(PathMinimizer):
         # --- Initialization ---
         node1_opt = raw_chain[ind_node1]
         node2_opt = raw_chain[ind_node2]
-        natoms = len(node1_opt.coords)
 
         tangent1 = tangents[0]
         tangent2 = tangents[1]
@@ -571,8 +570,10 @@ class FreezingNEB(PathMinimizer):
         init_d20 = self._distance_function(
             raw_chain[ind_node2], raw_chain[ind_node2+1])
 
-        distance_scaling = (RMSD(
-            raw_chain[ind_node2].coords, raw_chain[ind_node1].coords)[0] / init_d)
+        # distance_scaling = (RMSD(
+        #     raw_chain[ind_node2].coords, raw_chain[ind_node1].coords)[0] / init_d)
+
+        distance_scaling = 1
 
         # --- Minimization Loop ---
         while not converged:
@@ -676,14 +677,15 @@ class FreezingNEB(PathMinimizer):
                 delta = (curr_d10 - init_d10)/init_d10
                 if delta > 0:  # will only make the spring repulsive from the left
                     delta = 0
-                distance_scaling = (RMSD(
-                    raw_chain[ind_node1-1].coords, raw_chain[ind_node1].coords)[0] / init_d10)
+                # distance_scaling = (RMSD(
+                #     raw_chain[ind_node1-1].coords, raw_chain[ind_node1].coords)[0] / init_d10)
+                distance_scaling = 1
                 print(f"delta10: {delta}")
                 sys.stdout.flush()
-                if curr_d10 < init_d10:
-                    print("\t moving away from left node, along tang")
+                if (curr_d10 < init_d10):
+                    if abs(delta) > 0: print("\t moving away from left node, along tang")
                 else:
-                    print("\t moving towards left node, along tang")
+                    if abs(delta) > 0: print("\t moving towards left node, along tang")
                 grad_spring = KCONST * delta * \
                     (unit_tan1)*distance_scaling
 
@@ -704,8 +706,10 @@ class FreezingNEB(PathMinimizer):
                 sys.stdout.flush()
                 print("\t moving away from right node, along tang")
                 # negative sign because we want to move against tangent2
-                distance_scaling = (RMSD(
-                    raw_chain[ind_node2+1].coords, raw_chain[ind_node2].coords)[0] / init_d20)
+                # distance_scaling = (RMSD(
+                #     raw_chain[ind_node2+1].coords, raw_chain[ind_node2].coords)[0] / init_d20)
+                distance_scaling = 1
+
                 # grad_spring = KCONST * delta * (unit_tan2)*distance_scaling
                 grad_spring = -1*(KCONST * delta) * \
                     (unit_tan2)*(distance_scaling)
@@ -723,6 +727,10 @@ class FreezingNEB(PathMinimizer):
                     {"nodes": [node1_opt, node2_opt]})
                 # Combine their gradients into a single array for the optimizer.
                 gradients_for_optimization = np.array([direction1, direction2])
+                direction1 = project_rigid_body_forces(
+                    node1_opt.coords, direction1, masses=None)
+                direction2 = project_rigid_body_forces(
+                    node2_opt.coords, direction2, masses=None)
 
                 out_chain = self.optimizer.optimize_step(
                     chain=nodes_to_optimize_chain,
@@ -912,9 +920,13 @@ class FreezingNEB(PathMinimizer):
                             grad_spring[i] = (
                                 g_atom / np.linalg.norm(g_atom)) * KCONST
                     direction += grad_spring
+
+
                     print(
                         f"***{np.linalg.norm(grad_spring)=}||k={KCONST}||{distance_scaling=}")
 
+                direction = project_rigid_body_forces(
+                        node_to_opt.coords, direction, masses=None)
                 out_chain = self.optimizer.optimize_step(
                     chain=Chain.model_validate({"nodes": [node_to_opt]}),
                     chain_gradients=np.array([direction]))
@@ -1002,6 +1014,8 @@ class FreezingNEB(PathMinimizer):
 
             smoother = ch.sample_shortest_geodesic(
                 sub_chain, nsamples=5, nimages=nimg,
+                nudge=self.gi_inputs.nudge,
+                friction=self.gi_inputs.friction,
                 align=self.gi_inputs.align
             )
 

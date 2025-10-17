@@ -508,3 +508,57 @@ def parse_nma_freq_data(hessres):
         reshaped_normal_modes.append(np.array(mode).reshape(refshape))
 
     return reshaped_normal_modes, freqs
+
+def project_rigid_body_forces(R, F, masses=None):
+    """
+    Remove net translation and rotation from forces.
+
+    Parameters
+    ----------
+    R : (N,3) ndarray
+        Cartesian coordinates of atoms in the image.
+    F : (N,3) ndarray
+        Forces on atoms (e.g., NEB effective forces).
+    masses : (N,) ndarray or None
+        Atomic masses. If None, assume equal masses.
+
+    Returns
+    -------
+    F_proj : (N,3) ndarray
+        Forces with rigid translations and rotations removed.
+    """
+    N = R.shape[0]
+    if masses is None:
+        masses = np.ones(N)
+    M = masses.sum()
+
+    # Center of mass
+    R_com = np.average(R, axis=0, weights=masses)
+    s = R - R_com  # positions relative to COM
+
+    # --- 1) Remove translation ---
+    F_net = F.sum(axis=0)
+    F = F - (masses[:, None] / M) * F_net
+
+    # --- 2) Remove rotation ---
+    # Torque from current forces
+    L = np.sum(np.cross(s, F), axis=0)
+
+    # Inertia tensor about COM
+    I = np.zeros((3, 3))
+    for a in range(N):
+        r = s[a]
+        m = masses[a]
+        I += m * ((np.dot(r, r) * np.eye(3)) - np.outer(r, r))
+
+    # Solve I ω = L
+    try:
+        omega = np.linalg.solve(I, L)
+    except np.linalg.LinAlgError:
+        # Handle singular inertia tensor (e.g., linear molecules)
+        omega = np.linalg.pinv(I) @ L
+
+    # Subtract rotational component
+    F = F - masses[:, None] * np.cross(omega, s)
+
+    return F

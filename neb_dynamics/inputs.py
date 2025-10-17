@@ -59,7 +59,6 @@ class NEBInputs:
     ts_spring_thre: float = None
     barrier_thre: float = .1  # kcal/mol
 
-    frozen_atom_indices: str = ""
     early_stop_force_thre: float = 0.0
 
     negative_steps_thre: int = 10
@@ -86,10 +85,6 @@ class NEBInputs:
 
         if self.max_rms_grad_thre is None:
             self.max_rms_grad_thre = 0.05
-
-        if len(self.frozen_atom_indices) > 0:
-            self.frozen_atom_indices = [
-                int(x) for x in self.frozen_atom_indices.split(",")]
 
     def copy(self) -> NEBInputs:
         return NEBInputs(**self.__dict__)
@@ -120,8 +115,8 @@ class ChainInputs:
     `tc_kwds`: keyword arguments for electronic structure calculations
     """
 
-    k: float = 0.1
-    delta_k: float = 0.09
+    k: float = 0.5
+    delta_k: float = 0.4
 
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
@@ -131,6 +126,12 @@ class ChainInputs:
 
     node_rms_thre: float = 5.0  # Bohr
     node_ene_thre: float = 5.0  # kcal/mol
+    frozen_atom_indices: str = ""
+
+    def _post_init__(self):
+        if len(self.frozen_atom_indices) > 0:
+            self.frozen_atom_indices = [
+                int(x) for x in self.frozen_atom_indices.split(",")]
 
     def copy(self) -> ChainInputs:
         return ChainInputs(**self.__dict__)
@@ -151,11 +152,14 @@ class GIInputs:
     `nudge`: value for nudge parameter. (default: 0.1)
 
     `extra_kwds`: dictionary containing other keywords geodesic interpolation might use.
+
+    !Protip: run multiple geodesic interpolations with high nudge values and select the path
+    with the shortest length.
     """
 
     nimages: int = 10
-    friction: float = 0.01
-    nudge: float = 0.1
+    friction: float = 0.001
+    nudge: float = 5.0
     extra_kwds: dict = field(default_factory=dict)
     align: bool = True
 
@@ -222,9 +226,7 @@ class RunInputs:
                 "barrier_thre": 5,  # kcal/mol,
                 "tangent": 'geodesic',
                 "tangent_alpha": 1.0,  # mixing coefficient for tangents,
-                "use_xtb_grow": True
-
-
+                "use_xtb_grow": True,
 
             }
         #     default_kwds = FSMInputs()

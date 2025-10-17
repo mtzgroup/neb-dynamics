@@ -147,11 +147,11 @@ def run(
     if minimize_ends:
         print("Minimizing input endpoints...")
         start_tr = program_input.engine.compute_geometry_optimization(
-            all_nodes[0], keywords={'coordsys': 'cart'})
+            all_nodes[0], keywords={'coordsys': 'cart', 'maxiter':500})
 
         all_nodes[0] = start_tr[-1]
         end_tr = program_input.engine.compute_geometry_optimization(
-            all_nodes[-1], keywords={'coordsys': 'cart'})
+            all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter':500})
         all_nodes[-1] = end_tr[-1]
         print("Done!")
 
@@ -172,14 +172,19 @@ def run(
         print(f"RUNNING AUTOSPLITTING {program_input.path_min_method}")
         history = m.run_recursive_minimize(chain)
 
+        if not history.data:
+            print("!!!ERROR: Program did not run. Likely because your endpoints are conformers of the same molecular graph. Tighten " \
+            "the node_rms_thre and/or node_ene_thre parameters in chain_inputs and try again.")
+            sys.exit()
+
         leaves_nebs = [
             obj for obj in history.get_optimization_history() if obj]
         fp = Path("mep_output")
-
         if name is not None:
+            name = Path(name)
             data_dir = Path(name).resolve().parent
-            foldername = data_dir / name
-            filename = data_dir / (name + ".xyz")
+            foldername = data_dir / name.stem
+            filename = data_dir / (name.stem + ".xyz")
 
         else:
             data_dir = Path(os.getcwd())

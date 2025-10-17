@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 from numpy.typing import NDArray
+from elements import ElementData
 from qcop.exceptions import ExternalProgramError
 from qcio.view import generate_structure_viewer_html
 from scipy.signal import argrelextrema
@@ -30,6 +31,7 @@ from neb_dynamics.inputs import ChainInputs, GIInputs
 from neb_dynamics.helper_functions import (
     linear_distance,
     qRMSD_distance,
+    project_rigid_body_forces
 )
 from ipywidgets import IntSlider, interact
 
@@ -128,7 +130,7 @@ def neighs_grad_func(
         ind = _get_closest_node_ind(
             chain.coordinates, reference=current_node.coords)
         _node0, _node1, _node2 = calculate_geodesic_tangent(
-            list_of_nodes=chain.nodes, ref_node_ind=ind)
+            list_of_nodes=chain.nodes, ref_node_ind=ind, dr=0.001)
         vec_tan_path = ((current_node.coords - _node0.coords) +
                         (_node2.coords - current_node.coords)) / 2
     else:
@@ -139,13 +141,22 @@ def neighs_grad_func(
 
     pe_grad = np.array(current_node.gradient)
 
-    # remove rotations and translations
-    # if we have at least 3 atoms
-    # if len(pe_grad.shape) > 1 and pe_grad.shape[1] >= 3:
-    #     pe_grad[0, :] = 0  # this atom cannot move
-    #     pe_grad[1, :2] = 0  # this atom can only move in a line
-    #     pe_grad[2, :1] = 0  # this atom can only move in a plane
-    pe_grad = pe_grad-pe_grad[0, :]  # remove force from 0th atom
+    # if chain.parameters.frozen_atom_indices:
+    #     inds = np.array(chain.parameters.frozen_atom_indices.split(), dtype=int)
+    #     for index in inds:
+    #         pe_grad[index] = np.array([0.0, 0.0, 0.0])
+    #     non_frozen_inds = [i for i in range(len(pe_grad)) if i not in inds]
+    #     pe_grad = pe_grad - pe_grad[non_frozen_inds[0], :]  # remove force from first non-frozen atom
+
+    # # remove rotations and translations
+    # # if we have at least 3 atoms
+    # # if len(pe_grad.shape) > 1 and pe_grad.shape[1] >= 3:
+    # #     pe_grad[0, :] = 0  # this atom cannot move
+    # #     pe_grad[1, :2] = 0  # this atom can only move in a line
+    # #     pe_grad[2, :1] = 0  # this atom can only move in a plane
+    # else:
+    #     pe_grad = pe_grad-pe_grad[0, :]  # remove force from 0th atom
+
 
     if current_node.do_climb:
         pe_along_path_const = np.dot(
@@ -155,6 +166,7 @@ def neighs_grad_func(
         climbing_grad = 2 * pe_along_path
 
         pe_grads_nudged = pe_grad - climbing_grad
+
 
         zero = np.zeros_like(pe_grad)
         spring_forces_nudged = zero
@@ -179,14 +191,6 @@ def neighs_grad_func(
         #     unit_tan_path=unit_tan_path,
         # )
 
-        # if len(spring_forces_nudged.shape) > 1 and spring_forces_nudged.shape[1] >= 3:
-        #     spring_forces_nudged[0, :] = 0  # this atom cannot move
-        #     # this atom can only move in a line
-        #     spring_forces_nudged[1, :2] = 0
-        #     # this atom can only move in a plane
-        #     spring_forces_nudged[2, :1] = 0
-        spring_forces_nudged = spring_forces_nudged - \
-            spring_forces_nudged[0, :]
 
     return pe_grads_nudged, spring_forces_nudged
 
@@ -258,6 +262,14 @@ def compute_NEB_gradient(chain: Chain, geodesic_tangent: bool = False) -> NDArra
         chain=chain, geodesic_tangent=geodesic_tangent)
 
     grads = pe_grads_nudged - spring_forces_nudged
+
+    # remove rotations and translations
+    ed = ElementData()
+    masses = np.array([ed.from_symbol(n).mass_amu for n in chain[0].symbols])
+    grads = np.array([
+        project_rigid_body_forces(
+            node.coords, g, masses=masses) for (node, g) in zip(chain[1:-1], grads)]
+            )
 
     # endpoints have 0 gradient because we freeze them
     zero = np.zeros_like(grads[0])
@@ -333,16 +345,16 @@ def get_force_spring_nudged(
 
     force_spring = (k12) * (np.linalg.norm(
         next_node.coords - current_node.coords
-    ))/sqrtN - (k01 * np.linalg.norm(current_node.coords - prev_node.coords))/sqrtN
+    ))/sqrtN - k01 * (np.linalg.norm(current_node.coords - prev_node.coords))/sqrtN
 
     # force_spring = tightest_k * (np.linalg.norm(
     #     next_node.coords - current_node.coords
-    # )/natom) - (tightest_k * np.linalg.norm(current_node.coords - prev_node.coords)/natom)
+    # )/sqrtN) - (tightest_k * np.linalg.norm(current_node.coords - prev_node.coords)/sqrtN)
 
     force_vector = force_spring * unit_tan_path
-    for i, atom in enumerate(force_vector):
-        if np.linalg.norm(atom) > chain.parameters.k:
-            force_vector[i] = (atom / np.linalg.norm(atom))*chain.parameters.k
+    # for i, atom in enumerate(force_vector):
+    #     if np.linalg.norm(atom) > chain.parameters.k:
+    #         force_vector[i] = (atom / np.linalg.norm(atom))*chain.parameters.k
     return force_vector
 
 
@@ -455,7 +467,6 @@ def gi_path_to_nodes(
 
 
 def sample_shortest_geodesic(chain: Union[Chain, List[StructureNode]],
-                             chain_inputs=None,
                              nsamples: int = 5, **kwargs):
 
     shortest_path = 1000
@@ -468,9 +479,12 @@ def sample_shortest_geodesic(chain: Union[Chain, List[StructureNode]],
             ],
             **kwargs,
         )
-        if smoother.length < shortest_path:
+        # if smoother.length < shortest_path:
+        if np.std(smoother.segment_lengths) < shortest_path:
+            # best_smoother = smoother
+            # shortest_path = smoother.length
             best_smoother = smoother
-            shortest_path = smoother.length
+            shortest_path = np.std(smoother.segment_lengths)
 
     return best_smoother
 
@@ -505,13 +519,9 @@ def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, re
 
 
 def calculate_geodesic_distance(
-    node1: StructureNode, node2: StructureNode, nimages=12, nudge=0.1,
+    node1: StructureNode, node2: StructureNode, nimages=12, nudge=1.0,
     nsamples=5
 ):
-    from neb_dynamics.helper_functions import RMSD
-
-    rmsd_dist, _ = RMSD(node1.coords, node2.coords)
-    nudge = min(rmsd_dist, nudge)
     smoother = sample_shortest_geodesic(
         Chain.model_validate({'nodes': [node1, node2]}),
         nudge=nudge,

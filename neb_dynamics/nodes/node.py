@@ -160,6 +160,9 @@ class StructureNode(Node):
 
         new_struct_dict = copy_node.structure.__dict__.copy()
         new_struct_dict["geometry"] = new_coords
+        new_struct_dict["charge"] = copy_node.structure.charge
+        new_struct_dict["multiplicity"] = copy_node.structure.multiplicity
+
         copy_node.structure = Structure(**new_struct_dict)
         return copy_node
 

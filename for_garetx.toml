@@ -1,0 +1,57 @@
+engine_name = "qcop"
+program = "terachem"
+path_min_method = "neb"
+
+[path_min_inputs]
+climb = false
+en_thre = 0.0001
+rms_grad_thre = 0.005
+max_rms_grad_thre = 0.05
+skip_identical_graphs = true
+ts_grad_thre = 0.05
+ts_spring_thre = 0.02
+barrier_thre = 0.1
+frozen_atom_indices = ""
+early_stop_force_thre = 0.0
+negative_steps_thre = 10
+use_geodesic_tangent = false
+do_elem_step_checks = false
+max_steps = 500
+v = true
+
+[chain_inputs]
+k = 0.1
+delta_k = 0.09
+do_parallel = true
+use_geodesic_interpolation = true
+friction_optimal_gi = false
+node_freezing = true
+node_rms_thre = 5.0
+node_ene_thre = 5.0
+
+[gi_inputs]
+nimages = 15
+friction = 0.01
+nudge = 0.1
+align = true
+
+[gi_inputs.extra_kwds]
+
+[program_kwds]
+cmdline_args = []
+
+[program_kwds.keywords]
+threads = 1
+
+[program_kwds.extras]
+
+[program_kwds.files]
+
+[program_kwds.model]
+method = "b3lyp"
+basis = "3-21gs"
+
+[program_kwds.model.extras]
+
+[optimizer_kwds]
+timestep = 0.5

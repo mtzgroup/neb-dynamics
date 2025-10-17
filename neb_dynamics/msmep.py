@@ -5,7 +5,7 @@ import numpy as np
 from neb_dynamics.helper_functions import pairwise
 from typing import Tuple, List
 
-from neb_dynamics.nodes.node import Node
+from neb_dynamics.nodes.node import Node, StructureNode
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
 from neb_dynamics.elementarystep import check_if_elem_step
 
@@ -18,6 +18,7 @@ from neb_dynamics.nodes.nodehelpers import is_identical
 
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.errors import ElectronicStructureError
+from qcio import Structure
 
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
 from neb_dynamics.inputs import RunInputs
@@ -121,6 +122,28 @@ class MSMEP:
 
     def _create_interpolation(self, chain: Chain):
         import neb_dynamics.chainhelpers as ch
+        if chain.parameters.frozen_atom_indices:
+            chain_original = chain.copy()
+            all_indices = list(range(len(chain[0].coords)))
+
+            inds_frozen = np.array(
+                chain.parameters.frozen_atom_indices.split(), dtype=int
+            )
+            subsys_inds = np.setdiff1d(all_indices, inds_frozen)
+            subsys_coords = [node.coords[subsys_inds] for node in chain]
+
+            subsys_symbs = [chain[0].structure.symbols[i] for i in subsys_inds]
+            subsys_structs = [Structure(geometry=c, symbols=subsys_symbs,
+                                        charge=chain[0].structure.charge,
+                                        multiplicity=chain[0].structure.multiplicity) for c in subsys_coords]
+
+            subsys_nodes = [StructureNode(structure=s) for s in subsys_structs]
+
+            print(f"{all_indices=} {subsys_inds=} {inds_frozen=}")
+            chain = Chain.model_validate({
+                "nodes": subsys_nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
+
+
 
         if self.inputs.chain_inputs.use_geodesic_interpolation:
 
@@ -158,6 +181,21 @@ class MSMEP:
             ]
             interpolation = Chain.model_validate({
                 "nodes": nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
+
+
+        if chain.parameters.frozen_atom_indices:
+            # need to reinsert the frozen atoms into the interpolation
+            new_nodes = []
+            for node in interpolation:
+                new_geom = np.zeros_like(chain_original[0].coords)
+                new_geom[subsys_inds] = node.coords
+                new_geom[inds_frozen] = chain_original[0].coords[inds_frozen]
+                new_node = chain_original[0].update_coords(new_geom)
+                new_nodes.append(new_node)
+
+            interpolation = Chain.model_validate({
+                "nodes": new_nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
+            interpolation._zero_velocity()
         return interpolation
 
     def _construct_path_minimizer(self, initial_chain: Chain):

@@ -9,7 +9,8 @@ import numpy as np
 
 from neb_dynamics.nodes.node import Node
 from neb_dynamics.fakeoutputs import FakeQCIOOutput
-from qcio.models.outputs import ProgramOutput
+from neb_dynamics.helper_functions import get_mass
+from qcio import ProgramOutput
 
 
 @dataclass
@@ -42,6 +43,7 @@ class Engine(ABC):
         max_steps=500,
         ene_thre: float = 1e-6,
         grad_thre: float = 1e-4,
+        mass_weighted: bool = False,
     ) -> list[Node]:
         # print("************\n\n\n\nRUNNING STEEPEST DESCENT\n\n\n\nn***********")
         history = []
@@ -51,8 +53,26 @@ class Engine(ABC):
 
         curr_step = 0
         converged = False
+        natom = node.coords.shape[0]
         while curr_step < max_steps and not converged:
             grad = np.array(last_node.gradient)
+            if mass_weighted:
+                masses = [get_mass(s) for s in node.structure.symbols]
+                grad = np.array([atom*np.sqrt(mass) for atom, mass in zip(grad, masses)])
+
+            grad_mag = np.linalg.norm(grad) / np.sqrt(natom)
+            # print(f"Step {curr_step}: Gradient magnitude {grad_mag:.4e}")
+            if grad_mag > ss:
+                print(
+                    f"Step {curr_step}: Gradient magnitude {grad_mag:.4e} greater than step size {ss:.4e}. Scaling down step size."
+                )
+                # normalize the gradient
+
+                grad = grad / np.linalg.norm(grad)
+                grad = grad / np.sqrt(natom)
+                grad = grad*ss
+
+
             new_coords = last_node.coords - ((1.0 * ss) * grad)
             node_new = last_node.update_coords(new_coords)
             grads = self.compute_gradients([node_new])

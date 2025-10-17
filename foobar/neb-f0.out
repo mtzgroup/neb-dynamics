@@ -1,0 +1,20 @@
+Traceback (most recent call last):
+  File "/home/kukier/projects/yan-mechanochem-char/.venv/bin/mepd", line 4, in <module>
+    from neb_dynamics.scripts.main_cli import app
+  File "/home/kukier/projects/yan-mechanochem-char/.venv/lib/python3.12/site-packages/neb_dynamics/scripts/main_cli.py", line 21, in <module>
+    from neb_dynamics.NetworkBuilder import NetworkBuilder
+  File "/home/kukier/projects/yan-mechanochem-char/.venv/lib/python3.12/site-packages/neb_dynamics/NetworkBuilder.py", line 30, in <module>
+    @dataclass
+     ^^^^^^^^^
+  File "/home/kukier/.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/dataclasses.py", line 1275, in dataclass
+    return wrap(cls)
+           ^^^^^^^^^
+  File "/home/kukier/.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/dataclasses.py", line 1265, in wrap
+    return _process_class(cls, init, repr, eq, order, unsafe_hash,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kukier/.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/dataclasses.py", line 994, in _process_class
+    cls_fields.append(_get_field(cls, name, type, kw_only))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/kukier/.local/share/uv/python/cpython-3.12.11-linux-x86_64-gnu/lib/python3.12/dataclasses.py", line 852, in _get_field
+    raise ValueError(f'mutable default {type(f.default)} for field '
+ValueError: mutable default <class 'neb_dynamics.engines.qcop.QCOPEngine'> for field engine is not allowed: use default_factory

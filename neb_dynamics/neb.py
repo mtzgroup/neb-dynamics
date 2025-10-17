@@ -83,8 +83,8 @@ class NEB(PathMinimizer):
         if self.parameters.climb:
             inds_maxima = [chain.energies.argmax()]
 
-            if self.parameters.v > 0:
-                print(f"\n----->Setting {len(inds_maxima)} nodes to climb\n")
+            # if self.parameters.v > 0:
+            print(f"\n----->Setting {len(inds_maxima)} nodes to climb\n")
 
             for ind in inds_maxima:
                 chain[ind].do_climb = True
@@ -127,9 +127,11 @@ class NEB(PathMinimizer):
         ind_ts_guess = np.argmax(chain.energies)
         ts_guess_grad = np.amax(np.abs(ch.get_g_perps(chain)[ind_ts_guess]))
         springgrad_infnorm = np.amax(abs(chain.springgradients))
+        rms_grad = chain.rms_gradients
 
         # if ts_guess_grad < self.parameters.early_stop_force_thre:
-        if springgrad_infnorm < self.parameters.early_stop_force_thre:
+        # if springgrad_infnorm < self.parameters.early_stop_force_thre:
+        if sum(rms_grad)/len(chain) < self.parameters.early_stop_force_thre:
 
             new_params = copy.deepcopy(self.parameters)
             new_params.early_stop_force_thre = 0.0
@@ -337,9 +339,12 @@ class NEB(PathMinimizer):
 
         grad_step = ch.compute_NEB_gradient(
             chain, geodesic_tangent=self.parameters.use_geodesic_tangent)
-        # if self.parameters.frozen_atom_indices:
-        #     for index in self.parameters.frozen_atom_indices:
-        #         grad_step[index] = np.array([0.0, 0.0, 0.0])
+
+        # if chain.parameters.frozen_atom_indices:
+        #     inds = np.array(chain.parameters.frozen_atom_indices.split(), dtype=int)
+        #     for index in inds:
+        #         for image_ind in range(grad_step.shape[0]):
+        #             grad_step[image_ind][index] = np.array([0.0, 0.0, 0.0])
 
         alpha = 1.0
         ntries = 0

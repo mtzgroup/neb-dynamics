@@ -60,7 +60,7 @@ class ASEEngine(Engine):
 
     calculator: Calculator
     ase_optimizer: Optimizer = None
-    geometry_optimizer: str = "LBFGS"
+    geometry_optimizer: str = "LBFGSLineSearch"
     biaser: ChainBiaser = None
 
     def __post_init__(self):
