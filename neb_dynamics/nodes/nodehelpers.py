@@ -1,10 +1,11 @@
 import numpy as np
 from neb_dynamics.nodes.node import Node, XYNode
 from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
-from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+from neb_dynamics.geodesic_interpolation2.coord_utils import align_geom
 # from neb_dynamics.molecule import Molecule
 # from neb_dynamics.qcio_structure_helpers import molecule_to_structure
 import traceback
+from qcinf import structure_to_smiles
 # from rxnmapper import RXNMapper
 
 
@@ -140,8 +141,9 @@ def _is_connectivity_identical(self: Node, other: Node, verbose: bool = True) ->
     natom = len(self.coords)
     if natom < 100:  # arbitrary number, else this takes too long
         try:
-            smi1 = self.structure.to_smiles()
-            smi2 = other.structure.to_smiles()
+
+            smi1 = structure_to_smiles(self.structure)
+            smi2 = structure_to_smiles(other.structure)
             stereochem_identical = smi1 == smi2
 
         except Exception:

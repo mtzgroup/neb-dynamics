@@ -11,13 +11,13 @@ chemical relevance of internal coordinates with the robustness of Cartesian opti
 
 import logging
 import numpy as np
-from scipy.optimize import least_squares  # For path optimization
-import scipy.sparse  # For efficient handling of Jacobian matrices
+from scipy.optimize import least_squares # For path optimization
+import scipy.sparse # For efficient handling of Jacobian matrices
 from typing import List, Tuple, Callable, Union, Optional, Any
 
 # Local imports from the same package
-from .coord_utils import align_path, get_bond_list, morse_scaler, compute_wij
-from .config import MAIN_DEFAULTS, COORD_UTILS_DEFAULTS
+from coord_utils import align_path, get_bond_list, morse_scaler, compute_wij
+from config import MAIN_DEFAULTS, COORD_UTILS_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -61,16 +61,13 @@ class MorseGeodesic(object):
         self,
         atoms: List[str],
         path: Union[np.ndarray, List[np.ndarray]],
-        scaler: Union[float, Callable[[np.ndarray],
-                                      Tuple[np.ndarray, np.ndarray]]] = MAIN_DEFAULTS["morse_alpha"],
+        scaler: Union[float, Callable[[np.ndarray], Tuple[np.ndarray, np.ndarray]]] = MAIN_DEFAULTS["morse_alpha"],
         threshold: float = MAIN_DEFAULTS["distance_cutoff"],
         min_neighbors: int = COORD_UTILS_DEFAULTS["get_bond_list_min_neighbors"],
         log_level: int = logging.INFO,
         friction: float = MAIN_DEFAULTS["friction"],
         rij_list_external: Optional[List[Tuple[int, int]]] = None,
-        eq_distances_external: Optional[np.ndarray] = None,
-        align: bool = True,
-        ignore_atoms: list = None
+        eq_distances_external: Optional[np.ndarray] = None
     ):
         """
         Initializes the MorseGeodesic object.
@@ -91,37 +88,27 @@ class MorseGeodesic(object):
             eq_distances_external (Optional[np.ndarray]): Optionally, corresponding equilibrium
                 distances for `rij_list_external`. Must be provided if `rij_list_external` is.
         """
-        self.align = align
 
-        # Ensure path is a NumPy float array
-        path_arr = np.array(path, dtype=float)
+        path_arr = np.array(path, dtype=float) # Ensure path is a NumPy float array
 
         # --- Input Validation ---
         if path_arr.ndim != 3:
-            raise ValueError(
-                f'Input path must be a 3D array (nimages, natoms, 3). Got shape {path_arr.shape}')
+            raise ValueError(f'Input path must be a 3D array (nimages, natoms, 3). Got shape {path_arr.shape}')
         if len(atoms) != path_arr.shape[1]:
             raise ValueError(
                 f"Atom count mismatch: `atoms` list has {len(atoms)} elements, "
                 f"but path geometries have {path_arr.shape[1]} atoms."
             )
-        if path_arr.shape[0] < 1:  # Path must have at least one image
-            raise ValueError(
-                f"Input path must contain at least one image. Got {path_arr.shape[0]}.")
+        if path_arr.shape[0] < 1: # Path must have at least one image
+            raise ValueError(f"Input path must contain at least one image. Got {path_arr.shape[0]}.")
 
         # --- Initial Path Alignment and Basic Setup ---
-        if self.align:
-            rmsd0, self.path = align_path(path_arr)  # Align the input path
-        else:
-            # Initial RMSD
-            rmsd0 = np.sqrt(np.mean(np.square(path_arr[-1] - path_arr[0])))
-            self.path = path_arr
+        rmsd0, self.path = align_path(path_arr) # Align the input path
         self.nimages, self.natoms, _ = self.path.shape
         self.atoms: List[str] = atoms
-        self.num_cart_coords: int = self.natoms * 3  # Cartesian DOFs per image
+        self.num_cart_coords: int = self.natoms * 3 # Cartesian DOFs per image
 
-        logger.log(
-            log_level, f"Initial path alignment max RMSD change: {rmsd0:10.2f} Angstroms")
+        logger.log(log_level, f"Initial path alignment max RMSD change: {rmsd0:10.2f} Angstroms")
 
         # --- Internal Coordinate Definition (rij_list) ---
         # `rij_list_py` is a temporary local variable during initialization.
@@ -144,13 +131,11 @@ class MorseGeodesic(object):
             )
         else:
             # Generate internal coordinate list and equilibrium distances automatically
-
             rij_list_py, self.eq_distances = get_bond_list(
                 self.path,
                 atoms=self.atoms,
                 threshold=threshold,
-                min_neighbors=min_neighbors,
-                ignore_atoms=ignore_atoms
+                min_neighbors=min_neighbors
             )
             logger.debug(
                 f"Generated internal rij_list ({len(rij_list_py)} pairs) and eq_distances."
@@ -159,16 +144,14 @@ class MorseGeodesic(object):
         # Convert the Python list of pair tuples to a NumPy array for efficiency
         if rij_list_py:
             self.rij_list_np = np.array(rij_list_py, dtype=np.int32)
-        else:  # No internal coordinates
+        else: # No internal coordinates
             self.rij_list_np = np.empty((0, 2), dtype=np.int32)
 
-        # Number of defined internal coordinates (Rijs)
-        self.nrij: int = len(rij_list_py)
+        self.nrij: int = len(rij_list_py) # Number of defined internal coordinates (Rijs)
 
         # --- Scaler Function Setup ---
-        # If `scaler` is a number, it's treated as Morse alpha
-        if isinstance(scaler, (float, int)):
-            morse_beta_val = MAIN_DEFAULTS["morse_beta"]  # Use default beta
+        if isinstance(scaler, (float, int)): # If `scaler` is a number, it's treated as Morse alpha
+            morse_beta_val = MAIN_DEFAULTS["morse_beta"] # Use default beta
             if self.nrij > 0 and (self.eq_distances is None or self.eq_distances.size != self.nrij):
                 raise ValueError(
                     f"Cannot create Morse scaler: `eq_distances` is missing or has incorrect size "
@@ -176,15 +159,12 @@ class MorseGeodesic(object):
                     f"for the number of internal coordinates ({self.nrij})."
                 )
             self.scaler_func = morse_scaler(
-                eq_distances=self.eq_distances if self.nrij > 0 else np.array(
-                    []),  # Pass empty if no rijs
+                eq_distances=self.eq_distances if self.nrij > 0 else np.array([]), # Pass empty if no rijs
                 alpha=float(scaler),
                 beta=morse_beta_val
             )
-
-            logger.debug(
-                f"Using default Morse scaler: alpha={scaler}, beta={morse_beta_val}")
-        elif callable(scaler):  # User has provided a custom scaler function
+            logger.debug(f"Using default Morse scaler: alpha={scaler}, beta={morse_beta_val}")
+        elif callable(scaler): # User has provided a custom scaler function
             self.scaler_func = scaler
             logger.debug("Using user-provided custom scaler function.")
         else:
@@ -193,49 +173,36 @@ class MorseGeodesic(object):
                 "of the form `scaler(r_values) -> (wij, dw_drij)`."
             )
 
-        # Set ignore_atoms attribute if provided
-        if len(ignore_atoms) > 0:
-            self.scaler_func.ignore_atoms = ignore_atoms
-
         # --- Other Instance Variables ---
-        # Base friction coefficient for regularization
-        self.base_friction: float = friction
+        self.base_friction: float = friction # Base friction coefficient for regularization
         self.log_level: int = log_level
 
         logger.log(log_level, "Initializing Morse-Geodesic object:")
         logger.log(log_level, f"  Number of images: {self.nimages:4d}")
         logger.log(log_level, f"  Number of atoms per image: {self.natoms:4d}")
-        logger.log(
-            log_level, f"  Number of internal coordinates (Rijs): {self.nrij:6d}")
+        logger.log(log_level, f"  Number of internal coordinates (Rijs): {self.nrij:6d}")
 
         # --- Cache and State Variables for Optimization ---
-        self.neval: int = 0  # Counter for function/Jacobian evaluations
+        self.neval: int = 0 # Counter for function/Jacobian evaluations
 
         # Caches for scaled internal coordinates (w) and their Cartesian gradients (dwdR)
         # for each image on the main path. `None` indicates the value needs computation.
         self.w: List[Optional[np.ndarray]] = [None] * self.nimages
-        self.dwdR: List[Optional[scipy.sparse.csr_matrix]] = [
-            None] * self.nimages
+        self.dwdR: List[Optional[scipy.sparse.csr_matrix]] = [None] * self.nimages
 
         num_midpoints = self.nimages - 1 if self.nimages > 0 else 0
         # Caches for midpoint geometries (X_mid) and their corresponding w_mid, dwdR_mid.
         # X_mid[i] is the geometric midpoint between path[i] and path[i+1].
         self.X_mid: List[Optional[np.ndarray]] = [None] * num_midpoints
         self.w_mid: List[Optional[np.ndarray]] = [None] * num_midpoints
-        self.dwdR_mid: List[Optional[scipy.sparse.csr_matrix]] = [
-            None] * num_midpoints
+        self.dwdR_mid: List[Optional[scipy.sparse.csr_matrix]] = [None] * num_midpoints
 
-        # Current displacement vector (residuals for LS)
-        self.disps: Optional[np.ndarray] = None
-        # Current Jacobian of `disps`
-        self.current_grad: Optional[scipy.sparse.csc_matrix] = None
-        # Current path length in scaled internal space
-        self.length: float = 0.0
-        # Current optimality metric (norm of J^T * disps)
-        self.optimality: float = 0.0
-
-        self.segment_lengths:  Optional[np.ndarray] = None
-
+        self.disps: Optional[np.ndarray] = None             # Current displacement vector (residuals for LS)
+        self.current_grad: Optional[scipy.sparse.csc_matrix] = None # Current Jacobian of `disps`
+        self.length: float = 0.0                            # Current path length in scaled internal space
+        self.optimality: float = 0.0                        # Current optimality metric (norm of J^T * disps)
+        self.segment_lengths:  Optional[np.ndarray] = None 
+   
         # Stores the last set of Cartesian coordinates (of the optimized segment) for which
         # the state (disps, grad) was computed. Used to avoid recomputation if X hasn't changed.
         self.last_X_for_state: Optional[np.ndarray] = None
@@ -248,6 +215,7 @@ class MorseGeodesic(object):
 
         self._w_mid_arr_buffer = np.empty((max(0, self.nimages - 1), self.nrij), dtype=float) \
             if self.nrij > 0 and self.nimages > 1 else np.empty((max(0, self.nimages - 1), 0), dtype=float)
+
 
     def _update_intc(self) -> None:
         """
@@ -273,16 +241,14 @@ class MorseGeodesic(object):
             if self.X_mid[i] is None:  # Calculate geometric midpoint if not cached
                 self.X_mid[i] = (self.path[i] + self.path[i + 1]) / 2.0
 
-            # If midpoint internals not cached
-            if self.w_mid[i] is None or self.dwdR_mid[i] is None:
+            if self.w_mid[i] is None or self.dwdR_mid[i] is None: # If midpoint internals not cached
                 if self.X_mid[i] is None:
                     # This state should not be reached if X_mid[i] is set above.
-                    raise RuntimeError(
-                        f"Midpoint X_mid[{i}] is None before compute_wij call in _update_intc.")
+                    raise RuntimeError(f"Midpoint X_mid[{i}] is None before compute_wij call in _update_intc.")
                 self.w_mid[i], self.dwdR_mid[i] = compute_wij(
-                    # type: ignore
-                    self.X_mid[i], self.rij_list_np, self.scaler_func
+                    self.X_mid[i], self.rij_list_np, self.scaler_func # type: ignore
                 )
+
 
     def _update_geometry(self, X_segment_flat: np.ndarray, start_slice: int, end_slice: int) -> bool:
         """
@@ -314,8 +280,7 @@ class MorseGeodesic(object):
                 f"does not match expected size {expected_size} for segment [{start_slice}:{end_slice})."
             )
 
-        new_segment_coords = X_segment_flat.reshape(
-            num_images_in_segment, self.natoms, 3)
+        new_segment_coords = X_segment_flat.reshape(num_images_in_segment, self.natoms, 3)
         current_segment_view = self.path[start_slice:end_slice]
 
         # Check if the new coordinates are actually different from the current ones
@@ -335,19 +300,18 @@ class MorseGeodesic(object):
             self.w[k_path_idx] = None
             self.dwdR[k_path_idx] = None
 
-            # If there's a midpoint to its right (X_mid[k_path_idx])
-            if k_path_idx < self.nimages - 1:
+            if k_path_idx < self.nimages - 1:  # If there's a midpoint to its right (X_mid[k_path_idx])
                 self.X_mid[k_path_idx] = None
                 self.w_mid[k_path_idx] = None
                 self.dwdR_mid[k_path_idx] = None
 
-            # If there's a midpoint to its left (X_mid[k_path_idx - 1])
-            if k_path_idx > 0:
+            if k_path_idx > 0:  # If there's a midpoint to its left (X_mid[k_path_idx - 1])
                 self.X_mid[k_path_idx - 1] = None
                 self.w_mid[k_path_idx - 1] = None
                 self.dwdR_mid[k_path_idx - 1] = None
 
-        return True  # Geometry was updated
+        return True # Geometry was updated
+
 
     def _compute_disps(self,
                        friction_coeff_override: Optional[float] = None,
@@ -375,8 +339,8 @@ class MorseGeodesic(object):
 
         if self.nrij == 0:  # No internal coordinates defined
             self.length = 0.0
-            self.disps = np.array([])  # Empty displacements
             self.segment_lengths = np.array()
+            self.disps = np.array([]) # Empty displacements
             active_friction_coeff = friction_coeff_override if friction_coeff_override is not None else self.base_friction
             # If friction is active and dx is provided, disps will be only the friction term
             if dx_for_friction is not None and dx_for_friction.size > 0 and abs(active_friction_coeff) > COO_NON_ZERO_EPSILON:
@@ -385,29 +349,21 @@ class MorseGeodesic(object):
 
         # Check if caches are properly filled before proceeding
         if any(w_val is None for w_val in self.w):
-            raise ValueError(
-                "Cache 'w' for path images is incomplete before _compute_disps.")
-        # Midpoints exist only if nimages > 1
-        if self.nimages > 1 and any(wm_val is None for wm_val in self.w_mid):
-            raise ValueError(
-                "Cache 'w_mid' for midpoints is incomplete before _compute_disps.")
+            raise ValueError("Cache 'w' for path images is incomplete before _compute_disps.")
+        if self.nimages > 1 and any(wm_val is None for wm_val in self.w_mid): # Midpoints exist only if nimages > 1
+            raise ValueError("Cache 'w_mid' for midpoints is incomplete before _compute_disps.")
 
         # Copy cached w and w_mid values into pre-allocated contiguous NumPy arrays
         # This is done for potential performance benefits in subsequent vectorized operations.
         for idx in range(self.nimages):
-            if self.w[idx] is not None:
-                self._w_arr_buffer[idx, :] = self.w[idx]  # type: ignore
-            else:
-                raise ValueError(f"self.w[{idx}] is None in _compute_disps")
+            if self.w[idx] is not None: self._w_arr_buffer[idx, :] = self.w[idx] # type: ignore
+            else: raise ValueError(f"self.w[{idx}] is None in _compute_disps")
 
         if self.nimages > 1:
             for idx in range(self.nimages - 1):
-                if self.w_mid[idx] is not None:
-                    self._w_mid_arr_buffer[idx,
-                                           :] = self.w_mid[idx]  # type: ignore
-                else:
-                    raise ValueError(
-                        f"self.w_mid[{idx}] is None in _compute_disps")
+                if self.w_mid[idx] is not None: self._w_mid_arr_buffer[idx, :] = self.w_mid[idx] # type: ignore
+                else: raise ValueError(f"self.w_mid[{idx}] is None in _compute_disps")
+
 
         w_arr = self._w_arr_buffer
         w_mid_arr = self._w_mid_arr_buffer
@@ -416,18 +372,15 @@ class MorseGeodesic(object):
         # for each midpoint `m`.
         # vec_l[m] = w_mid[m] - w[m]  (difference between midpoint `m` and image `m`)
         # vec_r[m] = w[m+1] - w_mid[m] (difference between image `m+1` and midpoint `m`)
-        vecs_l_arr = w_mid_arr - \
-            w_arr[:-1] if self.nimages > 1 else np.empty((0, self.nrij))
-        vecs_r_arr = w_arr[1:] - \
-            w_mid_arr if self.nimages > 1 else np.empty((0, self.nrij))
+        vecs_l_arr = w_mid_arr - w_arr[:-1] if self.nimages > 1 else np.empty((0, self.nrij))
+        vecs_r_arr = w_arr[1:] - w_mid_arr if self.nimages > 1 else np.empty((0, self.nrij))
 
         # The path length is the sum of the magnitudes (norms) of these difference vectors.
         self.length = (np.sum(np.linalg.norm(vecs_l_arr, axis=1)) if vecs_l_arr.size > 0 else 0.0) + \
-                      (np.sum(np.linalg.norm(vecs_r_arr, axis=1))
-                       if vecs_r_arr.size > 0 else 0.0)
-        self.segment_lengths = np.linalg.norm(
-            vecs_l_arr, axis=1) + np.linalg.norm(vecs_r_arr, axis=1)
+                      (np.sum(np.linalg.norm(vecs_r_arr, axis=1)) if vecs_r_arr.size > 0 else 0.0)
 
+
+        self.segment_lengths = np.linalg.norm(vecs_l_arr, axis=1) + np.linalg.norm(vecs_r_arr, axis=1)
         # Assemble the full displacement vector (residuals for least-squares)
         # by concatenating all vec_l and vec_r components.
         disps_components = []
@@ -442,9 +395,8 @@ class MorseGeodesic(object):
             friction_term = active_friction_coeff * dx_for_friction
             disps_components.append(friction_term)
 
+        self.disps = np.concatenate(disps_components) if disps_components else np.array([])
 
-        self.disps = np.concatenate(
-            disps_components) if disps_components else np.array([])
 
     def _add_sparse_block_to_coo(self,
                                  coo_data_list: List[np.ndarray],
@@ -452,9 +404,9 @@ class MorseGeodesic(object):
                                  coo_cols_list: List[np.ndarray],
                                  source_sparse_dwdR_matrix: Optional[scipy.sparse.csr_matrix],
                                  scale_factor: float,
-                                 jac_row_offset: int,  # Offset for rows in the global Jacobian
+                                 jac_row_offset: int, # Offset for rows in the global Jacobian
                                  jac_col_offset: int  # Offset for columns in the global Jacobian
-                                 ) -> None:
+                                ) -> None:
         """
         Helper function to add a scaled block of a sparse matrix (typically a dwdR matrix)
         to lists of COO (Coordinate format) components. These lists are later used to
@@ -471,13 +423,12 @@ class MorseGeodesic(object):
             jac_col_offset: Offset to be added to the local column indices.
         """
 
-        if source_sparse_dwdR_matrix is None or source_sparse_dwdR_matrix.nnz == 0:
+        if source_sparse_dwdR_matrix is None or source_sparse_dwdR_matrix.nnz == 0 :
             return  # Nothing to add if the source matrix is empty or None
 
         # Scale the source matrix block
         scaled_block_sparse = source_sparse_dwdR_matrix * scale_factor
-        # Convert to COO for easy access to row, col, data
-        scaled_block_coo = scaled_block_sparse.tocoo()
+        scaled_block_coo = scaled_block_sparse.tocoo() # Convert to COO for easy access to row, col, data
 
         block_rows_local = scaled_block_coo.row
         block_cols_local = scaled_block_coo.col
@@ -488,19 +439,16 @@ class MorseGeodesic(object):
         if np.any(significant_mask):
             coo_data_list.append(block_data[significant_mask])
             # Adjust row and column indices with offsets for their position in the global Jacobian
-            coo_rows_list.append(
-                block_rows_local[significant_mask] + jac_row_offset)
-            coo_cols_list.append(
-                block_cols_local[significant_mask] + jac_col_offset)
+            coo_rows_list.append(block_rows_local[significant_mask] + jac_row_offset)
+            coo_cols_list.append(block_cols_local[significant_mask] + jac_col_offset)
+
 
     def _compute_disp_grad(self,
-                           slice_start: int,  # Start index of the varied segment in `self.path`
-                           # End index (exclusive) of the varied segment
-                           slice_end: int,
+                           slice_start: int, # Start index of the varied segment in `self.path`
+                           slice_end: int,   # End index (exclusive) of the varied segment
                            friction_coeff_for_jac: Optional[float] = None,
-                           # True if friction term was in `self.disps`
-                           dx_was_present_for_disps: bool = False
-                           ) -> scipy.sparse.csc_matrix:
+                           dx_was_present_for_disps: bool = False # True if friction term was in `self.disps`
+                          ) -> scipy.sparse.csc_matrix:
         """
         Computes the Jacobian matrix (`self.current_grad`) of the displacement
         vector (`self.disps`) with respect to the Cartesian coordinates of the
@@ -536,17 +484,15 @@ class MorseGeodesic(object):
             # Number of rows from the friction term in the Jacobian
             num_rows_friction_jac_shape = num_cart_coords_varied_segment \
                 if dx_was_present_for_disps and abs(active_fric_coeff_shape) > COO_NON_ZERO_EPSILON else 0
+
             # Return an empty sparse matrix of the correct shape
             return scipy.sparse.csc_matrix(
-                (num_rows_internal_disps_for_shape +
-                 num_rows_friction_jac_shape, num_cart_coords_varied_segment),
+                (num_rows_internal_disps_for_shape + num_rows_friction_jac_shape, num_cart_coords_varied_segment),
                 dtype=float
             )
 
-        # Total number of midpoints in the full path
-        num_total_midpoints = self.nimages - 1
-        num_rows_internal_disps = num_total_midpoints * 2 * \
-            self.nrij  # Rows for all vec_l and vec_r components
+        num_total_midpoints = self.nimages - 1 # Total number of midpoints in the full path
+        num_rows_internal_disps = num_total_midpoints * 2 * self.nrij # Rows for all vec_l and vec_r components
 
         active_fric_coeff = friction_coeff_for_jac if friction_coeff_for_jac is not None else self.base_friction
         num_rows_friction_jac = num_cart_coords_varied_segment \
@@ -565,8 +511,7 @@ class MorseGeodesic(object):
             # Jacobian d(w[k_varied_path_idx]) / d(R[k_varied_path_idx])
             dwdRk_varied_sparse = self.dwdR[k_varied_path_idx]
             if dwdRk_varied_sparse is None:
-                raise ValueError(
-                    f"Sparse dwdR cache miss for varied image {k_varied_path_idx}. Call _update_intc first.")
+                raise ValueError(f"Sparse dwdR cache miss for varied image {k_varied_path_idx}. Call _update_intc first.")
 
             # Column offset in the final Jacobian for derivatives w.r.t. R[k_varied_path_idx]
             jac_col_offset_for_this_k_varied = i_offset_in_segment * self.num_cart_coords
@@ -576,8 +521,7 @@ class MorseGeodesic(object):
             for m_mid_path_idx in range(num_total_midpoints):
                 # Row offsets in the global Jacobian for components of vec_l[m] and vec_r[m]
                 jac_row_offset_for_vec_l_m = m_mid_path_idx * self.nrij
-                jac_row_offset_for_vec_r_m = (
-                    num_rows_internal_disps // 2) + (m_mid_path_idx * self.nrij)
+                jac_row_offset_for_vec_r_m = (num_rows_internal_disps // 2) + (m_mid_path_idx * self.nrij)
 
                 # --- Derivatives involving w_mid[m] ---
                 # vec_l[m] = w_mid[m] - w[m]  =>  d(vec_l[m])/dR_k = d(w_mid[m])/dR_k - d(w[m])/dR_k
@@ -594,8 +538,7 @@ class MorseGeodesic(object):
                     # Jacobian d(w_mid[m]) / d(X_mid[m])
                     dwdR_mid_m_sparse = self.dwdR_mid[m_mid_path_idx]
                     if dwdR_mid_m_sparse is None:
-                        raise ValueError(
-                            f"Sparse dwdR_mid cache miss for midpoint {m_mid_path_idx}. Call _update_intc first.")
+                        raise ValueError(f"Sparse dwdR_mid cache miss for midpoint {m_mid_path_idx}. Call _update_intc first.")
 
                     # Contribution to d(vec_l[m])/dR_k from d(w_mid[m])/dR_k (scale by +0.5)
                     self._add_sparse_block_to_coo(temp_coo_data_arrays, temp_coo_rows_arrays, temp_coo_cols_arrays,
@@ -628,63 +571,28 @@ class MorseGeodesic(object):
         if num_rows_friction_jac > 0:
             # The friction term in `disps` is `active_fric_coeff * (R_segment - R_segment_ref)`.
             # Its derivative w.r.t. `R_segment` is `active_fric_coeff * Identity_matrix`.
-            # However, if some atoms are marked as ignored/frozen (via scaler_func.ignore_atoms),
-            # those atom Cartesian coordinates must not receive friction-derived diagonal entries
-            # (otherwise the friction term will move them). Build the diagonal data and then
-            # filter out near-zero elements to maintain sparsity.
             diag_indices = np.arange(num_cart_coords_varied_segment)
+            temp_coo_data_arrays.append(np.full(num_cart_coords_varied_segment, active_fric_coeff, dtype=float))
+            # Rows for the friction term start after rows for internal displacements
+            temp_coo_rows_arrays.append(num_rows_internal_disps + diag_indices)
+            # Columns correspond to the Cartesian coordinates of the varied segment
+            temp_coo_cols_arrays.append(diag_indices)
 
-            # Start with full diagonal entries
-            diag_data = np.full(num_cart_coords_varied_segment, active_fric_coeff, dtype=float)
-
-            # If ignore_atoms list exists on the scaler, zero the corresponding columns
-            ign_atoms = None
-            if hasattr(self, "scaler_func") and hasattr(self.scaler_func, "ignore_atoms"):
-                try:
-                    ign_atoms = set(int(x) for x in getattr(self.scaler_func, "ignore_atoms") or [])
-                except Exception:
-                    ign_atoms = None
-
-            if ign_atoms:
-                # For each ignored atom index `a` and for each varied image offset `s`,
-                # zero out columns: s*num_cart_coords + a*3 + {0,1,2}
-                ia_arr = np.fromiter(ign_atoms, dtype=np.int32)
-                # Keep only valid atom indices
-                ia_arr = ia_arr[(ia_arr >= 0) & (ia_arr < (self.natoms if hasattr(self, 'natoms') else (self.num_cart_coords // 3)))]
-                if ia_arr.size > 0:
-                    # image offsets within the varied segment
-                    image_offsets = np.arange(num_varied_images, dtype=np.int32)
-                    # Compute all column indices to zero
-                    # cols = [s*num_cart_coords + a*3 + c for s in image_offsets for a in ia_arr for c in (0,1,2)]
-                    cols = (image_offsets[:, None] * self.num_cart_coords)[..., None] + (ia_arr[None, :, None] * 3) + np.array([0, 1, 2], dtype=np.int32)
-                    cols_flat = cols.ravel()
-                    # Create a boolean mask for diag_indices that are in cols_flat
-                    mask = np.isin(diag_indices, cols_flat)
-                    if np.any(mask):
-                        diag_data[mask] = 0.0
-
-            # Filter out near-zero diagonal entries to keep sparsity
-            significant_mask = np.abs(diag_data) > COO_NON_ZERO_EPSILON
-            if np.any(significant_mask):
-                temp_coo_data_arrays.append(diag_data[significant_mask])
-                temp_coo_rows_arrays.append(num_rows_internal_disps + diag_indices[significant_mask])
-                temp_coo_cols_arrays.append(diag_indices[significant_mask])
-
-        # If Jacobian is entirely zero (e.g., nrij=0 and no friction)
-        if not temp_coo_data_arrays:
+        if not temp_coo_data_arrays:  # If Jacobian is entirely zero (e.g., nrij=0 and no friction)
             return scipy.sparse.csc_matrix(
                 (total_rows_in_jacobian, num_cart_coords_varied_segment), dtype=float
             )
+
         # Concatenate all COO components and create the final sparse matrix in CSC format
         final_coo_data = np.concatenate(temp_coo_data_arrays)
         final_coo_rows = np.concatenate(temp_coo_rows_arrays)
         final_coo_cols = np.concatenate(temp_coo_cols_arrays)
-        # Mask positions in final_coo_data that match any of these columns using np.isin
 
         return scipy.sparse.csc_matrix(
             (final_coo_data, (final_coo_rows, final_coo_cols)),
             shape=(total_rows_in_jacobian, num_cart_coords_varied_segment)
         )
+
 
     def _ensure_state_updated(self,
                               X_flat_segment: Optional[np.ndarray],
@@ -721,8 +629,7 @@ class MorseGeodesic(object):
                                   if friction was active during the `_compute_disps` call, otherwise None.
         """
         needs_disp_recomputation = False
-        # (current_path_segment - reference_path_segment)
-        dx_for_friction_calc: Optional[np.ndarray] = None
+        dx_for_friction_calc: Optional[np.ndarray] = None # (current_path_segment - reference_path_segment)
 
         if X_flat_segment is not None:
             # Check if coordinates (X_flat_segment) have changed since last state computation
@@ -730,11 +637,10 @@ class MorseGeodesic(object):
                X_flat_segment.shape != self.last_X_for_state.shape or \
                not np.array_equal(X_flat_segment, self.last_X_for_state):
 
-                # If geometry actually changed
-                if self._update_geometry(X_flat_segment, slice_start, slice_end):
-                    self.last_X_for_state = X_flat_segment.copy()  # Store the new state
+                if self._update_geometry(X_flat_segment, slice_start, slice_end): # If geometry actually changed
+                    self.last_X_for_state = X_flat_segment.copy() # Store the new state
                     needs_disp_recomputation = True
-                    self.current_grad = None  # Jacobian needs recomputation due to geometry change
+                    self.current_grad = None # Jacobian needs recomputation due to geometry change
                 elif self.disps is None:
                     # Geometry didn't change (e.g., X_flat_segment was identical to current path),
                     # but disps might not have been computed yet for this state.
@@ -742,20 +648,19 @@ class MorseGeodesic(object):
             # Recompute if disps not yet computed, or if friction term parameters might have changed
             # (signaled by x0_friction_ref and friction_coeff_for_update being non-None).
             elif self.disps is None or \
-                    (x0_friction_ref is not None and friction_coeff_for_update is not None):
+                 (x0_friction_ref is not None and friction_coeff_for_update is not None):
                 needs_disp_recomputation = True
         elif self.disps is None:
             # No X_flat_segment provided (e.g., initial computation), and disps not computed yet.
             needs_disp_recomputation = True
-            self.last_X_for_state = None  # No specific X to associate with this state yet
+            self.last_X_for_state = None # No specific X to associate with this state yet
 
         if needs_disp_recomputation:
             active_friction_coeff = friction_coeff_for_update if friction_coeff_for_update is not None else self.base_friction
 
             if x0_friction_ref is not None and abs(active_friction_coeff) > COO_NON_ZERO_EPSILON:
                 # If friction is active, calculate dx = (current_path_segment - reference)
-                current_path_segment_flat = self.path[slice_start: slice_end].ravel(
-                )
+                current_path_segment_flat = self.path[slice_start : slice_end].ravel()
                 if x0_friction_ref.shape == current_path_segment_flat.shape:
                     dx_for_friction_calc = current_path_segment_flat - x0_friction_ref
                 else:
@@ -765,17 +670,15 @@ class MorseGeodesic(object):
                         "Friction may not be applied as expected."
                     )
 
-            # Recompute displacements
-            self._compute_disps(active_friction_coeff, dx_for_friction_calc)
+            self._compute_disps(active_friction_coeff, dx_for_friction_calc) # Recompute displacements
 
-            if self.disps is None:  # Should be populated by _compute_disps
-                raise RuntimeError(
-                    "Internal state `self.disps` is None after _compute_disps call.")
+            if self.disps is None: # Should be populated by _compute_disps
+                raise RuntimeError("Internal state `self.disps` is None after _compute_disps call.")
 
-            # Jacobian needs recomputation as disps (or its basis) changed
-            self.current_grad = None
+            self.current_grad = None # Jacobian needs recomputation as disps (or its basis) changed
 
         return dx_for_friction_calc
+
 
     def _compute_optimality(self, current_grad_jacobian: scipy.sparse.csc_matrix, slice_start: int, slice_end: int) -> None:
         """
@@ -794,13 +697,12 @@ class MorseGeodesic(object):
         """
 
         if self.disps is None or self.disps.size == 0:
-            self.optimality = 0.0  # No displacements, system is optimal or undefined
+            self.optimality = 0.0 # No displacements, system is optimal or undefined
             return
 
-        num_cart_coords_in_segment = (
-            slice_end - slice_start) * self.num_cart_coords
+        num_cart_coords_in_segment = (slice_end - slice_start) * self.num_cart_coords
         if num_cart_coords_in_segment == 0:
-            self.optimality = 0.0  # No optimizable degrees of freedom
+            self.optimality = 0.0 # No optimizable degrees of freedom
             return
 
         # --- Sanity checks for Jacobian and displacement shapes ---
@@ -825,8 +727,8 @@ class MorseGeodesic(object):
         jt_f_gradient = current_grad_jacobian.transpose().dot(self.disps)
 
         # Optimality is the infinity norm of this gradient
-        self.optimality = np.linalg.norm(
-            jt_f_gradient, ord=np.inf) if jt_f_gradient.size > 0 else 0.0
+        self.optimality = np.linalg.norm(jt_f_gradient, ord=np.inf) if jt_f_gradient.size > 0 else 0.0
+
 
     def _compute_target_func_for_least_squares(
         self,
@@ -864,8 +766,7 @@ class MorseGeodesic(object):
         # --- Validate input X_flat_segment shape against slice definition ---
         num_dofs_per_image = self.natoms * 3
         if num_dofs_per_image == 0 and X_flat_segment.size > 0:
-            raise ValueError(
-                "X_flat_segment is not empty for a system with 0 atoms per image.")
+            raise ValueError("X_flat_segment is not empty for a system with 0 atoms per image.")
         if num_dofs_per_image > 0 and X_flat_segment.size % num_dofs_per_image != 0:
             raise ValueError(
                 f"X_flat_segment size {X_flat_segment.size} is not a multiple of "
@@ -885,14 +786,12 @@ class MorseGeodesic(object):
             X_flat_segment, slice_start, slice_end, x0_friction_ref, active_friction_coeff
         )
 
-        if self.disps is None:  # Should be set by _ensure_state_updated
-            raise RuntimeError(
-                "`self.disps` is None after call to `_ensure_state_updated`.")
+        if self.disps is None: # Should be set by _ensure_state_updated
+            raise RuntimeError("`self.disps` is None after call to `_ensure_state_updated`.")
 
         # Determine if friction was active for the Jacobian calculation
         dx_was_present_for_grad_calc = (dx_used_for_friction is not None) and \
-                                       (abs(active_friction_coeff)
-                                        > COO_NON_ZERO_EPSILON)
+                                       (abs(active_friction_coeff) > COO_NON_ZERO_EPSILON)
 
         # --- Compute Jacobian if not already up-to-date ---
         if self.current_grad is None:
@@ -900,9 +799,8 @@ class MorseGeodesic(object):
                 slice_start, slice_end, active_friction_coeff, dx_was_present_for_grad_calc
             )
 
-        if self.current_grad is None:  # Should be set by _compute_disp_grad
-            raise RuntimeError(
-                "Jacobian `self.current_grad` is None after call to `_compute_disp_grad`.")
+        if self.current_grad is None: # Should be set by _compute_disp_grad
+            raise RuntimeError("Jacobian `self.current_grad` is None after call to `_compute_disp_grad`.")
 
         # --- Compute Optimality ---
         self._compute_optimality(self.current_grad, slice_start, slice_end)
@@ -912,6 +810,7 @@ class MorseGeodesic(object):
         self.neval += 1
 
         return self.disps
+
 
     def target_func(self, X_flat_segment: np.ndarray, **kwargs: Any) -> np.ndarray:
         """
@@ -937,6 +836,7 @@ class MorseGeodesic(object):
                 "provided in its keyword arguments."
             )
         return self._compute_target_func_for_least_squares(X_flat_segment, **kwargs)
+
 
     def target_deriv(self, X_flat_segment: np.ndarray, **kwargs: Any) -> scipy.sparse.csc_matrix:
         """
@@ -969,16 +869,15 @@ class MorseGeodesic(object):
            X_flat_segment.shape != self.last_X_for_state.shape or \
            not np.array_equal(X_flat_segment, self.last_X_for_state) or \
            self.current_grad is None:
-            self._compute_target_func_for_least_squares(
-                X_flat_segment, **kwargs)  # This updates self.current_grad
+            self._compute_target_func_for_least_squares(X_flat_segment, **kwargs) # This updates self.current_grad
 
-        if self.current_grad is None:  # Should be set by the call above
-            raise RuntimeError(
-                "`self.current_grad` is None in `target_deriv` after state update attempt.")
+        if self.current_grad is None: # Should be set by the call above
+            raise RuntimeError("`self.current_grad` is None in `target_deriv` after state update attempt.")
 
         # Ensure the returned Jacobian is in CSC format, as preferred by some SciPy solvers
         return self.current_grad if isinstance(self.current_grad, scipy.sparse.csc_matrix) \
-            else scipy.sparse.csc_matrix(self.current_grad)
+               else scipy.sparse.csc_matrix(self.current_grad)
+
 
     def _smooth_scipy_least_squares(
         self,
@@ -1023,19 +922,15 @@ class MorseGeodesic(object):
                        f"for a path with {self.nimages} images.")
             # Ensure disps and optimality are computed for the current state if skipping optimization
             if self.disps is None and self.nrij > 0:
-                # Compute with current friction
-                self._compute_disps(effective_friction)
+                self._compute_disps(effective_friction) # Compute with current friction
             if self.optimality == 0.0 and self.disps is not None and self.disps.size > 0:
-                # Attempt to compute global optimality if segment was invalid but path exists
-                # Global interior segment
-                gs0_global, ge0_global = (1, self.nimages - 1)
-                if gs0_global < ge0_global:  # If there is an interior segment
-                    if self.current_grad is None:
-                        self.current_grad = self._compute_disp_grad(
-                            gs0_global, ge0_global, effective_friction, False)
-                    if self.current_grad is not None and self.current_grad.size > 0:
-                        self._compute_optimality(
-                            self.current_grad, gs0_global, ge0_global)
+                 # Attempt to compute global optimality if segment was invalid but path exists
+                 gs0_global, ge0_global = (1, self.nimages -1) # Global interior segment
+                 if gs0_global < ge0_global: # If there is an interior segment
+                    if self.current_grad is None :
+                        self.current_grad = self._compute_disp_grad(gs0_global, ge0_global, effective_friction, False)
+                    if self.current_grad is not None and self.current_grad.size > 0 :
+                        self._compute_optimality(self.current_grad, gs0_global, ge0_global)
             return
 
         # --- Prepare for Optimization ---
@@ -1049,7 +944,7 @@ class MorseGeodesic(object):
         # Determine the reference coordinates for the friction term
         x0_friction_ref = xref_segment.copy() \
             if xref_segment is not None and xref_segment.shape == X_flat_initial_segment.shape \
-            else X_flat_initial_segment.copy()  # Default to the initial state of the segment
+            else X_flat_initial_segment.copy() # Default to the initial state of the segment
 
         if xref_segment is not None and xref_segment.shape != X_flat_initial_segment.shape:
             logger.warning(
@@ -1075,41 +970,35 @@ class MorseGeodesic(object):
 
         # --- Perform Optimization if Not Already Converged ---
         if self.optimality > active_tol:
-            J0 = self.current_grad  # Initial Jacobian for sparsity pattern
+            J0 = self.current_grad # Initial Jacobian for sparsity pattern
             if J0 is None:
-                raise RuntimeError(
-                    "Initial Jacobian (J0) is None before least_squares call.")
+                raise RuntimeError("Initial Jacobian (J0) is None before least_squares call.")
 
             # Provide Jacobian sparsity pattern to the optimizer if available and non-empty
-            jac_sparsity_pattern = J0 if isinstance(
-                J0, scipy.sparse.spmatrix) and J0.size > 0 and J0.nnz > 0 else None
+            jac_sparsity_pattern = J0 if isinstance(J0, scipy.sparse.spmatrix) and J0.size > 0 and J0.nnz > 0 else None
             if jac_sparsity_pattern is not None and not isinstance(jac_sparsity_pattern, scipy.sparse.csc_matrix):
-                # Ensure CSC format for 'trf' method
-                jac_sparsity_pattern = jac_sparsity_pattern.tocsc()
+                jac_sparsity_pattern = jac_sparsity_pattern.tocsc() # Ensure CSC format for 'trf' method
 
             result = least_squares(
                 fun=self.target_func,          # Residuals function
                 x0=X_flat_initial_segment,     # Initial guess
                 jac=self.target_deriv,         # Jacobian function
                 method='trf',                  # Trust Region Reflective method
-                # Robust loss function (less sensitive to outliers)
-                loss='soft_l1',
+                loss='soft_l1',                # Robust loss function (less sensitive to outliers)
                 ftol=None,                     # Use gtol for convergence
                 gtol=active_tol,               # Gradient tolerance for convergence
                 xtol=None,                     # Step tolerance (not used here)
                 max_nfev=active_max_nfev,      # Max function evaluations
-                kwargs=kwargs_for_target_eval,  # Args for target_func/deriv
+                kwargs=kwargs_for_target_eval, # Args for target_func/deriv
                 x_scale='jac',                 # Scale variables based on Jacobian columns
-                jac_sparsity=jac_sparsity_pattern,  # Provide sparsity pattern
-                # Solver for trust-region subproblems (good for sparse)
-                tr_solver='lsmr'
+                jac_sparsity=jac_sparsity_pattern, # Provide sparsity pattern
+                tr_solver='lsmr'               # Solver for trust-region subproblems (good for sparse)
             )
 
             # Update geometry with optimized coordinates from result.x
             self._update_geometry(result.x, s0, e0)
             # Recompute final state (disps, optimality) for the optimized segment
-            self._compute_target_func_for_least_squares(
-                result.x, **kwargs_for_target_eval)
+            self._compute_target_func_for_least_squares(result.x, **kwargs_for_target_eval)
             logger.log(current_log_lvl,
                        f"SciPy LS: Status {result.status} after {result.nfev} evaluations. "
                        f"Final Optimality for segment: {self.optimality:.3e}")
@@ -1117,6 +1006,7 @@ class MorseGeodesic(object):
             logger.log(current_log_lvl,
                        f"SciPy LS: Skipping optimization for segment [{s0}:{e0}). "
                        f"Already optimal (optimality {self.optimality:.3e} <= tolerance {active_tol:.3e}).")
+
 
     def smooth(
         self,
@@ -1163,45 +1053,39 @@ class MorseGeodesic(object):
         e0_actual = end if end is not None else self.nimages - 1
 
         # Ensure segment indices are valid
-        if s0_actual < 0:
-            s0_actual = 0
-        if e0_actual > self.nimages:
-            e0_actual = self.nimages  # `end` is exclusive
+        if s0_actual < 0: s0_actual = 0
+        if e0_actual > self.nimages: e0_actual = self.nimages # `end` is exclusive
 
         # Validate that the segment is optimizable (i.e., has at least one image)
-        if not (0 <= s0_actual < self.nimages and
-                0 < e0_actual <= self.nimages and
-                (e0_actual - s0_actual) > 0):  # Segment length must be > 0
+        if not (0 <= s0_actual < self.nimages and \
+                0 < e0_actual <= self.nimages and \
+                (e0_actual - s0_actual) > 0): # Segment length must be > 0
             logger.log(current_log_lvl,
                        f"Main Smooth: Skipping optimization. Invalid or empty segment [{s0_actual}:{e0_actual}) "
                        "for optimization.")
             # If skipping, ensure disps and global optimality are computed for the current path state
             if self.disps is None and self.nrij > 0:
                 self._clear_caches_and_reset_state(True)
-                self._compute_disps(
-                    friction if friction is not None else self.base_friction)
+                self._compute_disps(friction if friction is not None else self.base_friction)
 
             # Compute global optimality for the full interior path if segment was invalid
-            # Standard global interior segment
-            gs0_global, ge0_global = (1, self.nimages - 1)
+            gs0_global, ge0_global = (1, self.nimages - 1) # Standard global interior segment
             if gs0_global < ge0_global and self.disps is not None and self.disps.size > 0:
-                if self.current_grad is None:
-                    self.current_grad = self._compute_disp_grad(
-                        gs0_global, ge0_global,
-                        friction if friction is not None else self.base_friction,
-                        False  # Assume no dx_for_friction for this global check if not explicitly passed
-                    )
-                if self.current_grad is not None and self.current_grad.size > 0:
-                    self._compute_optimality(
-                        self.current_grad, gs0_global, ge0_global)
-            else:  # Path too short for a global interior segment
+                 if self.current_grad is None:
+                     self.current_grad = self._compute_disp_grad(
+                         gs0_global, ge0_global,
+                         friction if friction is not None else self.base_friction,
+                         False # Assume no dx_for_friction for this global check if not explicitly passed
+                     )
+                 if self.current_grad is not None and self.current_grad.size > 0 :
+                     self._compute_optimality(self.current_grad, gs0_global, ge0_global)
+            else: # Path too short for a global interior segment
                 self.optimality = 0.0
-            return self.path.copy()  # Return current path
+            return self.path.copy() # Return current path
 
         # --- Prepare reference segment for friction if `xref` is provided ---
         xref_segment_for_solver: Optional[np.ndarray] = None
-        expected_xref_segment_size = (
-            e0_actual - s0_actual) * self.num_cart_coords
+        expected_xref_segment_size = (e0_actual - s0_actual) * self.num_cart_coords
 
         if xref is not None:
             if xref.ndim == 3 and \
@@ -1223,48 +1107,38 @@ class MorseGeodesic(object):
                 )
 
         # --- Perform Optimization ---
-        self.neval = 0  # Reset evaluation counter for this smoothing operation
-        # Clear all caches before starting new optimization
-        self._clear_caches_and_reset_state(True)
+        self.neval = 0 # Reset evaluation counter for this smoothing operation
+        self._clear_caches_and_reset_state(True) # Clear all caches before starting new optimization
 
         logger.log(current_log_lvl,
                    f"Starting path smoothing using SciPy least_squares for path segment [{s0_actual}:{e0_actual}).")
 
         self._smooth_scipy_least_squares(
             tol=tol,
-            max_nfev=max_iter,  # Note: max_iter from user becomes max_nfev for least_squares
+            max_nfev=max_iter, # Note: max_iter from user becomes max_nfev for least_squares
             start_slice_idx=s0_actual,
             end_slice_idx=e0_actual,
             log_level_override=current_log_lvl,
-            friction_coeff_for_opt=friction,  # Pass user-specified friction override
+            friction_coeff_for_opt=friction, # Pass user-specified friction override
             xref_segment=xref_segment_for_solver
         )
 
         # --- Finalize Path ---
         # Re-align the entire path after optimization
-        if self.align:
-            rmsd_final_alignment, self.path = align_path(self.path)
-        else:
-            # RMSD between first and last images
-            rmsd_final_alignment = np.sqrt(
-                np.mean(np.square(self.path[-1] - self.path[0])))
-        self._clear_caches_and_reset_state(
-            True)  # Clear caches after alignment
+        rmsd_final_alignment, self.path = align_path(self.path)
+        self._clear_caches_and_reset_state(True) # Clear caches after alignment
         # Recompute disps for the final aligned path using the base friction
         self._compute_disps(self.base_friction)
 
         # Compute final global optimality for the interior part of the entire path
-        # Standard global interior segment
-        gs0_global, ge0_global = (1, self.nimages - 1)
-        if gs0_global < ge0_global:  # If there's an interior segment
-            final_global_grad = self._compute_disp_grad(
-                gs0_global, ge0_global, self.base_friction, False)
+        gs0_global, ge0_global = (1, self.nimages - 1) # Standard global interior segment
+        if gs0_global < ge0_global : # If there's an interior segment
+            final_global_grad = self._compute_disp_grad(gs0_global, ge0_global, self.base_friction, False)
             if final_global_grad is not None and final_global_grad.size > 0:
-                self._compute_optimality(
-                    final_global_grad, gs0_global, ge0_global)
-            else:  # Jacobian might be empty if nrij = 0
+                self._compute_optimality(final_global_grad, gs0_global, ge0_global)
+            else: # Jacobian might be empty if nrij = 0
                 self.optimality = 0.0
-        else:  # Path is too short (e.g., 2 images) to have an interior segment
+        else: # Path is too short (e.g., 2 images) to have an interior segment
             self.optimality = 0.0
 
         logger.log(current_log_lvl,
@@ -1272,7 +1146,8 @@ class MorseGeodesic(object):
                    f"Final Alignment Max RMSD: {rmsd_final_alignment:10.2e}. "
                    f"Global Path Optimality (|dL|_inf): {self.optimality:.3e}")
 
-        return self.path.copy()  # Return a copy of the final smoothed path
+        return self.path.copy() # Return a copy of the final smoothed path
+
 
     def _clear_caches_and_reset_state(self, clear_path_caches: bool = True) -> None:
         """
@@ -1298,99 +1173,3 @@ class MorseGeodesic(object):
             self.w_mid = [None] * num_midpoints
             self.dwdR_mid = [None] * num_midpoints
 
-
-# def run_geodesic_py(
-#     trajectory,
-#     tol=2e-3,
-#     nudge=0.1,
-#     ntries=1,
-#     scaling=1.7,
-#     dist_cutoff=3,
-#     friction=1e-2,
-#     sweep=None,
-#     maxiter=15,
-#     microiter=20,
-#     reconstruct=None,
-#     nimages=5,
-#     min_neighbors=4,
-#     align=True,
-
-# ):
-#     from .interpolation import redistribute
-
-#     symbols, X = trajectory.symbols, trajectory.coords
-#     if len(X) < 2:
-#         raise ValueError("Need at least two initial geometries.")
-
-#     # First redistribute number of images.  Perform interpolation if too few and subsampling if too many
-#     # images are given
-#     raw = redistribute(symbols, X, nimages=nimages,
-#                        tol=tol * 5, nudge=nudge, ntries=ntries, align=align)
-#     # Perform smoothing by minimizing distance in Cartesian coordinates with redundant internal metric
-#     # to find the appropriate geodesic curve on the hyperspace.
-#     smoother = MorseGeodesic(symbols, raw, scaling, threshold=dist_cutoff,
-#                              friction=friction, min_neighbors=min_neighbors, align=align,
-#                              ignore_atoms=ignore_atoms)
-#     try:
-#         smoother.smooth(tol=tol, max_iter=maxiter)
-#     finally:
-#         return smoother.path
-
-
-def run_geodesic_get_smoother(
-    input_object,
-    tol=2e-3,
-    nudge=0.1,
-    ntries=1,
-    scaling=1.7,
-    dist_cutoff=3,
-    friction=1e-2,
-    sweep=None,
-    maxiter=15,
-    microiter=20,
-    reconstruct=None,
-    nimages=5,
-    min_neighbors=4,
-    align=True,
-    ignore_atoms: list = [],
-    **kwargs
-):
-    from neb_dynamics.geodesic_interpolation2.interpolation import redistribute
-    if len(ignore_atoms) > 0:
-        print("GI: Ignoring atoms:", ignore_atoms)
-
-    # Read the initial geometries.
-    symbols, X = input_object
-
-    if len(X) < 2:
-        raise ValueError("Need at least two initial geometries.")
-
-    # First redistribute number of images.  Perform interpolation if too few and subsampling if too many
-    # images are given
-    raw = redistribute(
-        symbols, X, nimages=nimages, tol=tol * 5, align=align, ignore_atoms=ignore_atoms, nudge=nudge
-    )
-    # Perform smoothing by minimizing distance in Cartesian coordinates with redundant internal metric
-    # to find the appropriate geodesic curve on the hyperspace.
-    smoother = MorseGeodesic(
-        symbols,
-        raw,
-        scaling,
-        threshold=dist_cutoff,
-        friction=friction,
-        min_neighbors=min_neighbors,
-        align=align,
-        ignore_atoms=ignore_atoms
-    )
-
-    # return smoother
-
-    try:
-
-        smoother.smooth(tol=tol, max_iter=maxiter)
-    finally:
-        # Save the smoothed path to output file.  try block is to ensure output is saved if one ^C the
-        # process, or there is an error
-
-        return smoother
-        # write_xyz(output, symbols, smoother.path)

@@ -233,6 +233,9 @@ class RunInputs:
         # elif self.path_min_method.upper() == "PYGSM":
         #     default_kwds = PYGSMInputs()
 
+        if self.path_min_method.upper() == 'MLPGI':
+            default_kwds = {}
+
         if self.path_min_inputs is None:
             self.path_min_inputs = SimpleNamespace(**default_kwds)
 

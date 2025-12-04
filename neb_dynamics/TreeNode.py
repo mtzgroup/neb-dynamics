@@ -91,7 +91,7 @@ class TreeNode:
 
         return nodes_to_iter_through
 
-    def write_to_disk(self, folder_name: Path):
+    def write_to_disk(self, folder_name: Path, write_qcio: bool = False):
         folder_name = Path(folder_name)
 
         if folder_name.exists():
@@ -104,7 +104,7 @@ class TreeNode:
             i = node.index
             if node.data:
                 node.data.write_to_disk(
-                    fp=folder_name / f"node_{i}.xyz", write_history=True
+                    fp=folder_name / f"node_{i}.xyz", write_history=True, write_qcio=write_qcio
                 )
 
     def draw(self):

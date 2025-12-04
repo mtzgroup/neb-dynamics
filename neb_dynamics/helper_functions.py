@@ -562,3 +562,28 @@ def project_rigid_body_forces(R, F, masses=None):
     F = F - masses[:, None] * np.cross(omega, s)
 
     return F
+
+def rst7_to_coords_and_indices(data):
+    coords = []
+    indices_coordinates = []
+
+    ind = 0
+    for line in data.split("\n"):
+        if ind==1:
+           natom = int(line.split()[0])
+        if len(line.split()) == 6:
+            if len(coords) == natom:
+                break
+            # if ind in qmindices:
+            c = line.split()[:3]
+            c = [float(x) for x in c]
+            coords.append(c)
+
+            c = line.split()[3:]
+            c = [float(x) for x in c]
+            coords.append(c)
+            indices_coordinates.append(ind)
+
+
+        ind+=1
+    return np.array(coords), indices_coordinates

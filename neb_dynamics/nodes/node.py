@@ -6,8 +6,7 @@ from typing import Union
 
 import numpy as np
 from numpy.typing import NDArray
-from qcio.models.outputs import ProgramOutput
-from qcio.models.structure import Structure
+from qcio import ProgramOutput, Structure
 
 from neb_dynamics.errors import (EnergiesNotComputedError,
                                  GradientsNotComputedError)
@@ -147,7 +146,7 @@ class StructureNode(Node):
         """
         shortcut to coordinates stored in Structure.geometry
         """
-        return self.structure.geometry
+        return self.structure.geometry.copy()
 
     def update_coords(self, new_coords: np.array) -> Node:
         """
@@ -171,4 +170,4 @@ class StructureNode(Node):
         return self.structure.symbols
 
     def copy(self) -> StructureNode:
-        return StructureNode(**self.__dict__)
+        return StructureNode(**self.__dict__.copy())

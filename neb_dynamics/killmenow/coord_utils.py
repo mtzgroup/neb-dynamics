@@ -92,6 +92,7 @@ def get_bond_list(
     Returns:
         List of all the included interatomic distance pairs.
     """
+    raise DeprecationWarning("This is not for use. use geodesic_interpolation2.")
     # Type casting and value checks on input parameters
     geom = np.asarray(geom)
     if len(geom.shape) < 3:

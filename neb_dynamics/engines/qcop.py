@@ -85,8 +85,9 @@ class QCOPEngine(Engine):
             try:
                 return qcop.compute(*args, **kwargs)
             except ExternalProgramError as e:
-                print(e.stdout)
-                e.program_output.save("/tmp/failed_calc.qcio")
+                print(e.original_exception)
+                print(e.results.stdout)
+                e.results.save("/tmp/failed_calc.qcio")
                 raise ElectronicStructureError(
                     msg="QCOP computation failed.", obj=e)
         elif self.compute_program == "chemcloud":
@@ -276,6 +277,7 @@ class QCOPEngine(Engine):
                                    "keywords": self.program_args.keywords,
                                },
                                files=files)
+
         return self.compute_func('geometric', dpi, collect_files=self.collect_files)
 
     def compute_sd_irc(self, ts: StructureNode, hessres: ProgramOutput = None, dr=0.1, max_steps=500,

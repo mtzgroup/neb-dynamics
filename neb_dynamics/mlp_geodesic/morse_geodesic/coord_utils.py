@@ -21,7 +21,7 @@ import scipy.sparse # For handling sparse Jacobian matrices
 from typing import List, Tuple, Dict, Union, Callable, Optional, Iterable, Set
 
 # Local imports from the same package
-from .config import COORD_UTILS_DEFAULTS, ATOMIC_RADIUS
+from config import COORD_UTILS_DEFAULTS, ATOMIC_RADIUS
 
 logger = logging.getLogger(__name__)
 
@@ -179,8 +179,7 @@ def get_bond_list(
     min_neighbors: int = COORD_UTILS_DEFAULTS["get_bond_list_min_neighbors"],
     snapshots: int = COORD_UTILS_DEFAULTS["get_bond_list_snapshots"],
     bond_threshold: float = COORD_UTILS_DEFAULTS["get_bond_list_bond_threshold"],
-    enforce: Iterable[Tuple[int, int]] = (),
-    ignore_atoms: Optional[Iterable[int]] = None
+    enforce: Iterable[Tuple[int, int]] = ()
 ) -> Tuple[List[Tuple[int, int]], np.ndarray]:
     """
     Generates a list of "important" atom pairs (potential bonds or significant
@@ -271,8 +270,6 @@ def get_bond_list(
 
         # 1. Add pairs within the primary distance `threshold`.
         for i, j in tree.query_pairs(r=threshold):
-            if len(ignore_atoms) > 0 and (i in ignore_atoms and j in ignore_atoms):
-                continue # Skip adding pairs involving frozen atoms
             rijset.add(tuple(sorted((i, j))))
 
         # 2. Add pairs based on neighbor-of-neighbor logic using a tighter `bond_threshold`.
@@ -282,8 +279,6 @@ def get_bond_list(
         bonded_pairs_in_snapshot = list(tree.query_pairs(r=bond_threshold))
         snapshot_neighbors_dict: Dict[int, Set[int]] = {atom_idx: {atom_idx} for atom_idx in range(num_atoms)}
         for i, j in bonded_pairs_in_snapshot:
-            if len(ignore_atoms) > 0 and (i in ignore_atoms and j in ignore_atoms):
-                continue # Skip adding neighbors for bonded pairs if both atoms are frozen
             snapshot_neighbors_dict[i].add(j)
             snapshot_neighbors_dict[j].add(i)
 
@@ -323,7 +318,7 @@ def get_bond_list(
                             additional_pairs_to_satisfy_min_neighbors.add(tuple(sorted((atom_idx, neighbor_j_idx))))
                 except Exception as e:
                     logger.warning(f"KDTree query failed for atom {atom_idx} during min_neighbors check: {e}")
-
+        
         if additional_pairs_to_satisfy_min_neighbors:
             rijlist = sorted(list(rijset.union(additional_pairs_to_satisfy_min_neighbors)))
 
@@ -419,19 +414,14 @@ def compute_wij(
     the derivatives of these `wij` with respect to the Cartesian coordinates (`R`)
     of all atoms.
 
-        Args:
-                geom (np.ndarray): Cartesian coordinates of the molecule, shape (natoms, 3).
-                                                     Assumed to be a float64 NumPy array.
-                rij_list_np (np.ndarray): NumPy array of atom pair indices, shape (n_pairs, 2).
-                scaler_func (Callable): A function that takes a 1D array of raw distances (`rij_values`)
-                                                                and returns a tuple:
-                                                                    - `wij_values` (1D array of scaled internal coordinates)
-                                                                    - `dw_drij_values` (1D array of derivatives d(wij)/d(rij))
-                ignore_atoms (Optional[Iterable[int]]): Iterable of atom indices that should be
-                        ignored when constructing displacement derivatives. These atoms will NOT
-                        have derivatives (i.e. will not be displaced), but they still participate
-                        in distance calculations and therefore affect other atoms' derivatives.
-                        If None (default), no atoms are ignored.
+    Args:
+        geom (np.ndarray): Cartesian coordinates of the molecule, shape (natoms, 3).
+                           Assumed to be a float64 NumPy array.
+        rij_list_np (np.ndarray): NumPy array of atom pair indices, shape (n_pairs, 2).
+        scaler_func (Callable): A function that takes a 1D array of raw distances (`rij_values`)
+                                and returns a tuple:
+                                  - `wij_values` (1D array of scaled internal coordinates)
+                                  - `dw_drij_values` (1D array of derivatives d(wij)/d(rij))
 
     Returns:
         Tuple[np.ndarray, scipy.sparse.csr_matrix]:
@@ -457,20 +447,6 @@ def compute_wij(
 
     # 2. Apply the scaler function to get scaled internals (wij) and their derivatives w.r.t. rij (dw/drij)
     wij, dw_drij = scaler_func(rij_values)
-
-    # Optional: check for ignore_atoms in the scaler function call signature
-    # (the scaler itself shouldn't need ignore_atoms, but compute_wij will respect it
-    # when building the Jacobian). Accept ignore_atoms via kwargs if provided by caller.
-    ignore_atoms: Optional[Set[int]] = []
-    # If caller supplied ignore atoms via a closure attribute on scaler_func, try to read it.
-    # This is a non-intrusive way to pass ignore list without changing many call sites.
-    if hasattr(scaler_func, "ignore_atoms"):
-        try:
-            ia = getattr(scaler_func, "ignore_atoms")
-            if ia is not None:
-                ignore_atoms = set(int(x) for x in ia)
-        except Exception:
-            ignore_atoms = []
 
     # --- Construct the Jacobian d(wij)/d(R) in COO sparse format ---
     # The Jacobian has `num_rij` rows and `num_cart_coords` columns.
@@ -512,31 +488,6 @@ def compute_wij(
     coo_data_np[3::6] = dw_drij * (-grad_unit_vecs[:, 0]) # d(wij)/d(Rx_j)
     coo_data_np[4::6] = dw_drij * (-grad_unit_vecs[:, 1]) # d(wij)/d(Ry_j)
     coo_data_np[5::6] = dw_drij * (-grad_unit_vecs[:, 2]) # d(wij)/d(Rz_j)
-
-    # If there are ignored atoms, zero out the corresponding columns (their derivatives)
-    # so that they are not considered displaced. The atoms still influence others via rij.
-    if len(ignore_atoms) > 0:
-        # Vectorized approach: compute the exact Cartesian column indices for all ignored atoms
-        # and mask the COO columns directly. This avoids creating a full-length boolean array
-        # and looping in Python per atom, which is slower for many ignored atoms.
-        try:
-            ia_arr = np.asarray(list(ignore_atoms), dtype=np.int32)
-        except Exception:
-            ia_arr = np.asarray(sorted(ignore_atoms), dtype=np.int32)
-
-        # Keep only valid atom indices
-        if ia_arr.size:
-            valid_mask = (ia_arr >= 0) & (ia_arr < num_atoms)
-            ia_arr = ia_arr[valid_mask]
-        if ia_arr.size > 0:
-            # For each atom index a, the Cartesian columns are [3*a, 3*a+1, 3*a+2]
-            # Build a 1D array of these column indices for all ignored atoms.
-            cols = np.concatenate([ia_arr * 3, ia_arr * 3 + 1, ia_arr * 3 + 2])
-
-            # Mask positions in coo_cols_np that match any of these columns using np.isin
-            col_mask = np.isin(coo_cols_np, cols)
-            if np.any(col_mask):
-                coo_data_np[col_mask] = 0.0
 
     # Create sparse matrix in COO format and convert to CSR for efficient arithmetic operations.
     dwdR_flat_sparse = scipy.sparse.coo_matrix(

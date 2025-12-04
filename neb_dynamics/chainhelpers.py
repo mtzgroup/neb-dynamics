@@ -16,7 +16,7 @@ from scipy.signal import argrelextrema
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.nodes.node import StructureNode, Node, XYNode
-from neb_dynamics.geodesic_interpolation.coord_utils import align_geom
+from neb_dynamics.geodesic_interpolation2.coord_utils import align_geom
 # from neb_dynamics.geodesic_interpolation.geodesic import (
 #     run_geodesic_get_smoother,
 # )

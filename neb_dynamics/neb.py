@@ -340,11 +340,11 @@ class NEB(PathMinimizer):
         grad_step = ch.compute_NEB_gradient(
             chain, geodesic_tangent=self.parameters.use_geodesic_tangent)
 
-        # if chain.parameters.frozen_atom_indices:
-        #     inds = np.array(chain.parameters.frozen_atom_indices.split(), dtype=int)
-        #     for index in inds:
-        #         for image_ind in range(grad_step.shape[0]):
-        #             grad_step[image_ind][index] = np.array([0.0, 0.0, 0.0])
+        if chain.parameters.frozen_atom_indices:
+            inds = np.array(chain.parameters.frozen_atom_indices.split(), dtype=int)
+            for index in inds:
+                for image_ind in range(grad_step.shape[0]):
+                    grad_step[image_ind][index] = np.array([0.0, 0.0, 0.0])
 
         alpha = 1.0
         ntries = 0

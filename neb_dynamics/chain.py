@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from neb_dynamics.errors import EnergiesNotComputedError, GradientsNotComputedError
-from neb_dynamics.geodesic_interpolation.fileio import write_xyz
+from neb_dynamics.geodesic_interpolation2.fileio import write_xyz
 
 
 from neb_dynamics.nodes.node import Node, StructureNode
@@ -372,7 +372,7 @@ class Chain(BaseModel):
         )
         np.savetxt(grad_shape_path, np.array(self.gradients).shape)
 
-    def write_to_disk(self, fp: Path):
+    def write_to_disk(self, fp: Path, write_qcio: bool = False):
         fp = Path(fp)
         xyz_arr = self.coordinates * BOHR_TO_ANGSTROMS
         symbs = self.symbols
@@ -382,10 +382,12 @@ class Chain(BaseModel):
             self.write_ene_info_to_disk(fp)
         if self._grads_already_computed:
             self.write_grad_info_to_disk(fp)
-        for i, node in enumerate(self.nodes):
-            if node._cached_result is not None:
-                node._cached_result.save(
-                    fp.parent / Path(str(fp.stem) + f"_node_{i}.qcio"))
+
+        if write_qcio:
+            for i, node in enumerate(self.nodes):
+                if node._cached_result is not None:
+                    node._cached_result.save(
+                        fp.parent / Path(str(fp.stem) + f"_node_{i}.qcio"))
 
     def get_ts_node(self) -> Node:
         """

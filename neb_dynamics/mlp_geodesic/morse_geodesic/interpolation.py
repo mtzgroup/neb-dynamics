@@ -15,12 +15,12 @@ import logging
 import numpy as np
 from scipy.optimize import least_squares
 import scipy.sparse
-from typing import Iterable, List, Tuple, Callable, Union, Optional, Set
+from typing import List, Tuple, Callable, Union, Optional, Set
 
 # Local imports from the same package
-from .morsegeodesic import MorseGeodesic
-from .coord_utils import get_bond_list, compute_wij, morse_scaler, align_geom, align_path
-from .config import INTERPOLATION_DEFAULTS
+from morsegeodesic import MorseGeodesic
+from coord_utils import get_bond_list, compute_wij, morse_scaler, align_geom, align_path
+from config import INTERPOLATION_DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +59,7 @@ class _MidpointFinder:
                  tol: float,
                  nudge: float,
                  threshold: float,
-                 initial_enforced_pairs: Optional[Set[Tuple[int, int]]] = None,
-                 ignore_atoms: Optional[Iterable[int]] = None,
-                 align: bool = True):
+                 initial_enforced_pairs: Optional[Set[Tuple[int, int]]] = None):
         """
         Initializes the _MidpointFinder.
 
@@ -87,8 +85,6 @@ class _MidpointFinder:
         self.tol: float = tol
         self.nudge: float = nudge
         self.base_threshold: float = threshold # Base distance threshold for get_bond_list calls
-        self.ignore_atoms = ignore_atoms
-        self.align = align
 
         # Set of atom pairs that must be included in the internal coordinate list.
         self.enforced_pairs: Set[Tuple[int, int]] = \
@@ -136,8 +132,7 @@ class _MidpointFinder:
             atoms=None,  # atoms=None means re_values will be based on default radii or a flat default
             threshold=threshold_for_ls_gbl,
             min_neighbors=self._MIN_NEIGHBORS_LS,
-            enforce=self.enforced_pairs,
-            ignore_atoms=self.ignore_atoms
+            enforce=self.enforced_pairs
         )
         self.rij_list_for_ls_py = current_rij_list_py
 
@@ -302,16 +297,15 @@ class _MidpointFinder:
         logger.debug(
             f"Local geodesic evaluation of midpoint candidate (alpha_refine: {self._MORSE_ALPHA_REFINE}, re from atoms)"
         )
+
         # Initialize a MorseGeodesic object for the temporary 3-point path
         smoother = MorseGeodesic(
             atoms=self.atoms,
             path=path3,
-            align=self.align,
             scaler=self._MORSE_ALPHA_REFINE, # Use specific Morse alpha for this evaluation
             threshold=self.base_threshold,
             log_level=logging.DEBUG, # Use DEBUG for this internal smoother instance
-            friction=self._LOCAL_GEO_FRICTION, # Use specific friction for this evaluation,
-            ignore_atoms=self.ignore_atoms
+            friction=self._LOCAL_GEO_FRICTION # Use specific friction for this evaluation
         )
 
         # Call `_compute_disps` to ensure the smoother's internal state,
@@ -377,34 +371,25 @@ class _MidpointFinder:
             for start_coef in self._INITIAL_GUESS_COEFFS:
                 # Generate initial guess as a linear combination of endpoints, plus a random nudge
                 initial_guess_cartesian = (self.geom1 * start_coef + (1.0 - start_coef) * self.geom2)
-
-                random_displacement = self.nudge * np.random.random_sample(initial_guess_cartesian.shape)
-                random_displacement[self.ignore_atoms if len(self.ignore_atoms) > 0 else [], :] = 0.0
-
                 initial_guess_nudged_flat = (
                     initial_guess_cartesian +
-                    random_displacement
+                    self.nudge * np.random.random_sample(initial_guess_cartesian.shape)
                 ).ravel()
 
                 # Perform least-squares minimization to get an unrefined midpoint
                 unrefined_midpoint_flat = self._least_squares_minimize(initial_guess_nudged_flat)
                 unrefined_midpoint_geom = unrefined_midpoint_flat.reshape(self.num_atoms, 3)
-                if len(self.ignore_atoms) > 0:
-                    print("freezing ignored atoms positions in midpoint: ", self.ignore_atoms)
-                    unrefined_midpoint_geom[self.ignore_atoms, :] = initial_guess_cartesian[self.ignore_atoms, :]
 
                 # --- Check for "Extra" Internal Coordinates ---
                 # See if this unrefined midpoint suggests new important atom pairs
                 # that should be included in the definition of internal coordinates.
                 geoms_for_extras_check = self.geoms_for_ls_rij_definition + [unrefined_midpoint_geom]
-
                 rij_list_from_extras_check_py, _ = get_bond_list(
                     geom=geoms_for_extras_check,
                     atoms=None, # Default re estimation
                     threshold=self.base_threshold, # Use base threshold for this check
                     min_neighbors=self._MIN_NEIGHBORS_EXTRAS_CHECK,
-                    enforce=self.enforced_pairs,
-                    ignore_atoms=self.ignore_atoms
+                    enforce=self.enforced_pairs
                 )
 
                 current_ls_rij_set = set(self.rij_list_for_ls_py if self.rij_list_for_ls_py is not None else [])
@@ -459,9 +444,7 @@ def mid_point(atoms: List[str],
               geom2: np.ndarray,
               tol: float,
               nudge: float = INTERPOLATION_DEFAULTS["midpoint_nudge"],
-              threshold: float = INTERPOLATION_DEFAULTS["midpoint_threshold"],
-              ignore_atoms: Optional[Iterable[int]] = None,
-              align: bool = True) -> np.ndarray:
+              threshold: float = INTERPOLATION_DEFAULTS["midpoint_threshold"]) -> np.ndarray:
     """
     Finds an optimal Cartesian midpoint geometry between two given geometries (`geom1`, `geom2`).
 
@@ -500,17 +483,14 @@ def mid_point(atoms: List[str],
     geom2_f64 = geom2.astype(float, copy=False)
 
     # Create and use the _MidpointFinder
-    finder = _MidpointFinder(atoms, geom1_f64, geom2_f64, tol, nudge, threshold, ignore_atoms=ignore_atoms, align=align)
+    finder = _MidpointFinder(atoms, geom1_f64, geom2_f64, tol, nudge, threshold)
     return finder.find()
 
 
 def redistribute(atoms: List[str],
                  geoms: Union[List[np.ndarray], np.ndarray],
                  nimages: int,
-                 tol: float,
-                 nudge: float = INTERPOLATION_DEFAULTS["midpoint_nudge"],
-                 align: bool = True,
-                 ignore_atoms: Optional[Iterable[int]] = None) -> List[np.ndarray]:
+                 tol: float) -> List[np.ndarray]:
     """
     Redistributes images (geometries) along a reaction path to achieve a
     target number of images (`nimages`).
@@ -565,11 +545,7 @@ def redistribute(atoms: List[str],
         raise ValueError(f"Target number of images (`nimages`) must be >= 2, got {nimages}.")
 
     # --- Initial Path Alignment ---
-    if align:
-        _, aligned_geoms_np = align_path(geoms)
-    else:
-        aligned_geoms_np = geoms
-    # _, aligned_geoms_np = align_path(current_geoms_np)
+    _, aligned_geoms_np = align_path(current_geoms_np)
     # Work with a list of float64 geometries internally
     geoms_list: List[np.ndarray] = [g.astype(float, copy=False) for g in list(aligned_geoms_np)]
 
@@ -605,19 +581,13 @@ def redistribute(atoms: List[str],
         g2 = geoms_list[insert_idx+1]
 
         # Calculate the new midpoint to insert
-        insertion_geom = mid_point(atoms, g1, g2, tol=tol, ignore_atoms=ignore_atoms, nudge=nudge, align=align)
+        insertion_geom = mid_point(atoms, g1, g2, tol=tol)
         # Align the new midpoint with respect to its preceding image (g1)
-        if align:
-            _, aligned_insertion = align_geom(g1, insertion_geom.astype(float, copy=False))
-        else:
-            aligned_insertion = insertion_geom.astype(float, copy=False)
+        _, aligned_insertion = align_geom(g1, insertion_geom.astype(float, copy=False))
         geoms_list.insert(insert_idx + 1, aligned_insertion.astype(float, copy=False))
 
         # Re-align the entire path after insertion
-        if align:
-            _, re_aligned_np = align_path(np.array(geoms_list))
-        else:
-            re_aligned_np = np.array(geoms_list)
+        _, re_aligned_np = align_path(np.array(geoms_list))
         geoms_list = [g.astype(float, copy=False) for g in list(re_aligned_np)]
 
     # --- Remove Images if Current Number is Greater Than Target ---
@@ -650,10 +620,7 @@ def redistribute(atoms: List[str],
         del geoms_list[remove_idx]
 
         # Re-align the entire path after removal
-        if align:
-            _, re_aligned_np = align_path(np.array(geoms_list))
-        else:
-            re_aligned_np = np.array(geoms_list)
+        _, re_aligned_np = align_path(np.array(geoms_list))
         geoms_list = [g.astype(float, copy=False) for g in list(re_aligned_np)]
 
     return geoms_list

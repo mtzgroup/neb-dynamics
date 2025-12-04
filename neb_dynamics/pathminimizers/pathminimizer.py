@@ -84,9 +84,9 @@ class PathMinimizer(ABC):
             plt.yticks(fontsize=fs)
             plt.show()
 
-    def write_to_disk(self, fp: Path, write_history=True):
+    def write_to_disk(self, fp: Path, write_history=True, write_qcio: bool = False):
         # write output chain
-        self.chain_trajectory[-1].write_to_disk(fp)
+        self.chain_trajectory[-1].write_to_disk(fp, write_qcio=write_qcio)
 
         if write_history:
             out_folder = fp.resolve().parent / (fp.stem + "_history")
@@ -99,4 +99,4 @@ class PathMinimizer(ABC):
 
             for i, chain in enumerate(self.chain_trajectory):
                 fp = out_folder / f"traj_{i}.xyz"
-                chain.write_to_disk(fp)
+                chain.write_to_disk(fp, write_qcio=write_qcio)

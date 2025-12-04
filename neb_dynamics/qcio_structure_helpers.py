@@ -13,7 +13,7 @@ from ase import Atoms
 
 
 from neb_dynamics.constants import ANGSTROM_TO_BOHR
-from neb_dynamics.geodesic_interpolation.fileio import read_xyz
+from neb_dynamics.geodesic_interpolation2.fileio import read_xyz
 from neb_dynamics.helper_functions import (
     bond_ord_number_to_string,
     from_number_to_element,

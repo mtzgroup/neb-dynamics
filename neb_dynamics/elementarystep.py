@@ -277,7 +277,7 @@ def _converges_to_an_endpoints(
             print(
                 f"Error in geometry optimization: {e}. Need to do more expensive check."
             )
-            return False, None
+            return False, total_traj
 
         distances = [
             _distances_to_refs(ref1=chain[0], ref2=chain[-1], raw_node=n)
@@ -312,6 +312,8 @@ def _distances_to_refs(ref1: Node, ref2: Node, raw_node: Node) -> List[float]:
     """
     Computes distances of `raw_node` to `ref1` and `ref2`.
     """
+    if raw_node is None:
+        return [np.inf, np.inf]
     dist_to_ref1 = np.linalg.norm(
         raw_node.coords - ref1.coords)/np.sqrt(len(raw_node.coords))
 

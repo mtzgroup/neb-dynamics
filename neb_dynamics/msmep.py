@@ -25,9 +25,9 @@ from neb_dynamics.inputs import RunInputs
 
 import traceback
 import copy
+import logging
 
-
-PATH_METHODS = ["NEB", "FNEB"]
+PATH_METHODS = ["NEB", "FNEB", "MLPGI"]
 
 
 @dataclass
@@ -122,30 +122,39 @@ class MSMEP:
 
     def _create_interpolation(self, chain: Chain):
         import neb_dynamics.chainhelpers as ch
-        if chain.parameters.frozen_atom_indices:
-            chain_original = chain.copy()
-            all_indices = list(range(len(chain[0].coords)))
+        logger = logging.getLogger('neb_dynamics.geodesic_interpolation2.interpolation')
+        logger.propagate = False
+        # if chain.parameters.frozen_atom_indices:
+        #     chain_original = chain.copy()
+        #     all_indices = list(range(len(chain[0].coords)))
 
-            inds_frozen = np.array(
-                chain.parameters.frozen_atom_indices.split(), dtype=int
-            )
-            subsys_inds = np.setdiff1d(all_indices, inds_frozen)
-            subsys_coords = [node.coords[subsys_inds] for node in chain]
+        #     inds_frozen = np.array(
+        #         chain.parameters.frozen_atom_indices.split(), dtype=int
+        #     )
+        #     subsys_inds = np.setdiff1d(all_indices, inds_frozen)
+        #     subsys_coords = [node.coords[subsys_inds] for node in chain]
 
-            subsys_symbs = [chain[0].structure.symbols[i] for i in subsys_inds]
-            subsys_structs = [Structure(geometry=c, symbols=subsys_symbs,
-                                        charge=chain[0].structure.charge,
-                                        multiplicity=chain[0].structure.multiplicity) for c in subsys_coords]
+        #     subsys_symbs = [chain[0].structure.symbols[i] for i in subsys_inds]
+        #     subsys_structs = [Structure(geometry=c, symbols=subsys_symbs,
+        #                                 charge=chain[0].structure.charge,
+        #                                 multiplicity=chain[0].structure.multiplicity) for c in subsys_coords]
 
-            subsys_nodes = [StructureNode(structure=s) for s in subsys_structs]
+        #     subsys_nodes = [StructureNode(structure=s) for s in subsys_structs]
 
-            print(f"{all_indices=} {subsys_inds=} {inds_frozen=}")
-            chain = Chain.model_validate({
-                "nodes": subsys_nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
+        #     print(f"{all_indices=} {subsys_inds=} {inds_frozen=}")
+        #     chain = Chain.model_validate({
+        #         "nodes": subsys_nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
 
 
 
         if self.inputs.chain_inputs.use_geodesic_interpolation:
+            if chain.parameters.frozen_atom_indices:
+                inds_frozen = np.array(
+                    chain.parameters.frozen_atom_indices.split(), dtype=int)
+                print("will be freezing inds:", inds_frozen, ' during geodesic interpolation')
+                print(type(inds_frozen))
+            else:
+                inds_frozen = np.array([], dtype=int)
 
             smoother = ch.sample_shortest_geodesic(
                 chain=chain,
@@ -154,6 +163,7 @@ class MSMEP:
                 friction=self.inputs.gi_inputs.friction,
                 nudge=self.inputs.gi_inputs.nudge,
                 align=self.inputs.gi_inputs.align,
+                ignore_atoms=inds_frozen,
                 **self.inputs.gi_inputs.extra_kwds,
 
             )
@@ -183,19 +193,19 @@ class MSMEP:
                 "nodes": nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
 
 
-        if chain.parameters.frozen_atom_indices:
-            # need to reinsert the frozen atoms into the interpolation
-            new_nodes = []
-            for node in interpolation:
-                new_geom = np.zeros_like(chain_original[0].coords)
-                new_geom[subsys_inds] = node.coords
-                new_geom[inds_frozen] = chain_original[0].coords[inds_frozen]
-                new_node = chain_original[0].update_coords(new_geom)
-                new_nodes.append(new_node)
+        # if chain.parameters.frozen_atom_indices:
+        #     # need to reinsert the frozen atoms into the interpolation
+        #     new_nodes = []
+        #     for node in interpolation:
+        #         new_geom = np.zeros_like(chain_original[0].coords)
+        #         new_geom[subsys_inds] = node.coords
+        #         new_geom[inds_frozen] = chain_original[0].coords[inds_frozen]
+        #         new_node = chain_original[0].update_coords(new_geom)
+        #         new_nodes.append(new_node)
 
-            interpolation = Chain.model_validate({
-                "nodes": new_nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
-            interpolation._zero_velocity()
+        #     interpolation = Chain.model_validate({
+        #         "nodes": new_nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
+        #     interpolation._zero_velocity()
         return interpolation
 
     def _construct_path_minimizer(self, initial_chain: Chain):
@@ -228,9 +238,16 @@ class MSMEP:
                 gi_inputs=self.inputs.gi_inputs
             )
 
+
+        elif self.inputs.path_min_method.upper() == "MLPGI":
+            from neb_dynamics.pathminimizers.mlpgi import MLPGI
+            print("Using MLP Geodesic Optimizer")
+            n = MLPGI(
+                initial_chain=initial_chain,
+                engine=self.inputs.engine,
+            )
         else:
-            n = self.path_minimizer(
-                initial_chain=initial_chain, engine=self.inputs.engine)
+            raise NotImplementedError("Invalid path minimization method. Select from NEB, FNEB, or MLPGI.")
 
         return n
 

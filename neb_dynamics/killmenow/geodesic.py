@@ -58,6 +58,7 @@ class Geodesic(object):
     def construct_coords(self, index=None):
         """Construct coordinate system (pair list)"""
         if index is None:
+
             self.rij_list, self.re = get_bond_list(
                 self.path,
                 self.atoms,
@@ -328,8 +329,8 @@ def run_geodesic_get_smoother(
     nimages=5,
     min_neighbors=4,
 ):
-    from neb_dynamics.geodesic_interpolation.interpolation import redistribute
-    from neb_dynamics.geodesic_interpolation.geodesic import Geodesic
+    from neb_dynamics.killmenow.interpolation import redistribute
+    from neb_dynamics.killmenow.geodesic import Geodesic
 
     # Read the initial geometries.
     symbols, X = input_object
