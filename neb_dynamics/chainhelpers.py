@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.animation import FuncAnimation
 from numpy.typing import NDArray
-from elements import ElementData
+from neb_dynamics.elements import ElementData
 from qcop.exceptions import ExternalProgramError
 from qcio.view import generate_structure_viewer_html
 from scipy.signal import argrelextrema

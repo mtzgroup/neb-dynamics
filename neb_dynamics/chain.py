@@ -93,7 +93,7 @@ class Chain(BaseModel):
         if energies_fp.exists() and grad_path.exists() and grad_shape_path.exists():
             energies = np.loadtxt(energies_fp)
             gradients_flat = np.loadtxt(grad_path)
-            gradients_shape = np.loadtxt(grad_shape_path, dtype=int)
+            gradients_shape = np.loadtxt(grad_shape_path).astype(int)
 
             gradients = gradients_flat.reshape(gradients_shape).tolist()
 
