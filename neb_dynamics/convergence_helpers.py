@@ -5,35 +5,31 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import NEBInputs
 
 
-def _check_en_converged(chain_prev: Chain, chain_new: Chain, threshold: float) -> bool:
-    differences = np.abs(chain_new.energies - chain_prev.energies)
+def _check_en_converged(energies_prev: NDArray, energies_new: NDArray, threshold: float) -> Tuple[NDArray, NDArray]:
+    differences = np.abs(energies_new - energies_prev)
     indices_converged = np.where(differences <= threshold)
     return indices_converged[0], differences
 
 
-def _check_springgrad_converged(chain: Chain, threshold: float) -> bool:
-    import neb_dynamics.chainhelpers as ch
+def _check_springgrad_converged(spring_forces: NDArray, threshold: float) -> Tuple[NDArray, NDArray]:
     bools = []
     grad_norms_components = []
-    pe_grads_nudged, spring_forces_nudged = ch.pe_grads_spring_forces_nudged(
-        chain=chain)
 
-    for grad in spring_forces_nudged:
+    for grad in spring_forces:
+        N = len(grad)
         grad = np.array(grad)
-        grad_norm = np.dot(grad.flatten(), grad.flatten()) / len(grad)
+        grad_norm = np.dot(grad.flatten(), grad.flatten()) / N
         grad_norms_components.append(grad_norm)
         bools.append(grad_norm < threshold)
 
     return np.where(bools), grad_norms_components
 
 
-def _check_gperps_converged(chain: Chain, threshold: float) -> bool:
-    import neb_dynamics.chainhelpers as ch
+def _check_gperps_converged(pe_grads: NDArray, threshold: float) -> Tuple[NDArray, NDArray]:
     bools = []
     max_grad_components = []
-    pe_grads_nudged, spring_forces_nudged = ch.pe_grads_spring_forces_nudged(
-        chain=chain)
-    for grad in pe_grads_nudged:
+
+    for grad in pe_grads:
         max_grad = np.amax(np.abs(grad))
         max_grad_components.append(max_grad)
         bools.append(max_grad < threshold)
@@ -49,27 +45,18 @@ def _check_barrier_height_conv(chain_prev: Chain, chain_new: Chain, threshold: f
     return delta_eA <= threshold
 
 
-def _check_rms_grad_converged(chain: Chain, threshold: float) -> Tuple[NDArray, NDArray]:
+def _check_rms_grad_converged(gradients: NDArray, threshold: float) -> Tuple[NDArray, NDArray]:
     """
-    returns two arrays. first array are the indices of converged nodes.
-    second array is the RMS values of the perpendicular gradients.
+    Returns two arrays. First array contains the indices of converged nodes.
+    Second array contains the RMS values of the gradients.
     """
     bools = []
     rms_gperps = []
 
-    for rms_gp, rms_gradient in zip(chain.rms_gperps, chain.rms_gradients):
-        # rms_gperps.append(rms_gp)
-
-        # # the boolens are used exclusively for deciding to freeze nodes or not
-        # # I want the spring forces to affect whether a node is frozen, but not
-        # # to affect the total chain's convergence.
-        # rms_grad_converged = rms_gradient <= threshold
-
-        # 01072025: Maybe the spring forces should affect, so we don't cheat it by
-        # having bunch of nodes near minima
+    for grad in gradients:
+        rms_gradient = np.sqrt(np.mean(np.square(grad)))
         rms_grad_converged = rms_gradient <= threshold
         rms_gperps.append(rms_gradient)
-
         bools.append(rms_grad_converged)
 
     return np.where(bools), rms_gperps
@@ -77,19 +64,30 @@ def _check_rms_grad_converged(chain: Chain, threshold: float) -> Tuple[NDArray, 
 
 def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) -> bool:
     import neb_dynamics.chainhelpers as ch
-    fraction_freeze = 1/10
+    fraction_freeze = 0.5
+
+
+    grad = chain_new.gradients
+    springgrads = chain_new.springgradients
+    gperps = chain_new.gperps
+    if chain_new.parameters.frozen_atom_indices:
+        not_frozen_atoms = list(set(list(range(len(grad)))) - set(chain_new.parameters.frozen_atom_indices))
+        print(not_frozen_atoms)
+        grad = [g[not_frozen_atoms] for g in grad]
+        springgrads = [g[not_frozen_atoms] for g in springgrads]
+        gperps = [g[not_frozen_atoms] for g in gperps]
+
 
     rms_grad_conv_ind, rms_gperps = _check_rms_grad_converged(
-        chain_new, threshold=parameters.rms_grad_thre*fraction_freeze)
+        grad, threshold=parameters.rms_grad_thre*fraction_freeze)
 
     gperp_conv_ind, gperps = _check_gperps_converged(
-        chain_new, threshold=parameters.rms_grad_thre*fraction_freeze)
+        gperps, threshold=parameters.rms_grad_thre*fraction_freeze)
 
     ts_triplet_gspring = chain_new.ts_triplet_gspring_infnorm
-    grad_converged_indices, springgrads = _check_springgrad_converged(chain=chain_new,
+    grad_converged_indices, springgrads = _check_springgrad_converged(springgrads,
                                                                       threshold=parameters.
                                                                       ts_spring_thre*fraction_freeze)
-    g_perps = ch.get_g_perps(chain_new)
 
     converged_nodes_indices = np.intersect1d(
         grad_converged_indices, rms_grad_conv_ind
@@ -112,7 +110,11 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
     barrier_height_converged = _check_barrier_height_conv(
         chain_prev=chain_prev, chain_new=chain_new, threshold=parameters.barrier_thre)
     ind_ts_guess = np.argmax(chain_new.energies)
-    ts_guess_grad = np.amax(np.abs(g_perps[ind_ts_guess]))
+    if ind_ts_guess == 0 or ind_ts_guess == len(chain_new)-1:
+        print("Warning: TS guess is at the end of the chain. This might indicate a problem with the initial guess.")
+        ts_guess_grad = 0
+    else:
+        ts_guess_grad = np.amax(np.abs(gperps[ind_ts_guess]))
     criteria_converged = [
         max(rms_gperps) <= parameters.max_rms_grad_thre,
         sum(rms_gperps)/len(chain_new) <= parameters.rms_grad_thre,

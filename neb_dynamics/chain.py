@@ -267,9 +267,11 @@ class Chain(BaseModel):
     def rms_gradients(self):
         grads = self.gradients
         rms_grads = []
+        n_frozen_atoms = len(self.parameters.frozen_atom_indices)
         for grad in grads:
             grad = np.array(grad)
-            rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / len(grad))
+            N = (len(grad) - n_frozen_atoms) # number of atoms not frozen
+            rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / N)
             rms_grads.append(rms_gradient)
 
         rms_grads[0] = 0
@@ -307,9 +309,11 @@ class Chain(BaseModel):
 
         grads = ch.get_g_perps(self)
         rms_grads = []
+        n_frozen_atoms = len(self.parameters.frozen_atom_indices)
         for grad in grads:
             grad = np.array(grad)
-            rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / len(grad))
+            N = (len(grad) - n_frozen_atoms)  # number of atoms not frozen
+            rms_gradient = np.sqrt(sum(np.square(grad.flatten())) / N)
             rms_grads.append(rms_gradient)
         return np.array(rms_grads)
 

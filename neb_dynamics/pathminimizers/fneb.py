@@ -20,8 +20,9 @@ import traceback
 
 import sys
 MIN_KCAL_ASCENT = -1000000
+USE_TWO_POINT_TANGENT = True
 # DRSTEP = 0.001
-DRSTEP = 0.001
+DRSTEP = 0.1
 BACKDROP_THRE = 0.0
 PHI = 0.5
 # PHI = 1.0
@@ -559,11 +560,29 @@ class FreezingNEB(PathMinimizer):
         elif self.parameters.tangent == 'linear':
             # linear tangent
             print("using linear tangents")
-            tangent1 = raw_chain[ind_node1].coords - raw_chain[ind_node1-1].coords
-            tangent1 /= np.linalg.norm(tangent1)
+            if USE_TWO_POINT_TANGENT:
+                if ind_node1 == 0:
+                    print("Cannot use two-point tangent for first node; defaulting to one-point.")
+                    tangent1 = raw_chain[ind_node1+1].coords - raw_chain[ind_node1].coords
+                    tangent1 /= np.linalg.norm(tangent1)
+                else:
+                    tangent1 = raw_chain[ind_node1+1].coords - raw_chain[ind_node1-1].coords
+                    tangent1 /= np.linalg.norm(tangent1)
 
-            tangent2 = raw_chain[ind_node2+1].coords - raw_chain[ind_node2].coords
-            tangent2 /= np.linalg.norm(tangent2)
+                if ind_node2 == len(raw_chain.nodes)-1:
+                    print("Cannot use two-point tangent for last node; defaulting to one-point.")
+                    tangent2 = raw_chain[ind_node2].coords - raw_chain[ind_node2-1].coords
+                    tangent2 /= np.linalg.norm(tangent2)
+                else:
+                    tangent2 = raw_chain[ind_node2+1].coords - raw_chain[ind_node2-1].coords
+                    tangent2 /= np.linalg.norm(tangent2)
+            else:
+                tangent1 = raw_chain[ind_node1].coords - raw_chain[ind_node1-1].coords
+                tangent1 /= np.linalg.norm(tangent1)
+                tangent2 = raw_chain[ind_node2+1].coords - raw_chain[ind_node2].coords
+                tangent2 /= np.linalg.norm(tangent2)
+
+
         else:
             raise ValueError(f"Invalid tangent type {self.parameters.tangent} specified. Select 'geodesic' or 'linear'.")
 

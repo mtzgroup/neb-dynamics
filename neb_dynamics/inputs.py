@@ -115,8 +115,8 @@ class ChainInputs:
     `tc_kwds`: keyword arguments for electronic structure calculations
     """
 
-    k: float = 0.5
-    delta_k: float = 0.4
+    k: float = 0.1
+    delta_k: float = 0.09
 
     do_parallel: bool = True
     use_geodesic_interpolation: bool = True
@@ -131,7 +131,7 @@ class ChainInputs:
     def _post_init__(self):
         if len(self.frozen_atom_indices) > 0:
             self.frozen_atom_indices = [
-                int(x) for x in self.frozen_atom_indices.split(",")]
+                int(x) for x in self.frozen_atom_indices.split(" ")]
 
     def copy(self) -> ChainInputs:
         return ChainInputs(**self.__dict__)
@@ -159,7 +159,7 @@ class GIInputs:
 
     nimages: int = 10
     friction: float = 0.001
-    nudge: float = 5.0
+    nudge: float = 0.1
     extra_kwds: dict = field(default_factory=dict)
     align: bool = True
 

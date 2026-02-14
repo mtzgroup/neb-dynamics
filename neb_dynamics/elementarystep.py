@@ -65,9 +65,11 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     Returns:
         ElemStepResults: object containing report on chain.
     """
+    print("Checking if chain is elementary step...")
     n_geom_opt_grad_calls = 0
     chain = inp_chain.copy()
     if len(inp_chain) <= 1:
+        print("Chain has 1 or fewer nodes, automatically elementary step.")
         return ElemStepResults(
             is_elem_step=True,
             is_concave=True,
@@ -106,12 +108,15 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     pseu_irc_results = pseudo_irc(chain=inp_chain, engine=engine)
     n_geom_opt_grad_calls += pseu_irc_results.number_grad_calls
 
+    print("Comparing alleged reactant minimum to actual reactant...")
     found_r = is_identical(
         pseu_irc_results.found_reactant,
         chain[0],
         fragment_rmsd_cutoff=inp_chain.parameters.node_rms_thre,
         kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
     )
+
+    print("Comparing alleged product minimum to actual product...")
     found_p = is_identical(
         pseu_irc_results.found_product,
         chain[-1],
@@ -119,6 +124,7 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
         kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
     )
 
+    print("Checking if alleged product minimum is actually reactant...")
     p_is_r = is_identical(
         pseu_irc_results.found_product,
         chain[0],
@@ -126,6 +132,7 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
         kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
     )
 
+    print("Checking if alleged reactant minimum is actually product...")
     r_is_p = is_identical(
         pseu_irc_results.found_reactant,
         chain[-1],
@@ -192,18 +199,22 @@ def is_approx_elem_step(
         return True, 0
 
     arg_max = np.argmax(chain.energies)
-    if len(chain) == 3 or arg_max == 1 or arg_max == len(chain)-2:
-        print("Chain TS neighboring nodes need to be approximated. ")
+    # if len(chain) == 3 or arg_max == 1 or arg_max == len(chain)-2:
+    #     print("Chain TS neighboring nodes need to be approximated. ")
 
-        chain_for_opt = _upsample_around_ts_guess(
-            chain=chain, ts_index=arg_max)
+    #     chain_for_opt = _upsample_around_ts_guess(
+    #         chain=chain, ts_index=arg_max)
 
-        arg_max = arg_max + 1  # now the TS index is different
-        engine.compute_energies(
-            [chain_for_opt.nodes[arg_max-1], chain_for_opt.nodes[arg_max+1]])
+    #     arg_max = arg_max + 1  # now the TS index is different
+    #     engine.compute_energies(
+    #         [chain_for_opt.nodes[arg_max-1], chain_for_opt.nodes[arg_max+1]])
 
-    else:
-        chain_for_opt = chain.copy()
+    # else:
+    chain_for_opt = chain.copy()
+
+    if hasattr(engine, "compute_program") and engine.compute_program.lower() == "chemcloud":
+        print("Chemcloud detected, skipping approx elem step check.")
+        return False, 0
 
     try:
         r_passes_opt, r_traj = _converges_to_an_endpoints(
@@ -267,6 +278,8 @@ def _converges_to_an_endpoints(
     """
     done = False
     total_traj = [chain[node_index]]
+    print("Checking if node", node_index, "converges to endpoint", "reactant" if direction ==
+          -1 else "product", "...")
     while not done:
         try:
             traj = engine.steepest_descent(node=total_traj[-1], max_steps=5)
@@ -291,21 +304,27 @@ def _converges_to_an_endpoints(
         slopes_to_ref2 = distances[-1][1] - distances[0][1]
         if np.isclose(distances[-1][1], 0, atol=0.001, rtol=0.001):
             slopes_to_ref2 = np.inf
-        print("slope1", slopes_to_ref1, "slope2", slopes_to_ref2)
+        # print("slope1", slopes_to_ref1, "slope2", slopes_to_ref2)
 
         slope1_conv = abs(slopes_to_ref1) / slope_thresh > 1
         slope2_conv = abs(slopes_to_ref2) / slope_thresh > 1
-        print(f"{slope1_conv=} {slope2_conv=}")
+
+        # print(f"{slope1_conv=} {slope2_conv=}")
         # slope1_conv = 1
         # slope2_conv = 1
 
         done = slope1_conv and slope2_conv
         if len(total_traj) - 1 >= max_grad_calls and not done:
             return False, total_traj
+
     if direction == -1:
-        return slopes_to_ref1 < 0 and slopes_to_ref2 > 0, total_traj
+        converged_to_reactant = slopes_to_ref1 < 0 and slopes_to_ref2 > 0
+        print("Converged to reactant:", converged_to_reactant)
+        return converged_to_reactant, total_traj
     elif direction == 1:
-        return slopes_to_ref1 > 0 and slopes_to_ref2 < 0, total_traj
+        converged_to_product = slopes_to_ref1 > 0 and slopes_to_ref2 < 0
+        print("Converged to product:", converged_to_product)
+        return converged_to_product, total_traj
 
 
 def _distances_to_refs(ref1: Node, ref2: Node, raw_node: Node) -> List[float]:
@@ -344,36 +363,46 @@ def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH)
     will assess+categorize the presence of minima on the chain.
     """
     import neb_dynamics.chainhelpers as ch
+    print("Checking if chain has intermediate minima...")
 
     n_grad_calls = 0
     ind_minima = ch._get_ind_minima(chain=chain)
+    print(f"\tFound {len(ind_minima)} minima on chain.")
     minima_present = len(ind_minima) != 0
     opt_results = []
     if minima_present:
         minimas_is_r_or_p = []
         try:
             for i in ind_minima:
-                _, min_traj = _converges_to_an_endpoints(
-                    chain=chain,
-                    engine=engine,
-                    node_index=i,
-                    direction=-1,
-                    slope_thresh=min_slope_thre)
+                # print("chemcloud" not in engine.engine_name.lower(), engine.engine_name.lower())
+                if hasattr(engine, "compute_program") and engine.compute_program.lower() != "chemcloud":
 
-                distances = [
-                    _distances_to_refs(
-                        ref1=chain[0], ref2=chain[-1], raw_node=n)
-                    for n in min_traj
-                ]
+                    _, min_traj = _converges_to_an_endpoints(
+                        chain=chain,
+                        engine=engine,
+                        node_index=i,
+                        direction=-1,
+                        slope_thresh=min_slope_thre)
 
-                slopes_to_ref1 = distances[-1][0] - distances[0][0]
-                slopes_to_ref2 = distances[-1][1] - distances[0][1]
+                    distances = [
+                        _distances_to_refs(
+                            ref1=chain[0], ref2=chain[-1], raw_node=n)
+                        for n in min_traj
+                    ]
 
-                slope1_conv = abs(slopes_to_ref1) / min_slope_thre > 1
-                slope2_conv = abs(slopes_to_ref2) / min_slope_thre > 1
-                print(f"{slope1_conv=} {slope2_conv=}")
+                    slopes_to_ref1 = distances[-1][0] - distances[0][0]
+                    slopes_to_ref2 = distances[-1][1] - distances[0][1]
 
-                done = slope1_conv and slope2_conv
+                    slope1_conv = abs(slopes_to_ref1) / min_slope_thre > 1
+                    slope2_conv = abs(slopes_to_ref2) / min_slope_thre > 1
+                    # print(f"{slope1_conv=} {slope2_conv=}")
+
+                    done = slope1_conv and slope2_conv
+                else:
+                    print("\tSkipping concavity check for chemcloud, not minimizing apparent minima, assuming it's real.")
+                    done = False  # chemcloud cannot do the crude irc check
+                    kinked_chain = False
+
                 if done:
                     is_r = slopes_to_ref1 < 0 and slopes_to_ref2 > 0
                     is_p = slopes_to_ref1 > 0 and slopes_to_ref2 < 0
@@ -396,7 +425,7 @@ def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH)
                         chain[-1],
                         fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
                         kcal_mol_cutoff=chain.parameters.node_ene_thre,
-                    )
+                        )
                 minimas_is_r_or_p.append(is_r or is_p)
         except Exception as e:
             import traceback

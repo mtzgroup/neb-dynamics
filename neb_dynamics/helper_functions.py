@@ -563,15 +563,27 @@ def project_rigid_body_forces(R, F, masses=None):
 
     return F
 
+
 def rst7_to_coords_and_indices(data):
+    """
+
+    Args:
+        data (str): rst7 text file, opened
+
+    Returns:
+        tuple(np.array, list): coordinates and indices of atoms in the rst7 file
+    """
     coords = []
     indices_coordinates = []
 
     ind = 0
     for line in data.split("\n"):
+        if ind==0:
+            ind+=1
+            continue
         if ind==1:
            natom = int(line.split()[0])
-        if len(line.split()) == 6:
+        if (len(line.split()) == 6) or (len(line.split()) == 3):
             if len(coords) == natom:
                 break
             # if ind in qmindices:
@@ -581,9 +593,82 @@ def rst7_to_coords_and_indices(data):
 
             c = line.split()[3:]
             c = [float(x) for x in c]
-            coords.append(c)
+            if len(c) > 0:
+                coords.append(c)
             indices_coordinates.append(ind)
 
 
         ind+=1
+    # print(coords)
     return np.array(coords), indices_coordinates
+
+def parse_symbols_from_prmtop(data):
+    """
+
+    Args:
+        data (str): prmtop text file, opened
+
+    Returns:
+        list: symbols of atoms in the prmtop file
+    """
+    symbols = []
+
+    begin = False
+    skipped1line = 0
+    for line in data.split("\n"):
+        print(line.strip())
+        if line.strip()=='%FLAG ATOMIC_NUMBER':
+            begin = True
+            continue
+        if begin:
+            if skipped1line:
+                if line[0]=='%':
+                    break
+                symbols.extend(line.split())
+            else:
+                skipped1line = 1
+
+
+    symbols = [atomic_number_to_symbol(int(n)) for n in symbols]
+    return symbols
+
+
+def parse_qmmm_gradients(text):
+    """
+    Parses QM and MM gradients from an ORCA-style output text file.
+    """
+    qm_grads = []
+    mm_grads = []
+
+    # State flags
+    current_mode = None # Can be 'QM' or 'MM'
+
+    for line in text.split("\n"):
+        clean_line = line.strip()
+
+        # Detect section starts
+        if "dE/dX" in clean_line and "dE/dY" in clean_line:
+            current_mode = 'QM'
+            continue
+        elif "MM / Point charge part" in clean_line:
+            current_mode = 'MM'
+            continue
+        # Detect section ends (the dashed line or the start of the next summary)
+        elif "Net gradient" in clean_line or (current_mode == 'MM' and "---" in clean_line):
+            current_mode = None
+            continue
+
+        # Parse numerical data (expecting 3 floats per line)
+        parts = clean_line.split()
+        if current_mode and len(parts) == 3:
+            try:
+                floats = [float(x) for x in parts]
+                if current_mode == 'QM':
+                    qm_grads.append(floats)
+                elif current_mode == 'MM':
+                    mm_grads.append(floats)
+            except ValueError:
+                # Skip lines that don't contain valid numbers (headers/separators)
+                continue
+
+    return np.array(qm_grads), np.array(mm_grads)

@@ -18,6 +18,7 @@ from neb_dynamics.nodes.nodehelpers import is_identical
 
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.errors import ElectronicStructureError
+from optimizers.cg import ConjugateGradient
 from qcio import Structure
 
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
@@ -149,8 +150,7 @@ class MSMEP:
 
         if self.inputs.chain_inputs.use_geodesic_interpolation:
             if chain.parameters.frozen_atom_indices:
-                inds_frozen = np.array(
-                    chain.parameters.frozen_atom_indices.split(), dtype=int)
+                inds_frozen = chain.parameters.frozen_atom_indices
                 print("will be freezing inds:", inds_frozen, ' during geodesic interpolation')
                 print(type(inds_frozen))
             else:
@@ -213,11 +213,12 @@ class MSMEP:
 
             print("Using in-house NEB optimizer")
             sys.stdout.flush()
+            optimizer = ConjugateGradient(**self.inputs.optimizer_kwds)
 
             n = NEB(
                 initial_chain=initial_chain,
                 parameters=self.inputs.path_min_inputs,
-                optimizer=self.inputs.optimizer,
+                optimizer=optimizer,
                 engine=self.inputs.engine,
             )
         # elif self.inputs.path_min_method.upper() == "PYGSM":
@@ -285,8 +286,17 @@ class MSMEP:
                         Returning an unoptimized chain..."
             )
             out_chain = n.chain_trajectory[-1]
-            elem_step_results = check_if_elem_step(
-                out_chain, engine=self.inputs.engine)
+            if self.inputs.path_min_inputs.do_elem_step_checks:
+                elem_step_results = check_if_elem_step(
+                    out_chain, engine=self.inputs.engine)
+            else:
+                elem_step_results = ElemStepResults(
+                    is_elem_step=True,
+                    is_concave=None,
+                    splitting_criterion=None,
+                    minimization_results=None,
+                    number_grad_calls=0,
+                )
 
         except ElectronicStructureError as e:
             # print(traceback.format_exc())

@@ -38,9 +38,15 @@ IS_ELEM_STEP = ElemStepResults(
     splitting_criterion=None,
     minimization_results=None,
     number_grad_calls=0,)
-VELOCITY_SCALING = 0.3
-ACTIVATION_TOL = 100
+
+
 MAX_NRETRIES = 3
+NMINIMA_STEPS = 5
+
+NSTEPS_STRAIN  = 10000000 # turning this off
+NADD = 1
+
+CORR_TOL = 0.95 # percent gradient correlation to be above. If it happens many times, increase timestep.
 
 
 @dataclass
@@ -69,6 +75,7 @@ class NEB(PathMinimizer):
         self.n_steps_still_chain = 0
         self.grad_calls_made = 0
         self.geom_grad_calls_made = 0
+        self.orig_timestep = self.optimizer.timestep
         # if self.parameters.frozen_atom_indices is not None:
         #     if isinstance(self.parameters.frozen_atom_indices, str):
         #         self.parameters.frozen_atom_indices = [
@@ -116,7 +123,7 @@ class NEB(PathMinimizer):
             self.n_steps_still_chain = 0
             return False, elem_step_results
 
-    def _check_early_stop(self, chain: Chain):
+    def _check_early_stop(self, chain: Chain, force_check: bool = False) -> Tuple[bool, ElemStepResults]:
         """
         this function computes chain distances and checks gradient
         values in order to decide whether the expensive minimization of
@@ -129,9 +136,9 @@ class NEB(PathMinimizer):
         springgrad_infnorm = np.amax(abs(chain.springgradients))
         rms_grad = chain.rms_gradients
 
-        # if ts_guess_grad < self.parameters.early_stop_force_thre:
+        if (ts_guess_grad < self.parameters.early_stop_force_thre) or \
+            (sum(rms_grad)/len(chain) < self.parameters.early_stop_force_thre) or force_check:
         # if springgrad_infnorm < self.parameters.early_stop_force_thre:
-        if sum(rms_grad)/len(chain) < self.parameters.early_stop_force_thre:
 
             new_params = copy.deepcopy(self.parameters)
             new_params.early_stop_force_thre = 0.0
@@ -212,6 +219,13 @@ class NEB(PathMinimizer):
 
         nsteps = 1
         nsteps_negative_grad_corr = 0
+        nsteps_pos_grad_corr = 0
+        nsteps_minima_present = 0
+        already_forced_check = False
+
+        nsteps_strained_node = 0
+        prev_most_strained_node = 0
+        prev_grad_corr = 0.0
 
         # if self.parameters.preopt_with_xtb:
         #     chain_previous = self._do_xtb_preopt(self.initial_chain)
@@ -229,20 +243,66 @@ class NEB(PathMinimizer):
         self.optimizer.g_old = None
 
         while nsteps < self.parameters.max_steps + 1:
+
             if nsteps > 1:
-                stop_early, elem_step_results = self._check_early_stop(
-                    chain_previous)
-                self.geom_grad_calls_made += elem_step_results.number_grad_calls
-                if stop_early:
-                    return elem_step_results
+                # check if minima are present
+                minima_present = len(ch._get_ind_minima(chain_previous)) >= 1
+                if minima_present:
+                    nsteps_minima_present += 1
+                else:
+                    nsteps_minima_present = 0
+                force_check = nsteps_minima_present >= NMINIMA_STEPS
+                if force_check and not already_forced_check:
+                    print(f"A local minimum has been present for {nsteps_minima_present} steps, forcing early stop check.")
+                    nsteps_minima_present = 0
+                    already_forced_check = True
+                elif already_forced_check:
+                    force_check = False
+
+                # check if any node is too strained
+                most_strained_node = np.argmax(chain_previous.rms_gradients)
+                if most_strained_node == prev_most_strained_node:
+                    nsteps_strained_node += 1
+                else:
+                    prev_most_strained_node = most_strained_node
+                    nsteps_strained_node = 0
+
+                if nsteps_strained_node >= NSTEPS_STRAIN:
+                    # print(f"Node {most_strained_node} has been the most strained for {nsteps_strained_node} steps, adding a bead before and after.")
+                    print(f"Node {most_strained_node} has been the most strained for {nsteps_strained_node} steps, upsampling chain")
+                    # chain_previous = ch.insert_nodes_around_index(
+                    #     chain_previous, most_strained_node, engine=self.engine)
+                    chain_previous = ch.upsample_chain(
+                        chain_previous, engine=self.engine, nimages=NADD)
+
+                    self.grad_calls_made += NADD  # two new nodes need gradients
+                    nsteps_strained_node = 0
+                    self.optimizer.g_old = None  # reset optimizer history, since vector changes shape
+
+                if self.parameters.do_elem_step_checks:
+                    stop_early, elem_step_results = self._check_early_stop(
+                        chain_previous, force_check=force_check)
+                    self.geom_grad_calls_made += elem_step_results.number_grad_calls
+                    if stop_early:
+                        return elem_step_results
             try:
                 new_chain = self.update_chain(chain=chain_previous)
-            except ExternalProgramError as e:
-                elem_step_results = check_if_elem_step(
-                    inp_chain=chain_previous, engine=self.engine
-                )
-                raise ElectronicStructureError(msg="QCOP failed.",
-                                               obj=e.program_output)
+
+            except ExternalProgramError:
+                print("\n!!!Electronic structure error during NEB step, rolling back 5 steps and trying again.")
+                rollback_steps = min(5, len(self.chain_trajectory)-1)
+                chain_previous = self.chain_trajectory[-(rollback_steps+1)]
+                self.optimizer.reset()
+                new_chain = self.update_chain(chain=chain_previous)
+
+                # if self.parameters.do_elem_step_checks:
+                #     elem_step_results = check_if_elem_step(
+                #         inp_chain=chain_previous, engine=self.engine
+                #     )
+                # else:
+                #     elem_step_results = IS_ELEM_STEP
+                # raise ElectronicStructureError(msg="QCOP failed.",
+                #                                obj=e.program_output)
 
             max_rms_grad_val = np.amax(new_chain.rms_gradients)
             ind_ts_guess = np.argmax(new_chain.energies)
@@ -262,16 +322,30 @@ class NEB(PathMinimizer):
             grad_calls_made = len(new_chain) - n_nodes_frozen
             self.grad_calls_made += grad_calls_made
 
+
+
+
             grad_corr = ch._gradient_correlation(new_chain, chain_previous)
-            if grad_corr < 0:
+            # if grad_corr < 0:
+            if grad_corr < 0.5: # less than 50% overlap in gradients
                 nsteps_negative_grad_corr += 1
+            elif grad_corr > CORR_TOL:
+                if prev_grad_corr > CORR_TOL:
+                    nsteps_pos_grad_corr += 1
             else:
                 nsteps_negative_grad_corr = 0
+            prev_grad_corr = grad_corr
 
             if nsteps_negative_grad_corr >= self.parameters.negative_steps_thre:
                 print("\nstep size causing oscillations. decreasing by 50%")
-                self.optimizer.timestep *= 0.5
+                # self.optimizer.timestep *= 0.5
+                self.optimizer.timestep -= 0.5*self.orig_timestep
                 nsteps_negative_grad_corr = 0
+            elif nsteps_pos_grad_corr >= self.parameters.positive_steps_thre:
+                print("\nstep size stable for {} steps. increasing by 20%".format(nsteps_pos_grad_corr))
+                # self.optimizer.timestep *= 1.2
+                self.optimizer.timestep += 0.2*self.orig_timestep
+                nsteps_pos_grad_corr = 0
 
             if self.parameters.v:
 
@@ -279,7 +353,7 @@ class NEB(PathMinimizer):
                     f"step {nsteps} // argmax(|TS gperp|) {np.amax(np.abs(ts_guess_grad))} // \
                         max rms grad {max_rms_grad_val} // armax(|TS_triplet_gsprings|) \
                             {new_chain.ts_triplet_gspring_infnorm} // nodes_frozen\
-                                  {n_nodes_frozen} // {grad_corr}{' '*20}",
+                                  {n_nodes_frozen} // timestep {self.optimizer.timestep} // {grad_corr}{' '*20}",
                     end="\r",
                 )
                 sys.stdout.flush()
@@ -341,7 +415,7 @@ class NEB(PathMinimizer):
             chain, geodesic_tangent=self.parameters.use_geodesic_tangent)
 
         if chain.parameters.frozen_atom_indices:
-            inds = np.array(chain.parameters.frozen_atom_indices.split(), dtype=int)
+            inds = chain.parameters.frozen_atom_indices
             for index in inds:
                 for image_ind in range(grad_step.shape[0]):
                     grad_step[image_ind][index] = np.array([0.0, 0.0, 0.0])

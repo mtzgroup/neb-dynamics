@@ -1,5 +1,8 @@
-site_name: neb-dynamics
+site_name: NEB Dynamics Documentation
 site_url: https://mtzgroup.github.io/neb-dynamics/
+nav:
+  - Home: index.md
+  - About: about.md
 theme:
   name: material
   palette:

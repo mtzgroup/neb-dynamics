@@ -13,6 +13,14 @@ class ConjugateGradient(Optimizer):
 
     def __post_init__(self):
         self.g_old = None
+        self.orig_timestep = self.timestep
+
+    def reset(self):
+        self.g_old = None
+        self.timestep = self.orig_timestep
+
+    def update_timestep(self, new_timestep: float) -> None:
+        self.timestep = new_timestep
 
     def optimize_step(self, chain, chain_gradients):
         """
@@ -40,6 +48,10 @@ class ConjugateGradient(Optimizer):
             g = self.g_old.flatten().copy()
             # Fletcher-Reeves formula
             # beta = np.dot(g_new, g_new) / np.dot(g, g)
+            if g_new.shape != g.shape:
+                print("Warning: Gradient shapes do not match. Resetting the optimizer.")
+                self.reset()
+                return self.optimize_step(chain, chain_gradients)
             beta = max(0, np.dot(g_new, g - g_new) /
                        np.dot(g, g))  # Polak-Ribiere formula
             # print("BETA---->", beta)

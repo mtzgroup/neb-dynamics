@@ -345,7 +345,7 @@ def get_force_spring_nudged(
 
     force_spring = (k12) * (np.linalg.norm(
         next_node.coords - current_node.coords
-    ))/sqrtN - k01 * (np.linalg.norm(current_node.coords - prev_node.coords))/sqrtN
+    )) - k01 * (np.linalg.norm(current_node.coords - prev_node.coords))
 
     # force_spring = tightest_k * (np.linalg.norm(
     #     next_node.coords - current_node.coords
@@ -1090,3 +1090,118 @@ def calculate_geodesic_tangent(
     new2 = new2.update_coords(align_geom(ref_node.coords, new2.coords)[1])
 
     return [new0, ref_node, new2]
+
+
+def insert_nodes_around_index(chain, most_strained_node, engine):
+    node = chain[most_strained_node]
+    fwd_gi = run_geodesic([node, chain[most_strained_node+1]], nimages=3, align=False)
+    fwd_node = fwd_gi[1]
+
+    bck_gi = run_geodesic([chain[most_strained_node-1], node], nimages=3, align=False)
+    bck_node = bck_gi[1]
+
+    chain_new = chain.copy()
+    engine.compute_energies([bck_node, fwd_node])
+    chain_new.nodes.insert(most_strained_node+1, fwd_node)
+    chain_new.nodes.insert(most_strained_node, bck_node)
+
+    return chain_new
+
+# def upsample_chain(chain, engine, nimages):
+#     coords = chain.energies_kcalmol
+#     dists = []
+#     max_dist = 0
+#     index = 0
+#     for i, frame_coords in enumerate(coords):
+#         if i == len(coords) - 1:
+#             continue
+#         next_frame = coords[i + 1]
+#         # distance = chain._path_len_dist_func(frame_coords, next_frame)
+#         distance = abs(next_frame - frame_coords)
+#         dists.append(distance)
+#         if distance>max_dist:
+#             max_dist = distance
+#             index = i
+#     node_inds_to_drop = np.argsort(dists)[:nimages]
+
+
+#     node1 = chain[index]
+#     node2 = chain[index+1]
+#     gi = run_geodesic([node1, node2], nimages=(2+nimages), align=False)
+
+#     chain_new = chain.copy()
+#     engine.compute_energies(gi[1:-1])
+#     chain_new.nodes = chain_new.nodes[:index+1] + gi[1:-1] + chain_new.nodes[index+1:]
+
+#     return chain_new
+def upsample_chain(chain, engine, nimages):
+    coords = chain.energies_kcalmol
+    dists = []
+    max_dist = 0
+    index = 0
+    for i, frame_coords in enumerate(coords):
+        if i == len(coords) - 1:
+            continue
+        next_frame = coords[i + 1]
+        # distance = chain._path_len_dist_func(frame_coords, next_frame)
+        distance = abs(next_frame - frame_coords)
+        dists.append(distance)
+        if distance>max_dist:
+            max_dist = distance
+            index = i
+    node_inds_to_drop = np.argsort(dists)[:nimages]
+    # print(node_inds_to_drop)
+    # print(index, max_dist)
+    # print(dists)
+
+
+    node1 = chain[index]
+    node2 = chain[index+1]
+    gi = run_geodesic([node1, node2], nimages=(2+nimages), align=False)
+
+    chain_new = chain.copy()
+    engine.compute_energies(gi[1:-1])
+
+
+
+
+    ####
+    original_list = chain.nodes
+    drop_indices = node_inds_to_drop          # Indices to remove ('b' and 'd')
+    new_nodes = gi[1:-1]
+    new_nodes.reverse()
+    insert_ops = [(index+1, node) for node in new_nodes] # (index, value) pairs to insert
+
+    # 1. Combine operations into a single list
+    # We use a tag to distinguish between 'drop' and 'insert'
+    tasks = []
+    for i in drop_indices:
+        tasks.append((i, 'drop'))
+    for i, val in insert_ops:
+        tasks.append((i, 'insert', val))
+
+    # 2. Sort tasks by index in REVERSE order
+    tasks.sort(key=lambda x: x[0], reverse=True)
+    # print(tasks)
+
+    # 3. Apply changes to a copy of the list
+    new_list = original_list.copy()
+    for task in tasks:
+        idx = task[0]
+        action = task[1]
+
+        if action == 'drop':
+            # print(f"dropping at {idx}")
+            new_list.pop(idx)
+        elif action == 'insert':
+            val = task[2]
+            # print(f"INSERTING at {idx}, {val.energy}")
+            new_list.insert(idx, val)
+
+    ###
+
+    # chain_new.nodes = chain_new.nodes[:index+1] + gi[1:-1] + chain_new.nodes[index+1:]
+    chain_new.nodes = new_list
+
+    return chain_new
+

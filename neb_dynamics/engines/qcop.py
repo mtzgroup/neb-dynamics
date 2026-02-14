@@ -24,8 +24,9 @@ from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 import copy
 
 AVAIL_PROGRAMS = ["qcop", "chemcloud"]
-# CCQUEUE = 'celery'
-CCQUEUE = 'gq-alt'
+CCQUEUE = 'celery'
+# CCQUEUE = 'jan'
+# CCQUEUE = 'gq-alt'
 
 
 @dataclass
@@ -82,16 +83,10 @@ class QCOPEngine(Engine):
 
     def compute_func(self, *args, **kwargs):
         if self.compute_program == "qcop":
-            try:
-                return qcop.compute(*args, **kwargs)
-            except ExternalProgramError as e:
-                print(e.original_exception)
-                print(e.results.stdout)
-                e.results.save("/tmp/failed_calc.qcio")
-                raise ElectronicStructureError(
-                    msg="QCOP computation failed.", obj=e)
+            return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
-            return cc_compute(*args, **kwargs)
+            print("SUBMITTING TO : ", CCQUEUE)
+            return cc_compute(*args, queue=CCQUEUE, **kwargs)
         else:
             raise ValueError(
                 f"Invalid compute program: {self.compute_program}. Must be one of: {AVAIL_PROGRAMS}"
@@ -174,36 +169,37 @@ class QCOPEngine(Engine):
         """
         this will return a ProgramOutput from qcio geom opt call.
         """
-        # if "terachem" not in self.program:
+        if "terachem" not in self.program:
 
-        dpi = DualProgramInput(
-            calctype="optimization",  # type: ignore
-            structure=node.structure,
-            subprogram=self.program,
-            subprogram_args={
-                "model": self.program_args.model,
-                "keywords": self.program_args.keywords,
-            },
-            keywords=keywords,
-        )
+            dpi = DualProgramInput(
+                calctype="optimization",  # type: ignore
+                structure=node.structure,
+                subprogram=self.program,
+                subprogram_args={
+                    "model": self.program_args.model,
+                    "keywords": self.program_args.keywords,
+                },
+                keywords=keywords,
+            )
 
-        output = self.compute_func(
-            self.geometry_optimizer, dpi, collect_files=self.collect_files)
+            output = self.compute_func(
+                self.geometry_optimizer, dpi, collect_files=self.collect_files)
 
-        # else:  OCT062025: bug where terachem optimizations werent being passed.
-            # prog_input = ProgramInput(
-            #     structure=node.structure,
-            #     # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
-            #     calctype="optimization",  # type: ignore
-            #     model=self.program_args.model,
-            #     keywords={
-            #         "purify": "no",
-            #         "new_minimizer": "yes",
-            #     },  # new_minimizer yes is required
-            # )
+        else:  # DEC162025: Trying again... # OCT062025: bug where terachem optimizations werent being passed.
+            print("doing the thing")
+            prog_input = ProgramInput(
+                structure=node.structure,
+                # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
+                calctype="optimization",  # type: ignore
+                model=self.program_args.model,
+                keywords={
+                    "purify": "no",
+                    "new_minimizer": "yes",
+                },  # new_minimizer yes is required
+            )
 
-            # output = self.compute_func(
-            #     "terachem", prog_input, collect_files=self.collect_files)
+            output = self.compute_func(
+                "terachem", prog_input, collect_files=self.collect_files)
 
         return output
 
