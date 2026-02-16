@@ -1,56 +1,27 @@
-# NEB Dynamics Documentation
-
-Welcome to the **NEB Dynamics** documentation! This software package provides tools for running automated minimum energy path (MEP) minimizations using the Nudged Elastic Band (NEB) method and its variants.
-
-## Overview
-
-NEB Dynamics is designed to:
-- Find transition states and reaction paths between chemical structures
-- Automatically split complex reaction pathways into elementary steps
-- Support multiple electronic structure engines (ChemCloud, QCOP, ASE-based calculators)
-- Provide geodesic interpolation for generating initial path guesses
-
-## Installation
-
-```bash
-pip install "git+https://github.com/mtzgroup/neb-dynamics.git"
-```
-
-### ChemCloud Setup (Recommended)
-
-NEB Dynamics uses ChemCloud for electronic structure calculations. You'll need:
-
-1. Sign up at https://chemcloud.mtzlab.com/signup
-2. Configure authentication (choose one option below):
-
-```bash
-# Option 1: Run setup_profile() - writes credentials to ~/.chemcloud/credentials
-python -c "from chemcloud import setup_profile; setup_profile()"
-
-# Option 2: Use environment variables (for memory-only auth)
-export CHEMCLOUD_USERNAME=your_email@chemcloud.com
-export CHEMCLOUD_PASSWORD=your_password
-
-# Option 3: Custom server (if using a different domain)
-export CHEMCLOUD_DOMAIN="https://your-server-url.com"
-```
-
-### Tips
-- For local calculations, you can also use ASE with machine learning potentials
-
-## Quick Start
-
-```python
-import numpy as np
+"""
+Tutorial 3: Multi-Step MEP (MSMEP)
+For complex reactions with multiple elementary steps, use MSMEP.
+It automatically splits the path if needed.
+"""
 from qcio import Structure
-from neb_dynamics import StructureNode, NEBInputs, ChainInputs
+from neb_dynamics import MSMEP, RunInputs, StructureNode, ChainInputs
 from neb_dynamics.engines.qcop import QCOPEngine
-from neb_dynamics.neb import NEB
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics import Chain
-from neb_dynamics.optimizers.cg import ConjugateGradient
 
-# 1. Define initial and final structures using embedded XYZ data
+# Set up engine with ChemCloud
+eng = QCOPEngine(compute_program="chemcloud")
+
+# Set up inputs - use engine_name="chemcloud" to run on ChemCloud
+ri = RunInputs(
+    engine_name="chemcloud",
+    program="xtb",  # Program to use on ChemCloud
+    path_min_method="NEB",
+)
+
+m = MSMEP(inputs=ri)
+
+# Create structures using embedded XYZ data
 start_xyz = """17
 Frame 0
  C          0.885440409184        2.102076768875        0.627821743488
@@ -97,32 +68,27 @@ Frame 29
 start = Structure.from_xyz(start_xyz)
 end = Structure.from_xyz(end_xyz)
 
-# 2. Create nodes
 start_node = StructureNode(structure=start)
 end_node = StructureNode(structure=end)
 
-# 3. Set up engine using ChemCloud
-eng = QCOPEngine(compute_program="chemcloud")
-
-# 4. Optimize endpoints
+# Optimize endpoints
 start_opt = eng.compute_geometry_optimization(start_node)
-end_opt = eng.compute_geometry_optimization(end_node)
+start_node = start_opt[-1]
 
-# 5. Create initial chain using geodesic interpolation
+end_opt = eng.compute_geometry_optimization(end_node)
+end_node = end_opt[-1]
+
+# Create initial chain using Chain.model_validate()
 chain = Chain.model_validate({
-    'nodes': [start_opt[-1], end_opt[-1]],
+    'nodes': [start_node, end_node],
     'parameters': ChainInputs(k=0.1, delta_k=0.09)
 })
-initial_chain = ch.run_geodesic(chain, nimages=15)
+initial_chain = ch.run_geodesic(chain, nimages=20)
 
-# 6. Run NEB optimization
-opt = ConjugateGradient(timestep=0.5)
-nbi = NEBInputs(v=True)
-n = NEB(initial_chain=initial_chain, parameters=nbi, optimizer=opt, engine=eng)
-results = n.optimize_chain()
+# Run recursive minimization
+# This will automatically split the path if needed
+history = m.run_recursive_minimize(initial_chain)
 
-# 7. Visualize results
-n.plot_opt_history(1)
-ch.visualize_chain(n.optimized)
-```
-
+print("MSMEP completed successfully!")
+print(f"Number of elementary steps: {history.max_index + 1}")
+print(f"Final chain has {len(history.data.optimized.nodes)} images")

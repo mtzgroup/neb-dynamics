@@ -1,56 +1,17 @@
-# NEB Dynamics Documentation
-
-Welcome to the **NEB Dynamics** documentation! This software package provides tools for running automated minimum energy path (MEP) minimizations using the Nudged Elastic Band (NEB) method and its variants.
-
-## Overview
-
-NEB Dynamics is designed to:
-- Find transition states and reaction paths between chemical structures
-- Automatically split complex reaction pathways into elementary steps
-- Support multiple electronic structure engines (ChemCloud, QCOP, ASE-based calculators)
-- Provide geodesic interpolation for generating initial path guesses
-
-## Installation
-
-```bash
-pip install "git+https://github.com/mtzgroup/neb-dynamics.git"
-```
-
-### ChemCloud Setup (Recommended)
-
-NEB Dynamics uses ChemCloud for electronic structure calculations. You'll need:
-
-1. Sign up at https://chemcloud.mtzlab.com/signup
-2. Configure authentication (choose one option below):
-
-```bash
-# Option 1: Run setup_profile() - writes credentials to ~/.chemcloud/credentials
-python -c "from chemcloud import setup_profile; setup_profile()"
-
-# Option 2: Use environment variables (for memory-only auth)
-export CHEMCLOUD_USERNAME=your_email@chemcloud.com
-export CHEMCLOUD_PASSWORD=your_password
-
-# Option 3: Custom server (if using a different domain)
-export CHEMCLOUD_DOMAIN="https://your-server-url.com"
-```
-
-### Tips
-- For local calculations, you can also use ASE with machine learning potentials
-
-## Quick Start
-
-```python
-import numpy as np
+"""
+Tutorial 2: Climbing Image NEB
+This builds on Tutorial 1 - uses the same setup but with climbing image enabled.
+Climbing image NEB finds the exact saddle point.
+"""
 from qcio import Structure
 from neb_dynamics import StructureNode, NEBInputs, ChainInputs
 from neb_dynamics.engines.qcop import QCOPEngine
 from neb_dynamics.neb import NEB
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics import Chain
-from neb_dynamics.optimizers.cg import ConjugateGradient
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
-# 1. Define initial and final structures using embedded XYZ data
+# Define structures using embedded XYZ data
 start_xyz = """17
 Frame 0
  C          0.885440409184        2.102076768875        0.627821743488
@@ -97,32 +58,48 @@ Frame 29
 start = Structure.from_xyz(start_xyz)
 end = Structure.from_xyz(end_xyz)
 
-# 2. Create nodes
+# Create nodes
 start_node = StructureNode(structure=start)
 end_node = StructureNode(structure=end)
 
-# 3. Set up engine using ChemCloud
+# Set up engine using ChemCloud
 eng = QCOPEngine(compute_program="chemcloud")
 
-# 4. Optimize endpoints
+# Optimize geometries
 start_opt = eng.compute_geometry_optimization(start_node)
 end_opt = eng.compute_geometry_optimization(end_node)
 
-# 5. Create initial chain using geodesic interpolation
+start_node = start_opt[-1]
+end_node = end_opt[-1]
+
+# Set up chain inputs
+cni = ChainInputs(k=0.1, delta_k=0.09)
+
+# Create a Chain object
 chain = Chain.model_validate({
-    'nodes': [start_opt[-1], end_opt[-1]],
-    'parameters': ChainInputs(k=0.1, delta_k=0.09)
+    'nodes': [start_node, end_node],
+    'parameters': cni
 })
+
+# Generate initial path using geodesic interpolation
 initial_chain = ch.run_geodesic(chain, nimages=15)
 
-# 6. Run NEB optimization
-opt = ConjugateGradient(timestep=0.5)
-nbi = NEBInputs(v=True)
-n = NEB(initial_chain=initial_chain, parameters=nbi, optimizer=opt, engine=eng)
+# Enable climbing image NEB - this is Tutorial 2
+nbi = NEBInputs(climb=True, v=True)
+
+# Use Velocity Projected Optimizer (recommended for climbing image)
+opt = VelocityProjectedOptimizer(timestep=0.5)
+
+# Create NEB object
+n = NEB(
+    initial_chain=initial_chain,
+    parameters=nbi,
+    optimizer=opt,
+    engine=eng
+)
+
+# Run optimization
 results = n.optimize_chain()
 
-# 7. Visualize results
-n.plot_opt_history(1)
-ch.visualize_chain(n.optimized)
-```
-
+print("Climbing Image NEB completed successfully!")
+print(f"Number of images in final chain: {len(n.optimized.nodes)}")

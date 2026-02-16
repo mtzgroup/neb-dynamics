@@ -18,7 +18,7 @@ from neb_dynamics.nodes.nodehelpers import is_identical
 
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.errors import ElectronicStructureError
-from optimizers.cg import ConjugateGradient
+from neb_dynamics.optimizers.cg import ConjugateGradient
 from qcio import Structure
 
 from neb_dynamics.pathminimizers.fneb import FreezingNEB

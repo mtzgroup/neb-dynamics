@@ -83,7 +83,11 @@ class VelocityProjectedOptimizer(Optimizer):
 
                 new_nodes.append(node.update_coords(new_coords))
 
-            new_chain = Chain(new_nodes, parameters=chain.parameters)
+            new_chain = Chain.model_validate({
+                'nodes': new_nodes,
+                'parameters': chain.parameters,
+                'velocity': chain.velocity
+            })
 
             # if np.linalg.norm(new_force) < self.activation_tol:
 

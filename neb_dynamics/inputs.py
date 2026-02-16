@@ -62,6 +62,7 @@ class NEBInputs:
     early_stop_force_thre: float = 0.0
 
     negative_steps_thre: int = 10
+    positive_steps_thre: int = 10
     use_geodesic_tangent: bool = False
     do_elem_step_checks: bool = False
 
