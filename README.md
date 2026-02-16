@@ -2,7 +2,7 @@
 
 Automated minimum energy path (MEP) calculations using the Nudged Elastic Band (NEB) method and its variants.
 
-Docs: https://github.com/mtzgroup/neb-dynamics/tree/master
+Docs: https://github.com/mtzgroup/neb-dynamics/tree/master](https://mtzgroup.github.io/neb-dynamics/
 
 ## Features
 
