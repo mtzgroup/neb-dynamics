@@ -13,23 +13,28 @@
         <link rel="canonical" href="https://mtzgroup.github.io/neb-dynamics/tutorial/">
       
       
-        <link rel="prev" href="../neb/">
+        <link rel="prev" href="../inputs/">
       
+      
+        <link rel="next" href="../cli/">
+      
+      
+        
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.0, mkdocs-material-9.5.31">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
     
     
       
-        <title>tutorial - neb-dynamics</title>
+        <title>Tutorial - NEB Dynamics Documentation</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.3cba04c6.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -48,13 +53,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
-    
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
-    
     
     
   </head>
@@ -92,27 +94,27 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="neb-dynamics" class="md-header__button md-logo" aria-label="neb-dynamics" data-md-component="logo">
+    <a href=".." title="NEB Dynamics Documentation" class="md-header__button md-logo" aria-label="NEB Dynamics Documentation" data-md-component="logo">
       
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
       
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            neb-dynamics
+            NEB Dynamics Documentation
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              tutorial
+              Tutorial
             
           </span>
         </div>
@@ -132,30 +134,32 @@
       
     
     
-      <script>var media,input,key,value,palette=__md_get("__palette");if(palette&&palette.color){"(prefers-color-scheme)"===palette.color.media&&(media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']"),palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent"));for([key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
-      <label class="md-header__button md-icon" for="__search">
-        
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
-      </label>
-      <div class="md-search" data-md-component="search" role="dialog">
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
       <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
       </label>
       <nav class="md-search__options" aria-label="Search">
         
         <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
           
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </nav>
       
@@ -174,13 +178,14 @@
     </div>
   </div>
 </div>
+      
     
     
       <div class="md-header__source">
         <a href="https://github.com/mtzgroup/neb-dynamics" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M186.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1zM480 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2zm-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3zm-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M202.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M496 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
   </div>
   <div class="md-source__repository">
     GitHub
@@ -213,20 +218,20 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="neb-dynamics" class="md-nav__button md-logo" aria-label="neb-dynamics" data-md-component="logo">
+    <a href=".." title="NEB Dynamics Documentation" class="md-nav__button md-logo" aria-label="NEB Dynamics Documentation" data-md-component="logo">
       
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
-    neb-dynamics
+    NEB Dynamics Documentation
   </label>
   
     <div class="md-nav__source">
       <a href="https://github.com/mtzgroup/neb-dynamics" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M186.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1zM480 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2zm-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3zm-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M202.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M496 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
   </div>
   <div class="md-source__repository">
     GitHub
@@ -246,9 +251,16 @@
       <a href=".." class="md-nav__link">
         
   
+  
   <span class="md-ellipsis">
-    Neb Dynamics
+    
+  
+    Home
+  
+
+    
   </span>
+  
   
 
       </a>
@@ -263,12 +275,46 @@
   
   
     <li class="md-nav__item">
-      <a href="../elementarystep/" class="md-nav__link">
+      <a href="../concepts/" class="md-nav__link">
         
   
+  
   <span class="md-ellipsis">
-    Elementarystep
+    
+  
+    Key Concepts
+  
+
+    
   </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engines
+  
+
+    
+  </span>
+  
   
 
       </a>
@@ -286,49 +332,16 @@
       <a href="../inputs/" class="md-nav__link">
         
   
-  <span class="md-ellipsis">
-    Inputs
-  </span>
   
-
-      </a>
-    </li>
+  <span class="md-ellipsis">
+    
+  
+    Input Parameters
   
 
     
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../msmep/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    msmep
   </span>
   
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../neb/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Neb
-  </span>
   
 
       </a>
@@ -352,16 +365,340 @@
         
       
       
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
+  
   <span class="md-ellipsis">
-    tutorial
+    
+  
+    Tutorial
+  
+
+    
   </span>
+  
   
 
       </a>
       
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-1-simple-neb-calculation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 1: Simple NEB Calculation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tutorial 1: Simple NEB Calculation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-initial-and-final-structures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Create Initial and Final Structures
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-optimize-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Optimize Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-create-initial-chain-with-geodesic-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Create Initial Chain with Geodesic Interpolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-run-neb-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Run NEB Optimization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-visualize-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Visualize Results
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-2-using-climbing-image-neb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 2: Using Climbing Image NEB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-3-multi-step-mep-msmep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 3: Multi-Step MEP (MSMEP)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-4-custom-convergence-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 4: Custom Convergence Criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-6-loading-and-saving-calculations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 6: Loading and Saving Calculations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-issues-and-solutions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Issues and Solutions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Issues and Solutions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#problem-chain-doesnt-converge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Chain doesn't converge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-images-bunch-up-at-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Images bunch up at endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-path-has-kinks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Path has "kinks"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-electronic-structure-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Electronic structure errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-input-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Input File
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../about/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -386,6 +723,213 @@
     
   
   
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-1-simple-neb-calculation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 1: Simple NEB Calculation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tutorial 1: Simple NEB Calculation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-1-create-initial-and-final-structures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Create Initial and Final Structures
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-2-optimize-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Optimize Endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-3-create-initial-chain-with-geodesic-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Create Initial Chain with Geodesic Interpolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-4-run-neb-optimization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Run NEB Optimization
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#step-5-visualize-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5: Visualize Results
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-2-using-climbing-image-neb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 2: Using Climbing Image NEB
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-3-multi-step-mep-msmep" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 3: Multi-Step MEP (MSMEP)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-4-custom-convergence-criteria" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 4: Custom Convergence Criteria
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tutorial-6-loading-and-saving-calculations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tutorial 6: Loading and Saving Calculations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-issues-and-solutions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Common Issues and Solutions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Common Issues and Solutions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#problem-chain-doesnt-converge" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Chain doesn't converge
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-images-bunch-up-at-endpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Images bunch up at endpoints
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-path-has-kinks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Path has "kinks"
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#problem-electronic-structure-errors" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Problem: Electronic structure errors
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#example-input-file" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Input File
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
 </nav>
                   </div>
                 </div>
@@ -394,78 +938,357 @@
           
           
             <div class="md-content" data-md-component="content">
+              
               <article class="md-content__inner md-typeset">
                 
                   
 
+
   
   
 
 
-<h1 id="tutorial">tutorial<a class="headerlink" href="#tutorial" title="Permanent link">🔗</a></h1>
-<p>This tutorial references <a href="https://mtzgroup.github.io/neb-dynamics/inputs">ChainInputs</a>, <a href="../inputs/">NEBInputs</a>,<a href="https://mtzgroup.github.io/neb-dynamics/chain/">Chain</a>, <a href="https://mtzgroup.github.io/neb-dynamics/trajectory/">Trajectory</a>, <a href="https://mtzgroup.github.io/neb-dynamics/tdstructure/">TDStructure</a>, <a href="https://mtzgroup.github.io/neb-dynamics/neb/">NEB</a> and <a href="https://mtzgroup.github.io/neb-dynamics/vpo">VelocityProjectedOptimizer</a></p>
-<h1 id="running-our-first-neb-calculation-we-are-going-to-calculate-a-pi-bond-torsion">Running our first NEB calculation. We are going to calculate a pi-bond torsion.<a class="headerlink" href="#running-our-first-neb-calculation-we-are-going-to-calculate-a-pi-bond-torsion" title="Permanent link">🔗</a></h1>
-<h2 id="1-create-initial-guess">1. Create initial guess<a class="headerlink" href="#1-create-initial-guess" title="Permanent link">🔗</a></h2>
-<h3 id="we-will-create-geometrics-using-qcio-then-instantiate-our-nodes">We will create geometrics using QCIO, then instantiate our nodes<a class="headerlink" href="#we-will-create-geometrics-using-qcio-then-instantiate-our-nodes" title="Permanent link">🔗</a></h3>
-<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">qcio</span> <span class="kn">import</span> <span class="n">Structure</span>
-<span class="kn">from</span> <span class="nn">neb_dynamics</span> <span class="kn">import</span> <span class="n">StructureNode</span>
-
-<span class="n">start</span> <span class="o">=</span> <span class="n">Structure</span><span class="o">.</span><span class="n">from_smiles</span><span class="p">(</span><span class="s2">&quot;C=C&quot;</span><span class="p">)</span>
-<span class="c1"># we can also load in a structure from a file path with:</span>
-<span class="c1"># start = Structure.open(&quot;/path/to/file.xyz&quot;)</span>
-
-<span class="n">start_node</span> <span class="o">=</span> <span class="n">StructureNode</span><span class="p">(</span><span class="n">structure</span><span class="o">=</span><span class="n">start</span><span class="p">)</span>
-
-<span class="n">end_node</span> <span class="o">=</span> <span class="n">start_node</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-<span class="n">end_coords</span> <span class="o">=</span> <span class="n">end_node</span><span class="o">.</span><span class="n">coords</span>
-<span class="n">end_coords_swapped</span> <span class="o">=</span> <span class="n">end_coords</span><span class="p">[[</span><span class="mi">0</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">5</span><span class="p">],:]</span> <span class="c1"># We have swapped the indices of two hydrogens</span>
-<span class="n">end_node</span> <span class="o">=</span> <span class="n">end_node</span><span class="o">.</span><span class="n">update_coords</span><span class="p">(</span><span class="n">end_coords_swapped</span><span class="p">)</span>
+<h1 id="tutorial">Tutorial<a class="headerlink" href="#tutorial" title="Permanent link">🔗</a></h1>
+<p>This tutorial walks through using NEB Dynamics for finding reaction pathways.</p>
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">🔗</a></h2>
+<p>Install NEB Dynamics and dependencies:</p>
+<div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span><span class="s2">&quot;git+https://github.com/mtzgroup/neb-dynamics.git&quot;</span>
 </code></pre></div>
-<h3 id="now-we-need-to-optimize-them-to-our-desired-level-of-theory">Now we need to optimize them to our desired level of theory<a class="headerlink" href="#now-we-need-to-optimize-them-to-our-desired-level-of-theory" title="Permanent link">🔗</a></h3>
-<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">neb_dynamics</span> <span class="kn">import</span> <span class="n">QCOPEngine</span><span class="p">,</span> <span class="n">ASEEngine</span>
-<span class="kn">from</span> <span class="nn">xtb.ase.calculator</span> <span class="kn">import</span> <span class="n">XTB</span>
+<p><strong>Note:</strong> These tutorials use ChemCloud for electronic structure calculations. You'll need:
+1. Sign up at https://chemcloud.mtzlab.com/signup
+2. Configure authentication:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Option 1: Run setup_profile() - writes credentials to ~/.chemcloud/credentials</span>
+python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;from chemcloud import setup_profile; setup_profile()&quot;</span>
 
-<span class="n">calc</span> <span class="o">=</span> <span class="n">XTB</span><span class="p">()</span>
-<span class="n">eng</span> <span class="o">=</span> <span class="n">ASEEngine</span><span class="p">(</span><span class="n">calculator</span><span class="o">=</span><span class="n">calc</span><span class="p">)</span> <span class="c1">#QCOPEngine() # Also have ASEEngine if you want to run with ASE calculators</span>
-<span class="c1"># QCOPEngine will default to using XTB</span>
+<span class="c1"># Option 2: Use environment variables (for memory-only auth)</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">CHEMCLOUD_USERNAME</span><span class="o">=</span>your_email@chemcloud.com
+<span class="nb">export</span><span class="w"> </span><span class="nv">CHEMCLOUD_PASSWORD</span><span class="o">=</span>your_password
+</code></pre></div>
+<h2 id="tutorial-1-simple-neb-calculation">Tutorial 1: Simple NEB Calculation<a class="headerlink" href="#tutorial-1-simple-neb-calculation" title="Permanent link">🔗</a></h2>
+<p>Calculate an SN2 reaction: bromide substitution by hydroxide.</p>
+<h3 id="step-1-create-initial-and-final-structures">Step 1: Create Initial and Final Structures<a class="headerlink" href="#step-1-create-initial-and-final-structures" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">qcio</span><span class="w"> </span><span class="kn">import</span> <span class="n">Structure</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics</span><span class="w"> </span><span class="kn">import</span> <span class="n">StructureNode</span>
 
+<span class="c1"># Define structures using embedded XYZ data</span>
+<span class="n">start_xyz</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;17</span>
+<span class="s2">Frame 0</span>
+<span class="s2"> C          0.885440409184        2.102076768875        0.627821743488</span>
+<span class="s2"> C          0.841612815857        1.115651130676       -0.247040778399</span>
+<span class="s2"> C         -0.420807182789        0.556873917580       -0.838685691357</span>
+<span class="s2"> O         -0.430870711803        0.798001468182       -2.239025592804</span>
+<span class="s2"> C         -0.522329509258       -0.964021146297       -0.644988238811</span>
+<span class="s2"> C         -0.715307652950       -1.349323630333        0.785972416401</span>
+<span class="s2"> C          0.097422197461       -2.135773420334        1.466876506805</span>
+<span class="s2"> H         -0.267592728138        1.735007524490       -2.391090631485</span>
+<span class="s2"> H         -1.386946558952       -1.296320080757       -1.227010726929</span>
+<span class="s2"> H          0.993258416653       -2.552916049957        1.031124353409</span>
+<span class="s2"> H         -0.008914750069        2.554719924927        1.029638171196</span>
+<span class="s2"> H          1.820721507072        2.502734899521        0.982666194439</span>
+<span class="s2"> H          1.748645901680        0.692936420441       -0.660514891148</span>
+<span class="s2"> H         -1.296261906624        1.040292620659       -0.372635990381</span>
+<span class="s2"> H          0.376222431660       -1.434682250023       -1.046772599220</span>
+<span class="s2"> H         -1.611668467522       -0.956238925457        1.253052473068</span>
+<span class="s2"> H         -0.102624341846       -2.409019231796        2.490613460541</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="n">end_xyz</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;17</span>
+<span class="s2">Frame 29</span>
+<span class="s2"> C          0.576232671738        0.921668708324        0.825146675110</span>
+<span class="s2"> C          0.811691701412        1.315650582314       -0.631796598434</span>
+<span class="s2"> C         -0.290672153234        0.930290937424       -1.571661710739</span>
+<span class="s2"> O         -0.139186233282        0.584553778172       -2.709024667740</span>
+<span class="s2"> C         -1.166546344757       -1.861497998238       -0.220005810261</span>
+<span class="s2"> C         -0.774998486042       -1.183089017868        0.841198801994</span>
+<span class="s2"> C          0.589584112167       -0.601971745491        1.032947182655</span>
+<span class="s2"> H          0.880913138390        2.407624959946       -0.707833826542</span>
+<span class="s2"> H         -2.171884059906       -2.235154390335       -0.311172336340</span>
+<span class="s2"> H          1.294490098953       -1.047748923302        0.330671131611</span>
+<span class="s2"> H         -0.374946832657        1.333065629005        1.164748311043</span>
+<span class="s2"> H          1.358177542686        1.381788730621        1.429385662079</span>
+<span class="s2"> H          1.752718806267        0.898995816708       -0.990877032280</span>
+<span class="s2"> H         -1.302031993866        1.039528012276       -1.137167930603</span>
+<span class="s2"> H         -0.504405736923       -2.070925474167       -1.043461441994</span>
+<span class="s2"> H         -1.469262003899       -0.993297398090        1.650624632835</span>
+<span class="s2"> H          0.930125653744       -0.819482147694        2.048279047012</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="c1"># Load structures from XYZ strings</span>
+<span class="n">start</span> <span class="o">=</span> <span class="n">Structure</span><span class="o">.</span><span class="n">from_xyz</span><span class="p">(</span><span class="n">start_xyz</span><span class="p">)</span>
+<span class="n">end</span> <span class="o">=</span> <span class="n">Structure</span><span class="o">.</span><span class="n">from_xyz</span><span class="p">(</span><span class="n">end_xyz</span><span class="p">)</span>
+
+<span class="c1"># Create nodes</span>
+<span class="n">start_node</span> <span class="o">=</span> <span class="n">StructureNode</span><span class="p">(</span><span class="n">structure</span><span class="o">=</span><span class="n">start</span><span class="p">)</span>
+<span class="n">end_node</span> <span class="o">=</span> <span class="n">StructureNode</span><span class="p">(</span><span class="n">structure</span><span class="o">=</span><span class="n">end</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="step-2-optimize-endpoints">Step 2: Optimize Endpoints<a class="headerlink" href="#step-2-optimize-endpoints" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.engines.qcop</span><span class="w"> </span><span class="kn">import</span> <span class="n">QCOPEngine</span>
+
+<span class="c1"># Using ChemCloud for electronic structure</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">compute_program</span><span class="o">=</span><span class="s2">&quot;chemcloud&quot;</span><span class="p">)</span>
+
+<span class="c1"># Optimize geometries</span>
 <span class="n">start_opt</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">start_node</span><span class="p">)</span>
 <span class="n">end_opt</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">end_node</span><span class="p">)</span>
-</code></pre></div>
-<h3 id="now-we-need-to-interpolate-between-our-endpoints">Now we need to interpolate between our endpoints<a class="headerlink" href="#now-we-need-to-interpolate-between-our-endpoints" title="Permanent link">🔗</a></h3>
-<div class="highlight"><pre><span></span><code><span class="kn">import</span> <span class="nn">neb_dynamics.chainhelpers</span> <span class="k">as</span> <span class="nn">ch</span>
-<span class="kn">from</span> <span class="nn">neb_dynamics.inputs</span> <span class="kn">import</span> <span class="n">ChainInputs</span>
 
-<span class="n">cni</span> <span class="o">=</span> <span class="n">ChainInputs</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">delta_k</span><span class="o">=</span><span class="mf">0.09</span><span class="p">)</span> <span class="c1"># energy weighted spring constants</span>
-<span class="c1"># see: https://pubs.acs.org/doi/10.1021/acs.jctc.1c00462</span>
-<span class="n">initial_chain</span> <span class="o">=</span> <span class="n">ch</span><span class="o">.</span><span class="n">run_geodesic</span><span class="p">([</span><span class="n">start_node</span><span class="p">,</span> <span class="n">end_node</span><span class="p">],</span> <span class="n">chain_inputs</span><span class="o">=</span><span class="n">cni</span><span class="p">,</span> <span class="n">nimages</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+<span class="c1"># Get final optimized structures</span>
+<span class="n">start_node</span> <span class="o">=</span> <span class="n">start_opt</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+<span class="n">end_node</span> <span class="o">=</span> <span class="n">end_opt</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
 </code></pre></div>
-<h2 id="2-lets-set-up-our-neb-optimization">2. Let's set up our NEB optimization<a class="headerlink" href="#2-lets-set-up-our-neb-optimization" title="Permanent link">🔗</a></h2>
-<h3 id="the-neb-object-takes-in-4-parameters">The NEB object takes in 4 parameters:<a class="headerlink" href="#the-neb-object-takes-in-4-parameters" title="Permanent link">🔗</a></h3>
-<ul>
-<li><code>initial_chain</code>: our initial guess chain object to optimize</li>
-<li><code>parameters</code>: an NEBInputs object containing the parameters for NEB optimization and convergence</li>
-<li><code>optimizer</code>: the optimizer to use. We suggest you use <code>VelocityProjectedOptimizer</code> from
-            <code>neb_dynamics.optimizer.VPO</code></li>
-<li><code>engine</code>: defines the electronic structure engine to be used
-<div class="highlight"><pre><span></span><code><span class="kn">from</span> <span class="nn">neb_dynamics.neb</span> <span class="kn">import</span> <span class="n">NEB</span>
-<span class="kn">from</span> <span class="nn">neb_dynamics.inputs</span> <span class="kn">import</span> <span class="n">NEBInputs</span>
+<h3 id="step-3-create-initial-chain-with-geodesic-interpolation">Step 3: Create Initial Chain with Geodesic Interpolation<a class="headerlink" href="#step-3-create-initial-chain-with-geodesic-interpolation" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">neb_dynamics.chainhelpers</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">ChainInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chain</span>
 
+<span class="c1"># Set up chain inputs</span>
+<span class="n">cni</span> <span class="o">=</span> <span class="n">ChainInputs</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">delta_k</span><span class="o">=</span><span class="mf">0.09</span><span class="p">)</span>
+
+<span class="c1"># Create a Chain object first</span>
+<span class="n">chain</span> <span class="o">=</span> <span class="n">Chain</span><span class="o">.</span><span class="n">model_validate</span><span class="p">({</span>
+    <span class="s1">&#39;nodes&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">start_node</span><span class="p">,</span> <span class="n">end_node</span><span class="p">],</span>
+    <span class="s1">&#39;parameters&#39;</span><span class="p">:</span> <span class="n">cni</span>
+<span class="p">})</span>
+
+<span class="c1"># Generate initial path using geodesic interpolation</span>
+<span class="n">initial_chain</span> <span class="o">=</span> <span class="n">ch</span><span class="o">.</span><span class="n">run_geodesic</span><span class="p">(</span><span class="n">chain</span><span class="p">,</span> <span class="n">nimages</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="step-4-run-neb-optimization">Step 4: Run NEB Optimization<a class="headerlink" href="#step-4-run-neb-optimization" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.neb</span><span class="w"> </span><span class="kn">import</span> <span class="n">NEB</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">NEBInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.optimizers.vpo</span><span class="w"> </span><span class="kn">import</span> <span class="n">VelocityProjectedOptimizer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.optimizers.cg</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConjugateGradient</span>
+
+<span class="c1"># Set up NEB parameters</span>
 <span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span><span class="n">v</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
-<span class="kn">from</span> <span class="nn">neb_dynamics.optimizers.vpo</span> <span class="kn">import</span> <span class="n">VelocityProjectedOptimizer</span>
-
+<span class="c1"># Choose optimizer</span>
+<span class="c1"># Velocity Projected Optimizer (recommended)</span>
 <span class="n">opt</span> <span class="o">=</span> <span class="n">VelocityProjectedOptimizer</span><span class="p">(</span><span class="n">timestep</span><span class="o">=</span><span class="mf">0.5</span><span class="p">)</span>
 
-<span class="n">n</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">initial_chain</span><span class="o">=</span><span class="n">initial_chain</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">=</span><span class="n">opt</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="n">eng</span><span class="p">)</span>
+<span class="c1"># Or Conjugate Gradient</span>
+<span class="c1"># opt = ConjugateGradient(timestep=0.5)</span>
 
+<span class="c1"># Create NEB object</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span>
+    <span class="n">initial_chain</span><span class="o">=</span><span class="n">initial_chain</span><span class="p">,</span>
+    <span class="n">parameters</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span>
+    <span class="n">optimizer</span><span class="o">=</span><span class="n">opt</span><span class="p">,</span>
+    <span class="n">engine</span><span class="o">=</span><span class="n">eng</span>
+<span class="p">)</span>
+
+<span class="c1"># Run optimization</span>
 <span class="n">elem_step_results</span> <span class="o">=</span> <span class="n">n</span><span class="o">.</span><span class="n">optimize_chain</span><span class="p">()</span>
-
+</code></pre></div>
+<h3 id="step-5-visualize-results">Step 5: Visualize Results<a class="headerlink" href="#step-5-visualize-results" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Plot optimization history</span>
 <span class="n">n</span><span class="o">.</span><span class="n">plot_opt_history</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
 
+<span class="c1"># Plot energy profile</span>
+<span class="n">n</span><span class="o">.</span><span class="n">optimized</span><span class="o">.</span><span class="n">plot_chain</span><span class="p">()</span>
+
+<span class="c1"># Visualize chain in 3D</span>
 <span class="n">ch</span><span class="o">.</span><span class="n">visualize_chain</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">optimized</span><span class="p">)</span>
-</code></pre></div></li>
-</ul>
+</code></pre></div>
+<h2 id="tutorial-2-using-climbing-image-neb">Tutorial 2: Using Climbing Image NEB<a class="headerlink" href="#tutorial-2-using-climbing-image-neb" title="Permanent link">🔗</a></h2>
+<p>Climbing image NEB finds the exact saddle point:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Enable climbing image</span>
+<span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span><span class="n">climb</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="n">n</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span>
+    <span class="n">initial_chain</span><span class="o">=</span><span class="n">initial_chain</span><span class="p">,</span>
+    <span class="n">parameters</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span>
+    <span class="n">optimizer</span><span class="o">=</span><span class="n">VelocityProjectedOptimizer</span><span class="p">(</span><span class="n">timestep</span><span class="o">=</span><span class="mf">0.5</span><span class="p">),</span>
+    <span class="n">engine</span><span class="o">=</span><span class="n">eng</span>
+<span class="p">)</span>
+
+<span class="n">results</span> <span class="o">=</span> <span class="n">n</span><span class="o">.</span><span class="n">optimize_chain</span><span class="p">()</span>
+</code></pre></div>
+<h2 id="tutorial-3-multi-step-mep-msmep">Tutorial 3: Multi-Step MEP (MSMEP)<a class="headerlink" href="#tutorial-3-multi-step-mep-msmep" title="Permanent link">🔗</a></h2>
+<p>For complex reactions with multiple elementary steps, use MSMEP:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">qcio</span><span class="w"> </span><span class="kn">import</span> <span class="n">Structure</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics</span><span class="w"> </span><span class="kn">import</span> <span class="n">MSMEP</span><span class="p">,</span> <span class="n">RunInputs</span><span class="p">,</span> <span class="n">StructureNode</span><span class="p">,</span> <span class="n">ChainInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.engines.qcop</span><span class="w"> </span><span class="kn">import</span> <span class="n">QCOPEngine</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">neb_dynamics.chainhelpers</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ch</span>
+
+<span class="c1"># Set up engine with ChemCloud</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">compute_program</span><span class="o">=</span><span class="s2">&quot;chemcloud&quot;</span><span class="p">)</span>
+
+<span class="c1"># Set up inputs - use engine_name=&quot;chemcloud&quot; to run on ChemCloud</span>
+<span class="n">ri</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="p">(</span>
+    <span class="n">engine_name</span><span class="o">=</span><span class="s2">&quot;chemcloud&quot;</span><span class="p">,</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;xtb&quot;</span><span class="p">,</span>  <span class="c1"># Program to use on ChemCloud</span>
+    <span class="n">path_min_method</span><span class="o">=</span><span class="s2">&quot;NEB&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">m</span> <span class="o">=</span> <span class="n">MSMEP</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="n">ri</span><span class="p">)</span>
+
+<span class="c1"># Create structures using embedded XYZ data</span>
+<span class="n">start_xyz</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;17</span>
+<span class="s2">Frame 0</span>
+<span class="s2"> C          0.885440409184        2.102076768875        0.627821743488</span>
+<span class="s2"> C          0.841612815857        1.115651130676       -0.247040778399</span>
+<span class="s2"> C         -0.420807182789        0.556873917580       -0.838685691357</span>
+<span class="s2"> O         -0.430870711803        0.798001468182       -2.239025592804</span>
+<span class="s2"> C         -0.522329509258       -0.964021146297       -0.644988238811</span>
+<span class="s2"> C         -0.715307652950       -1.349323630333        0.785972416401</span>
+<span class="s2"> C          0.097422197461       -2.135773420334        1.466876506805</span>
+<span class="s2"> H         -0.267592728138        1.735007524490       -2.391090631485</span>
+<span class="s2"> H         -1.386946558952       -1.296320080757       -1.227010726929</span>
+<span class="s2"> H          0.993258416653       -2.552916049957        1.031124353409</span>
+<span class="s2"> H         -0.008914750069        2.554719924927        1.029638171196</span>
+<span class="s2"> H          1.820721507072        2.502734899521        0.982666194439</span>
+<span class="s2"> H          1.748645901680        0.692936420441       -0.660514891148</span>
+<span class="s2"> H         -1.296261906624        1.040292620659       -0.372635990381</span>
+<span class="s2"> H          0.376222431660       -1.434682250023       -1.046772599220</span>
+<span class="s2"> H         -1.611668467522       -0.956238925457        1.253052473068</span>
+<span class="s2"> H         -0.102624341846       -2.409019231796        2.490613460541</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="n">end_xyz</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;17</span>
+<span class="s2">Frame 29</span>
+<span class="s2"> C          0.576232671738        0.921668708324        0.825146675110</span>
+<span class="s2"> C          0.811691701412        1.315650582314       -0.631796598434</span>
+<span class="s2"> C         -0.290672153234        0.930290937424       -1.571661710739</span>
+<span class="s2"> O         -0.139186233282        0.584553778172       -2.709024667740</span>
+<span class="s2"> C         -1.166546344757       -1.861497998238       -0.220005810261</span>
+<span class="s2"> C         -0.774998486042       -1.183089017868        0.841198801994</span>
+<span class="s2"> C          0.589584112167       -0.601971745491        1.032947182655</span>
+<span class="s2"> H          0.880913138390        2.407624959946       -0.707833826542</span>
+<span class="s2"> H         -2.171884059906       -2.235154390335       -0.311172336340</span>
+<span class="s2"> H          1.294490098953       -1.047748923302        0.330671131611</span>
+<span class="s2"> H         -0.374946832657        1.333065629005        1.164748311043</span>
+<span class="s2"> H          1.358177542686        1.381788730621        1.429385662079</span>
+<span class="s2"> H          1.752718806267        0.898995816708       -0.990877032280</span>
+<span class="s2"> H         -1.302031993866        1.039528012276       -1.137167930603</span>
+<span class="s2"> H         -0.504405736923       -2.070925474167       -1.043461441994</span>
+<span class="s2"> H         -1.469262003899       -0.993297398090        1.650624632835</span>
+<span class="s2"> H          0.930125653744       -0.819482147694        2.048279047012</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+<span class="c1"># Load structures from XYZ strings</span>
+<span class="n">start</span> <span class="o">=</span> <span class="n">Structure</span><span class="o">.</span><span class="n">from_xyz</span><span class="p">(</span><span class="n">start_xyz</span><span class="p">)</span>
+<span class="n">end</span> <span class="o">=</span> <span class="n">Structure</span><span class="o">.</span><span class="n">from_xyz</span><span class="p">(</span><span class="n">end_xyz</span><span class="p">)</span>
+
+<span class="n">start_node</span> <span class="o">=</span> <span class="n">StructureNode</span><span class="p">(</span><span class="n">structure</span><span class="o">=</span><span class="n">start</span><span class="p">)</span>
+<span class="n">end_node</span> <span class="o">=</span> <span class="n">StructureNode</span><span class="p">(</span><span class="n">structure</span><span class="o">=</span><span class="n">end</span><span class="p">)</span>
+
+<span class="c1"># Optimize endpoints</span>
+<span class="n">start_opt</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">start_node</span><span class="p">)</span>
+<span class="n">start_node</span> <span class="o">=</span> <span class="n">start_opt</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="n">end_opt</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">end_node</span><span class="p">)</span>
+<span class="n">end_node</span> <span class="o">=</span> <span class="n">end_opt</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+
+<span class="c1"># Create initial chain using Chain.model_validate()</span>
+<span class="n">chain</span> <span class="o">=</span> <span class="n">Chain</span><span class="o">.</span><span class="n">model_validate</span><span class="p">({</span>
+    <span class="s1">&#39;nodes&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">start_node</span><span class="p">,</span> <span class="n">end_node</span><span class="p">],</span>
+    <span class="s1">&#39;parameters&#39;</span><span class="p">:</span> <span class="n">ChainInputs</span><span class="p">(</span><span class="n">k</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">delta_k</span><span class="o">=</span><span class="mf">0.09</span><span class="p">)</span>
+<span class="p">})</span>
+<span class="n">initial_chain</span> <span class="o">=</span> <span class="n">ch</span><span class="o">.</span><span class="n">run_geodesic</span><span class="p">(</span><span class="n">chain</span><span class="p">,</span> <span class="n">nimages</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+
+<span class="c1"># Run recursive minimization</span>
+<span class="c1"># This will automatically split the path if needed</span>
+<span class="n">history</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">run_recursive_minimize</span><span class="p">(</span><span class="n">initial_chain</span><span class="p">)</span>
+
+<span class="c1"># Visualize final path</span>
+<span class="n">ch</span><span class="o">.</span><span class="n">visualize_chain</span><span class="p">(</span><span class="n">history</span><span class="o">.</span><span class="n">data</span><span class="o">.</span><span class="n">optimized</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="tutorial-4-custom-convergence-criteria">Tutorial 4: Custom Convergence Criteria<a class="headerlink" href="#tutorial-4-custom-convergence-criteria" title="Permanent link">🔗</a></h2>
+<p>Adjust convergence thresholds for your needs:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Tight convergence for high-accuracy calculations</span>
+<span class="n">nbi_tight</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span>
+    <span class="n">en_thre</span><span class="o">=</span><span class="mf">1e-5</span><span class="p">,</span>           <span class="c1"># Tighter energy threshold</span>
+    <span class="n">rms_grad_thre</span><span class="o">=</span><span class="mf">0.002</span><span class="p">,</span>     <span class="c1"># Tighter gradient threshold</span>
+    <span class="n">max_steps</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>          <span class="c1"># More steps allowed</span>
+<span class="p">)</span>
+
+<span class="c1"># Loose convergence for quick screening</span>
+<span class="n">nbi_loose</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span>
+    <span class="n">en_thre</span><span class="o">=</span><span class="mf">1e-3</span><span class="p">,</span>
+    <span class="n">rms_grad_thre</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>
+    <span class="n">max_steps</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<h2 id="tutorial-6-loading-and-saving-calculations">Tutorial 6: Loading and Saving Calculations<a class="headerlink" href="#tutorial-6-loading-and-saving-calculations" title="Permanent link">🔗</a></h2>
+<p>Save intermediate and final results:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Save chain to disk</span>
+<span class="n">n</span><span class="o">.</span><span class="n">optimized</span><span class="o">.</span><span class="n">write_to_disk</span><span class="p">(</span><span class="s2">&quot;final_chain.xyz&quot;</span><span class="p">,</span> <span class="n">write_qcio</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+<span class="c1"># Save complete NEB history</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="s2">&quot;neb_history&quot;</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">chain</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">n</span><span class="o">.</span><span class="n">chain_trajectory</span><span class="p">):</span>
+    <span class="n">chain</span><span class="o">.</span><span class="n">write_to_disk</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;neb_history/traj_</span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">.xyz&quot;</span><span class="p">)</span>
+
+<span class="c1"># Load chain from xyz</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics</span><span class="w"> </span><span class="kn">import</span> <span class="n">Chain</span><span class="p">,</span> <span class="n">ChainInputs</span>
+<span class="n">loaded_chain</span> <span class="o">=</span> <span class="n">Chain</span><span class="o">.</span><span class="n">from_xyz</span><span class="p">(</span><span class="s2">&quot;final_chain.xyz&quot;</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">ChainInputs</span><span class="p">())</span>
+</code></pre></div>
+<h2 id="common-issues-and-solutions">Common Issues and Solutions<a class="headerlink" href="#common-issues-and-solutions" title="Permanent link">🔗</a></h2>
+<h3 id="problem-chain-doesnt-converge">Problem: Chain doesn't converge<a class="headerlink" href="#problem-chain-doesnt-converge" title="Permanent link">🔗</a></h3>
+<p><strong>Solutions:</strong>
+- Increase <code>max_steps</code>
+- Reduce timestep in optimizer
+- Check that endpoints are properly optimized
+- Try different <code>k</code> and <code>delta_k</code> values in ChainInputs</p>
+<h3 id="problem-images-bunch-up-at-endpoints">Problem: Images bunch up at endpoints<a class="headerlink" href="#problem-images-bunch-up-at-endpoints" title="Permanent link">🔗</a></h3>
+<p><strong>Solutions:</strong>
+- Enable node freezing (<code>node_freezing=True</code> in ChainInputs)
+- Use energy-weighted spring constants (higher <code>delta_k</code>)</p>
+<h3 id="problem-path-has-kinks">Problem: Path has "kinks"<a class="headerlink" href="#problem-path-has-kinks" title="Permanent link">🔗</a></h3>
+<p><strong>Solutions:</strong>
+- Increase number of images (<code>nimages</code>)
+- Use geodesic interpolation instead of linear
+- Enable climbing image NEB</p>
+<h3 id="problem-electronic-structure-errors">Problem: Electronic structure errors<a class="headerlink" href="#problem-electronic-structure-errors" title="Permanent link">🔗</a></h3>
+<p><strong>Solutions:</strong>
+- Check that structures are chemically reasonable
+- Try different electronic structure method
+- Enable <code>do_elem_step_checks</code> for better diagnostics</p>
+<h2 id="example-input-file">Example Input File<a class="headerlink" href="#example-input-file" title="Permanent link">🔗</a></h2>
+<p>Create a TOML input file for batch processing:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[RunInputs]</span>
+<span class="n">engine_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qcop&quot;</span>
+<span class="n">program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;xtb&quot;</span>
+<span class="n">path_min_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;NEB&quot;</span>
+
+<span class="k">[program_kwds]</span>
+<span class="k">[program_kwds.model]</span>
+<span class="n">method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;GFN2xTB&quot;</span>
+<span class="n">basis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;GFN2xTB&quot;</span>
+
+<span class="k">[chain_inputs]</span>
+<span class="n">k</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.1</span>
+<span class="n">delta_k</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.09</span>
+
+<span class="k">[gi_inputs]</span>
+<span class="n">nimages</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">15</span>
+<span class="n">friction</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.001</span>
+<span class="n">nudge</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.1</span>
+
+<span class="k">[path_min_inputs]</span>
+<span class="n">v</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">max_steps</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">500</span>
+
+<span class="k">[optimizer_kwds]</span>
+<span class="n">timestep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span>
+</code></pre></div>
+<p>Then run with ChemCloud by setting up authentication:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Option 1: Run setup_profile() - writes credentials to ~/.chemcloud/credentials</span>
+python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;from chemcloud import setup_profile; setup_profile()&quot;</span>
+
+<span class="c1"># Option 2: Use environment variables (for memory-only auth)</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">CHEMCLOUD_USERNAME</span><span class="o">=</span>your_email@chemcloud.com
+<span class="nb">export</span><span class="w"> </span><span class="nv">CHEMCLOUD_PASSWORD</span><span class="o">=</span>your_password
+</code></pre></div>
+<p>Load and use:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics</span><span class="w"> </span><span class="kn">import</span> <span class="n">MSMEP</span>
+
+<span class="n">inputs</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;my_input.toml&quot;</span><span class="p">)</span>
+<span class="n">m</span> <span class="o">=</span> <span class="n">MSMEP</span><span class="p">(</span><span class="n">inputs</span><span class="o">=</span><span class="n">inputs</span><span class="p">)</span>
+<span class="n">history</span> <span class="o">=</span> <span class="n">m</span><span class="o">.</span><span class="n">run_recursive_minimize</span><span class="p">(</span><span class="n">initial_chain</span><span class="p">)</span>
+</code></pre></div>
 
 
 
@@ -512,10 +1335,13 @@
     </div>
     
     
-    <script id="__config" type="application/json">{"base": "..", "features": ["search.suggest", "search.highlight", "navigation.instant", "navigation.expand"], "search": "../assets/javascripts/workers/search.b8dbb3d2.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["search.suggest", "search.highlight", "navigation.instant", "navigation.expand"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.fe8b6f2b.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

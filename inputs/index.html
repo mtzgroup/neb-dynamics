@@ -13,25 +13,28 @@
         <link rel="canonical" href="https://mtzgroup.github.io/neb-dynamics/inputs/">
       
       
-        <link rel="prev" href="../elementarystep/">
+        <link rel="prev" href="../engines/">
       
       
-        <link rel="next" href="../msmep/">
+        <link rel="next" href="../tutorial/">
+      
+      
+        
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.0, mkdocs-material-9.5.31">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
     
     
       
-        <title>Inputs - neb-dynamics</title>
+        <title>Input Parameters - NEB Dynamics Documentation</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.3cba04c6.min.css">
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -50,13 +53,10 @@
       
     
     
-      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
-    
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
-    
     
     
   </head>
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#neb_dynamics.inputs" class="md-skip">
+        <a href="#input-parameters" class="md-skip">
           Skip to content
         </a>
       
@@ -94,27 +94,27 @@
 
 <header class="md-header md-header--shadow" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="neb-dynamics" class="md-header__button md-logo" aria-label="neb-dynamics" data-md-component="logo">
+    <a href=".." title="NEB Dynamics Documentation" class="md-header__button md-logo" aria-label="NEB Dynamics Documentation" data-md-component="logo">
       
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
       
-      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
     </label>
     <div class="md-header__title" data-md-component="header-title">
       <div class="md-header__ellipsis">
         <div class="md-header__topic">
           <span class="md-ellipsis">
-            neb-dynamics
+            NEB Dynamics Documentation
           </span>
         </div>
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Inputs
+              Input Parameters
             
           </span>
         </div>
@@ -134,30 +134,32 @@
       
     
     
-      <script>var media,input,key,value,palette=__md_get("__palette");if(palette&&palette.color){"(prefers-color-scheme)"===palette.color.media&&(media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']"),palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent"));for([key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
     
     
     
-      <label class="md-header__button md-icon" for="__search">
-        
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
-      </label>
-      <div class="md-search" data-md-component="search" role="dialog">
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
   <label class="md-search__overlay" for="__search"></label>
   <div class="md-search__inner" role="search">
     <form class="md-search__form" name="search">
       <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
       <label class="md-search__icon md-icon" for="__search">
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
         
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
       </label>
       <nav class="md-search__options" aria-label="Search">
         
         <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
           
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
         </button>
       </nav>
       
@@ -176,13 +178,14 @@
     </div>
   </div>
 </div>
+      
     
     
       <div class="md-header__source">
         <a href="https://github.com/mtzgroup/neb-dynamics" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M186.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1zM480 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2zm-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3zm-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M202.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M496 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
   </div>
   <div class="md-source__repository">
     GitHub
@@ -215,20 +218,20 @@
 
 <nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="neb-dynamics" class="md-nav__button md-logo" aria-label="neb-dynamics" data-md-component="logo">
+    <a href=".." title="NEB Dynamics Documentation" class="md-nav__button md-logo" aria-label="NEB Dynamics Documentation" data-md-component="logo">
       
   
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54Z"/></svg>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
 
     </a>
-    neb-dynamics
+    NEB Dynamics Documentation
   </label>
   
     <div class="md-nav__source">
       <a href="https://github.com/mtzgroup/neb-dynamics" title="Go to repository" class="md-source" data-md-component="source">
   <div class="md-source__icon md-icon">
     
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 512"><!--! Font Awesome Free 6.6.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M186.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1zM480 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2zm-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3zm-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1z"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M202.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M496 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
   </div>
   <div class="md-source__repository">
     GitHub
@@ -248,9 +251,16 @@
       <a href=".." class="md-nav__link">
         
   
+  
   <span class="md-ellipsis">
-    Neb Dynamics
+    
+  
+    Home
+  
+
+    
   </span>
+  
   
 
       </a>
@@ -265,12 +275,46 @@
   
   
     <li class="md-nav__item">
-      <a href="../elementarystep/" class="md-nav__link">
+      <a href="../concepts/" class="md-nav__link">
         
   
+  
   <span class="md-ellipsis">
-    Elementarystep
+    
+  
+    Key Concepts
+  
+
+    
   </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../engines/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engines
+  
+
+    
+  </span>
+  
   
 
       </a>
@@ -291,13 +335,22 @@
       <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
       
       
+        
+      
       
         <label class="md-nav__link md-nav__link--active" for="__toc">
           
   
+  
   <span class="md-ellipsis">
-    Inputs
+    
+  
+    Input Parameters
+  
+
+    
   </span>
+  
   
 
           <span class="md-nav__icon md-icon"></span>
@@ -306,9 +359,16 @@
       <a href="./" class="md-nav__link md-nav__link--active">
         
   
+  
   <span class="md-ellipsis">
-    Inputs
+    
+  
+    Input Parameters
+  
+
+    
   </span>
+  
   
 
       </a>
@@ -319,6 +379,8 @@
   
   
   
+    
+  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -327,38 +389,208 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#neb_dynamics.inputs" class="md-nav__link">
+  <a href="#nebinputs" class="md-nav__link">
     <span class="md-ellipsis">
-      inputs
+      
+        NEBInputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="NEBInputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameter-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chaininputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ChainInputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ChainInputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameter-reference_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#energy-weighted-spring-constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Energy-Weighted Spring Constants
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#giinputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GIInputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GIInputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameter-reference_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tips-for-geodesic-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips for Geodesic Interpolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runinputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RunInputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="RunInputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameter-reference_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loadingsaving-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loading/Saving Inputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#networkinputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NetworkInputs
+      
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#neb_dynamics.inputs.ChainInputs" class="md-nav__link">
+  <a href="#path-minimization-methods" class="md-nav__link">
     <span class="md-ellipsis">
-      ChainInputs
+      
+        Path Minimization Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Path Minimization Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#standard-neb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standard NEB
+      
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#neb_dynamics.inputs.GIInputs" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#freezing-neb-fneb" class="md-nav__link">
     <span class="md-ellipsis">
-      GIInputs
+      
+        Freezing NEB (FNEB)
+      
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#neb_dynamics.inputs.NEBInputs" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#mlp-geodesic-mlpgi" class="md-nav__link">
     <span class="md-ellipsis">
-      NEBInputs
+      
+        MLP Geodesic (MLPGI)
+      
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -377,52 +609,100 @@
   
   
     <li class="md-nav__item">
-      <a href="../msmep/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    msmep
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../neb/" class="md-nav__link">
-        
-  
-  <span class="md-ellipsis">
-    Neb
-  </span>
-  
-
-      </a>
-    </li>
-  
-
-    
-      
-      
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../tutorial/" class="md-nav__link">
         
   
+  
   <span class="md-ellipsis">
-    tutorial
+    
+  
+    Tutorial
+  
+
+    
   </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../about/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
   
 
       </a>
@@ -447,6 +727,8 @@
   
   
   
+    
+  
   
     <label class="md-nav__title" for="__toc">
       <span class="md-nav__icon md-icon"></span>
@@ -455,38 +737,208 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#neb_dynamics.inputs" class="md-nav__link">
+  <a href="#nebinputs" class="md-nav__link">
     <span class="md-ellipsis">
-      inputs
+      
+        NEBInputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="NEBInputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameter-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chaininputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ChainInputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ChainInputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameter-reference_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#energy-weighted-spring-constants" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Energy-Weighted Spring Constants
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#giinputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GIInputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="GIInputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameter-reference_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tips-for-geodesic-interpolation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips for Geodesic Interpolation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#runinputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        RunInputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="RunInputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameter-reference_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameter Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loadingsaving-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loading/Saving Inputs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#networkinputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        NetworkInputs
+      
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#neb_dynamics.inputs.ChainInputs" class="md-nav__link">
+  <a href="#path-minimization-methods" class="md-nav__link">
     <span class="md-ellipsis">
-      ChainInputs
+      
+        Path Minimization Methods
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Path Minimization Methods">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#standard-neb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standard NEB
+      
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#neb_dynamics.inputs.GIInputs" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#freezing-neb-fneb" class="md-nav__link">
     <span class="md-ellipsis">
-      GIInputs
+      
+        Freezing NEB (FNEB)
+      
     </span>
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#neb_dynamics.inputs.NEBInputs" class="md-nav__link">
+        
+          <li class="md-nav__item">
+  <a href="#mlp-geodesic-mlpgi" class="md-nav__link">
     <span class="md-ellipsis">
-      NEBInputs
+      
+        MLP Geodesic (MLPGI)
+      
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -500,494 +952,448 @@
           
           
             <div class="md-content" data-md-component="content">
+              
               <article class="md-content__inner md-typeset">
                 
                   
 
+
   
   
 
 
-  <h1>Inputs</h1>
-
-<div class="doc doc-object doc-module">
-
-
-
-<a id="neb_dynamics.inputs"></a>
-    <div class="doc doc-contents first">
-
-
-
-  <div class="doc doc-children">
-
-
-
-
-
-
-
-
-<div class="doc doc-object doc-class">
-
-
-
-<h2 id="neb_dynamics.inputs.ChainInputs" class="doc doc-heading">
-            <code>ChainInputs</code>
-
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
-  </span>
-
-<a href="#neb_dynamics.inputs.ChainInputs" class="headerlink" title="Permanent link">🔗</a></h2>
-
-
-    <div class="doc doc-contents ">
-
-
-      <p>Object containing parameters relevant to chain.
-<code>k</code>: maximum spring constant.
-<code>delta_k</code>: parameter to use for calculating energy weighted spring constants
-        see: https://pubs.acs.org/doi/full/10.1021/acs.jctc.1c00462</p>
-<p><code>node_class</code>: type of node to use
-<code>do_parallel</code>: whether to compute gradients and energies in parallel
-<code>use_geodesic_interpolation</code>: whether to use GI in interpolations
-<code>friction_optimal_gi</code>: whether to optimize 'friction' parameter when running GI</p>
-<p><code>do_chain_biasing</code>: whether to use chain biasing (Under Development, not ready for use)
-<code>cb</code>: Chain biaser object (Under Development, not ready for use)</p>
-<p><code>node_freezing</code>: whether to freeze nodes in NEB convergence
-<code>node_conf_en_thre</code>: float = threshold for energy difference (kcal/mol) of geometries
-                        for identifying identical conformers</p>
-<p><code>tc_model_method</code>: 'method' parameter for electronic structure calculations
-<code>tc_model_basis</code>: 'method' parameter for electronic structure calculations
-<code>tc_kwds</code>: keyword arguments for electronic structure calculations</p>
-
-              <details class="quote">
-                <summary>Source code in <code>neb_dynamics/inputs.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 89</span>
-<span class="normal"> 90</span>
-<span class="normal"> 91</span>
-<span class="normal"> 92</span>
-<span class="normal"> 93</span>
-<span class="normal"> 94</span>
-<span class="normal"> 95</span>
-<span class="normal"> 96</span>
-<span class="normal"> 97</span>
-<span class="normal"> 98</span>
-<span class="normal"> 99</span>
-<span class="normal">100</span>
-<span class="normal">101</span>
-<span class="normal">102</span>
-<span class="normal">103</span>
-<span class="normal">104</span>
-<span class="normal">105</span>
-<span class="normal">106</span>
-<span class="normal">107</span>
-<span class="normal">108</span>
-<span class="normal">109</span>
-<span class="normal">110</span>
-<span class="normal">111</span>
-<span class="normal">112</span>
-<span class="normal">113</span>
-<span class="normal">114</span>
-<span class="normal">115</span>
-<span class="normal">116</span>
-<span class="normal">117</span>
-<span class="normal">118</span>
-<span class="normal">119</span>
-<span class="normal">120</span>
-<span class="normal">121</span>
-<span class="normal">122</span>
-<span class="normal">123</span>
-<span class="normal">124</span>
-<span class="normal">125</span>
-<span class="normal">126</span>
-<span class="normal">127</span>
-<span class="normal">128</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
-<span class="k">class</span> <span class="nc">ChainInputs</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Object containing parameters relevant to chain.</span>
-<span class="sd">    `k`: maximum spring constant.</span>
-<span class="sd">    `delta_k`: parameter to use for calculating energy weighted spring constants</span>
-<span class="sd">            see: https://pubs.acs.org/doi/full/10.1021/acs.jctc.1c00462</span>
-
-<span class="sd">    `node_class`: type of node to use</span>
-<span class="sd">    `do_parallel`: whether to compute gradients and energies in parallel</span>
-<span class="sd">    `use_geodesic_interpolation`: whether to use GI in interpolations</span>
-<span class="sd">    `friction_optimal_gi`: whether to optimize &#39;friction&#39; parameter when running GI</span>
-
-<span class="sd">    `do_chain_biasing`: whether to use chain biasing (Under Development, not ready for use)</span>
-<span class="sd">    `cb`: Chain biaser object (Under Development, not ready for use)</span>
-
-<span class="sd">    `node_freezing`: whether to freeze nodes in NEB convergence</span>
-<span class="sd">    `node_conf_en_thre`: float = threshold for energy difference (kcal/mol) of geometries</span>
-<span class="sd">                            for identifying identical conformers</span>
-
-<span class="sd">    `tc_model_method`: &#39;method&#39; parameter for electronic structure calculations</span>
-<span class="sd">    `tc_model_basis`: &#39;method&#39; parameter for electronic structure calculations</span>
-<span class="sd">    `tc_kwds`: keyword arguments for electronic structure calculations</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="n">k</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span>
-    <span class="n">delta_k</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
-
-    <span class="n">node_class</span><span class="p">:</span> <span class="n">Node</span> <span class="o">=</span> <span class="n">Node</span>
-    <span class="n">do_parallel</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="n">use_geodesic_interpolation</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="n">friction_optimal_gi</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-
-    <span class="n">node_freezing</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-
-    <span class="n">node_rms_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>  <span class="c1"># Bohr</span>
-    <span class="n">node_ene_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span>  <span class="c1"># kcal/mol</span>
-
-    <span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ChainInputs</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">ChainInputs</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-              </details>
-
-
-
-  <div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-
-
-  </div>
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-class">
-
-
-
-<h2 id="neb_dynamics.inputs.GIInputs" class="doc doc-heading">
-            <code>GIInputs</code>
-
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
-  </span>
-
-<a href="#neb_dynamics.inputs.GIInputs" class="headerlink" title="Permanent link">🔗</a></h2>
-
-
-    <div class="doc doc-contents ">
-
-
-      <p>Inputs for geodesic interpolation. See         <a href="https://pubs.aip.org/aip/jcp/article/150/16/164103/198363/Geodesic-interpolation-for-reaction-pathways">geodesic interpolation</a>             for details.</p>
-<p><code>nimages</code>: number of images to use (default: 15)</p>
-<p><code>friction</code>: value for friction parameter. influences the penalty for         pairwise distances becoming too large. (default: 0.01)</p>
-<p><code>nudge</code>: value for nudge parameter. (default: 0.001)</p>
-<p><code>extra_kwds</code>: dictionary containing other keywords geodesic interpolation might use.</p>
-
-              <details class="quote">
-                <summary>Source code in <code>neb_dynamics/inputs.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">131</span>
-<span class="normal">132</span>
-<span class="normal">133</span>
-<span class="normal">134</span>
-<span class="normal">135</span>
-<span class="normal">136</span>
-<span class="normal">137</span>
-<span class="normal">138</span>
-<span class="normal">139</span>
-<span class="normal">140</span>
-<span class="normal">141</span>
-<span class="normal">142</span>
-<span class="normal">143</span>
-<span class="normal">144</span>
-<span class="normal">145</span>
-<span class="normal">146</span>
-<span class="normal">147</span>
-<span class="normal">148</span>
-<span class="normal">149</span>
-<span class="normal">150</span>
-<span class="normal">151</span>
-<span class="normal">152</span>
-<span class="normal">153</span>
-<span class="normal">154</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
-<span class="k">class</span> <span class="nc">GIInputs</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Inputs for geodesic interpolation. See \</span>
-<span class="sd">        [geodesic interpolation](https://pubs.aip.org/aip/jcp/article/150/16/164103/198363/Geodesic-interpolation-for-reaction-pathways) \</span>
-<span class="sd">            for details.</span>
-
-<span class="sd">    `nimages`: number of images to use (default: 15)</span>
-
-<span class="sd">    `friction`: value for friction parameter. influences the penalty for \</span>
-<span class="sd">        pairwise distances becoming too large. (default: 0.01)</span>
-
-<span class="sd">    `nudge`: value for nudge parameter. (default: 0.001)</span>
-
-<span class="sd">    `extra_kwds`: dictionary containing other keywords geodesic interpolation might use.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="n">nimages</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">15</span>
-    <span class="n">friction</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.01</span>
-    <span class="n">nudge</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.001</span>
-    <span class="n">extra_kwds</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
-
-    <span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">GIInputs</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">GIInputs</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-              </details>
-
-
-
-  <div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-
-
-  </div>
-
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-class">
-
-
-
-<h2 id="neb_dynamics.inputs.NEBInputs" class="doc doc-heading">
-            <code>NEBInputs</code>
-
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-dataclass"><code>dataclass</code></small>
-  </span>
-
-<a href="#neb_dynamics.inputs.NEBInputs" class="headerlink" title="Permanent link">🔗</a></h2>
-
-
-    <div class="doc doc-contents ">
-
-
-      <p>Object containing inputs relating to NEB convergence.
-<code>tol</code>: tolerace for optimizations (Hartrees)</p>
-<p><code>climb</code>: whether to use climbing image NEB</p>
-<p><code>en_thre</code>: energy difference threshold. (default: tol/450)</p>
-<p><code>rms_grad_thre</code>: RMS of perpendicular gradient threhsold (default: tol)</p>
-<p><code>max_rms_grad_thre</code>: maximum(RMS) of perpedicular gradients threshold (default: tol*2.5)</p>
-<p><code>ts_grad_thre</code>= infinity norm of TS node threshold (default: tol*2.5)</p>
-<p><code>ts_spring_thre</code>= infinity norm of spring forces of triplet around TS node (default: tol * 1.5),</p>
-<p><code>skip_identical_graphs</code>: whether to skip minimizations where endpoints have identical graphs</p>
-<p><code>early_stop_force_thre</code>: infinity norm of TS node early stop check threshold         (default: 0.0 | i.e. no early stop check)</p>
-<p><code>negative_steps_thre</code>: number of steps chain can oscillate until the step size is halved (default: 10)</p>
-<p><code>max_steps</code>: maximum number of NEB steps allowed (default: 1000)</p>
-<p><code>v</code>: whether to be verbose (default: True)</p>
-<p><code>preopt_with_xtb</code>: whether to preconverge a chain using XTB (default: False)</p>
-
-              <details class="quote">
-                <summary>Source code in <code>neb_dynamics/inputs.py</code></summary>
-                <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 7</span>
-<span class="normal"> 8</span>
-<span class="normal"> 9</span>
-<span class="normal">10</span>
-<span class="normal">11</span>
-<span class="normal">12</span>
-<span class="normal">13</span>
-<span class="normal">14</span>
-<span class="normal">15</span>
-<span class="normal">16</span>
-<span class="normal">17</span>
-<span class="normal">18</span>
-<span class="normal">19</span>
-<span class="normal">20</span>
-<span class="normal">21</span>
-<span class="normal">22</span>
-<span class="normal">23</span>
-<span class="normal">24</span>
-<span class="normal">25</span>
-<span class="normal">26</span>
-<span class="normal">27</span>
-<span class="normal">28</span>
-<span class="normal">29</span>
-<span class="normal">30</span>
-<span class="normal">31</span>
-<span class="normal">32</span>
-<span class="normal">33</span>
-<span class="normal">34</span>
-<span class="normal">35</span>
-<span class="normal">36</span>
-<span class="normal">37</span>
-<span class="normal">38</span>
-<span class="normal">39</span>
-<span class="normal">40</span>
-<span class="normal">41</span>
-<span class="normal">42</span>
-<span class="normal">43</span>
-<span class="normal">44</span>
-<span class="normal">45</span>
-<span class="normal">46</span>
-<span class="normal">47</span>
-<span class="normal">48</span>
-<span class="normal">49</span>
-<span class="normal">50</span>
-<span class="normal">51</span>
-<span class="normal">52</span>
-<span class="normal">53</span>
-<span class="normal">54</span>
-<span class="normal">55</span>
-<span class="normal">56</span>
-<span class="normal">57</span>
-<span class="normal">58</span>
-<span class="normal">59</span>
-<span class="normal">60</span>
-<span class="normal">61</span>
-<span class="normal">62</span>
-<span class="normal">63</span>
-<span class="normal">64</span>
-<span class="normal">65</span>
-<span class="normal">66</span>
-<span class="normal">67</span>
-<span class="normal">68</span>
-<span class="normal">69</span>
-<span class="normal">70</span>
-<span class="normal">71</span>
-<span class="normal">72</span>
-<span class="normal">73</span>
-<span class="normal">74</span>
-<span class="normal">75</span>
-<span class="normal">76</span>
-<span class="normal">77</span>
-<span class="normal">78</span>
-<span class="normal">79</span>
-<span class="normal">80</span>
-<span class="normal">81</span>
-<span class="normal">82</span>
-<span class="normal">83</span>
-<span class="normal">84</span>
-<span class="normal">85</span>
-<span class="normal">86</span></pre></div></td><td class="code"><div><pre><span></span><code><span class="nd">@dataclass</span>
-<span class="k">class</span> <span class="nc">NEBInputs</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Object containing inputs relating to NEB convergence.</span>
-<span class="sd">    `tol`: tolerace for optimizations (Hartrees)</span>
-
-<span class="sd">    `climb`: whether to use climbing image NEB</span>
-
-<span class="sd">    `en_thre`: energy difference threshold. (default: tol/450)</span>
-
-<span class="sd">    `rms_grad_thre`: RMS of perpendicular gradient threhsold (default: tol)</span>
-
-<span class="sd">    `max_rms_grad_thre`: maximum(RMS) of perpedicular gradients threshold (default: tol*2.5)</span>
-
-<span class="sd">    `ts_grad_thre`= infinity norm of TS node threshold (default: tol*2.5)</span>
-
-<span class="sd">    `ts_spring_thre`= infinity norm of spring forces of triplet around TS node (default: tol * 1.5),</span>
-
-<span class="sd">    `skip_identical_graphs`: whether to skip minimizations where endpoints have identical graphs</span>
-
-<span class="sd">    `early_stop_force_thre`: infinity norm of TS node early stop check threshold \</span>
-<span class="sd">        (default: 0.0 | i.e. no early stop check)</span>
-
-<span class="sd">    `negative_steps_thre`: number of steps chain can oscillate until the step size is halved (default: 10)</span>
-
-<span class="sd">    `max_steps`: maximum number of NEB steps allowed (default: 1000)</span>
-
-<span class="sd">    `v`: whether to be verbose (default: True)</span>
-
-<span class="sd">    `preopt_with_xtb`: whether to preconverge a chain using XTB (default: False)</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-
-    <span class="n">tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.002</span>
-    <span class="n">climb</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="n">en_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">rms_grad_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">max_rms_grad_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">skip_identical_graphs</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
-
-    <span class="n">grad_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">ts_grad_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">ts_spring_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="kc">None</span>
-    <span class="n">barrier_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.1</span>  <span class="c1"># kcal/mol</span>
-
-    <span class="n">early_stop_force_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
-    <span class="n">early_stop_chain_rms_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span>
-    <span class="n">early_stop_corr_thre</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">10.0</span>
-    <span class="n">early_stop_still_steps_thre</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span>
-
-    <span class="n">negative_steps_thre</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span>
-
-    <span class="n">max_steps</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">1000</span>
-
-    <span class="n">v</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
-
-    <span class="n">preopt_with_xtb</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
-    <span class="n">pygsm_kwds</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
-    <span class="n">fneb_kwds</span><span class="p">:</span> <span class="nb">dict</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
-
-    <span class="k">def</span> <span class="nf">__post_init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">en_thre</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">en_thre</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tol</span> <span class="o">/</span> <span class="mi">450</span>
-
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">rms_grad_thre</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">rms_grad_thre</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tol</span>
-
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">grad_thre</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">grad_thre</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tol</span> <span class="o">/</span> <span class="mi">2</span>
-
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_grad_thre</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">ts_grad_thre</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tol</span> <span class="o">*</span> <span class="mi">5</span> <span class="o">/</span> <span class="mi">2</span>
-
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ts_spring_thre</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">ts_spring_thre</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tol</span> <span class="o">*</span> <span class="mi">5</span> <span class="o">/</span> <span class="mi">2</span>
-
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_rms_grad_thre</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">max_rms_grad_thre</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tol</span> <span class="o">*</span> <span class="mi">5</span> <span class="o">/</span> <span class="mi">2</span>
-
-    <span class="k">def</span> <span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">NEBInputs</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">NEBInputs</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-              </details>
-
-
-
-  <div class="doc doc-children">
-
-
-
-
-
-
-
-
-
-
-
-  </div>
-
-    </div>
-
-</div>
-
-
-
-
-  </div>
-
-    </div>
-
-</div>
+<h1 id="input-parameters">Input Parameters<a class="headerlink" href="#input-parameters" title="Permanent link">🔗</a></h1>
+<p>NEB Dynamics uses several input classes to configure calculations. This guide covers all available options.</p>
+<h2 id="nebinputs">NEBInputs<a class="headerlink" href="#nebinputs" title="Permanent link">🔗</a></h2>
+<p>Controls Nudged Elastic Band optimization parameters.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">NEBInputs</span>
+
+<span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">(</span>
+    <span class="c1"># Convergence thresholds</span>
+    <span class="n">tol</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span>                    <span class="c1"># Overall tolerance (Hartrees)</span>
+    <span class="n">en_thre</span><span class="o">=</span><span class="mf">1e-4</span><span class="p">,</span>                <span class="c1"># Energy difference threshold</span>
+    <span class="n">rms_grad_thre</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>          <span class="c1"># RMS perpendicular gradient (Ha/Bohr)</span>
+    <span class="n">max_rms_grad_thre</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>      <span class="c1"># Maximum RMS gradient (Ha/Bohr)</span>
+    <span class="n">ts_grad_thre</span><span class="o">=</span><span class="mf">0.05</span><span class="p">,</span>           <span class="c1"># Transition state gradient threshold</span>
+    <span class="n">ts_spring_thre</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span>         <span class="c1"># TS spring force threshold</span>
+    <span class="n">barrier_thre</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>            <span class="c1"># Barrier height change (kcal/mol)</span>
+
+    <span class="c1"># NEB options</span>
+    <span class="n">climb</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>                 <span class="c1"># Enable climbing image NEB</span>
+    <span class="n">use_geodesic_tangent</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>  <span class="c1"># Use geodesic tangents</span>
+
+    <span class="c1"># Early stopping</span>
+    <span class="n">early_stop_force_thre</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>   <span class="c1"># Early stop check threshold</span>
+
+    <span class="c1"># Step control</span>
+    <span class="n">negative_steps_thre</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>      <span class="c1"># Steps before halving step size</span>
+    <span class="n">max_steps</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span>               <span class="c1"># Maximum optimization steps</span>
+
+    <span class="c1"># Other options</span>
+    <span class="n">skip_identical_graphs</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>   <span class="c1"># Skip if endpoints have same graph</span>
+    <span class="n">do_elem_step_checks</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>    <span class="c1"># Check for elementary steps</span>
+    <span class="n">v</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                      <span class="c1"># Verbose output</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="parameter-reference">Parameter Reference<a class="headerlink" href="#parameter-reference" title="Permanent link">🔗</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>climb</code></td>
+<td>bool</td>
+<td>False</td>
+<td>Enable climbing image NEB to find exact saddle point</td>
+</tr>
+<tr>
+<td><code>en_thre</code></td>
+<td>float</td>
+<td>1e-4</td>
+<td>Energy difference threshold (Hartrees)</td>
+</tr>
+<tr>
+<td><code>rms_grad_thre</code></td>
+<td>float</td>
+<td>0.02</td>
+<td>RMS perpendicular gradient threshold (Ha/Bohr)</td>
+</tr>
+<tr>
+<td><code>max_rms_grad_thre</code></td>
+<td>float</td>
+<td>0.05</td>
+<td>Maximum RMS gradient threshold (Ha/Bohr)</td>
+</tr>
+<tr>
+<td><code>ts_grad_thre</code></td>
+<td>float</td>
+<td>0.05</td>
+<td>Transition state gradient infinity norm (Ha/Bohr)</td>
+</tr>
+<tr>
+<td><code>ts_spring_thre</code></td>
+<td>float</td>
+<td>0.02</td>
+<td>TS spring force infinity norm (Ha/Bohr)</td>
+</tr>
+<tr>
+<td><code>barrier_thre</code></td>
+<td>float</td>
+<td>0.1</td>
+<td>Barrier height change threshold (kcal/mol)</td>
+</tr>
+<tr>
+<td><code>early_stop_force_thre</code></td>
+<td>float</td>
+<td>0.0</td>
+<td>Early stop check (0 = disabled)</td>
+</tr>
+<tr>
+<td><code>negative_steps_thre</code></td>
+<td>int</td>
+<td>10</td>
+<td>Steps with poor gradient correlation before halving step size</td>
+</tr>
+<tr>
+<td><code>max_steps</code></td>
+<td>int</td>
+<td>500</td>
+<td>Maximum optimization steps</td>
+</tr>
+<tr>
+<td><code>skip_identical_graphs</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Skip minimization if endpoints have identical molecular graphs</td>
+</tr>
+<tr>
+<td><code>do_elem_step_checks</code></td>
+<td>bool</td>
+<td>False</td>
+<td>Check if path is elementary step during optimization</td>
+</tr>
+<tr>
+<td><code>use_geodesic_tangent</code></td>
+<td>bool</td>
+<td>False</td>
+<td>Use geodesic-based tangents instead of standard</td>
+</tr>
+<tr>
+<td><code>v</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Verbose output</td>
+</tr>
+</tbody>
+</table>
+<h2 id="chaininputs">ChainInputs<a class="headerlink" href="#chaininputs" title="Permanent link">🔗</a></h2>
+<p>Controls the chain of images and path interpolation.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">ChainInputs</span>
+
+<span class="n">ci</span> <span class="o">=</span> <span class="n">ChainInputs</span><span class="p">(</span>
+    <span class="c1"># Spring constants</span>
+    <span class="n">k</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>           <span class="c1"># Maximum spring constant</span>
+    <span class="n">delta_k</span><span class="o">=</span><span class="mf">0.09</span><span class="p">,</span>    <span class="c1"># Energy-weighted spring constant parameter</span>
+
+    <span class="c1"># Parallel computation</span>
+    <span class="n">do_parallel</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="c1"># Compute gradients in parallel</span>
+
+    <span class="c1"># Interpolation</span>
+    <span class="n">use_geodesic_interpolation</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>  <span class="c1"># Use geodesic interpolation</span>
+    <span class="n">friction_optimal_gi</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>         <span class="c1"># Optimize friction parameter</span>
+
+    <span class="c1"># Node freezing</span>
+    <span class="n">node_freezing</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>    <span class="c1"># Enable node freezing</span>
+    <span class="n">node_rms_thre</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>     <span class="c1"># RMS threshold for freezing (Bohr)</span>
+    <span class="n">node_ene_thre</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>     <span class="c1"># Energy threshold for freezing (kcal/mol)</span>
+
+    <span class="c1"># Frozen atoms</span>
+    <span class="n">frozen_atom_indices</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>  <span class="c1"># Space-separated indices of frozen atoms</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="parameter-reference_1">Parameter Reference<a class="headerlink" href="#parameter-reference_1" title="Permanent link">🔗</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>k</code></td>
+<td>float</td>
+<td>0.1</td>
+<td>Maximum spring constant for NEB</td>
+</tr>
+<tr>
+<td><code>delta_k</code></td>
+<td>float</td>
+<td>0.09</td>
+<td>Parameter for energy-weighted spring constants</td>
+</tr>
+<tr>
+<td><code>do_parallel</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Compute gradients in parallel</td>
+</tr>
+<tr>
+<td><code>use_geodesic_interpolation</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Use geodesic interpolation for initial path</td>
+</tr>
+<tr>
+<td><code>friction_optimal_gi</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Optimize friction parameter for GI</td>
+</tr>
+<tr>
+<td><code>node_freezing</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Freeze nodes that have converged</td>
+</tr>
+<tr>
+<td><code>node_rms_thre</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>RMS coordinate change threshold for freezing (Bohr)</td>
+</tr>
+<tr>
+<td><code>node_ene_thre</code></td>
+<td>float</td>
+<td>5.0</td>
+<td>Energy change threshold for freezing (kcal/mol)</td>
+</tr>
+<tr>
+<td><code>frozen_atom_indices</code></td>
+<td>str</td>
+<td>""</td>
+<td>Indices of atoms to freeze during optimization</td>
+</tr>
+</tbody>
+</table>
+<h3 id="energy-weighted-spring-constants">Energy-Weighted Spring Constants<a class="headerlink" href="#energy-weighted-spring-constants" title="Permanent link">🔗</a></h3>
+<p>The energy-weighted spring constant is calculated as:
+<div class="highlight"><pre><span></span><code>k_i = k * exp(-delta_k * (E_i - E_min) / (E_max - E_min))
+</code></pre></div></p>
+<p>This keeps images more tightly spaced near the barrier where energies change rapidly.</p>
+<h2 id="giinputs">GIInputs<a class="headerlink" href="#giinputs" title="Permanent link">🔗</a></h2>
+<p>Controls geodesic interpolation for generating initial path guesses.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">GIInputs</span>
+
+<span class="n">gi</span> <span class="o">=</span> <span class="n">GIInputs</span><span class="p">(</span>
+    <span class="n">nimages</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>           <span class="c1"># Number of images</span>
+    <span class="n">friction</span><span class="o">=</span><span class="mf">0.001</span><span class="p">,</span>       <span class="c1"># Friction parameter</span>
+    <span class="n">nudge</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span>            <span class="c1"># Nudge parameter</span>
+    <span class="n">align</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>           <span class="c1"># Align structures before interpolation</span>
+    <span class="n">extra_kwds</span><span class="o">=</span><span class="p">{},</span>        <span class="c1"># Additional keywords</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="parameter-reference_2">Parameter Reference<a class="headerlink" href="#parameter-reference_2" title="Permanent link">🔗</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>nimages</code></td>
+<td>int</td>
+<td>10</td>
+<td>Number of images in the chain</td>
+</tr>
+<tr>
+<td><code>friction</code></td>
+<td>float</td>
+<td>0.001</td>
+<td>Friction parameter (controls path smoothness)</td>
+</tr>
+<tr>
+<td><code>nudge</code></td>
+<td>float</td>
+<td>0.1</td>
+<td>Nudge parameter for path optimization</td>
+</tr>
+<tr>
+<td><code>align</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Align structures using RMSD before interpolation</td>
+</tr>
+<tr>
+<td><code>extra_kwds</code></td>
+<td>dict</td>
+<td>{}</td>
+<td>Additional geodesic interpolation options</td>
+</tr>
+</tbody>
+</table>
+<h3 id="tips-for-geodesic-interpolation">Tips for Geodesic Interpolation<a class="headerlink" href="#tips-for-geodesic-interpolation" title="Permanent link">🔗</a></h3>
+<ul>
+<li><strong>Higher <code>nudge</code> values</strong> produce shorter paths but may be less smooth</li>
+<li><strong>Lower <code>friction</code> values</strong> allow more flexibility in atomic movements</li>
+<li>Run multiple interpolations with different parameters and select the shortest path</li>
+</ul>
+<h2 id="runinputs">RunInputs<a class="headerlink" href="#runinputs" title="Permanent link">🔗</a></h2>
+<p>Complete input class for running MSMEP calculations.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunInputs</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">qcio</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProgramArgs</span>
+
+<span class="n">ri</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="p">(</span>
+    <span class="c1"># Engine settings</span>
+    <span class="n">engine_name</span><span class="o">=</span><span class="s2">&quot;qcop&quot;</span><span class="p">,</span>      <span class="c1"># &quot;qcop&quot;, &quot;ase&quot;, or &quot;chemcloud&quot;</span>
+    <span class="n">program</span><span class="o">=</span><span class="s2">&quot;xtb&quot;</span><span class="p">,</span>           <span class="c1"># Electronic structure program</span>
+
+    <span class="c1"># Path minimization</span>
+    <span class="n">path_min_method</span><span class="o">=</span><span class="s2">&quot;NEB&quot;</span><span class="p">,</span>   <span class="c1"># &quot;NEB&quot;, &quot;FNEB&quot;, or &quot;MLPGI&quot;</span>
+
+    <span class="c1"># Program arguments</span>
+    <span class="n">program_kwds</span><span class="o">=</span><span class="n">ProgramArgs</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;GFN2xTB&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;GFN2xTB&quot;</span><span class="p">},</span>
+        <span class="n">keywords</span><span class="o">=</span><span class="p">{}</span>
+    <span class="p">),</span>
+
+    <span class="c1"># Custom inputs</span>
+    <span class="n">path_min_inputs</span><span class="o">=</span><span class="n">NEBInputs</span><span class="p">()</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">,</span>
+    <span class="n">chain_inputs</span><span class="o">=</span><span class="n">ChainInputs</span><span class="p">()</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">,</span>
+    <span class="n">gi_inputs</span><span class="o">=</span><span class="n">GIInputs</span><span class="p">()</span><span class="o">.</span><span class="vm">__dict__</span><span class="p">,</span>
+
+    <span class="c1"># Optimizer</span>
+    <span class="n">optimizer_kwds</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;timestep&quot;</span><span class="p">:</span> <span class="mf">0.5</span><span class="p">},</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="parameter-reference_3">Parameter Reference<a class="headerlink" href="#parameter-reference_3" title="Permanent link">🔗</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>engine_name</code></td>
+<td>str</td>
+<td>"qcop"</td>
+<td>Engine to use: "qcop", "ase", or "chemcloud"</td>
+</tr>
+<tr>
+<td><code>program</code></td>
+<td>str</td>
+<td>"xtb"</td>
+<td>Electronic structure program</td>
+</tr>
+<tr>
+<td><code>path_min_method</code></td>
+<td>str</td>
+<td>"NEB"</td>
+<td>Path minimization method: "NEB", "FNEB", "MLPGI"</td>
+</tr>
+<tr>
+<td><code>program_kwds</code></td>
+<td>ProgramArgs</td>
+<td>None</td>
+<td>Program-specific arguments</td>
+</tr>
+<tr>
+<td><code>path_min_inputs</code></td>
+<td>dict</td>
+<td>{}</td>
+<td>NEBInputs as dictionary</td>
+</tr>
+<tr>
+<td><code>chain_inputs</code></td>
+<td>dict</td>
+<td>{}</td>
+<td>ChainInputs as dictionary</td>
+</tr>
+<tr>
+<td><code>gi_inputs</code></td>
+<td>dict</td>
+<td>{}</td>
+<td>GIInputs as dictionary</td>
+</tr>
+<tr>
+<td><code>optimizer_kwds</code></td>
+<td>dict</td>
+<td>{"timestep": 0.5}</td>
+<td>Optimizer keyword arguments</td>
+</tr>
+</tbody>
+</table>
+<h3 id="loadingsaving-inputs">Loading/Saving Inputs<a class="headerlink" href="#loadingsaving-inputs" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># Save inputs to TOML file</span>
+<span class="n">ri</span><span class="o">.</span><span class="n">save</span><span class="p">(</span><span class="s2">&quot;my_inputs.toml&quot;</span><span class="p">)</span>
+
+<span class="c1"># Load inputs from TOML file</span>
+<span class="n">ri</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;my_inputs.toml&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="networkinputs">NetworkInputs<a class="headerlink" href="#networkinputs" title="Permanent link">🔗</a></h2>
+<p>Settings for building reaction networks.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">NetworkInputs</span>
+
+<span class="n">ni</span> <span class="o">=</span> <span class="n">NetworkInputs</span><span class="p">(</span>
+    <span class="c1"># Conformer generation</span>
+    <span class="n">n_max_conformers</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>      <span class="c1"># Maximum conformers per endpoint</span>
+    <span class="n">subsample_confs</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>      <span class="c1"># Subsample conformers</span>
+    <span class="n">conf_rmsd_cutoff</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>     <span class="c1"># RMSD cutoff for new conformer (Angstroms)</span>
+
+    <span class="c1"># Network settings</span>
+    <span class="n">network_nodes_are_conformers</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>  <span class="c1"># Each conformer is a node</span>
+    <span class="n">maximum_barrier_height</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span>         <span class="c1"># Max barrier (kcal/mol)</span>
+    <span class="n">tolerate_kinks</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                  <span class="c1"># Include paths with kinks</span>
+
+    <span class="c1"># Computing</span>
+    <span class="n">use_slurm</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>           <span class="c1"># Submit to SLURM queue</span>
+
+    <span class="c1"># CREST settings</span>
+    <span class="n">CREST_temp</span><span class="o">=</span><span class="mf">298.15</span><span class="p">,</span>         <span class="c1"># Temperature (K)</span>
+    <span class="n">CREST_ewin</span><span class="o">=</span><span class="mf">6.0</span><span class="p">,</span>            <span class="c1"># Energy window (kcal/mol)</span>
+<span class="p">)</span>
+</code></pre></div>
+<h2 id="path-minimization-methods">Path Minimization Methods<a class="headerlink" href="#path-minimization-methods" title="Permanent link">🔗</a></h2>
+<h3 id="standard-neb">Standard NEB<a class="headerlink" href="#standard-neb" title="Permanent link">🔗</a></h3>
+<p>The standard Nudged Elastic Band method with spring forces and perpendicular gradients.</p>
+<div class="highlight"><pre><span></span><code><span class="n">nbi</span> <span class="o">=</span> <span class="n">NEBInputs</span><span class="p">()</span>
+</code></pre></div>
+<h3 id="freezing-neb-fneb">Freezing NEB (FNEB)<a class="headerlink" href="#freezing-neb-fneb" title="Permanent link">🔗</a></h3>
+<p>Grow the chain dynamically, freezing images once they converge.</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.inputs</span><span class="w"> </span><span class="kn">import</span> <span class="n">RunInputs</span>
+
+<span class="n">ri</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="p">(</span>
+    <span class="n">path_min_method</span><span class="o">=</span><span class="s2">&quot;FNEB&quot;</span><span class="p">,</span>
+    <span class="n">path_min_inputs</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;max_min_iter&quot;</span><span class="p">:</span> <span class="mi">100</span><span class="p">,</span>
+        <span class="s2">&quot;max_grow_iter&quot;</span><span class="p">:</span> <span class="mi">20</span><span class="p">,</span>
+        <span class="s2">&quot;grad_tol&quot;</span><span class="p">:</span> <span class="mf">0.05</span><span class="p">,</span>
+        <span class="s2">&quot;barrier_thre&quot;</span><span class="p">:</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="p">}</span>
+<span class="p">)</span>
+</code></pre></div>
+<h3 id="mlp-geodesic-mlpgi">MLP Geodesic (MLPGI)<a class="headerlink" href="#mlp-geodesic-mlpgi" title="Permanent link">🔗</a></h3>
+<p>Using machine learning potentials with geodesic interpolation.</p>
+<div class="highlight"><pre><span></span><code><span class="n">ri</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="p">(</span>
+    <span class="n">path_min_method</span><span class="o">=</span><span class="s2">&quot;MLPGI&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
 
 
 
@@ -1034,10 +1440,13 @@
     </div>
     
     
-    <script id="__config" type="application/json">{"base": "..", "features": ["search.suggest", "search.highlight", "navigation.instant", "navigation.expand"], "search": "../assets/javascripts/workers/search.b8dbb3d2.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["search.suggest", "search.highlight", "navigation.instant", "navigation.expand"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
     
     
-      <script src="../assets/javascripts/bundle.fe8b6f2b.min.js"></script>
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
       
     
   </body>

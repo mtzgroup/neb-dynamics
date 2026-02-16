@@ -1,0 +1,1109 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+        <meta name="author" content="Jan Estrada Pabón">
+      
+      
+        <link rel="canonical" href="https://mtzgroup.github.io/neb-dynamics/engines/">
+      
+      
+        <link rel="prev" href="../concepts/">
+      
+      
+        <link rel="next" href="../inputs/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+    
+    
+      
+        <title>Engines - NEB Dynamics Documentation</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="orange">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#electronic-structure-engines" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="NEB Dynamics Documentation" class="md-header__button md-logo" aria-label="NEB Dynamics Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            NEB Dynamics Documentation
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Engines
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="blue" data-md-color-accent="orange"  aria-hidden="true"  type="radio" name="__palette" id="__palette_0">
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/mtzgroup/neb-dynamics" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M202.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M496 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="NEB Dynamics Documentation" class="md-nav__button md-logo" aria-label="NEB Dynamics Documentation" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    NEB Dynamics Documentation
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/mtzgroup/neb-dynamics" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M202.1 328.7c0 20.9-10.9 55.1-36.7 55.1s-36.7-34.2-36.7-55.1 10.9-55.1 36.7-55.1 36.7 34.2 36.7 55.1M496 278.2c0 31.9-3.2 65.7-17.5 95-37.9 76.6-142.1 74.8-216.7 74.8-75.8 0-186.2 2.7-225.6-74.8-14.6-29-20.2-63.1-20.2-95 0-41.9 13.9-81.5 41.5-113.6-5.2-15.8-7.7-32.4-7.7-48.8 0-21.5 4.9-32.3 14.6-51.8 45.3 0 74.3 9 108.8 36 29-6.9 58.8-10 88.7-10 27 0 54.2 2.9 80.4 9.2 34-26.7 63-35.2 107.8-35.2 9.8 19.5 14.6 30.3 14.6 51.8 0 16.4-2.6 32.7-7.7 48.2 27.5 32.4 39 72.3 39 114.2m-64.3 50.5c0-43.9-26.7-82.6-73.5-82.6-18.9 0-37 3.4-56 6-14.9 2.3-29.8 3.2-45.1 3.2-15.2 0-30.1-.9-45.1-3.2-18.7-2.6-37-6-56-6-46.8 0-73.5 38.7-73.5 82.6 0 87.8 80.4 101.3 150.4 101.3h48.2c70.3 0 150.6-13.4 150.6-101.3m-82.6-55.1c-25.8 0-36.7 34.2-36.7 55.1s10.9 55.1 36.7 55.1 36.7-34.2 36.7-55.1-10.9-55.1-36.7-55.1"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Key Concepts
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engines
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Engines
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#available-engines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Engines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chemcloud-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ChemCloud Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qcopengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QCOPEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="QCOPEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-programs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Programs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aseengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ASEEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ASEEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ase-optimizers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ASE Optimizers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#engine-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Engine Interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-with-chains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using with Chains
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-an-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing an Engine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Choosing an Engine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-qcopengine-with-chemcloud-when" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use QCOPEngine with ChemCloud when:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#use-aseengine-when" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use ASEEngine when:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../inputs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Input Parameters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorial
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../about/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#available-engines" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Available Engines
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chemcloud-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ChemCloud Setup
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qcopengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QCOPEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="QCOPEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supported-programs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Programs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aseengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ASEEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ASEEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#basic-usage_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Basic Usage
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ase-optimizers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ASE Optimizers
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#engine-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Engine Interface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#using-with-chains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Using with Chains
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#choosing-an-engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Choosing an Engine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Choosing an Engine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#use-qcopengine-with-chemcloud-when" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use QCOPEngine with ChemCloud when:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#use-aseengine-when" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Use ASEEngine when:
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="electronic-structure-engines">Electronic Structure Engines<a class="headerlink" href="#electronic-structure-engines" title="Permanent link">🔗</a></h1>
+<p>NEB Dynamics supports multiple electronic structure engines through a common interface. Engines handle energy and gradient calculations for molecular structures.</p>
+<h2 id="available-engines">Available Engines<a class="headerlink" href="#available-engines" title="Permanent link">🔗</a></h2>
+<table>
+<thead>
+<tr>
+<th>Engine</th>
+<th>Description</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>QCOPEngine</code></td>
+<td>Uses QCOP to interface with quantum chemistry codes</td>
+<td>Production calculations with ChemCloud, XTB, ORCA, etc.</td>
+</tr>
+<tr>
+<td><code>ASEEngine</code></td>
+<td>Interfaces with ASE calculators</td>
+<td>ML potentials, custom methods</td>
+</tr>
+<tr>
+<td><code>LEPSEngine</code></td>
+<td>Simple LEPS potential</td>
+<td>Testing, model systems</td>
+</tr>
+<tr>
+<td><code>ThreeWellEngine</code></td>
+<td>Three-well potential</td>
+<td>Testing, model systems</td>
+</tr>
+</tbody>
+</table>
+<h2 id="chemcloud-setup">ChemCloud Setup<a class="headerlink" href="#chemcloud-setup" title="Permanent link">🔗</a></h2>
+<p>ChemCloud is the recommended way to run electronic structure calculations. You'll need:</p>
+<ol>
+<li>Sign up at https://chemcloud.mtzlab.com/signup</li>
+<li>Configure authentication (choose one option):</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="c1"># Option 1: Run setup_profile() - writes credentials to ~/.chemcloud/credentials</span>
+python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;from chemcloud import setup_profile; setup_profile()&quot;</span>
+
+<span class="c1"># Option 2: Use environment variables (for memory-only auth)</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">CHEMCLOUD_USERNAME</span><span class="o">=</span>your_email@chemcloud.com
+<span class="nb">export</span><span class="w"> </span><span class="nv">CHEMCLOUD_PASSWORD</span><span class="o">=</span>your_password
+
+<span class="c1"># Option 3: Custom server (if using a different domain)</span>
+<span class="nb">export</span><span class="w"> </span><span class="nv">CHEMCLOUD_DOMAIN</span><span class="o">=</span><span class="s2">&quot;https://your-server-url.com&quot;</span>
+</code></pre></div>
+<h2 id="qcopengine">QCOPEngine<a class="headerlink" href="#qcopengine" title="Permanent link">🔗</a></h2>
+<p>The QCOPEngine interfaces with various quantum chemistry programs through QCOP.</p>
+<h3 id="basic-usage">Basic Usage<a class="headerlink" href="#basic-usage" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.engines.qcop</span><span class="w"> </span><span class="kn">import</span> <span class="n">QCOPEngine</span>
+
+<span class="c1"># Using ChemCloud (recommended)</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">compute_program</span><span class="o">=</span><span class="s2">&quot;chemcloud&quot;</span><span class="p">)</span>
+
+<span class="c1"># Default: uses XTB</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">()</span>
+
+<span class="c1"># Or specify program arguments</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">qcio</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProgramArgs</span>
+
+<span class="n">args</span> <span class="o">=</span> <span class="n">ProgramArgs</span><span class="p">(</span>
+    <span class="n">model</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="s2">&quot;GFN2xTB&quot;</span><span class="p">,</span> <span class="s2">&quot;basis&quot;</span><span class="p">:</span> <span class="s2">&quot;GFN2xTB&quot;</span><span class="p">},</span>
+    <span class="n">keywords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;threads&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">}</span>
+<span class="p">)</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">program_args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span> <span class="n">program</span><span class="o">=</span><span class="s2">&quot;xtb&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="features">Features<a class="headerlink" href="#features" title="Permanent link">🔗</a></h3>
+<ul>
+<li><strong>Geometry Optimization</strong>: <code>eng.compute_geometry_optimization(node)</code></li>
+<li><strong>Energy Calculation</strong>: <code>eng.compute_energies(chain)</code></li>
+<li><strong>Gradient Calculation</strong>: <code>eng.compute_gradients(chain)</code></li>
+<li><strong>Supports external programs</strong>: XTB, ORCA, TeraChem, Psi4, etc.</li>
+</ul>
+<h3 id="supported-programs">Supported Programs<a class="headerlink" href="#supported-programs" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="c1"># ChemCloud (recommended)</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">compute_program</span><span class="o">=</span><span class="s2">&quot;chemcloud&quot;</span><span class="p">)</span>
+
+<span class="c1"># XTB (default, requires local installation)</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">program</span><span class="o">=</span><span class="s2">&quot;xtb&quot;</span><span class="p">)</span>
+
+<span class="c1"># ORCA</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">program</span><span class="o">=</span><span class="s2">&quot;orca&quot;</span><span class="p">)</span>
+
+<span class="c1"># TeraChem</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="aseengine">ASEEngine<a class="headerlink" href="#aseengine" title="Permanent link">🔗</a></h2>
+<p>The ASEEngine interfaces with ASE (Atomic Simulation Environment) calculators, enabling use of machine learning potentials and other methods.</p>
+<h3 id="basic-usage_1">Basic Usage<a class="headerlink" href="#basic-usage_1" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.engines.ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">ASEEngine</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mace.calculators</span><span class="w"> </span><span class="kn">import</span> <span class="n">MACECalculator</span>
+
+<span class="c1"># Load MACE potential</span>
+<span class="n">calc</span> <span class="o">=</span> <span class="n">MACECalculator</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="s2">&quot;mace-medium&quot;</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">ASEEngine</span><span class="p">(</span><span class="n">calculator</span><span class="o">=</span><span class="n">calc</span><span class="p">)</span>
+
+<span class="c1"># Now run NEB as usual</span>
+<span class="n">n</span> <span class="o">=</span> <span class="n">NEB</span><span class="p">(</span><span class="n">initial_chain</span><span class="o">=</span><span class="n">initial_chain</span><span class="p">,</span> <span class="n">parameters</span><span class="o">=</span><span class="n">nbi</span><span class="p">,</span> <span class="n">optimizer</span><span class="o">=</span><span class="n">opt</span><span class="p">,</span> <span class="n">engine</span><span class="o">=</span><span class="n">eng</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="ase-optimizers">ASE Optimizers<a class="headerlink" href="#ase-optimizers" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">neb_dynamics.engines.ase</span><span class="w"> </span><span class="kn">import</span> <span class="n">ASEEngine</span>
+
+<span class="n">eng</span> <span class="o">=</span> <span class="n">ASEEngine</span><span class="p">(</span>
+    <span class="n">calculator</span><span class="o">=</span><span class="n">calc</span><span class="p">,</span>
+    <span class="n">geometry_optimizer</span><span class="o">=</span><span class="s2">&quot;LBFGSLineSearch&quot;</span>  <span class="c1"># Default</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>Available optimizers: <code>LBFGS</code>, <code>BFGS</code>, <code>FIRE</code>, <code>LBFGSLineSearch</code>, <code>MDMin</code></p>
+<h2 id="engine-interface">Engine Interface<a class="headerlink" href="#engine-interface" title="Permanent link">🔗</a></h2>
+<p>All engines implement the following interface:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">Engine</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">compute_gradients</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chain</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Chain</span><span class="p">,</span> <span class="n">List</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute gradients for each node in the chain&quot;&quot;&quot;</span>
+        <span class="o">...</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">compute_energies</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chain</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Chain</span><span class="p">,</span> <span class="n">List</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">NDArray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute energies for each node in the chain&quot;&quot;&quot;</span>
+        <span class="o">...</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">compute_geometry_optimization</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">:</span> <span class="n">Node</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Node</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Optimize a single node geometry&quot;&quot;&quot;</span>
+        <span class="o">...</span>
+</code></pre></div>
+<h2 id="using-with-chains">Using with Chains<a class="headerlink" href="#using-with-chains" title="Permanent link">🔗</a></h2>
+<p>Engines work with Chain objects to compute properties:</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Create engine</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">compute_program</span><span class="o">=</span><span class="s2">&quot;chemcloud&quot;</span><span class="p">)</span>
+
+<span class="c1"># Compute energies (also computes gradients internally)</span>
+<span class="n">energies</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_energies</span><span class="p">(</span><span class="n">chain</span><span class="p">)</span>
+
+<span class="c1"># Compute gradients explicitly</span>
+<span class="n">gradients</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_gradients</span><span class="p">(</span><span class="n">chain</span><span class="p">)</span>
+
+<span class="c1"># Optimize a single structure</span>
+<span class="n">optimized_node</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">start_node</span><span class="p">)</span>
+<span class="n">trajectory</span> <span class="o">=</span> <span class="n">eng</span><span class="o">.</span><span class="n">compute_geometry_optimization</span><span class="p">(</span><span class="n">start_node</span><span class="p">)</span>  <span class="c1"># Returns full trajectory</span>
+<span class="n">final_structure</span> <span class="o">=</span> <span class="n">trajectory</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+</code></pre></div>
+<h2 id="choosing-an-engine">Choosing an Engine<a class="headerlink" href="#choosing-an-engine" title="Permanent link">🔗</a></h2>
+<h3 id="use-qcopengine-with-chemcloud-when">Use QCOPEngine with ChemCloud when:<a class="headerlink" href="#use-qcopengine-with-chemcloud-when" title="Permanent link">🔗</a></h3>
+<ul>
+<li>Running production calculations</li>
+<li>Don't want to install local quantum chemistry software</li>
+<li>Need reliable cloud computing</li>
+</ul>
+<h3 id="use-aseengine-when">Use ASEEngine when:<a class="headerlink" href="#use-aseengine-when" title="Permanent link">🔗</a></h3>
+<ul>
+<li>Using machine learning potentials (MACE, NequIP, etc.)</li>
+<li>Need custom ASE calculators</li>
+<li>Have GPU access for ML potentials</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["search.suggest", "search.highlight", "navigation.instant", "navigation.expand"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
