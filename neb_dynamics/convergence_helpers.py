@@ -4,6 +4,40 @@ from typing import Tuple
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import NEBInputs
 
+# Try to use rich for pretty printing, fall back to regular print
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich import box
+    _console = Console()
+    _rich_available = True
+except ImportError:
+    _console = None
+    _rich_available = False
+
+# Try to use rich for pretty printing
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.text import Text
+    _rich_available = True
+    _console = Console()
+except ImportError:
+    _rich_available = False
+    _console = None
+
+# Rich imports for pretty printing
+try:
+    from rich.console import Console
+    from rich.table import Table
+    from rich.text import Text
+
+    _console = Console()
+    _rich_available = True
+except ImportError:
+    _console = None
+    _rich_available = False
+
 
 def _check_en_converged(energies_prev: NDArray, energies_new: NDArray, threshold: float) -> Tuple[NDArray, NDArray]:
     differences = np.abs(energies_new - energies_prev)
@@ -72,7 +106,6 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
     gperps = chain_new.gperps
     if chain_new.parameters.frozen_atom_indices:
         not_frozen_atoms = list(set(list(range(len(grad)))) - set(chain_new.parameters.frozen_atom_indices))
-        print(not_frozen_atoms)
         grad = [g[not_frozen_atoms] for g in grad]
         springgrads = [g[not_frozen_atoms] for g in springgrads]
         gperps = [g[not_frozen_atoms] for g in gperps]
@@ -111,7 +144,10 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
         chain_prev=chain_prev, chain_new=chain_new, threshold=parameters.barrier_thre)
     ind_ts_guess = np.argmax(chain_new.energies)
     if ind_ts_guess == 0 or ind_ts_guess == len(chain_new)-1:
-        print("Warning: TS guess is at the end of the chain. This might indicate a problem with the initial guess.")
+        if _rich_available:
+            _console.print("[yellow]⚠ Warning: TS guess is at the end of the chain. This might indicate a problem with the initial guess.[/yellow]")
+        else:
+            print("Warning: TS guess is at the end of the chain. This might indicate a problem with the initial guess.")
         ts_guess_grad = 0
     else:
         ts_guess_grad = np.amax(np.abs(gperps[ind_ts_guess]))
@@ -125,7 +161,34 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
 
     CRITERIA_NAMES = ["MAX(RMS_GPERP)", "MEAN(RMS_GPERP)",
                       "TS_GRAD", "TS_SPRING", "INFNORM_SPRING", "BARRIER_HEIGHT"]
-    print(f"\n{list(zip(CRITERIA_NAMES, criteria_converged))}\n")
+
+    # Print convergence criteria as a nice table
+    if _rich_available:
+        table = Table(title="[bold]Convergence Criteria[/bold]", box=box.ROUNDED)
+        table.add_column("Criterion", style="cyan", no_wrap=True)
+        table.add_column("Status", justify="center")
+        table.add_column("Threshold", style="dim")
+
+        for name, converged in zip(CRITERIA_NAMES, criteria_converged):
+            status = "[bold green]✓[/bold green]" if converged else "[bold red]✗[/bold red]"
+            # Get threshold value for display
+            if name == "MAX(RMS_GPERP)":
+                thresh = f"{parameters.max_rms_grad_thre}"
+            elif name == "MEAN(RMS_GPERP)":
+                thresh = f"{parameters.rms_grad_thre}"
+            elif name == "TS_GRAD":
+                thresh = f"{parameters.ts_grad_thre}"
+            elif name == "TS_SPRING":
+                thresh = f"{parameters.ts_spring_thre}"
+            elif name == "INFNORM_SPRING":
+                thresh = f"{parameters.ts_spring_thre}"
+            else:
+                thresh = f"{parameters.barrier_thre}"
+            table.add_row(name, status, thresh)
+
+        _console.print(table)
+    else:
+        print(f"\n{list(zip(CRITERIA_NAMES, criteria_converged))}\n")
 
     converged = sum(criteria_converged) == len(criteria_converged)
 

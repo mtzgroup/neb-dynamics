@@ -28,6 +28,7 @@ dependencies = [
     "qcio[view]>=0.14.0",
     "qcop[qcengine]==0.12.1",
     "rdkit>=2025.3.6",
+    "rich>=13.0.0",
     "scipy>=1.15.3",
     "timeout-timer>=0.2.0",
     "tomli>=2.2.1",

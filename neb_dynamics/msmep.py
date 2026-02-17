@@ -23,6 +23,7 @@ from qcio import Structure
 
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
 from neb_dynamics.inputs import RunInputs
+from neb_dynamics.scripts.progress import print_neb_step
 
 import traceback
 import copy
@@ -421,12 +422,15 @@ class MSMEP:
             ts_guess_grad = np.amax(
                 np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
 
-            print(
-                f"step {nsteps} // argmax(|TS gperp|) {np.amax(np.abs(ts_guess_grad))} // \
-                    max rms grad {max_rms_grad_val} // armax(|TS_triplet_gsprings|) \
-                        {new_chain.ts_triplet_gspring_infnorm} // \
-                            temperature={np.linalg.norm(new_chain.velocity)}//{' '*20}",
-                end="\r",
+            print_neb_step(
+                step=nsteps,
+                ts_grad=np.amax(np.abs(ts_guess_grad)),
+                max_rms_grad=max_rms_grad_val,
+                ts_triplet_gspring=new_chain.ts_triplet_gspring_infnorm,
+                nodes_frozen=0,
+                timestep=np.linalg.norm(new_chain.velocity),
+                grad_corr="",
+                force_update=True
             )
             chain_trajectory.append(new_chain)
             nsteps += 1

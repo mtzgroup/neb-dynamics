@@ -13,6 +13,17 @@ import numpy as np
 from neb_dynamics.engines import Engine
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, is_identical
 
+# Rich imports for flashy CLI output
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+    _console = Console()
+    _rich_available = True
+except ImportError:
+    _console = None
+    _rich_available = False
+
 
 SLOPE_THRESH = 0.1
 # SLOPE_THRESH = 20
@@ -65,11 +76,25 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     Returns:
         ElemStepResults: object containing report on chain.
     """
-    print("Checking if chain is elementary step...")
+    if _rich_available:
+        _console.print(Panel.fit(
+            "[bold cyan]🔍 Checking if chain is elementary step...[/bold cyan]",
+            border_style="cyan",
+            expand=False
+        ))
+    else:
+        print("Checking if chain is elementary step...")
     n_geom_opt_grad_calls = 0
     chain = inp_chain.copy()
     if len(inp_chain) <= 1:
-        print("Chain has 1 or fewer nodes, automatically elementary step.")
+        if _rich_available:
+            _console.print(Panel.fit(
+                "[bold green]✓ Chain has 1 or fewer nodes, automatically elementary step[/bold green]",
+                border_style="green",
+                expand=False
+            ))
+        else:
+            print("Chain has 1 or fewer nodes, automatically elementary step.")
         return ElemStepResults(
             is_elem_step=True,
             is_concave=True,
@@ -93,7 +118,15 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     crude_irc_passed, ngc_approx_elem_step = is_approx_elem_step(
         chain=inp_chain, engine=engine
     )
-    print("CrudeIRC: ", crude_irc_passed)
+    if _rich_available:
+        status = "[bold green]✓ Passed[/bold green]" if crude_irc_passed else "[bold red]✗ Failed[/bold red]"
+        _console.print(Panel.fit(
+            f"[bold]CrudeIRC:[/bold] {status}",
+            border_style="green" if crude_irc_passed else "red",
+            expand=False
+        ))
+    else:
+        print("CrudeIRC: ", crude_irc_passed)
     n_geom_opt_grad_calls += ngc_approx_elem_step
 
     if crude_irc_passed:
@@ -108,7 +141,14 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     pseu_irc_results = pseudo_irc(chain=inp_chain, engine=engine)
     n_geom_opt_grad_calls += pseu_irc_results.number_grad_calls
 
-    print("Comparing alleged reactant minimum to actual reactant...")
+    if _rich_available:
+        _console.print(Panel.fit(
+            "[bold yellow]⚖ Comparing alleged reactant minimum to actual reactant...[/bold yellow]",
+            border_style="yellow",
+            expand=False
+        ))
+    else:
+        print("Comparing alleged reactant minimum to actual reactant...")
     found_r = is_identical(
         pseu_irc_results.found_reactant,
         chain[0],
@@ -116,7 +156,14 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
         kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
     )
 
-    print("Comparing alleged product minimum to actual product...")
+    if _rich_available:
+        _console.print(Panel.fit(
+            "[bold yellow]⚖ Comparing alleged product minimum to actual product...[/bold yellow]",
+            border_style="yellow",
+            expand=False
+        ))
+    else:
+        print("Comparing alleged product minimum to actual product...")
     found_p = is_identical(
         pseu_irc_results.found_product,
         chain[-1],
@@ -124,7 +171,14 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
         kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
     )
 
-    print("Checking if alleged product minimum is actually reactant...")
+    if _rich_available:
+        _console.print(Panel.fit(
+            "[bold yellow]⚖ Checking if alleged product minimum is actually reactant...[/bold yellow]",
+            border_style="yellow",
+            expand=False
+        ))
+    else:
+        print("Checking if alleged product minimum is actually reactant...")
     p_is_r = is_identical(
         pseu_irc_results.found_product,
         chain[0],
@@ -132,7 +186,14 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
         kcal_mol_cutoff=inp_chain.parameters.node_ene_thre,
     )
 
-    print("Checking if alleged reactant minimum is actually product...")
+    if _rich_available:
+        _console.print(Panel.fit(
+            "[bold yellow]⚖ Checking if alleged reactant minimum is actually product...[/bold yellow]",
+            border_style="yellow",
+            expand=False
+        ))
+    else:
+        print("Checking if alleged reactant minimum is actually product...")
     r_is_p = is_identical(
         pseu_irc_results.found_reactant,
         chain[-1],
@@ -143,10 +204,24 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine) -> ElemStepResults:
     if found_r and found_p:
         minimizing_gives_endpoints = True
     elif found_r and p_is_r:
-        print("Warning! Both geometries converged to reactant.")
+        if _rich_available:
+            _console.print(Panel.fit(
+                "[bold yellow]⚠ Warning! Both geometries converged to reactant.[/bold yellow]",
+                border_style="yellow",
+                expand=False
+            ))
+        else:
+            print("Warning! Both geometries converged to reactant.")
         minimizing_gives_endpoints = True
     elif found_p and r_is_p:
-        print("Warning! Both geometries converged to product.")
+        if _rich_available:
+            _console.print(Panel.fit(
+                "[bold yellow]⚠ Warning! Both geometries converged to product.[/bold yellow]",
+                border_style="yellow",
+                expand=False
+            ))
+        else:
+            print("Warning! Both geometries converged to product.")
         minimizing_gives_endpoints = True
     else:
         minimizing_gives_endpoints = False
@@ -213,7 +288,14 @@ def is_approx_elem_step(
     chain_for_opt = chain.copy()
 
     if hasattr(engine, "compute_program") and engine.compute_program.lower() == "chemcloud":
-        print("Chemcloud detected, skipping approx elem step check.")
+        if _rich_available:
+            _console.print(Panel.fit(
+                "[bold blue]☁ Chemcloud detected, skipping approx elem step check[/bold blue]",
+                border_style="blue",
+                expand=False
+            ))
+        else:
+            print("Chemcloud detected, skipping approx elem step check.")
         return False, 0
 
     try:
@@ -278,8 +360,15 @@ def _converges_to_an_endpoints(
     """
     done = False
     total_traj = [chain[node_index]]
-    print("Checking if node", node_index, "converges to endpoint", "reactant" if direction ==
-          -1 else "product", "...")
+    endpoint = "reactant" if direction == -1 else "product"
+    if _rich_available:
+        _console.print(Panel.fit(
+            f"[bold yellow]⚙ Checking if node {node_index} converges to endpoint {endpoint}...[/bold yellow]",
+            border_style="yellow",
+            expand=False
+        ))
+    else:
+        print("Checking if node", node_index, "converges to endpoint", endpoint, "...")
     while not done:
         try:
             traj = engine.steepest_descent(node=total_traj[-1], max_steps=5)
@@ -319,11 +408,27 @@ def _converges_to_an_endpoints(
 
     if direction == -1:
         converged_to_reactant = slopes_to_ref1 < 0 and slopes_to_ref2 > 0
-        print("Converged to reactant:", converged_to_reactant)
+        if _rich_available:
+            status = "[bold green]✓ Yes[/bold green]" if converged_to_reactant else "[bold red]✗ No[/bold red]"
+            _console.print(Panel.fit(
+                f"[bold]Converged to reactant:[/bold] {status}",
+                border_style="green" if converged_to_reactant else "red",
+                expand=False
+            ))
+        else:
+            print("Converged to reactant:", converged_to_reactant)
         return converged_to_reactant, total_traj
     elif direction == 1:
         converged_to_product = slopes_to_ref1 > 0 and slopes_to_ref2 < 0
-        print("Converged to product:", converged_to_product)
+        if _rich_available:
+            status = "[bold green]✓ Yes[/bold green]" if converged_to_product else "[bold red]✗ No[/bold red]"
+            _console.print(Panel.fit(
+                f"[bold]Converged to product:[/bold] {status}",
+                border_style="green" if converged_to_product else "red",
+                expand=False
+            ))
+        else:
+            print("Converged to product:", converged_to_product)
         return converged_to_product, total_traj
 
 
@@ -363,11 +468,25 @@ def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH)
     will assess+categorize the presence of minima on the chain.
     """
     import neb_dynamics.chainhelpers as ch
-    print("Checking if chain has intermediate minima...")
+    if _rich_available:
+        _console.print(Panel.fit(
+            "[bold cyan]🔍 Checking if chain has intermediate minima...[/bold cyan]",
+            border_style="cyan",
+            expand=False
+        ))
+    else:
+        print("Checking if chain has intermediate minima...")
 
     n_grad_calls = 0
     ind_minima = ch._get_ind_minima(chain=chain)
-    print(f"\tFound {len(ind_minima)} minima on chain.")
+    if _rich_available:
+        _console.print(Panel.fit(
+            f"[bold green]✓ Found {len(ind_minima)} minima on chain[/bold green]",
+            border_style="green",
+            expand=False
+        ))
+    else:
+        print(f"\tFound {len(ind_minima)} minima on chain.")
     minima_present = len(ind_minima) != 0
     opt_results = []
     if minima_present:
@@ -399,7 +518,14 @@ def _chain_is_concave(chain: Chain, engine: Engine, min_slope_thre=SLOPE_THRESH)
 
                     done = slope1_conv and slope2_conv
                 else:
-                    print("\tSkipping concavity check for chemcloud, not minimizing apparent minima, assuming it's real.")
+                    if _rich_available:
+                        _console.print(Panel.fit(
+                            "[bold blue]☁ Skipping concavity check for chemcloud[/bold blue]\n[dim]Not minimizing apparent minima, assuming it's real[/dim]",
+                            border_style="blue",
+                            expand=False
+                        ))
+                    else:
+                        print("\tSkipping concavity check for chemcloud, not minimizing apparent minima, assuming it's real.")
                     done = False  # chemcloud cannot do the crude irc check
                     kinked_chain = False
 

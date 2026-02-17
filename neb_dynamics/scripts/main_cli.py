@@ -11,6 +11,28 @@ import sys
 from pathlib import Path
 import time
 import traceback
+from datetime import datetime
+
+from rich.console import Console
+from rich.theme import Theme
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TimeElapsedColumn
+from rich.status import Status
+from rich.table import Table
+from rich.box import Box
+from rich.text import Text
+from rich.syntax import Syntax
+from rich import box
+
+# Custom theme for Claude Code-like styling
+custom_theme = Theme({
+    "info": "cyan",
+    "warning": "yellow",
+    "error": "bold red",
+    "success": "bold green",
+    "header": "bold magenta",
+    "dim": "dim",
+})
 
 from neb_dynamics.inputs import RunInputs
 from neb_dynamics.nodes.node import StructureNode
@@ -40,10 +62,51 @@ logging.getLogger().addFilter(_SuppressWarningFilter())
 ob_log_handler = openbabel.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
 
-app = typer.Typer()
+app = typer.Typer(
+    rich_markup_mode="rich"
+)
+
+# CLI Banner
+BANNER = """
+[bold magenta]╔═══════════════════════════════════════════════════════════════╗
+║                                                               ║
+║   [bold cyan]NEB[/bold cyan] [bold white]-[/bold white] [bold cyan]Dynamics[/bold cyan]                                                   ║
+║   [dim]Reaction Path Optimization & Network Generation[/dim]        ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝[/bold magenta]
+"""
 
 
-@app.command()
+def print_banner():
+    """Print the CLI banner."""
+    console.print(BANNER)
+
+
+# Global console instance for consistent styling
+console = Console(theme=custom_theme)
+
+
+@app.callback(invoke_without_command=True)
+def callback(ctx: typer.Context):
+    """Show banner before running any command."""
+    if ctx.invoked_subcommand is None:
+        print_banner()
+
+
+def create_progress():
+    """Create a rich progress bar for long-running tasks."""
+    return Progress(
+        SpinnerColumn(style="cyan"),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=40),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    )
+
+
+@app.command("run")
 def run(
         start: Annotated[str, typer.Option(
             help='path to start file, or a reactant smiles')] = None,
@@ -67,85 +130,86 @@ def run(
         use_bigchem: Annotated[bool, typer.Option(
             help='whether to use chemcloud to compute hessian for ts opt and irc jobs')] = False):
 
+    # Print header
+    console.print(BANNER)
+
+    table = Table(box=None, show_header=False)
+    table.add_column(style="dim")
+    table.add_row("[bold cyan]Command:[/bold cyan]", "[white]run[/white]")
+    table.add_row("[bold cyan]Method:[/bold cyan]", f"[yellow]{'recursive' if recursive else 'regular'}[/yellow]")
+    table.add_row("[bold cyan]SMILES mode:[/bold cyan]", f"[yellow]{use_smiles}[/yellow]")
+    console.print(table)
+    console.print()
+
     start_time = time.time()
     # load the structures
     if use_smiles:
         from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
         from neb_dynamics.arbalign import align_structures
 
-        print(
-            "WARNING: Using RXNMapper to create atomic mapping. Carefully check output to see how labels\
-                 affected reaction path."
-        )
-        start_structure, end_structure = create_pairs_from_smiles(
-            smi1=start, smi2=end)
+        console.print("[yellow]⚠ WARNING:[/yellow] Using RXNMapper to create atomic mapping. Carefully check output to see how labels affected reaction path.")
+        with console.status("[bold cyan]Creating structures from SMILES...[/bold cyan]") as status:
+            start_structure, end_structure = create_pairs_from_smiles(
+                smi1=start, smi2=end)
 
-        print("Using arbalign to optimize index labelling for endpoints")
-        end_structure = align_structures(
-            start_structure, end_structure, distance_metric='RMSD')
+            console.print("[cyan]Using arbalign to optimize index labelling for endpoints[/cyan]")
+            end_structure = align_structures(
+                start_structure, end_structure, distance_metric='RMSD')
 
         all_structs = [start_structure, end_structure]
     else:
 
         if geometries is not None:
-            try:
-                all_structs = read_multiple_structure_from_file(
-                    geometries, charge=charge, spinmult=multiplicity)
-            except ValueError:  # qcio does not allow an input for charge if file has a charge in it
-                all_structs = read_multiple_structure_from_file(
-                    geometries, charge=None, spinmult=None)
+            with console.status(f"[bold cyan]Loading geometries from {geometries}...[/bold cyan]"):
+                try:
+                    all_structs = read_multiple_structure_from_file(
+                        geometries, charge=charge, spinmult=multiplicity)
+                except ValueError:  # qcio does not allow an input for charge if file has a charge in it
+                    all_structs = read_multiple_structure_from_file(
+                        geometries, charge=None, spinmult=None)
         elif start is not None and end is not None:
-            # try:
-            print("CHARGE", charge)
-            print("MULTIPLICITY", multiplicity)
+            with console.status(f"[bold cyan]Loading structures...[/bold cyan]"):
+                console.print(f"[dim]Charge: {charge}, Multiplicity: {multiplicity}[/dim]")
 
-            start_ref = Structure.open(start)
-            end_ref = Structure.open(end)
+                start_ref = Structure.open(start)
+                end_ref = Structure.open(end)
 
-            if start_ref.charge != charge or start_ref.multiplicity != multiplicity:
-                print(
-                    f"WARNING: {start} has charge {start_ref.charge} and multiplicity {start_ref.multiplicity}.\
-                        Using {charge} and {multiplicity} instead."
-                )
-                start_ref = Structure(geometry=start_ref.geometry,
-                                      charge=charge,
-                                      multiplicity=multiplicity,
-                                      symbols=start_ref.symbols)
-            if end_ref.charge != charge or end_ref.multiplicity != multiplicity:
-                print(
-                    f"WARNING: {end} has charge {end_ref.charge} and multiplicity {end_ref.multiplicity}.\
-                        Using {charge} and {multiplicity} instead."
-                )
-                end_ref = Structure(geometry=end_ref.geometry,
-                                    charge=charge,
-                                    multiplicity=multiplicity,
-                                    symbols=end_ref.symbols)
+                if start_ref.charge != charge or start_ref.multiplicity != multiplicity:
+                    console.print(
+                        f"[yellow]⚠ WARNING:[/yellow] {start} has charge {start_ref.charge} and multiplicity {start_ref.multiplicity}. Using {charge} and {multiplicity} instead."
+                    )
+                    start_ref = Structure(geometry=start_ref.geometry,
+                                          charge=charge,
+                                          multiplicity=multiplicity,
+                                          symbols=start_ref.symbols)
+                if end_ref.charge != charge or end_ref.multiplicity != multiplicity:
+                    console.print(
+                        f"[yellow]⚠ WARNING:[/yellow] {end} has charge {end_ref.charge} and multiplicity {end_ref.multiplicity}. Using {charge} and {multiplicity} instead."
+                    )
+                    end_ref = Structure(geometry=end_ref.geometry,
+                                        charge=charge,
+                                        multiplicity=multiplicity,
+                                        symbols=end_ref.symbols)
 
-            all_structs = [start_ref, end_ref]
-
-            print(type(start_ref.charge), end_ref.charge)
-            # except ValueError:
-            #     start_structure = Structure.open(
-            #         start, charge=None, multiplicity=None)
-            #     end_structure = Structure.open(
-            #         end, charge=None, multiplicity=None)
-            #     all_structs = [start_structure, end_structure]
+                all_structs = [start_ref, end_ref]
         else:
-            raise ValueError(
-                "Either 'geometries' or 'start' and 'end' flags must be populated!")
+            console.print("[bold red]✗ ERROR:[/bold red] Either 'geometries' or 'start' and 'end' flags must be populated!")
+            raise typer.Exit(1)
 
     # load the RunInputs
-    if inputs is not None:
-        program_input = RunInputs.open(inputs)
-    else:
-        program_input = RunInputs(program='xtb', engine_name='qcop')
-    print(program_input)
+    with console.status("[bold cyan]Loading input parameters...[/bold cyan]"):
+        if inputs is not None:
+            program_input = RunInputs.open(inputs)
+        else:
+            program_input = RunInputs(program='xtb', engine_name='qcop')
+
+    console.print(Panel(str(program_input), title="[bold cyan]Input Parameters[/bold cyan]", border_style="cyan", box=box.ROUNDED))
     sys.stdout.flush()
 
     # minimize endpoints if requested
     all_nodes = [StructureNode(structure=s) for s in all_structs]
     if minimize_ends:
-        print("Minimizing input endpoints...")
+        console.print("[bold cyan]⟳ Minimizing input endpoints...[/bold cyan]")
         start_tr = program_input.engine.compute_geometry_optimization(
             all_nodes[0], keywords={'coordsys': 'cart', 'maxiter':500})
 
@@ -153,10 +217,10 @@ def run(
         end_tr = program_input.engine.compute_geometry_optimization(
             all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter':500})
         all_nodes[-1] = end_tr[-1]
-        print("Done!")
+        console.print("[bold green]✓ Done![/bold green]")
 
     # create Chain
-    print('nodes!', [node.structure.charge for node in all_nodes])
+    console.print(f"[dim]Loading {len(all_nodes)} nodes...[/dim]")
     chain = Chain.model_validate({
         "nodes": all_nodes,
         "parameters": program_input.chain_inputs}
@@ -169,13 +233,12 @@ def run(
 
     if recursive:
         program_input.path_min_inputs.do_elem_step_checks = True
-        print(f"RUNNING AUTOSPLITTING {program_input.path_min_method}")
+        console.print(f"[bold magenta]▶ RUNNING AUTOSPLITTING {program_input.path_min_method}[/bold magenta]")
         history = m.run_recursive_minimize(chain)
 
         if not history.data:
-            print("!!!ERROR: Program did not run. Likely because your endpoints are conformers of the same molecular graph. Tighten " \
-            "the node_rms_thre and/or node_ene_thre parameters in chain_inputs and try again.")
-            sys.exit()
+            console.print("[bold red]✗ ERROR:[/bold red] Program did not run. Likely because your endpoints are conformers of the same molecular graph. Tighten the node_rms_thre and/or node_ene_thre parameters in chain_inputs and try again.")
+            raise typer.Exit(1)
 
         leaves_nebs = [
             obj for obj in history.get_optimization_history() if obj]
@@ -199,7 +262,7 @@ def run(
             for i, leaf in enumerate(history.ordered_leaves):
                 if not leaf.data:
                     continue
-                print(f"Running TS opt on leaf {i}")
+                console.print(f"[bold cyan]⟳ Running TS opt on leaf {i}...[/bold cyan]")
                 try:
                     tsres = program_input.engine._compute_ts_result(
                         leaf.data.chain_trajectory[-1].get_ts_node())
@@ -217,23 +280,20 @@ def run(
                                 filename.stem+f"_tsres_{i}_IRC.xyz")
 
                         except Exception:
-                            print(traceback.format_exc())
-                            print("IRC failed. Continuing...")
+                            console.print(f"[yellow]⚠ IRC failed: {traceback.format_exc()}[/yellow]")
+                            console.print("[yellow]IRC failed. Continuing...[/yellow]")
                 else:
-                    print("TS optimization did not converge...")
+                    console.print(f"[yellow]⚠ TS optimization did not converge on leaf {i}...[/yellow]")
 
         tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
         geom_grad_calls = sum(
             [obj.geom_grad_calls_made for obj in leaves_nebs])
-        print(f">>> Made {tot_grad_calls} gradient calls total.")
-        print(
-            f"<<< Made {geom_grad_calls} gradient for geometry\
-               optimizations."
-        )
+        console.print(f"[bold green]✓[/bold green] [cyan]Made {tot_grad_calls} gradient calls total.[/cyan]")
+        console.print(
+            f"[bold green]✓[/bold green] [cyan]Made {geom_grad_calls} gradient for geometry optimizations.[/cyan]")
 
     else:
-        print(f"RUNNING REGULAR {program_input.path_min_method}")
-        [print(node.structure.charge) for node in chain]
+        console.print(f"[bold magenta]▶ RUNNING REGULAR {program_input.path_min_method}[/bold magenta]")
         n, elem_step_results = m.run_minimize_chain(input_chain=chain)
         fp = Path("mep_output")
         data_dir = Path(os.getcwd())
@@ -247,7 +307,7 @@ def run(
         n.write_to_disk(filename)
 
         if use_tsopt:
-            print("Running TS opt")
+            console.print("[bold cyan]⟳ Running TS opt...[/bold cyan]")
             try:
                 tsres = program_input.engine._compute_ts_result(
                     n.chain_trajectory[-1].get_ts_node())
@@ -266,21 +326,33 @@ def run(
                             filename.stem+"_tsres_IRC.xyz")
 
                     except Exception:
-                        print(traceback.format_exc())
-                        print("IRC failed. Continuing...")
+                        console.print(f"[yellow]⚠ IRC failed: {traceback.format_exc()}[/yellow]")
+                        console.print("[yellow]IRC failed. Continuing...[/yellow]")
 
             else:
-                print("TS optimization failed.")
+                console.print("[yellow]⚠ TS optimization failed.[/yellow]")
 
         tot_grad_calls = n.grad_calls_made
-        print(f">>> Made {tot_grad_calls} gradient calls total.")
+        console.print(f"[bold green]✓[/bold green] [cyan]Made {tot_grad_calls} gradient calls total.[/cyan]")
 
-    print(f"***Walltime: {end_time - start_time} s")
+    end_time = time.time()
+    elapsed = end_time - start_time
+
+    # Print summary panel
+    summary = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    summary.add_column(style="bold cyan")
+    summary.add_column(style="white")
+    if elapsed > 60:
+        summary.add_row("⏱ Walltime:", f"[yellow]{elapsed/60:.1f} min[/yellow]")
+    else:
+        summary.add_row("⏱ Walltime:", f"[yellow]{elapsed:.1f} s[/yellow]")
+    summary.add_row("📁 Output:", f"[cyan]{filename}[/cyan]")
+    console.print(Panel(summary, title="[bold green]✓ Complete![/bold green]", border_style="green"))
 
 
-@app.command()
+@app.command("ts")
 def ts(
-    geometry: Annotated[str, typer.Argument(help='path to geometry file tpo optimize')],
+    geometry: Annotated[str, typer.Argument(help='path to geometry file to optimize')],
     inputs: Annotated[str, typer.Option("--inputs", "-i",
                                         help='path to RunInputs toml file')] = None,
     name: str = None,
@@ -288,6 +360,8 @@ def ts(
     multiplicity: int = 1,
     bigchem: bool = False
 ):
+    console.print(BANNER)
+
     # create output names
     fp = Path(geometry)
     data_dir = Path(os.getcwd())
@@ -305,34 +379,38 @@ def ts(
     else:
         program_input = RunInputs(program='xtb', engine_name='qcop')
 
-    print(f"Optimizing: {geometry}...")
-    sys.stdout.flush()
-    try:
-        struct = Structure.open(geometry)
-        s_dict = struct.model_dump()
-        s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
-        struct = Structure(**s_dict)
+    with console.status(f"[bold cyan]Optimizing transition state: {geometry}...[/bold cyan]") as status:
+        sys.stdout.flush()
+        try:
+            struct = Structure.open(geometry)
+            s_dict = struct.model_dump()
+            s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
+            struct = Structure(**s_dict)
 
-        node = StructureNode(structure=struct)
-        output = program_input.engine._compute_ts_result(
-            node=node, use_bigchem=bigchem)
+            node = StructureNode(structure=struct)
+            output = program_input.engine._compute_ts_result(
+                node=node, use_bigchem=bigchem)
 
-    except Exception as e:
-        output = e.program_output
+        except Exception as e:
+            output = e.program_output
 
     output.save(results_name)
     output.results.final_structure.save(filename)
-    print("Done!")
+    console.print(f"[bold green]✓ TS optimization complete![/bold green]")
+    console.print(f"[dim]Results: {results_name}[/dim]")
+    console.print(f"[dim]Geometry: {filename}[/dim]")
 
 
-@app.command()
-def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file tpo optimize')],
+@app.command("pseuirc")
+def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file to optimize')],
             inputs: Annotated[str, typer.Option("--inputs", "-i",
                                                 help='path to RunInputs toml file')] = None,
             name: str = None,
             charge: int = 0,
             multiplicity: int = 1,
             dr: float = 1.0):
+    console.print(BANNER)
+
     # create output names
     fp = Path(geometry)
     data_dir = Path(os.getcwd())
@@ -348,24 +426,23 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
     else:
         program_input = RunInputs(program='xtb', engine_name='qcop')
 
-    print(f"Computing hessian: {geometry}...")
+    with console.status(f"[bold cyan]Computing hessian...[/bold cyan]"):
+        sys.stdout.flush()
+        try:
+            struct = Structure.open(geometry)
+            s_dict = struct.model_dump()
+            s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
+            struct = Structure(**s_dict)
 
-    sys.stdout.flush()
-    try:
-        struct = Structure.open(geometry)
-        s_dict = struct.model_dump()
-        s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
-        struct = Structure(**s_dict)
+            node = StructureNode(structure=struct)
+            hessres = program_input.engine._compute_hessian_result(node)
 
-        node = StructureNode(structure=struct)
-        hessres = program_input.engine._compute_hessian_result(node)
-
-    except Exception as e:
-        hessres = e.program_output
+        except Exception as e:
+            hessres = e.program_output
 
     hessres.save(results_name.parent / (results_name.stem+"_hessian.qcio"))
 
-    print(f"Minimizing TS(-): {geometry}...")
+    console.print("[bold cyan]⟳ Minimizing TS(-)...[/bold cyan]")
     sys.stdout.flush()
     tsminus_raw = displace_by_dr(
         node=node, displacement=hessres.results.normal_modes_cartesian[0], dr=-dr)
@@ -373,7 +450,7 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
         tsminus_raw)
     tsminus_res.save(results_name.parent / (results_name.stem+"_minus.qcio"))
 
-    print(f"Minimizing TS(+): {geometry}...")
+    console.print("[bold cyan]⟳ Minimizing TS(+)...[/bold cyan]")
     sys.stdout.flush()
     tsplus_raw = displace_by_dr(
         node=node, displacement=hessres.results.normal_modes_cartesian[0], dr=dr)
@@ -381,44 +458,48 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
         tsplus_raw)
 
     tsplus_res.save(results_name.parent / (results_name.stem+"_plus.qcio"))
-    print("Done!")
+    console.print(f"[bold green]✓ Pseudo-IRC complete![/bold green]")
 
 
-@app.command()
+@app.command("make-netgen-path")
 def make_netgen_path(
-    name: Annotated[Path, typer.Option("--name", help='path to json file containing network objet')],
+    name: Annotated[Path, typer.Option("--name", help='path to json file containing network object')],
     inds: Annotated[List[int], typer.Option("--inds", help="sequence of node indices on network \
                                                                to create path for.")]):
+    console.print(BANNER)
     name = Path(name)
     assert name.exists(), f"{name.resolve()} does not exist."
     pot = Pot.read_from_disk(name)
     if len(inds) > 2:
         p = inds
     else:
-        print("Computing shortest path weighed by barrier heights")
+        console.print("[cyan]Computing shortest path weighed by barrier heights[/cyan]")
         p = nx.shortest_path(pot.graph, weight='barrier',
                              source=inds[0], target=inds[1])
-    print(f"Path: {p}")
+    console.print(f"[green]✓ Path:[/green] {p}")
     chain = pot.path_to_chain(path=p)
     chain.write_to_disk(
         name.parent / f"path_{'-'.join([str(a) for a in inds])}.xyz")
+    console.print(f"[bold green]✓ Path written to disk![/bold green]")
 
 
-@app.command()
+@app.command("make-default-inputs")
 def make_default_inputs(
         name: Annotated[str, typer.Option(
             "--name", help='path to output toml file')] = None,
         path_min_method: Annotated[str, typer.Option("--path-min-method", "-pmm",
                                                      help='name of path minimization.\
                                                           Options are: [neb, fneb]')] = "neb"):
+    console.print(BANNER)
     if name is None:
         name = Path(Path(os.getcwd()) / 'default_inputs')
     ri = RunInputs(path_min_method=path_min_method)
     out = Path(name)
     ri.save(out.parent / (out.stem+".toml"))
+    console.print(f"[bold green]✓ Default inputs saved to:[/bold green] {out.parent / (out.stem+'.toml')}")
 
 
-@app.command()
+@app.command("run-netgen")
 def run_netgen(
         start: Annotated[str, typer.Option(
             help='path to start conformers data')] = None,
@@ -436,21 +517,25 @@ def run_netgen(
 
 
 ):
+    console.print(BANNER)
+
     start_time = time.time()
 
     # load the RunInputs
-    if inputs is not None:
-        program_input = RunInputs.open(inputs)
-    else:
-        program_input = RunInputs(program='xtb', engine_name='qcop')
-    print(program_input)
+    with console.status("[bold cyan]Loading input parameters...[/bold cyan]"):
+        if inputs is not None:
+            program_input = RunInputs.open(inputs)
+        else:
+            program_input = RunInputs(program='xtb', engine_name='qcop')
+
+    console.print(Panel(str(program_input), title="[bold cyan]Input Parameters[/bold cyan]", border_style="cyan", box=box.ROUNDED))
 
     valid_suff = ['.qcio', '.xyz']
     assert (Path(start).suffix in valid_suff and Path(
         end).suffix in valid_suff), "Invalid file type. Make sure they are .qcio or .xyz files"
 
     # load the structures
-    print(Path(start).suffix, Path(end).suffix)
+    console.print(f"[dim]Loading structures: {Path(start).suffix} → {Path(end).suffix}[/dim]")
     if Path(start).suffix == ".qcio":
         start_structures = ProgramOutput.open(start).results.conformers
         start_nodes = [StructureNode(structure=s) for s in start_structures]
@@ -461,16 +546,16 @@ def run_netgen(
             start_nodes = [StructureNode(structure=s)
                            for s in start_structures]
         else:
-            print("Only one structure in reactant file. Sampling using CREST!")
+            console.print("[cyan]Only one structure in reactant file. Sampling using CREST![/cyan]")
             if minimize_ends:
-                print("Minimizing endpoints...")
+                console.print("[bold cyan]⟳ Minimizing endpoints...[/bold cyan]")
                 sys.stdout.flush()
                 start_structure = program_input.engine.compute_geometry_optimization(
                     StructureNode(structure=start_structures[0]))[-1].structure
             else:
                 start_structure = start_structures[0]
 
-            print("Sampling reactant...")
+            console.print("[bold cyan]⟳ Sampling reactant...[/bold cyan]")
             sys.stdout.flush()
             try:
                 start_conf_result = program_input.engine._compute_conf_result(
@@ -480,10 +565,10 @@ def run_netgen(
 
                 start_nodes = [StructureNode(structure=s)
                                for s in start_conf_result.results.conformers]
-                print("Done!")
+                console.print("[bold green]✓ Done![/bold green]")
 
             except ExternalProgramError as e:
-                print(e.stdout)
+                console.print(f"[bold red]Error:[/bold red] {e.stdout}")
 
     if Path(end).suffix == ".qcio":
         end_structures = ProgramOutput.open(end).results.conformers
@@ -496,9 +581,9 @@ def run_netgen(
             end_nodes = [StructureNode(structure=s)
                          for s in end_structures]
         else:
-            print("Only one structure in product file. Sampling using CREST!")
+            console.print("[cyan]Only one structure in product file. Sampling using CREST![/cyan]")
             if minimize_ends:
-                print("Minimizing endpoints...")
+                console.print("[bold cyan]⟳ Minimizing endpoints...[/bold cyan]")
                 sys.stdout.flush()
 
                 end_structure = program_input.engine.compute_geometry_optimization(
@@ -506,7 +591,7 @@ def run_netgen(
             else:
                 end_structure = end_structures[0]
 
-            print("Sampling product...")
+            console.print("[bold cyan]⟳ Sampling product...[/bold cyan]")
             sys.stdout.flush()
             end_conf_result = program_input.engine._compute_conf_result(
                 StructureNode(structure=end_structure))
@@ -514,16 +599,16 @@ def run_netgen(
                                  (Path(end).stem + "_conformers.qcio"))
             end_nodes = [StructureNode(structure=s)
                          for s in end_conf_result.results.conformers]
-            print("Done!")
+            console.print("[bold green]✓ Done![/bold green]")
             sys.stdout.flush()
 
     sys.stdout.flush()
 
     pairs = list(product(start_nodes, end_nodes))[:max_pairs]
-    for i, (start, end) in enumerate(pairs):
+    for i, (start_node, end_node) in enumerate(pairs):
         # create Chain
         chain = Chain.model_validate({
-            "nodes": [start, end],
+            "nodes": [start_node, end_node],
             "parameters": program_input.chain_inputs,
         })
 
@@ -544,10 +629,9 @@ def run_netgen(
 
         # Run the optimization
 
-        print(
-            f"RUNNING AUTOSPLITTING ON PAIR {i}/{len(pairs)} {program_input.path_min_method}")
+        console.print(f"[bold magenta]▶ Running autosplitting on pair {i+1}/{len(pairs)} ({program_input.path_min_method})[/bold magenta]")
         if filename.exists():
-            print("already done. Skipping...")
+            console.print("[yellow]⚠ Already done. Skipping...[/yellow]")
             continue
 
         try:
@@ -556,14 +640,19 @@ def run_netgen(
             history.output_chain.write_to_disk(filename)
             history.write_to_disk(foldername)
         except Exception:
-            print(f"FAILED ON PAIR {i}")
+            console.print(f"[bold red]✗ Failed on pair {i}[/bold red]")
             continue
 
-        end_time = time.time()
-    print(f"***Walltime: {end_time - start_time} s")
+    end_time = time.time()
+    elapsed = end_time - start_time
+    if elapsed > 60:
+        time_str = f"{elapsed/60:.1f} min"
+    else:
+        time_str = f"{elapsed:.1f} s"
+    console.print(f"[bold green]✓ Netgen complete![/bold green] [dim]Walltime: {time_str}[/dim]")
 
 
-@app.command()
+@app.command("make-netgen-summary")
 def make_netgen_summary(
         directory: Annotated[str, typer.Option(
             "--directory", help='path to data directory')] = None,
@@ -574,6 +663,8 @@ def make_netgen_summary(
             "--name", help='name of pot and summary file')] = 'netgen'
 
 ):
+    console.print(BANNER)
+
     if directory is None:
         directory = Path(os.getcwd())
     else:
@@ -584,29 +675,35 @@ def make_netgen_summary(
     else:
         chain_inputs = ChainInputs()
 
-    nb = NetworkBuilder(data_dir=directory,
-                        start=None, end=None,
-                        network_inputs=NetworkInputs(verbose=verbose),
-                        chain_inputs=chain_inputs)
+    with console.status("[bold cyan]Building reaction network...[/bold cyan]"):
+        nb = NetworkBuilder(data_dir=directory,
+                            start=None, end=None,
+                            network_inputs=NetworkInputs(verbose=verbose),
+                            chain_inputs=chain_inputs)
 
-    nb.msmep_data_dir = directory
-    pot_fp = Path(directory / (name+".json"))
-    if not pot_fp.exists():
-        pot = nb.create_rxn_network(file_pattern="*")
-        pot.write_to_disk(pot_fp)
-    else:
-        print(f"{pot_fp} already exists. Loading")
-        pot = Pot.read_from_disk(pot_fp)
+        nb.msmep_data_dir = directory
+        pot_fp = Path(directory / (name+".json"))
+        if not pot_fp.exists():
+            pot = nb.create_rxn_network(file_pattern="*")
+            pot.write_to_disk(pot_fp)
+        else:
+            console.print(f"[yellow]⚠ {pot_fp} already exists. Loading...[/yellow]")
+            pot = Pot.read_from_disk(pot_fp)
 
-    plot_results_from_pot_obj(
-        fp_out=(directory / f"{Path(name).stem+'.png'}"), pot=pot, include_pngs=True)
-    plot_results_from_pot_obj(
-        fp_out=(directory / f"{Path(name).stem+'.png'}"), pot=pot, include_pngs=False)
+    with console.status("[bold cyan]Generating plots...[/bold cyan]"):
+        plot_results_from_pot_obj(
+            fp_out=(directory / f"{Path(name).stem+'.png'}"), pot=pot, include_pngs=True)
+        plot_results_from_pot_obj(
+            fp_out=(directory / f"{Path(name).stem+'.png'}"), pot=pot, include_pngs=False)
 
     # write nodes to xyz file
     nodes = [pot.graph.nodes[x]["td"] for x in pot.graph.nodes]
     chain = Chain.model_validate({"nodes": nodes})
     chain.write_to_disk(directory / 'nodes.xyz')
+
+    console.print(f"[bold green]✓ Network summary complete![/bold green]")
+    console.print(f"[dim]Network: {pot_fp}[/dim]")
+    console.print(f"[dim]Nodes: {directory / 'nodes.xyz'}[/dim]")
 
 
 if __name__ == "__main__":

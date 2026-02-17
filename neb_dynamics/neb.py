@@ -29,6 +29,18 @@ from neb_dynamics.qcio_structure_helpers import (
     structure_to_ase_atoms,
     ase_atoms_to_structure,
 )
+from neb_dynamics.scripts.progress import print_neb_step
+
+# Rich imports for flashy CLI output
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    _console = Console()
+    _rich_available = True
+except ImportError:
+    _console = None
+    _rich_available = False
+
 
 ob_log_handler = pybel.ob.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
@@ -337,26 +349,42 @@ class NEB(PathMinimizer):
             prev_grad_corr = grad_corr
 
             if nsteps_negative_grad_corr >= self.parameters.negative_steps_thre:
-                print("\nstep size causing oscillations. decreasing by 50%")
+                if _rich_available:
+                    _console.print(Panel.fit(
+                        "[yellow]⚠️ Step size causing oscillations[/yellow]\n[red]Decreasing by 50%[/red]",
+                        border_style="red",
+                        title="[bold red]Step Size Adjustment[/bold red]"
+                    ))
+                else:
+                    print("\nstep size causing oscillations. decreasing by 50%")
                 # self.optimizer.timestep *= 0.5
                 self.optimizer.timestep -= 0.5*self.orig_timestep
                 nsteps_negative_grad_corr = 0
             elif nsteps_pos_grad_corr >= self.parameters.positive_steps_thre:
-                print("\nstep size stable for {} steps. increasing by 20%".format(nsteps_pos_grad_corr))
+                if _rich_available:
+                    _console.print(Panel.fit(
+                        f"[green]✓ Step size stable for {nsteps_pos_grad_corr} steps[/green]\n[cyan]Increasing by 20%[/cyan]",
+                        border_style="green",
+                        title="[bold green]Step Size Adjustment[/bold green]"
+                    ))
+                else:
+                    print("\nstep size stable for {} steps. increasing by 20%".format(nsteps_pos_grad_corr))
                 # self.optimizer.timestep *= 1.2
                 self.optimizer.timestep += 0.2*self.orig_timestep
                 nsteps_pos_grad_corr = 0
 
             if self.parameters.v:
 
-                print(
-                    f"step {nsteps} // argmax(|TS gperp|) {np.amax(np.abs(ts_guess_grad))} // \
-                        max rms grad {max_rms_grad_val} // armax(|TS_triplet_gsprings|) \
-                            {new_chain.ts_triplet_gspring_infnorm} // nodes_frozen\
-                                  {n_nodes_frozen} // timestep {self.optimizer.timestep} // {grad_corr}{' '*20}",
-                    end="\r",
+                print_neb_step(
+                    step=nsteps,
+                    ts_grad=np.amax(np.abs(ts_guess_grad)),
+                    max_rms_grad=max_rms_grad_val,
+                    ts_triplet_gspring=new_chain.ts_triplet_gspring_infnorm,
+                    nodes_frozen=n_nodes_frozen,
+                    timestep=self.optimizer.timestep,
+                    grad_corr=grad_corr,
+                    force_update=True
                 )
-                sys.stdout.flush()
 
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)

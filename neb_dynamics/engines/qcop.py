@@ -85,7 +85,7 @@ class QCOPEngine(Engine):
         if self.compute_program == "qcop":
             return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
-            print("SUBMITTING TO : ", CCQUEUE)
+            # print("SUBMITTING TO : ", CCQUEUE)
             return cc_compute(*args, queue=CCQUEUE, **kwargs)
         else:
             raise ValueError(
