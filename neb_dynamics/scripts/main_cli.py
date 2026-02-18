@@ -12,6 +12,7 @@ from pathlib import Path
 import time
 import traceback
 from datetime import datetime
+from qcinf import structure_to_smiles
 
 from rich.console import Console
 from rich.theme import Theme
@@ -104,6 +105,106 @@ def create_progress():
         TimeRemainingColumn(),
         console=console,
     )
+
+
+def _truncate_label(label: str, max_len: int) -> str:
+    if len(label) <= max_len:
+        return label
+    if max_len <= 3:
+        return label[:max_len]
+    return label[: max_len - 3] + "..."
+
+
+def _build_ascii_energy_profile(energies, labels, width: int = 60, height: int = 12):
+    if len(energies) == 0:
+        return "No energies to plot."
+    if len(energies) != len(labels):
+        raise ValueError("labels must be same length as energies")
+
+    min_e = float(min(energies))
+    max_e = float(max(energies))
+    if max_e == min_e:
+        max_e = min_e + 1e-6
+
+    def _xpos(i):
+        if len(energies) == 1:
+            return 0
+        return int(round(i * (width - 1) / (len(energies) - 1)))
+
+    def _ypos(e):
+        return int(round((e - min_e) * (height - 1) / (max_e - min_e)))
+
+    grid = [[" " for _ in range(width)] for _ in range(height)]
+
+    xs = [_xpos(i) for i in range(len(energies))]
+    ys = [_ypos(e) for e in energies]
+
+    for i in range(len(energies) - 1):
+        x0, y0 = xs[i], ys[i]
+        x1, y1 = xs[i + 1], ys[i + 1]
+        if x0 == x1:
+            continue
+        step = 1 if x1 > x0 else -1
+        for x in range(x0, x1 + step, step):
+            t = (x - x0) / (x1 - x0)
+            y = int(round(y0 + (y1 - y0) * t))
+            row = height - 1 - y
+            if 0 <= row < height and 0 <= x < width and grid[row][x] == " ":
+                grid[row][x] = "-"
+
+    for x, y in zip(xs, ys):
+        row = height - 1 - y
+        if 0 <= row < height and 0 <= x < width:
+            grid[row][x] = "*"
+
+    prefix_len = len(f"{max_e:7.2f} |")
+    lines = []
+    for r in range(height):
+        y_val = max_e - (max_e - min_e) * (r / (height - 1))
+        prefix = f"{y_val:7.2f} |"
+        lines.append(prefix + "".join(grid[r]))
+
+    lines.append(" " * prefix_len + "-" * width)
+
+    label_line = [" " for _ in range(width)]
+    max_label_len = 12
+    truncated = False
+    for x, label in zip(xs, labels):
+        tlabel = _truncate_label(label, max_label_len)
+        if tlabel != label:
+            truncated = True
+        start = max(0, min(width - len(tlabel), x - len(tlabel) // 2))
+        for i, ch in enumerate(tlabel):
+            label_line[start + i] = ch
+    lines.append(" " * prefix_len + "".join(label_line))
+
+    if truncated:
+        lines.append("")
+        lines.append("Full SMILES labels:")
+        for i, label in enumerate(labels):
+            lines.append(f"{i}: {label}")
+
+    return "\n".join(lines)
+
+
+def _ascii_profile_for_chain(chain: Chain):
+    try:
+        energies = chain.energies_kcalmol
+    except Exception as exc:
+        console.print(f"[yellow]⚠ Could not compute energy profile: {exc}[/yellow]")
+        return
+
+    labels = []
+    for i, node in enumerate(chain.nodes):
+        try:
+            smi = structure_to_smiles(node.structure)
+        except Exception:
+            smi = f"node_{i}"
+        labels.append(smi)
+
+    plot = _build_ascii_energy_profile(energies, labels)
+    console.print("\nASCII Reaction Profile (Energy vs Node)")
+    console.print(plot, markup=False)
 
 
 @app.command("run")
@@ -230,6 +331,7 @@ def run(
     m = MSMEP(inputs=program_input)
 
     # Run the optimization
+    chain_for_profile = None
 
     if recursive:
         program_input.path_min_inputs.do_elem_step_checks = True
@@ -257,6 +359,7 @@ def run(
         end_time = time.time()
         history.output_chain.write_to_disk(filename)
         history.write_to_disk(foldername)
+        chain_for_profile = history.output_chain
 
         if use_tsopt:
             for i, leaf in enumerate(history.ordered_leaves):
@@ -305,6 +408,10 @@ def run(
 
         end_time = time.time()
         n.write_to_disk(filename)
+        if n.chain_trajectory:
+            chain_for_profile = n.chain_trajectory[-1]
+        else:
+            chain_for_profile = n.optimized
 
         if use_tsopt:
             console.print("[bold cyan]⟳ Running TS opt...[/bold cyan]")
@@ -348,6 +455,9 @@ def run(
         summary.add_row("⏱ Walltime:", f"[yellow]{elapsed:.1f} s[/yellow]")
     summary.add_row("📁 Output:", f"[cyan]{filename}[/cyan]")
     console.print(Panel(summary, title="[bold green]✓ Complete![/bold green]", border_style="green"))
+
+    if chain_for_profile is not None:
+        _ascii_profile_for_chain(chain_for_profile)
 
 
 @app.command("ts")

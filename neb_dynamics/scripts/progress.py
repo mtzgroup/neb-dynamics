@@ -11,6 +11,7 @@ try:
     from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn
     from rich.table import Table
     from rich.style import Style
+    from rich.status import Status
 
     _console = Console()
     _rich_available = True
@@ -33,6 +34,8 @@ class ProgressPrinter:
         self._last_print_time = 0.0
         self._current_task_id = None
         self._progress = None
+        self._status = None
+        self._status_active = False
 
         # Throttle updates to avoid too much output
         self._throttle = 0.5  # Only print every 0.5 seconds by default
@@ -78,6 +81,40 @@ class ProgressPrinter:
             if self._current_task_id is not None:
                 self._progress.remove_task(self._current_task_id)
                 self._current_task_id = None
+
+    def start_status(self, message: str):
+        """Start a spinner status message."""
+        if self.use_rich:
+            if self._status is None:
+                self._status = Status(message, console=_console)
+            else:
+                self._status.update(message)
+            if not self._status_active:
+                self._status.start()
+                self._status_active = True
+        else:
+            sys.stdout.write(f"{message}\n")
+            sys.stdout.flush()
+
+    def update_status(self, message: str):
+        """Update the spinner status message."""
+        if self.use_rich:
+            if self._status is None:
+                _console.print(f"[dim]{message}[/dim]")
+                return
+            if not self._status_active:
+                self._status.start()
+                self._status_active = True
+            self._status.update(message)
+        elif not self.use_rich:
+            sys.stdout.write(f"{message}\n")
+            sys.stdout.flush()
+
+    def stop_status(self):
+        """Stop the spinner status message."""
+        if self.use_rich and self._status and self._status_active:
+            self._status.stop()
+            self._status_active = False
 
     def print_step(
         self,
@@ -232,3 +269,21 @@ def print_neb_step(
         grad_corr=grad_corr,
         force_update=force_update
     )
+
+
+def start_status(message: str):
+    """Convenience function to start a spinner status."""
+    printer = get_progress_printer()
+    printer.start_status(message)
+
+
+def update_status(message: str):
+    """Convenience function to update a spinner status."""
+    printer = get_progress_printer()
+    printer.update_status(message)
+
+
+def stop_status():
+    """Convenience function to stop a spinner status."""
+    printer = get_progress_printer()
+    printer.stop_status()

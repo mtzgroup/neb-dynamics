@@ -3,6 +3,7 @@ from numpy.typing import NDArray
 from typing import Tuple
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import NEBInputs
+from neb_dynamics.scripts.progress import update_status
 
 # Try to use rich for pretty printing, fall back to regular print
 try:
@@ -96,7 +97,12 @@ def _check_rms_grad_converged(gradients: NDArray, threshold: float) -> Tuple[NDA
     return np.where(bools), rms_gperps
 
 
-def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) -> bool:
+def chain_converged(
+    chain_prev: Chain,
+    chain_new: Chain,
+    parameters: NEBInputs,
+    verbose: bool = True,
+) -> bool:
     import neb_dynamics.chainhelpers as ch
     fraction_freeze = 0.5
 
@@ -144,10 +150,12 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
         chain_prev=chain_prev, chain_new=chain_new, threshold=parameters.barrier_thre)
     ind_ts_guess = np.argmax(chain_new.energies)
     if ind_ts_guess == 0 or ind_ts_guess == len(chain_new)-1:
-        if _rich_available:
+        if verbose and _rich_available:
             _console.print("[yellow]⚠ Warning: TS guess is at the end of the chain. This might indicate a problem with the initial guess.[/yellow]")
-        else:
+        elif verbose:
             print("Warning: TS guess is at the end of the chain. This might indicate a problem with the initial guess.")
+        else:
+            update_status("Warning: TS guess is at the end of the chain.")
         ts_guess_grad = 0
     else:
         ts_guess_grad = np.amax(np.abs(gperps[ind_ts_guess]))
@@ -163,7 +171,9 @@ def chain_converged(chain_prev: Chain, chain_new: Chain, parameters: NEBInputs) 
                       "TS_GRAD", "TS_SPRING", "INFNORM_SPRING", "BARRIER_HEIGHT"]
 
     # Print convergence criteria as a nice table
-    if _rich_available:
+    if not verbose:
+        update_status("Checking convergence criteria")
+    elif _rich_available:
         table = Table(title="[bold]Convergence Criteria[/bold]", box=box.ROUNDED)
         table.add_column("Criterion", style="cyan", no_wrap=True)
         table.add_column("Status", justify="center")

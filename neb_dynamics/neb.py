@@ -29,7 +29,7 @@ from neb_dynamics.qcio_structure_helpers import (
     structure_to_ase_atoms,
     ase_atoms_to_structure,
 )
-from neb_dynamics.scripts.progress import print_neb_step
+from neb_dynamics.scripts.progress import print_neb_step, update_status
 
 # Rich imports for flashy CLI output
 try:
@@ -55,10 +55,11 @@ IS_ELEM_STEP = ElemStepResults(
 MAX_NRETRIES = 3
 NMINIMA_STEPS = 5
 
-NSTEPS_STRAIN  = 10000000 # turning this off
+NSTEPS_STRAIN = 10000000  # turning this off
 NADD = 1
 
-CORR_TOL = 0.95 # percent gradient correlation to be above. If it happens many times, increase timestep.
+# percent gradient correlation to be above. If it happens many times, increase timestep.
+CORR_TOL = 0.95
 
 
 @dataclass
@@ -103,7 +104,11 @@ class NEB(PathMinimizer):
             inds_maxima = [chain.energies.argmax()]
 
             # if self.parameters.v > 0:
-            print(f"\n----->Setting {len(inds_maxima)} nodes to climb\n")
+            msg = f"Setting {len(inds_maxima)} nodes to climb"
+            if self.parameters.v:
+                print(f"\n----->{msg}\n")
+            else:
+                update_status(msg)
 
             for ind in inds_maxima:
                 chain[ind].do_climb = True
@@ -122,12 +127,17 @@ class NEB(PathMinimizer):
         """
 
         elem_step_results = check_if_elem_step(
-            inp_chain=chain, engine=self.engine)
+            inp_chain=chain, engine=self.engine, verbose=self.parameters.v)
 
         if not elem_step_results.is_elem_step:
-            print("\nStopped early because chain is not an elementary step.")
-            print(
-                f"Split chain based on: {elem_step_results.splitting_criterion}")
+            msg = "Stopped early because chain is not an elementary step."
+            msg2 = f"Split chain based on: {elem_step_results.splitting_criterion}"
+            if self.parameters.v:
+                print(f"\n{msg}")
+                print(msg2)
+            else:
+                update_status(msg)
+                update_status(msg2)
             self.optimized = chain
             return True, elem_step_results
 
@@ -149,8 +159,8 @@ class NEB(PathMinimizer):
         rms_grad = chain.rms_gradients
 
         if (ts_guess_grad < self.parameters.early_stop_force_thre) or \
-            (sum(rms_grad)/len(chain) < self.parameters.early_stop_force_thre) or force_check:
-        # if springgrad_infnorm < self.parameters.early_stop_force_thre:
+                (sum(rms_grad)/len(chain) < self.parameters.early_stop_force_thre) or force_check:
+            # if springgrad_infnorm < self.parameters.early_stop_force_thre:
 
             new_params = copy.deepcopy(self.parameters)
             new_params.early_stop_force_thre = 0.0
@@ -257,6 +267,8 @@ class NEB(PathMinimizer):
         while nsteps < self.parameters.max_steps + 1:
 
             if nsteps > 1:
+                if not self.parameters.v:
+                    update_status("Optimizing path... Step {}".format(nsteps))
                 # check if minima are present
                 minima_present = len(ch._get_ind_minima(chain_previous)) >= 1
                 if minima_present:
@@ -265,7 +277,11 @@ class NEB(PathMinimizer):
                     nsteps_minima_present = 0
                 force_check = nsteps_minima_present >= NMINIMA_STEPS
                 if force_check and not already_forced_check:
-                    print(f"A local minimum has been present for {nsteps_minima_present} steps, forcing early stop check.")
+                    msg = f"A local minimum has been present for {nsteps_minima_present} steps, forcing early stop check."
+                    if self.parameters.v:
+                        print(msg)
+                    else:
+                        update_status(msg)
                     nsteps_minima_present = 0
                     already_forced_check = True
                 elif already_forced_check:
@@ -281,7 +297,11 @@ class NEB(PathMinimizer):
 
                 if nsteps_strained_node >= NSTEPS_STRAIN:
                     # print(f"Node {most_strained_node} has been the most strained for {nsteps_strained_node} steps, adding a bead before and after.")
-                    print(f"Node {most_strained_node} has been the most strained for {nsteps_strained_node} steps, upsampling chain")
+                    msg = f"Node {most_strained_node} has been the most strained for {nsteps_strained_node} steps, upsampling chain"
+                    if self.parameters.v:
+                        print(msg)
+                    else:
+                        update_status(msg)
                     # chain_previous = ch.insert_nodes_around_index(
                     #     chain_previous, most_strained_node, engine=self.engine)
                     chain_previous = ch.upsample_chain(
@@ -301,7 +321,11 @@ class NEB(PathMinimizer):
                 new_chain = self.update_chain(chain=chain_previous)
 
             except ExternalProgramError:
-                print("\n!!!Electronic structure error during NEB step, rolling back 5 steps and trying again.")
+                msg = "Electronic structure error during NEB step, rolling back 5 steps and trying again."
+                if self.parameters.v:
+                    print(f"\n!!!{msg}")
+                else:
+                    update_status(msg)
                 rollback_steps = min(5, len(self.chain_trajectory)-1)
                 chain_previous = self.chain_trajectory[-(rollback_steps+1)]
                 self.optimizer.reset()
@@ -324,6 +348,7 @@ class NEB(PathMinimizer):
                 chain_prev=chain_previous,
                 chain_new=new_chain,
                 parameters=self.parameters,
+                verbose=self.parameters.v,
             )
 
             n_nodes_frozen = 0
@@ -334,12 +359,9 @@ class NEB(PathMinimizer):
             grad_calls_made = len(new_chain) - n_nodes_frozen
             self.grad_calls_made += grad_calls_made
 
-
-
-
             grad_corr = ch._gradient_correlation(new_chain, chain_previous)
             # if grad_corr < 0:
-            if grad_corr < 0.5: # less than 50% overlap in gradients
+            if grad_corr < 0.5:  # less than 50% overlap in gradients
                 nsteps_negative_grad_corr += 1
             elif grad_corr > CORR_TOL:
                 if prev_grad_corr > CORR_TOL:
@@ -349,26 +371,33 @@ class NEB(PathMinimizer):
             prev_grad_corr = grad_corr
 
             if nsteps_negative_grad_corr >= self.parameters.negative_steps_thre:
-                if _rich_available:
+                if self.parameters.v and _rich_available:
                     _console.print(Panel.fit(
                         "[yellow]⚠️ Step size causing oscillations[/yellow]\n[red]Decreasing by 50%[/red]",
                         border_style="red",
                         title="[bold red]Step Size Adjustment[/bold red]"
                     ))
-                else:
+                elif self.parameters.v:
                     print("\nstep size causing oscillations. decreasing by 50%")
+                else:
+                    update_status(
+                        "Step size causing oscillations. Decreasing by 50%.")
                 # self.optimizer.timestep *= 0.5
                 self.optimizer.timestep -= 0.5*self.orig_timestep
                 nsteps_negative_grad_corr = 0
             elif nsteps_pos_grad_corr >= self.parameters.positive_steps_thre:
-                if _rich_available:
+                if self.parameters.v and _rich_available:
                     _console.print(Panel.fit(
                         f"[green]✓ Step size stable for {nsteps_pos_grad_corr} steps[/green]\n[cyan]Increasing by 20%[/cyan]",
                         border_style="green",
                         title="[bold green]Step Size Adjustment[/bold green]"
                     ))
+                elif self.parameters.v:
+                    print("\nstep size stable for {} steps. increasing by 20%".format(
+                        nsteps_pos_grad_corr))
                 else:
-                    print("\nstep size stable for {} steps. increasing by 20%".format(nsteps_pos_grad_corr))
+                    update_status(
+                        f"Step size stable for {nsteps_pos_grad_corr} steps. Increasing by 20%.")
                 # self.optimizer.timestep *= 1.2
                 self.optimizer.timestep += 0.2*self.orig_timestep
                 nsteps_pos_grad_corr = 0
@@ -392,9 +421,11 @@ class NEB(PathMinimizer):
             if converged:
                 if self.parameters.v:
                     print("\nChain converged!")
+                else:
+                    update_status("Chain converged.")
                 if self.parameters.do_elem_step_checks:
                     elem_step_results = check_if_elem_step(
-                        inp_chain=new_chain, engine=self.engine
+                        inp_chain=new_chain, engine=self.engine, verbose=self.parameters.v
                     )
                     self.geom_grad_calls_made += elem_step_results.number_grad_calls
                 else:
@@ -407,7 +438,10 @@ class NEB(PathMinimizer):
 
         new_chain = self.update_chain(chain=chain_previous)
         if not chain_converged(
-            chain_prev=chain_previous, chain_new=new_chain, parameters=self.parameters
+            chain_prev=chain_previous,
+            chain_new=new_chain,
+            parameters=self.parameters,
+            verbose=self.parameters.v,
         ):
             raise NoneConvergedException(
                 trajectory=self.chain_trajectory,

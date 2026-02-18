@@ -1,3 +1,6 @@
+import traceback
+import logging
+import copy
 from dataclasses import dataclass
 
 import sys
@@ -23,11 +26,13 @@ from qcio import Structure
 
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
 from neb_dynamics.inputs import RunInputs
-from neb_dynamics.scripts.progress import print_neb_step
+from neb_dynamics.scripts.progress import print_neb_step, start_status, update_status, stop_status
 
-import traceback
-import copy
-import logging
+
+def _get_verbose(inputs: RunInputs) -> bool:
+    """Get verbosity from RunInputs."""
+    return getattr(inputs.path_min_inputs, 'v', False)
+
 
 PATH_METHODS = ["NEB", "FNEB", "MLPGI"]
 
@@ -68,8 +73,18 @@ class MSMEP:
                 {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
 
         if self.inputs.path_min_inputs.skip_identical_graphs and input_chain[0].has_molecular_graph:
-            if _is_connectivity_identical(input_chain[0], input_chain[-1]):
-                print("Endpoints are identical. Returning nothing")
+            if not _get_verbose(self.inputs):
+                update_status("Checking endpoint connectivity")
+            if _is_connectivity_identical(
+                input_chain[0],
+                input_chain[-1],
+                verbose=_get_verbose(self.inputs),
+            ):
+                msg = "Endpoints are identical. Returning nothing"
+                if _get_verbose(self.inputs):
+                    print(msg)
+                else:
+                    update_status(msg)
                 return TreeNode(data=None, children=[], index=tree_node_index)
 
         ch._reset_node_convergence(input_chain)
@@ -80,8 +95,13 @@ class MSMEP:
             other=input_chain[-1],
             fragment_rmsd_cutoff=self.inputs.chain_inputs.node_rms_thre,
             kcal_mol_cutoff=self.inputs.chain_inputs.node_ene_thre,
+            verbose=False,
         ):
-            print("Endpoints are identical. Returning nothing")
+            msg = "Endpoints are identical. Returning nothing"
+            if _get_verbose(self.inputs):
+                print(msg)
+            else:
+                update_status(msg)
             return TreeNode(data=None, children=[], index=tree_node_index)
 
         try:
@@ -102,12 +122,18 @@ class MSMEP:
                     split_method=elem_step_results.splitting_criterion,
                     minimization_results=elem_step_results.minimization_results,
                 )
-                print(
-                    f"Splitting chains based on: {elem_step_results.splitting_criterion}"
-                )
+                msg = f"Splitting chains based on: {elem_step_results.splitting_criterion}"
+                if _get_verbose(self.inputs):
+                    print(msg)
+                else:
+                    update_status(msg)
                 new_tree_node_index = tree_node_index + 1
                 for i, chain_frag in enumerate(sequence_of_chains, start=1):
-                    print(f"On chain {i} of {len(sequence_of_chains)}...")
+                    msg = f"On chain {i} of {len(sequence_of_chains)}..."
+                    if _get_verbose(self.inputs):
+                        print(msg)
+                    else:
+                        update_status(msg)
                     out_history = self.run_recursive_minimize(
                         chain_frag, tree_node_index=new_tree_node_index
                     )
@@ -124,7 +150,8 @@ class MSMEP:
 
     def _create_interpolation(self, chain: Chain):
         import neb_dynamics.chainhelpers as ch
-        logger = logging.getLogger('neb_dynamics.geodesic_interpolation2.interpolation')
+        logger = logging.getLogger(
+            'neb_dynamics.geodesic_interpolation2.interpolation')
         logger.propagate = False
         # if chain.parameters.frozen_atom_indices:
         #     chain_original = chain.copy()
@@ -147,13 +174,13 @@ class MSMEP:
         #     chain = Chain.model_validate({
         #         "nodes": subsys_nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
 
-
-
         if self.inputs.chain_inputs.use_geodesic_interpolation:
             if chain.parameters.frozen_atom_indices:
                 inds_frozen = chain.parameters.frozen_atom_indices
-                print("will be freezing inds:", inds_frozen, ' during geodesic interpolation')
-                print(type(inds_frozen))
+                if _get_verbose(self.inputs):
+                    print("will be freezing inds:", inds_frozen,
+                          ' during geodesic interpolation')
+                    print(type(inds_frozen))
             else:
                 inds_frozen = np.array([], dtype=int)
 
@@ -193,7 +220,6 @@ class MSMEP:
             interpolation = Chain.model_validate({
                 "nodes": nodes, "parameters": copy.deepcopy(self.inputs.chain_inputs)})
 
-
         # if chain.parameters.frozen_atom_indices:
         #     # need to reinsert the frozen atoms into the interpolation
         #     new_nodes = []
@@ -212,8 +238,12 @@ class MSMEP:
     def _construct_path_minimizer(self, initial_chain: Chain):
         if self.inputs.path_min_method.upper() == "NEB":
 
-            print("Using in-house NEB optimizer")
-            sys.stdout.flush()
+            msg = "Using in-house NEB optimizer"
+            if _get_verbose(self.inputs):
+                print(msg)
+                sys.stdout.flush()
+            else:
+                update_status(msg)
             optimizer = ConjugateGradient(**self.inputs.optimizer_kwds)
 
             n = NEB(
@@ -231,7 +261,11 @@ class MSMEP:
         #     )
 
         elif self.inputs.path_min_method.upper() == "FNEB":
-            print("Using Freezing NEB optimizer")
+            msg = "Using Freezing NEB optimizer"
+            if _get_verbose(self.inputs):
+                print(msg)
+            else:
+                update_status(msg)
             n = FreezingNEB(
                 initial_chain=initial_chain,
                 engine=self.inputs.engine,
@@ -240,16 +274,20 @@ class MSMEP:
                 gi_inputs=self.inputs.gi_inputs
             )
 
-
         elif self.inputs.path_min_method.upper() == "MLPGI":
             from neb_dynamics.pathminimizers.mlpgi import MLPGI
-            print("Using MLP Geodesic Optimizer")
+            msg = "Using MLP Geodesic Optimizer"
+            if _get_verbose(self.inputs):
+                print(msg)
+            else:
+                update_status(msg)
             n = MLPGI(
                 initial_chain=initial_chain,
                 engine=self.inputs.engine,
             )
         else:
-            raise NotImplementedError("Invalid path minimization method. Select from NEB, FNEB, or MLPGI.")
+            raise NotImplementedError(
+                "Invalid path minimization method. Select from NEB, FNEB, or MLPGI.")
 
         return n
 
@@ -272,7 +310,12 @@ class MSMEP:
         else:
             interpolation = input_chain
 
-        print("Running path minimization...")
+        # Use spinner when v=0, print when v=1
+        verbose = _get_verbose(self.inputs)
+        if verbose:
+            print("Running path minimization...")
+        else:
+            start_status("Minimizing path...")
 
         try:
             n = self._construct_path_minimizer(initial_chain=interpolation)
@@ -289,7 +332,7 @@ class MSMEP:
             out_chain = n.chain_trajectory[-1]
             if self.inputs.path_min_inputs.do_elem_step_checks:
                 elem_step_results = check_if_elem_step(
-                    out_chain, engine=self.inputs.engine)
+                    out_chain, engine=self.inputs.engine, verbose=_get_verbose(self.inputs))
             else:
                 elem_step_results = ElemStepResults(
                     is_elem_step=True,
@@ -319,6 +362,10 @@ class MSMEP:
                 minimization_results=None,
                 number_grad_calls=0,
             )
+
+        finally:
+            if not verbose:
+                stop_status()
 
         return n, elem_step_results
 
