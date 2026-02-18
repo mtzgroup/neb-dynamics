@@ -19,6 +19,7 @@ pip install "git+https://github.com/mtzgroup/neb-dynamics.git"
 
 ## Quick Start
 
+
 ```python
 from neb_dynamics import NEB, NEBInputs, ChainInputs, StructureNode
 from neb_dynamics.engines.qcop import QCOPEngine
@@ -74,6 +75,7 @@ export CHEMCLOUD_PASSWORD=your_password
 ```
 
 ## CLI Usage
+If you have cloned the repository, `cd` to `examples/`.and run `run_oxycope.sh` or `run_wittig.sh` to see the code in action
 
 ```bash
 # Run NEB calculation
