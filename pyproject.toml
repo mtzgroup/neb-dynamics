@@ -17,11 +17,13 @@ dependencies = [
     "joblib>=1.5.2",
     "jupyter>=1.1.1",
     "jupytext>=1.17.3",
+    "matplotlib>=3.9.1",
     "mkdocs>=1.6.1",
     "networkx>=3.4.2",
     "numpy>=2.2.6",
     "openbabel-wheel>=3.1.1.22",
     "pandas>=2.3.2",
+    "pydantic>=2.8.2",
     "pysmiles>=2.0.0",
     "qccodec==0.9.1",
     "qcinf>=0.2.0",
@@ -38,6 +40,9 @@ dependencies = [
     "typer>=0.17.4",
 ]
 
+[project.scripts]
+mepd = "neb_dynamics.scripts.main_cli:app"
+
 [tool.poetry]
 name = "neb-dynamics"
 version = "0.1.0"
@@ -47,31 +52,38 @@ license = "MIT"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-
 python = ">=3.10,<3.13"
-jupyter = "^1.0.0"
-matplotlib = "^3.9.1"
-scipy = "<1.14"
-openbabel-wheel = "^3.1.1.19"
-pandas = "^2.2.2"
-pysmiles = "^1.1.2"
-rdkit = "^2024.3.3" 
-py3dmol = "^2.2.0"
-ase = "^3.23.0"
-timeout-timer = "^0.2.0"
-biopython = "^1.84"
-nodejs = "^0.1.1"
-jupytext = "^1.16.3"
-pydantic = "^2.8.2"
-scikit-learn = "^1.5.1"
-setuptools = "^70.3.0"
-chemcloud = ">=0.12.0"
-qcop = {extras = ["geometric"], version = ">=0.9.5"}
-qcio = ">=0.11.10"
-bigchem = "^0.10.8"
-typer = "^0.12.5"
-qcparse = ">=0.7.2"
-fairchem-core = "^2.1.0"
+ase = ">=3.26.0"
+chemcloud = ">=0.16.0"
+click = ">=8.2.1"
+fairchem-core = ">=2.6.0"
+geometric = ">=1.1"
+ipython = ">=8.37.0"
+ipywidgets = ">=8.1.7"
+joblib = ">=1.5.2"
+jupyter = ">=1.1.1"
+jupytext = ">=1.17.3"
+matplotlib = ">=3.9.1"
+mkdocs = ">=1.6.1"
+networkx = ">=3.4.2"
+numpy = ">=2.2.6"
+openbabel-wheel = ">=3.1.1.22"
+pandas = ">=2.3.2"
+pydantic = ">=2.8.2"
+pysmiles = ">=2.0.0"
+qccodec = "==0.9.1"
+qcinf = ">=0.2.0"
+qcio = {extras = ["view"], version = ">=0.14.0"}
+qcop = {extras = ["qcengine"], version = "==0.12.1"}
+rdkit = ">=2025.3.6"
+rich = ">=13.0.0"
+asciimol = ">=1.2.0"
+scipy = ">=1.15.3"
+timeout-timer = ">=0.2.0"
+tomli = ">=2.2.1"
+tomli-w = ">=1.2.0"
+tqdm = ">=4.67.1"
+typer = ">=0.17.4"
 
 
 [tool.poetry.group.dev.dependencies]

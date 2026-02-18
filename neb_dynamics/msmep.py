@@ -115,6 +115,12 @@ class MSMEP:
                 return history
 
             else:
+                msg = f"Splitting chains based on: {elem_step_results.splitting_criterion}"
+                if _get_verbose(self.inputs):
+                    print(msg)
+                else:
+                    update_status(msg)
+
                 # the last chain in the minimization
                 chain = root_neb_obj.chain_trajectory[-1]
                 sequence_of_chains = self.make_sequence_of_chains(
@@ -122,11 +128,7 @@ class MSMEP:
                     split_method=elem_step_results.splitting_criterion,
                     minimization_results=elem_step_results.minimization_results,
                 )
-                msg = f"Splitting chains based on: {elem_step_results.splitting_criterion}"
-                if _get_verbose(self.inputs):
-                    print(msg)
-                else:
-                    update_status(msg)
+
                 new_tree_node_index = tree_node_index + 1
                 for i, chain_frag in enumerate(sequence_of_chains, start=1):
                     msg = f"On chain {i} of {len(sequence_of_chains)}..."
@@ -504,7 +506,7 @@ class MSMEP:
 
         # chain_frag.insert(0, opt_start)
         # chain_frag.append(opt_end)
-        print(f"using a frag of {len(chain_frag)} nodes")
+        # print(f"using a frag of {len(chain_frag)} nodes")
         return chain_frag
 
     def _make_chain_pair(self, chain: Chain, pair_of_inds):

@@ -71,8 +71,8 @@ app = typer.Typer(
 BANNER = """
 [bold magenta]╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║   [bold cyan]NEB[/bold cyan] [bold white]-[/bold white] [bold cyan]Dynamics[/bold cyan]                                                   ║
-║   [dim]Reaction Path Optimization & Network Generation[/dim]        ║
+║                        [bold cyan]NEB[/bold cyan] [bold white]-[/bold white] [bold cyan]Dynamics[/bold cyan]                        ║
+║        [dim]Reaction Path Optimization & Network Generation[/dim]        ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝[/bold magenta]
 """

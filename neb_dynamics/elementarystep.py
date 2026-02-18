@@ -11,8 +11,15 @@ import neb_dynamics.chainhelpers as ch
 from neb_dynamics.nodes.node import Node
 import numpy as np
 from neb_dynamics.engines import Engine
-from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, is_identical, _reset_comparison_results, _print_all_comparisons
-from neb_dynamics.scripts.progress import update_status
+from neb_dynamics.nodes.nodehelpers import (
+    _is_connectivity_identical,
+    _print_all_comparisons,
+    _render_molecule_ascii,
+    _reset_comparison_results,
+    is_identical,
+)
+from neb_dynamics.scripts.progress import stop_status, update_status
+from qcinf import structure_to_smiles
 
 # Rich imports for flashy CLI output
 try:
@@ -66,6 +73,27 @@ class IRCResults:
     found_reactant: Node
     found_product: Node
     number_grad_calls: int
+
+
+def _print_new_structure(node: Node) -> None:
+    """Print a minimal notification for a newly discovered structure."""
+    if node is None:
+        return
+    try:
+        smi = structure_to_smiles(node.structure)
+    except Exception:
+        smi = ""
+    ascii_art = _render_molecule_ascii(smi, width=60, height=12) if smi else "new structure"
+    if _rich_available:
+        from rich.text import Text
+
+        _console.print()
+        _console.print(Text(ascii_art, style="cyan"), markup=False)
+        _console.print("[bold green]new structure found![/bold green]")
+    else:
+        print()
+        print(ascii_art)
+        print("new structure found!")
 
 
 def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -> ElemStepResults:
@@ -190,6 +218,12 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
         verbose=False,  # Suppress individual prints, use consolidated report
     )
 
+    new_structures = []
+    if (not found_r) and (not r_is_p):
+        new_structures.append(pseu_irc_results.found_reactant)
+    if (not found_p) and (not p_is_r):
+        new_structures.append(pseu_irc_results.found_product)
+
     if found_r and found_p:
         minimizing_gives_endpoints = True
     elif found_r and p_is_r:
@@ -216,8 +250,14 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
 
     elem_step = True if minimizing_gives_endpoints else False
 
-    # Print consolidated comparison report
-    _print_all_comparisons()
+    if (not verbose) and new_structures:
+        stop_status()
+        for node in new_structures:
+            _print_new_structure(node)
+        update_status("Checking if elementary step")
+
+    if verbose:
+        _print_all_comparisons()
 
     return ElemStepResults(
         is_elem_step=elem_step,
