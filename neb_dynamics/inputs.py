@@ -61,14 +61,14 @@ class NEBInputs:
 
     early_stop_force_thre: float = 0.0
 
-    negative_steps_thre: int = 10
+    negative_steps_thre: int = 5
     positive_steps_thre: int = 10
     use_geodesic_tangent: bool = False
     do_elem_step_checks: bool = False
 
     max_steps: float = 500
 
-    v: bool = True
+    v: bool = False
 
     def __post_init__(self):
 
@@ -199,7 +199,7 @@ class NetworkInputs:
 
 @dataclass
 class RunInputs:
-    engine_name: str = "qcop"
+    engine_name: str = "chemcloud"
     program: str = "xtb"
 
     path_min_method: str = 'NEB'
