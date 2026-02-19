@@ -269,6 +269,27 @@ class ProgressPrinter:
             sys.stdout.write(f"\n{caption}\n{ascii_plot}\n")
             sys.stdout.flush()
 
+    def preserve_chain_snapshot(self, note: Optional[str] = None):
+        """Persist the current live chain table into scrollback, then reset live mode."""
+        if self._last_ascii_plot is None:
+            return
+
+        caption = note if note else "Chain snapshot"
+
+        if self.use_rich:
+            table = Table(show_header=False, box=box.SIMPLE, caption=caption)
+            table.add_column("Chain")
+            table.add_row(self._last_ascii_plot)
+
+            if self._live is not None:
+                self._live.stop()
+                self._live = None
+
+            _console.print(table)
+        else:
+            sys.stdout.write(f"\n{caption}\n{self._last_ascii_plot}\n")
+            sys.stdout.flush()
+
     def flush(self):
         """Flush stdout."""
         sys.stdout.flush()
@@ -468,6 +489,11 @@ def print_chain_step(chain, caption: str, force_update: bool = False):
     printer = get_progress_printer()
     ascii_plot = ascii_profile_for_chain(chain)
     printer.print_chain_ascii(ascii_plot, caption, force_update=force_update)
+
+
+def preserve_chain_snapshot(note: Optional[str] = None):
+    printer = get_progress_printer()
+    printer.preserve_chain_snapshot(note=note)
 
 
 def start_status(message: str):

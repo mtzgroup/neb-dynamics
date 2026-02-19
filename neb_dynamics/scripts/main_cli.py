@@ -207,6 +207,60 @@ def _ascii_profile_for_chain(chain: Chain):
     console.print(plot, markup=False)
 
 
+def _section_dict(obj):
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    if hasattr(obj, "__dict__"):
+        return {k: v for k, v in vars(obj).items() if not k.startswith("_")}
+    return {"value": obj}
+
+
+def _flatten_params(data, prefix=""):
+    if isinstance(data, dict):
+        rows = []
+        for key in sorted(data.keys()):
+            next_prefix = f"{prefix}.{key}" if prefix else str(key)
+            rows.extend(_flatten_params(data[key], next_prefix))
+        return rows
+    return [(prefix if prefix else "value", str(data))]
+
+
+def _render_runinputs(program_input: RunInputs):
+    table = Table(box=box.SIMPLE, show_header=True, pad_edge=False)
+    table.add_column("Section", style="bold cyan", no_wrap=True)
+    table.add_column("Key", style="magenta")
+    table.add_column("Value", style="white")
+
+    sections = [
+        ("General", {
+            "engine_name": program_input.engine_name,
+            "program": program_input.program,
+            "path_min_method": program_input.path_min_method,
+        }),
+        ("Path Minimizer", _section_dict(program_input.path_min_inputs)),
+        ("Chain", _section_dict(program_input.chain_inputs)),
+        ("GI", _section_dict(program_input.gi_inputs)),
+        ("Program Args", _section_dict(program_input.program_kwds)),
+        ("Optimizer", _section_dict(program_input.optimizer_kwds)),
+    ]
+
+    for section_name, section_data in sections:
+        flat_rows = _flatten_params(section_data)
+        for i, (key, value) in enumerate(flat_rows):
+            table.add_row(section_name if i == 0 else "", key, value)
+
+    console.print(
+        Panel(
+            table,
+            title="[bold cyan]Input Parameters[/bold cyan]",
+            border_style="cyan",
+            box=box.ROUNDED,
+        )
+    )
+
+
 @app.command("run")
 def run(
         start: Annotated[str, typer.Option(
@@ -310,8 +364,7 @@ def run(
         else:
             program_input = RunInputs(program='xtb', engine_name='qcop')
 
-    console.print(Panel(str(program_input),
-                  title="[bold cyan]Input Parameters[/bold cyan]", border_style="cyan", box=box.ROUNDED))
+    _render_runinputs(program_input)
     sys.stdout.flush()
 
     # minimize endpoints if requested
@@ -664,8 +717,7 @@ def run_netgen(
         else:
             program_input = RunInputs(program='xtb', engine_name='qcop')
 
-    console.print(Panel(str(program_input),
-                  title="[bold cyan]Input Parameters[/bold cyan]", border_style="cyan", box=box.ROUNDED))
+    _render_runinputs(program_input)
 
     valid_suff = ['.qcio', '.xyz']
     assert (Path(start).suffix in valid_suff and Path(

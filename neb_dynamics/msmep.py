@@ -26,7 +26,7 @@ from qcio import Structure
 
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
 from neb_dynamics.inputs import RunInputs
-from neb_dynamics.scripts.progress import print_neb_step, start_status, update_status, stop_status
+from neb_dynamics.scripts.progress import print_neb_step, preserve_chain_snapshot, start_status, update_status, stop_status
 
 
 def _get_verbose(inputs: RunInputs) -> bool:
@@ -127,6 +127,9 @@ class MSMEP:
                     chain=chain,
                     split_method=elem_step_results.splitting_criterion,
                     minimization_results=elem_step_results.minimization_results,
+                )
+                preserve_chain_snapshot(
+                    note=f"Completed branch before split into {len(sequence_of_chains)} child chains"
                 )
 
                 new_tree_node_index = tree_node_index + 1
