@@ -119,7 +119,7 @@ class MSMEP:
                 if _get_verbose(self.inputs):
                     print(msg)
                 else:
-                    update_status(msg)
+                    preserve_chain_snapshot(note=msg)
 
                 # the last chain in the minimization
                 chain = root_neb_obj.chain_trajectory[-1]
@@ -127,9 +127,6 @@ class MSMEP:
                     chain=chain,
                     split_method=elem_step_results.splitting_criterion,
                     minimization_results=elem_step_results.minimization_results,
-                )
-                preserve_chain_snapshot(
-                    note=f"Completed branch before split into {len(sequence_of_chains)} child chains"
                 )
 
                 new_tree_node_index = tree_node_index + 1

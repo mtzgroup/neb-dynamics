@@ -45,6 +45,8 @@ class ProgressPrinter:
         self._status_active = False
         self._live = None
         self._last_ascii_plot = None
+        self._last_caption = None
+        self._last_status_message = None
 
         # Throttle updates to avoid too much output
         self._throttle = 0.5  # Only print every 0.5 seconds by default
@@ -93,6 +95,9 @@ class ProgressPrinter:
 
     def start_status(self, message: str):
         """Start a spinner status message."""
+        if self.use_rich and self._live is not None:
+            self._update_live_caption(message)
+            return
         if self.use_rich:
             if self._status is None:
                 self._status = Status(message, console=_console)
@@ -108,11 +113,7 @@ class ProgressPrinter:
     def update_status(self, message: str):
         """Update the spinner status message."""
         if self.use_rich and self._live is not None:
-            if self._last_ascii_plot is not None:
-                table = Table(show_header=False, box=box.SIMPLE, caption=message)
-                table.add_column("Chain")
-                table.add_row(self._last_ascii_plot)
-                self._live.update(table)
+            self._update_live_caption(message)
             return
         if self.use_rich:
             if self._status is None:
@@ -249,8 +250,13 @@ class ProgressPrinter:
         if not force_update and (current_time - self._last_print_time) < self._throttle:
             return
 
+        if caption == self._last_caption and ascii_plot == self._last_ascii_plot:
+            return
+
         self._last_print_time = current_time
         self._last_ascii_plot = ascii_plot
+        self._last_caption = caption
+        self._last_status_message = None
 
         if self.use_rich:
             if self._status_active:
@@ -261,13 +267,34 @@ class ProgressPrinter:
             table.add_row(ascii_plot)
 
             if self._live is None:
-                self._live = Live(table, console=_console, refresh_per_second=4)
+                self._live = Live(
+                    table,
+                    console=_console,
+                    refresh_per_second=4,
+                    auto_refresh=False,
+                )
                 self._live.start()
+                self._live.refresh()
             else:
                 self._live.update(table)
+                self._live.refresh()
         else:
             sys.stdout.write(f"\n{caption}\n{ascii_plot}\n")
             sys.stdout.flush()
+
+    def _update_live_caption(self, message: str):
+        """Update live table caption without repainting duplicate frames."""
+        if self._live is None or self._last_ascii_plot is None:
+            return
+        if message == self._last_status_message:
+            return
+        self._last_status_message = message
+        self._last_caption = message
+        table = Table(show_header=False, box=box.SIMPLE, caption=message)
+        table.add_column("Chain")
+        table.add_row(self._last_ascii_plot)
+        self._live.update(table)
+        self._live.refresh()
 
     def preserve_chain_snapshot(self, note: Optional[str] = None):
         """Persist the current live chain table into scrollback, then reset live mode."""
