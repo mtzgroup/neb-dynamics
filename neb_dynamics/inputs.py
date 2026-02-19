@@ -8,6 +8,8 @@ from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.optimizers.cg import ConjugateGradient
 from neb_dynamics.optimizers.lbfgs import LBFGS
 from neb_dynamics.optimizers.adam import AdamOptimizer
+from neb_dynamics.optimizers.amg import AdaptiveMomentumGradient
+from neb_dynamics.optimizers.fire import FIREOptimizer
 import tomli
 import tomli_w
 from pathlib import Path
@@ -324,6 +326,9 @@ class RunInputs:
             "velocity_projected": VelocityProjectedOptimizer,
             "lbfgs": LBFGS,
             "adam": AdamOptimizer,
+            "amg": AdaptiveMomentumGradient,
+            "adaptive_momentum": AdaptiveMomentumGradient,
+            "fire": FIREOptimizer,
         }
         if optimizer_name not in optimizer_map:
             available = ", ".join(sorted(set(optimizer_map.keys())))

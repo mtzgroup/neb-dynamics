@@ -22,6 +22,11 @@ from neb_dynamics.nodes.nodehelpers import is_identical
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.errors import ElectronicStructureError
 from neb_dynamics.optimizers.cg import ConjugateGradient
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
+from neb_dynamics.optimizers.lbfgs import LBFGS
+from neb_dynamics.optimizers.adam import AdamOptimizer
+from neb_dynamics.optimizers.amg import AdaptiveMomentumGradient
+from neb_dynamics.optimizers.fire import FIREOptimizer
 from qcio import Structure
 
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
@@ -52,6 +57,27 @@ class MSMEP:
             assert (
                 self.inputs.path_min_method.upper() in PATH_METHODS
             ), f"Invalid path method: {self.inputs.path_min_method}. Allowed are: {PATH_METHODS}"
+
+    def _build_neb_optimizer(self):
+        kwds = dict(self.inputs.optimizer_kwds or {})
+        optimizer_name = kwds.pop("name", "cg").lower()
+        optimizer_map = {
+            "cg": ConjugateGradient,
+            "conjugate_gradient": ConjugateGradient,
+            "vpo": VelocityProjectedOptimizer,
+            "velocity_projected": VelocityProjectedOptimizer,
+            "lbfgs": LBFGS,
+            "adam": AdamOptimizer,
+            "amg": AdaptiveMomentumGradient,
+            "adaptive_momentum": AdaptiveMomentumGradient,
+            "fire": FIREOptimizer,
+        }
+        if optimizer_name not in optimizer_map:
+            available = ", ".join(sorted(set(optimizer_map.keys())))
+            raise ValueError(
+                f"Unsupported optimizer '{optimizer_name}'. Supported values: {available}"
+            )
+        return optimizer_map[optimizer_name](**kwds)
 
     def run_recursive_minimize(self, input_chain: Chain, tree_node_index=0) -> TreeNode:
         """Will take a chain as an input and run NEB minimizations until it exits out.
@@ -246,7 +272,7 @@ class MSMEP:
                 sys.stdout.flush()
             else:
                 update_status(msg)
-            optimizer = ConjugateGradient(**self.inputs.optimizer_kwds)
+            optimizer = self._build_neb_optimizer()
 
             n = NEB(
                 initial_chain=initial_chain,

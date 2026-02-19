@@ -132,6 +132,11 @@ class ProgressPrinter:
         if self.use_rich and self._status and self._status_active:
             self._status.stop()
             self._status_active = False
+        if self.use_rich and self._live is not None:
+            # Ensure external rich prints (e.g., new-structure ASCII art)
+            # are not obscured by an active Live renderer.
+            self._live.stop()
+            self._live = None
 
     def print_step(
         self,
