@@ -99,6 +99,7 @@ def _classify_new_structure(node: Node, reactant: Node, product: Node) -> str:
         return "new product conformer found!"
     if not same_as_reactant and not same_as_product:
         return "new molecule found!"
+    return "new structure found!"
 
 
 def _deduplicate_discoveries(nodes: list[Node], reactant: Node, product: Node) -> list[tuple[Node, str]]:
@@ -121,6 +122,29 @@ def _deduplicate_discoveries(nodes: list[Node], reactant: Node, product: Node) -
         if not duplicate:
             unique.append((node, msg))
     return unique
+
+
+def _filter_new_structures(nodes: list[Node], reactant: Node, product: Node, chain: Chain) -> list[Node]:
+    """Keep only nodes that are not identical to either endpoint."""
+    new_nodes: list[Node] = []
+    for node in nodes:
+        is_r = is_identical(
+            node,
+            reactant,
+            fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
+            kcal_mol_cutoff=chain.parameters.node_ene_thre,
+            verbose=False,
+        )
+        is_p = is_identical(
+            node,
+            product,
+            fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
+            kcal_mol_cutoff=chain.parameters.node_ene_thre,
+            verbose=False,
+        )
+        if not (is_r or is_p):
+            new_nodes.append(node)
+    return new_nodes
 
 
 def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -> ElemStepResults:
@@ -172,6 +196,21 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
     n_geom_opt_grad_calls += concavity_results.number_grad_calls
 
     if concavity_results.is_not_concave:
+        new_structures = _filter_new_structures(
+            nodes=concavity_results.minimization_results,
+            reactant=chain[0],
+            product=chain[-1],
+            chain=inp_chain,
+        )
+        if new_structures:
+            if not verbose:
+                stop_status()
+            for node, msg in _deduplicate_discoveries(
+                nodes=new_structures, reactant=chain[0], product=chain[-1]
+            ):
+                _print_new_structure(node, message=msg)
+            if not verbose:
+                update_status("Checking if elementary step")
         if verbose:
             _print_all_comparisons()
         return ElemStepResults(
@@ -241,11 +280,12 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
         verbose=False,  # Suppress individual prints, use consolidated report
     )
 
-    new_structures = []
-    if (not found_r) and (not r_is_p):
-        new_structures.append(pseu_irc_results.found_reactant)
-    if (not found_p) and (not p_is_r):
-        new_structures.append(pseu_irc_results.found_product)
+    new_structures = _filter_new_structures(
+        nodes=[pseu_irc_results.found_reactant, pseu_irc_results.found_product],
+        reactant=chain[0],
+        product=chain[-1],
+        chain=inp_chain,
+    )
 
     if found_r and found_p:
         minimizing_gives_endpoints = True
