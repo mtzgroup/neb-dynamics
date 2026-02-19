@@ -83,7 +83,8 @@ def _print_new_structure(node: Node) -> None:
         smi = structure_to_smiles(node.structure)
     except Exception:
         smi = ""
-    ascii_art = _render_molecule_ascii(smi, width=60, height=12) if smi else "new structure"
+    ascii_art = _render_molecule_ascii(
+        smi, width=60, height=12) if smi else "new structure"
     if _rich_available:
         from rich.text import Text
 
@@ -139,10 +140,6 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
             minimization_results=None,
             number_grad_calls=0,
         )
-
-    # Print consolidated comparison report at the end (only if verbose)
-    if verbose:
-        _print_all_comparisons()
 
     concavity_results = _chain_is_concave(
         chain=inp_chain, engine=engine, verbose=verbose)

@@ -33,6 +33,7 @@ from neb_dynamics.helper_functions import (
     qRMSD_distance,
     project_rigid_body_forces
 )
+from neb_dynamics.scripts.progress import get_progress_printer
 from ipywidgets import IntSlider, interact
 
 
@@ -1067,7 +1068,9 @@ def calculate_geodesic_tangent(
     dtot = d1 + d2
     nimg1 = max(int(nimages * (d1 / dtot)), min_nimages)
     nimg2 = max(int(nimages * (d2 / dtot)), min_nimages)
-    print("-> using nimg1:", nimg1, "nimg2:", nimg2, " for the tangent")
+    get_progress_printer().update_status(
+        f"Using nimg1: {nimg1} nimg2: {nimg2} for the tangent"
+    )
 
     smoother1 = sample_shortest_geodesic(segment1, nimages=nimg1)
     gi1 = gi_path_to_nodes(smoother1.path, symbols=ref_node.symbols,
@@ -1204,4 +1207,3 @@ def upsample_chain(chain, engine, nimages):
     chain_new.nodes = new_list
 
     return chain_new
-

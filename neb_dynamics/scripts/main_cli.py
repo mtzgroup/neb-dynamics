@@ -1,4 +1,19 @@
 from __future__ import annotations
+import logging
+import networkx as nx
+from typing import List
+from itertools import product
+from neb_dynamics.pot import plot_results_from_pot_obj
+from neb_dynamics.pot import Pot
+from neb_dynamics.helper_functions import compute_irc_chain
+from neb_dynamics.inputs import NetworkInputs, ChainInputs
+from neb_dynamics.NetworkBuilder import NetworkBuilder
+from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
+from neb_dynamics.nodes.nodehelpers import displace_by_dr
+from neb_dynamics.msmep import MSMEP
+from neb_dynamics.chain import Chain
+from neb_dynamics.nodes.node import StructureNode
+from neb_dynamics.inputs import RunInputs
 
 import typer
 from typing_extensions import Annotated
@@ -34,22 +49,6 @@ custom_theme = Theme({
     "header": "bold magenta",
     "dim": "dim",
 })
-
-from neb_dynamics.inputs import RunInputs
-from neb_dynamics.nodes.node import StructureNode
-from neb_dynamics.chain import Chain
-from neb_dynamics.msmep import MSMEP
-from neb_dynamics.nodes.nodehelpers import displace_by_dr
-from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
-from neb_dynamics.NetworkBuilder import NetworkBuilder
-from neb_dynamics.inputs import NetworkInputs, ChainInputs
-from neb_dynamics.helper_functions import compute_irc_chain
-from neb_dynamics.pot import Pot
-from neb_dynamics.pot import plot_results_from_pot_obj
-from itertools import product
-from typing import List
-import networkx as nx
-import logging
 
 
 class _SuppressWarningFilter(logging.Filter):
@@ -191,7 +190,8 @@ def _ascii_profile_for_chain(chain: Chain):
     try:
         energies = chain.energies_kcalmol
     except Exception as exc:
-        console.print(f"[yellow]⚠ Could not compute energy profile: {exc}[/yellow]")
+        console.print(
+            f"[yellow]⚠ Could not compute energy profile: {exc}[/yellow]")
         return
 
     labels = []
@@ -237,8 +237,10 @@ def run(
     table = Table(box=None, show_header=False)
     table.add_column(style="dim")
     table.add_row("[bold cyan]Command:[/bold cyan]", "[white]run[/white]")
-    table.add_row("[bold cyan]Method:[/bold cyan]", f"[yellow]{'recursive' if recursive else 'regular'}[/yellow]")
-    table.add_row("[bold cyan]SMILES mode:[/bold cyan]", f"[yellow]{use_smiles}[/yellow]")
+    table.add_row("[bold cyan]Method:[/bold cyan]",
+                  f"[yellow]{'recursive' if recursive else 'regular'}[/yellow]")
+    table.add_row("[bold cyan]SMILES mode:[/bold cyan]",
+                  f"[yellow]{use_smiles}[/yellow]")
     console.print(table)
     console.print()
 
@@ -248,12 +250,14 @@ def run(
         from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
         from neb_dynamics.arbalign import align_structures
 
-        console.print("[yellow]⚠ WARNING:[/yellow] Using RXNMapper to create atomic mapping. Carefully check output to see how labels affected reaction path.")
+        console.print(
+            "[yellow]⚠ WARNING:[/yellow] Using RXNMapper to create atomic mapping. Carefully check output to see how labels affected reaction path.")
         with console.status("[bold cyan]Creating structures from SMILES...[/bold cyan]") as status:
             start_structure, end_structure = create_pairs_from_smiles(
                 smi1=start, smi2=end)
 
-            console.print("[cyan]Using arbalign to optimize index labelling for endpoints[/cyan]")
+            console.print(
+                "[cyan]Using arbalign to optimize index labelling for endpoints[/cyan]")
             end_structure = align_structures(
                 start_structure, end_structure, distance_metric='RMSD')
 
@@ -270,7 +274,8 @@ def run(
                         geometries, charge=None, spinmult=None)
         elif start is not None and end is not None:
             with console.status(f"[bold cyan]Loading structures...[/bold cyan]"):
-                console.print(f"[dim]Charge: {charge}, Multiplicity: {multiplicity}[/dim]")
+                console.print(
+                    f"[dim]Charge: {charge}, Multiplicity: {multiplicity}[/dim]")
 
                 start_ref = Structure.open(start)
                 end_ref = Structure.open(end)
@@ -294,7 +299,8 @@ def run(
 
                 all_structs = [start_ref, end_ref]
         else:
-            console.print("[bold red]✗ ERROR:[/bold red] Either 'geometries' or 'start' and 'end' flags must be populated!")
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] Either 'geometries' or 'start' and 'end' flags must be populated!")
             raise typer.Exit(1)
 
     # load the RunInputs
@@ -304,7 +310,8 @@ def run(
         else:
             program_input = RunInputs(program='xtb', engine_name='qcop')
 
-    console.print(Panel(str(program_input), title="[bold cyan]Input Parameters[/bold cyan]", border_style="cyan", box=box.ROUNDED))
+    console.print(Panel(str(program_input),
+                  title="[bold cyan]Input Parameters[/bold cyan]", border_style="cyan", box=box.ROUNDED))
     sys.stdout.flush()
 
     # minimize endpoints if requested
@@ -312,11 +319,11 @@ def run(
     if minimize_ends:
         console.print("[bold cyan]⟳ Minimizing input endpoints...[/bold cyan]")
         start_tr = program_input.engine.compute_geometry_optimization(
-            all_nodes[0], keywords={'coordsys': 'cart', 'maxiter':500})
+            all_nodes[0], keywords={'coordsys': 'cart', 'maxiter': 500})
 
         all_nodes[0] = start_tr[-1]
         end_tr = program_input.engine.compute_geometry_optimization(
-            all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter':500})
+            all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter': 500})
         all_nodes[-1] = end_tr[-1]
         console.print("[bold green]✓ Done![/bold green]")
 
@@ -334,8 +341,14 @@ def run(
     chain_for_profile = None
 
     if recursive:
-        program_input.path_min_inputs.do_elem_step_checks = True
-        console.print(f"[bold magenta]▶ RUNNING AUTOSPLITTING {program_input.path_min_method}[/bold magenta]")
+        if not program_input.path_min_inputs.do_elem_step_checks:
+            console.print(
+                "[yellow]⚠ WARNING: do_elem_step_checks is set to False. This may cause issues with recursive splitting.[/yellow]")
+            console.print(
+                "[yellow]Making it True to ensure proper functioning of recursive splitting.[/yellow]")
+            program_input.path_min_inputs.do_elem_step_checks = True
+        console.print(
+            f"[bold magenta]▶ RUNNING AUTOSPLITTING {program_input.path_min_method}[/bold magenta]")
         history = m.run_recursive_minimize(chain)
 
         if not history.data:
@@ -365,7 +378,8 @@ def run(
             for i, leaf in enumerate(history.ordered_leaves):
                 if not leaf.data:
                     continue
-                console.print(f"[bold cyan]⟳ Running TS opt on leaf {i}...[/bold cyan]")
+                console.print(
+                    f"[bold cyan]⟳ Running TS opt on leaf {i}...[/bold cyan]")
                 try:
                     tsres = program_input.engine._compute_ts_result(
                         leaf.data.chain_trajectory[-1].get_ts_node())
@@ -383,20 +397,25 @@ def run(
                                 filename.stem+f"_tsres_{i}_IRC.xyz")
 
                         except Exception:
-                            console.print(f"[yellow]⚠ IRC failed: {traceback.format_exc()}[/yellow]")
-                            console.print("[yellow]IRC failed. Continuing...[/yellow]")
+                            console.print(
+                                f"[yellow]⚠ IRC failed: {traceback.format_exc()}[/yellow]")
+                            console.print(
+                                "[yellow]IRC failed. Continuing...[/yellow]")
                 else:
-                    console.print(f"[yellow]⚠ TS optimization did not converge on leaf {i}...[/yellow]")
+                    console.print(
+                        f"[yellow]⚠ TS optimization did not converge on leaf {i}...[/yellow]")
 
         tot_grad_calls = sum([obj.grad_calls_made for obj in leaves_nebs])
         geom_grad_calls = sum(
             [obj.geom_grad_calls_made for obj in leaves_nebs])
-        console.print(f"[bold green]✓[/bold green] [cyan]Made {tot_grad_calls} gradient calls total.[/cyan]")
+        console.print(
+            f"[bold green]✓[/bold green] [cyan]Made {tot_grad_calls} gradient calls total.[/cyan]")
         console.print(
             f"[bold green]✓[/bold green] [cyan]Made {geom_grad_calls} gradient for geometry optimizations.[/cyan]")
 
     else:
-        console.print(f"[bold magenta]▶ RUNNING REGULAR {program_input.path_min_method}[/bold magenta]")
+        console.print(
+            f"[bold magenta]▶ RUNNING REGULAR {program_input.path_min_method}[/bold magenta]")
         n, elem_step_results = m.run_minimize_chain(input_chain=chain)
         fp = Path("mep_output")
         data_dir = Path(os.getcwd())
@@ -433,14 +452,17 @@ def run(
                             filename.stem+"_tsres_IRC.xyz")
 
                     except Exception:
-                        console.print(f"[yellow]⚠ IRC failed: {traceback.format_exc()}[/yellow]")
-                        console.print("[yellow]IRC failed. Continuing...[/yellow]")
+                        console.print(
+                            f"[yellow]⚠ IRC failed: {traceback.format_exc()}[/yellow]")
+                        console.print(
+                            "[yellow]IRC failed. Continuing...[/yellow]")
 
             else:
                 console.print("[yellow]⚠ TS optimization failed.[/yellow]")
 
         tot_grad_calls = n.grad_calls_made
-        console.print(f"[bold green]✓[/bold green] [cyan]Made {tot_grad_calls} gradient calls total.[/cyan]")
+        console.print(
+            f"[bold green]✓[/bold green] [cyan]Made {tot_grad_calls} gradient calls total.[/cyan]")
 
     end_time = time.time()
     elapsed = end_time - start_time
@@ -450,11 +472,13 @@ def run(
     summary.add_column(style="bold cyan")
     summary.add_column(style="white")
     if elapsed > 60:
-        summary.add_row("⏱ Walltime:", f"[yellow]{elapsed/60:.1f} min[/yellow]")
+        summary.add_row(
+            "⏱ Walltime:", f"[yellow]{elapsed/60:.1f} min[/yellow]")
     else:
         summary.add_row("⏱ Walltime:", f"[yellow]{elapsed:.1f} s[/yellow]")
     summary.add_row("📁 Output:", f"[cyan]{filename}[/cyan]")
-    console.print(Panel(summary, title="[bold green]✓ Complete![/bold green]", border_style="green"))
+    console.print(Panel(
+        summary, title="[bold green]✓ Complete![/bold green]", border_style="green"))
 
     if chain_for_profile is not None:
         _ascii_profile_for_chain(chain_for_profile)
@@ -583,7 +607,8 @@ def make_netgen_path(
     if len(inds) > 2:
         p = inds
     else:
-        console.print("[cyan]Computing shortest path weighed by barrier heights[/cyan]")
+        console.print(
+            "[cyan]Computing shortest path weighed by barrier heights[/cyan]")
         p = nx.shortest_path(pot.graph, weight='barrier',
                              source=inds[0], target=inds[1])
     console.print(f"[green]✓ Path:[/green] {p}")
@@ -606,7 +631,8 @@ def make_default_inputs(
     ri = RunInputs(path_min_method=path_min_method)
     out = Path(name)
     ri.save(out.parent / (out.stem+".toml"))
-    console.print(f"[bold green]✓ Default inputs saved to:[/bold green] {out.parent / (out.stem+'.toml')}")
+    console.print(
+        f"[bold green]✓ Default inputs saved to:[/bold green] {out.parent / (out.stem+'.toml')}")
 
 
 @app.command("run-netgen")
@@ -638,14 +664,16 @@ def run_netgen(
         else:
             program_input = RunInputs(program='xtb', engine_name='qcop')
 
-    console.print(Panel(str(program_input), title="[bold cyan]Input Parameters[/bold cyan]", border_style="cyan", box=box.ROUNDED))
+    console.print(Panel(str(program_input),
+                  title="[bold cyan]Input Parameters[/bold cyan]", border_style="cyan", box=box.ROUNDED))
 
     valid_suff = ['.qcio', '.xyz']
     assert (Path(start).suffix in valid_suff and Path(
         end).suffix in valid_suff), "Invalid file type. Make sure they are .qcio or .xyz files"
 
     # load the structures
-    console.print(f"[dim]Loading structures: {Path(start).suffix} → {Path(end).suffix}[/dim]")
+    console.print(
+        f"[dim]Loading structures: {Path(start).suffix} → {Path(end).suffix}[/dim]")
     if Path(start).suffix == ".qcio":
         start_structures = ProgramOutput.open(start).results.conformers
         start_nodes = [StructureNode(structure=s) for s in start_structures]
@@ -656,9 +684,11 @@ def run_netgen(
             start_nodes = [StructureNode(structure=s)
                            for s in start_structures]
         else:
-            console.print("[cyan]Only one structure in reactant file. Sampling using CREST![/cyan]")
+            console.print(
+                "[cyan]Only one structure in reactant file. Sampling using CREST![/cyan]")
             if minimize_ends:
-                console.print("[bold cyan]⟳ Minimizing endpoints...[/bold cyan]")
+                console.print(
+                    "[bold cyan]⟳ Minimizing endpoints...[/bold cyan]")
                 sys.stdout.flush()
                 start_structure = program_input.engine.compute_geometry_optimization(
                     StructureNode(structure=start_structures[0]))[-1].structure
@@ -691,9 +721,11 @@ def run_netgen(
             end_nodes = [StructureNode(structure=s)
                          for s in end_structures]
         else:
-            console.print("[cyan]Only one structure in product file. Sampling using CREST![/cyan]")
+            console.print(
+                "[cyan]Only one structure in product file. Sampling using CREST![/cyan]")
             if minimize_ends:
-                console.print("[bold cyan]⟳ Minimizing endpoints...[/bold cyan]")
+                console.print(
+                    "[bold cyan]⟳ Minimizing endpoints...[/bold cyan]")
                 sys.stdout.flush()
 
                 end_structure = program_input.engine.compute_geometry_optimization(
@@ -739,7 +771,8 @@ def run_netgen(
 
         # Run the optimization
 
-        console.print(f"[bold magenta]▶ Running autosplitting on pair {i+1}/{len(pairs)} ({program_input.path_min_method})[/bold magenta]")
+        console.print(
+            f"[bold magenta]▶ Running autosplitting on pair {i+1}/{len(pairs)} ({program_input.path_min_method})[/bold magenta]")
         if filename.exists():
             console.print("[yellow]⚠ Already done. Skipping...[/yellow]")
             continue
@@ -759,7 +792,8 @@ def run_netgen(
         time_str = f"{elapsed/60:.1f} min"
     else:
         time_str = f"{elapsed:.1f} s"
-    console.print(f"[bold green]✓ Netgen complete![/bold green] [dim]Walltime: {time_str}[/dim]")
+    console.print(
+        f"[bold green]✓ Netgen complete![/bold green] [dim]Walltime: {time_str}[/dim]")
 
 
 @app.command("make-netgen-summary")
@@ -797,7 +831,8 @@ def make_netgen_summary(
             pot = nb.create_rxn_network(file_pattern="*")
             pot.write_to_disk(pot_fp)
         else:
-            console.print(f"[yellow]⚠ {pot_fp} already exists. Loading...[/yellow]")
+            console.print(
+                f"[yellow]⚠ {pot_fp} already exists. Loading...[/yellow]")
             pot = Pot.read_from_disk(pot_fp)
 
     with console.status("[bold cyan]Generating plots...[/bold cyan]"):

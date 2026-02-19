@@ -228,6 +228,10 @@ class RunInputs:
                 "tangent": 'geodesic',
                 "tangent_alpha": 1.0,  # mixing coefficient for tangents,
                 "use_xtb_grow": True,
+                "distance_metric": "GEODESIC",
+                "min_images": 10,
+                "todd_way": True,
+                "dist_err": 0.1,
 
             }
         #     default_kwds = FSMInputs()

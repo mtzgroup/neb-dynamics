@@ -29,7 +29,7 @@ from neb_dynamics.qcio_structure_helpers import (
     structure_to_ase_atoms,
     ase_atoms_to_structure,
 )
-from neb_dynamics.scripts.progress import print_neb_step, update_status
+from neb_dynamics.scripts.progress import print_chain_step, format_neb_caption, update_status
 
 # Rich imports for flashy CLI output
 try:
@@ -402,18 +402,16 @@ class NEB(PathMinimizer):
                 self.optimizer.timestep += 0.2*self.orig_timestep
                 nsteps_pos_grad_corr = 0
 
-            if self.parameters.v:
-
-                print_neb_step(
-                    step=nsteps,
-                    ts_grad=np.amax(np.abs(ts_guess_grad)),
-                    max_rms_grad=max_rms_grad_val,
-                    ts_triplet_gspring=new_chain.ts_triplet_gspring_infnorm,
-                    nodes_frozen=n_nodes_frozen,
-                    timestep=self.optimizer.timestep,
-                    grad_corr=grad_corr,
-                    force_update=True
-                )
+            caption = format_neb_caption(
+                step=nsteps,
+                ts_grad=np.amax(np.abs(ts_guess_grad)),
+                max_rms_grad=max_rms_grad_val,
+                ts_triplet_gspring=new_chain.ts_triplet_gspring_infnorm,
+                nodes_frozen=n_nodes_frozen,
+                timestep=self.optimizer.timestep,
+                grad_corr=grad_corr,
+            )
+            print_chain_step(new_chain, caption, force_update=True)
 
             self.chain_trajectory.append(new_chain)
             self.gradient_trajectory.append(new_chain.gradients)
