@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.optimizers.cg import ConjugateGradient
 from neb_dynamics.optimizers.lbfgs import LBFGS
+from neb_dynamics.optimizers.adam import AdamOptimizer
 import tomli
 import tomli_w
 from pathlib import Path
@@ -288,7 +289,9 @@ class RunInputs:
             self.chain_inputs = ChainInputs(**self.chain_inputs)
 
         if self.optimizer_kwds is None:
-            self.optimizer_kwds = {"timestep": 0.5}
+            self.optimizer_kwds = {"name": "cg", "timestep": 0.5}
+        elif "name" not in self.optimizer_kwds:
+            self.optimizer_kwds["name"] = "cg"
 
         if self.engine_name == 'qcop' or self.engine_name == 'chemcloud':
             from neb_dynamics.engines.qcop import QCOPEngine
@@ -312,9 +315,20 @@ class RunInputs:
             raise ValueError(f"Unsupported engine: {self.engine_name}")
 
         self.engine = eng
-        # self.optimizer = VelocityProjectedOptimizer(**self.optimizer_kwds)
-        self.optimizer = ConjugateGradient(**self.optimizer_kwds)
-        # self.optimizer = LBFGS(**self.optimizer_kwds)
+        optimizer_kwds = dict(self.optimizer_kwds)
+        optimizer_name = optimizer_kwds.pop("name").lower()
+        optimizer_map = {
+            "cg": ConjugateGradient,
+            "conjugate_gradient": ConjugateGradient,
+            "vpo": VelocityProjectedOptimizer,
+            "velocity_projected": VelocityProjectedOptimizer,
+            "lbfgs": LBFGS,
+            "adam": AdamOptimizer,
+        }
+        if optimizer_name not in optimizer_map:
+            available = ", ".join(sorted(set(optimizer_map.keys())))
+            raise ValueError(f"Unsupported optimizer '{optimizer_name}'. Supported values: {available}")
+        self.optimizer = optimizer_map[optimizer_name](**optimizer_kwds)
 
     @classmethod
     def open(cls, fp):

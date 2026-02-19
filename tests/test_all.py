@@ -2,6 +2,7 @@ from pathlib import Path
 
 from types import SimpleNamespace
 import numpy as np
+import pytest
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs, RunInputs
@@ -22,7 +23,21 @@ from neb_dynamics.nodes.node import StructureNode
 from qcio import Structure
 from neb_dynamics.engines.ase import ASEEngine
 
-from xtb.ase.calculator import XTB
+_REQUIRED_DATA_FILES = [
+    Path("/home/jdep/neb_dynamics/tests/test_traj.xyz"),
+    Path("/home/jdep/neb_dynamics/tests/traj_msmep.xyz"),
+    Path("/home/jdep/neb_dynamics/tests/test_msmep_results/node_0.xyz"),
+]
+if not all(fp.exists() for fp in _REQUIRED_DATA_FILES):
+    pytest.skip(
+        "Legacy integration tests require /home/jdep/neb_dynamics/tests fixture files.",
+        allow_module_level=True,
+    )
+
+xtb_calculator = pytest.importorskip(
+    "xtb.ase.calculator", reason="xtb is required for integration tests in test_all.py"
+)
+XTB = xtb_calculator.XTB
 
 
 def animate_func(neb_obj: NEB, engine: Engine):

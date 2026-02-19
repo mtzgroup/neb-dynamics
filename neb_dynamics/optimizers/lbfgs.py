@@ -13,11 +13,19 @@ class LBFGS(Optimizer):
     to approximate the inverse Hessian, leading to faster convergence than simple
     gradient descent for many problems.
     """
+    timestep: float = 1.0
     history_size: int = 10
+    min_curvature: float = 1e-10
 
     def __post_init__(self):
         self.s_history = deque(maxlen=self.history_size)
         self.y_history = deque(maxlen=self.history_size)
+        self.g_old = None
+        self.x_old = None
+
+    def reset(self):
+        self.s_history.clear()
+        self.y_history.clear()
         self.g_old = None
         self.x_old = None
 
@@ -37,8 +45,7 @@ class LBFGS(Optimizer):
         g_new = chain_gradients.flatten()
         # Handle the very first step
         if self.g_old is None:
-            new_chain_coordinates = chain.coordinates - \
-                g_new.reshape(chain_gradients.shape)
+            new_chain_coordinates = chain.coordinates - self.timestep * g_new.reshape(chain_gradients.shape)
             self.x_old = new_chain_coordinates.flatten()
             self.g_old = g_new
             new_nodes = [node.update_coords(new_coords) for node, new_coords in zip(
@@ -47,6 +54,16 @@ class LBFGS(Optimizer):
         # Calculate s_k and y_k and store in history
         s_k = chain.coordinates.flatten() - self.x_old
         y_k = g_new - self.g_old
+        ys = np.dot(y_k, s_k)
+        if ys <= self.min_curvature:
+            # Curvature condition failed; clear memory and do stable steepest-descent step.
+            self.reset()
+            new_chain_coordinates = chain.coordinates - self.timestep * g_new.reshape(chain_gradients.shape)
+            self.x_old = new_chain_coordinates.flatten()
+            self.g_old = g_new
+            new_nodes = [node.update_coords(new_coords) for node, new_coords in zip(chain.nodes, new_chain_coordinates)]
+            return chain.model_copy(update={"nodes": new_nodes, "parameters": chain.parameters})
+
         self.s_history.append(s_k)
         self.y_history.append(y_k)
         # Perform two-loop recursion to compute the search direction p
@@ -57,7 +74,7 @@ class LBFGS(Optimizer):
             y_i = self.y_history[i]
             rho_i_denominator = np.dot(y_i, s_i)
             # Check for a near-zero denominator to prevent NaNs
-            if rho_i_denominator < 1e-8:
+            if rho_i_denominator <= self.min_curvature:
                 rho_i = 0.0
             else:
                 rho_i = 1.0 / rho_i_denominator
@@ -70,14 +87,14 @@ class LBFGS(Optimizer):
             s_last = self.s_history[-1]
             # Check for near-zero denominator to prevent NaNs
             y_last_dot = np.dot(y_last, y_last)
-            if y_last_dot > 1e-8:
+            if y_last_dot > self.min_curvature:
                 gamma_k = np.dot(s_last, y_last) / y_last_dot
         r = gamma_k * q
         for i in range(len(self.s_history)):
             s_i = self.s_history[i]
             y_i = self.y_history[i]
             rho_i_denominator = np.dot(y_i, s_i)
-            if rho_i_denominator < 1e-8:
+            if rho_i_denominator <= self.min_curvature:
                 rho_i = 0.0
             else:
                 rho_i = 1.0 / rho_i_denominator
@@ -85,7 +102,7 @@ class LBFGS(Optimizer):
             r = r + s_i * (alphas[len(alphas) - 1 - i] - beta)
         p = -r.reshape(chain_gradients.shape)
         # Apply the calculated search direction to update coordinates
-        new_chain_coordinates = chain.coordinates + p
+        new_chain_coordinates = chain.coordinates + self.timestep * p
         new_nodes = []
         for node, new_coords in zip(chain.nodes, new_chain_coordinates):
             new_nodes.append(node.update_coords(new_coords))
