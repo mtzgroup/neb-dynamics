@@ -27,7 +27,6 @@ from pathlib import Path
 import time
 import traceback
 from datetime import datetime
-from qcinf import structure_to_smiles
 
 from rich.console import Console
 from rich.theme import Theme
@@ -194,13 +193,8 @@ def _ascii_profile_for_chain(chain: Chain):
             f"[yellow]⚠ Could not compute energy profile: {exc}[/yellow]")
         return
 
-    labels = []
-    for i, node in enumerate(chain.nodes):
-        try:
-            smi = structure_to_smiles(node.structure)
-        except Exception:
-            smi = f"node_{i}"
-        labels.append(smi)
+    # Keep x-axis labeling consistent with live NEB tables: node indices only.
+    labels = [str(i) for i, _ in enumerate(chain.nodes)]
 
     plot = _build_ascii_energy_profile(energies, labels)
     console.print("\nASCII Reaction Profile (Energy vs Node)")
