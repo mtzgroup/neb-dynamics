@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import networkx as nx
+import numpy as np
 from typing import List
 from itertools import product
 from neb_dynamics.pot import plot_results_from_pot_obj
@@ -12,7 +13,12 @@ from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_fil
 from neb_dynamics.nodes.nodehelpers import displace_by_dr
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.chain import Chain
+from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.nodes.node import StructureNode
+from neb_dynamics.nodes.nodehelpers import (
+    _is_connectivity_identical,
+    is_identical,
+)
 from neb_dynamics.inputs import RunInputs
 
 import typer
@@ -79,7 +85,7 @@ app = typer.Typer(
 BANNER = """
 [bold magenta]╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
-║                        [bold cyan]NEB[/bold cyan] [bold white]-[/bold white] [bold cyan]Dynamics[/bold cyan]                        ║
+║                        [bold cyan]NEB[/bold cyan] [bold white]-[/bold white] [bold cyan]Dynamics[/bold cyan]                         ║
 ║        [dim]Reaction Path Optimization & Network Generation[/dim]        ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝[/bold magenta]
@@ -209,6 +215,184 @@ def _ascii_profile_for_chain(chain: Chain):
     plot = _build_ascii_energy_profile(energies, labels)
     console.print("\nASCII Reaction Profile (Energy vs Node)")
     console.print(plot, markup=False)
+
+
+def _extract_minima_nodes(history: TreeNode) -> list[StructureNode]:
+    """Extract minima candidates from recursive cheap-history leaves."""
+    minima: list[StructureNode] = []
+    for leaf in history.ordered_leaves:
+        if not leaf.data or not leaf.data.chain_trajectory:
+            continue
+        final_chain = leaf.data.chain_trajectory[-1]
+        if len(final_chain.nodes) == 0:
+            continue
+        minima.append(final_chain[0].copy())
+        minima.append(final_chain[-1].copy())
+    return minima
+
+
+def _extract_minima_nodes_from_chain(chain: Chain) -> list[StructureNode]:
+    """Extract endpoints + strict local minima from a single optimized chain."""
+    if len(chain.nodes) == 0:
+        return []
+    if len(chain.nodes) <= 2:
+        return [node.copy() for node in chain.nodes]
+    energies = chain.energies
+    minima_inds = {0, len(chain.nodes) - 1}
+    for i in range(1, len(chain.nodes) - 1):
+        if energies[i] < energies[i - 1] and energies[i] < energies[i + 1]:
+            minima_inds.add(i)
+    return [chain.nodes[i].copy() for i in sorted(minima_inds)]
+
+
+def _dedupe_minima_nodes(nodes: list[StructureNode], chain_inputs: ChainInputs) -> list[StructureNode]:
+    """Drop duplicate minima by geometry/graph identity."""
+    unique_nodes: list[StructureNode] = []
+    for node in nodes:
+        duplicate = False
+        for existing in unique_nodes:
+            if is_identical(
+                node,
+                existing,
+                fragment_rmsd_cutoff=chain_inputs.node_rms_thre,
+                kcal_mol_cutoff=chain_inputs.node_ene_thre,
+                verbose=False,
+            ):
+                duplicate = True
+                break
+        if not duplicate:
+            unique_nodes.append(node.copy())
+    return unique_nodes
+
+
+def _dedupe_minima_and_sources(
+    minima: list[StructureNode],
+    sources: list[StructureNode],
+    chain_inputs: ChainInputs,
+) -> tuple[list[StructureNode], list[StructureNode]]:
+    """Deduplicate minima while preserving same-index source mapping."""
+    if len(minima) != len(sources):
+        raise ValueError("minima and sources must have equal lengths.")
+
+    unique_minima: list[StructureNode] = []
+    unique_sources: list[StructureNode] = []
+    for node, source in zip(minima, sources):
+        duplicate = False
+        for existing in unique_minima:
+            if is_identical(
+                node,
+                existing,
+                fragment_rmsd_cutoff=chain_inputs.node_rms_thre,
+                kcal_mol_cutoff=chain_inputs.node_ene_thre,
+                verbose=False,
+            ):
+                duplicate = True
+                break
+        if not duplicate:
+            unique_minima.append(node.copy())
+            unique_sources.append(source.copy())
+    return unique_minima, unique_sources
+
+
+def _clear_node_cached_properties(node: StructureNode) -> StructureNode:
+    clean = node.copy()
+    clean._cached_result = None
+    clean._cached_energy = None
+    clean._cached_gradient = None
+    return clean
+
+
+def _clear_chain_cached_properties(chain: Chain, parameters: ChainInputs) -> Chain:
+    """Return chain copy with cached energies/gradients removed from every node."""
+    clean_nodes = [_clear_node_cached_properties(node) for node in chain.nodes]
+    return Chain.model_validate({"nodes": clean_nodes, "parameters": parameters})
+
+
+def _find_matching_node_index(
+    target: StructureNode,
+    chain: Chain,
+    chain_inputs: ChainInputs,
+) -> int | None:
+    try:
+        dists = [np.linalg.norm(node.coords - target.coords) for node in chain.nodes]
+        if len(dists) == 0:
+            return None
+        closest_idx = int(np.argmin(dists))
+        if dists[closest_idx] < 1e-8:
+            return closest_idx
+    except Exception:
+        dists = []
+
+    candidates: list[tuple[int, float]] = []
+    for i, node in enumerate(chain.nodes):
+        if is_identical(
+            target,
+            node,
+            fragment_rmsd_cutoff=chain_inputs.node_rms_thre,
+            kcal_mol_cutoff=chain_inputs.node_ene_thre,
+            verbose=False,
+        ):
+            dist = np.linalg.norm(node.coords - target.coords)
+            candidates.append((i, dist))
+
+    if candidates:
+        return min(candidates, key=lambda t: t[1])[0]
+
+    if len(dists) > 0:
+        return int(np.argmin(dists))
+    return None
+
+
+def _build_recycled_pair_chain(
+    cheap_output_chain: Chain,
+    cheap_start_ref: StructureNode,
+    cheap_end_ref: StructureNode,
+    expensive_start: StructureNode,
+    expensive_end: StructureNode,
+    cheap_chain_inputs: ChainInputs,
+    expensive_chain_inputs: ChainInputs,
+    expected_nimages: int,
+) -> Chain | None:
+    start_idx = _find_matching_node_index(
+        cheap_start_ref, cheap_output_chain, cheap_chain_inputs
+    )
+    end_idx = _find_matching_node_index(
+        cheap_end_ref, cheap_output_chain, cheap_chain_inputs
+    )
+    if start_idx is None or end_idx is None or start_idx == end_idx:
+        return None
+
+    if start_idx < end_idx:
+        segment_nodes = [node.copy() for node in cheap_output_chain.nodes[start_idx:end_idx + 1]]
+    else:
+        segment_nodes = [node.copy() for node in cheap_output_chain.nodes[end_idx:start_idx + 1]][::-1]
+
+    if len(segment_nodes) != expected_nimages:
+        return None
+
+    segment_nodes[0] = expensive_start.copy()
+    segment_nodes[-1] = expensive_end.copy()
+    recycled = Chain.model_validate(
+        {"nodes": segment_nodes, "parameters": expensive_chain_inputs}
+    )
+    return _clear_chain_cached_properties(recycled, expensive_chain_inputs)
+
+
+def _reverse_chain(chain: Chain) -> Chain:
+    return Chain.model_validate(
+        {"nodes": [node.copy() for node in chain.nodes[::-1]],
+         "parameters": chain.parameters}
+    )
+
+
+def _concat_chains(chains: list[Chain], parameters: ChainInputs) -> Chain:
+    if len(chains) == 0:
+        raise ValueError("Cannot concatenate an empty list of chains.")
+    nodes = []
+    for i, chain in enumerate(chains):
+        chain_nodes = chain.nodes if i == 0 else chain.nodes[1:]
+        nodes.extend([node.copy() for node in chain_nodes])
+    return Chain.model_validate({"nodes": nodes, "parameters": parameters})
 
 
 def _section_dict(obj):
@@ -539,6 +723,315 @@ def run(
 
     if chain_for_profile is not None:
         _ascii_profile_for_chain(chain_for_profile)
+
+
+@app.command("run-refine")
+def run_refine(
+        start: Annotated[str, typer.Option(
+            help='path to start file, or a reactant smiles')] = None,
+        end: Annotated[str, typer.Option(
+            help='path to end file, or a product smiles')] = None,
+        geometries:  Annotated[str, typer.Argument(help='file containing an approximate path between two endpoints. \
+            Use this if you have precompted a path you want to use. Do not use this with smiles.')] = None,
+        inputs: Annotated[str, typer.Option("--inputs", "-i",
+                                            help='path to expensive RunInputs toml file')] = None,
+        cheap_inputs: Annotated[str, typer.Option("--cheap-inputs", "-ci",
+                                                  help='optional path to cheaper RunInputs toml file for initial discovery')] = None,
+        recycle_nodes: Annotated[bool, typer.Option(
+            "--recycle-nodes",
+            help="Reuse cheap-stage path nodes as initial guess for expensive pair refinement.",
+        )] = False,
+        use_smiles: bool = False,
+        recursive: bool = False,
+        minimize_ends: bool = False,
+        name: str = None,
+        charge: int = 0,
+        multiplicity: int = 1):
+    """Two-stage refinement: cheap discovery -> expensive minima/path refinement."""
+    console.print(BANNER)
+
+    if inputs is None:
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] --inputs/-i is required for run-refine."
+        )
+        raise typer.Exit(1)
+
+    start_time = time.time()
+    table = Table(box=None, show_header=False)
+    table.add_column(style="dim")
+    table.add_row("[bold cyan]Command:[/bold cyan]",
+                  "[white]run-refine[/white]")
+    table.add_row("[bold cyan]SMILES mode:[/bold cyan]",
+                  f"[yellow]{use_smiles}[/yellow]")
+    table.add_row("[bold cyan]Method:[/bold cyan]",
+                  f"[yellow]{'recursive' if recursive else 'regular'}[/yellow]")
+    table.add_row("[bold cyan]Cheap Inputs:[/bold cyan]",
+                  f"[yellow]{cheap_inputs if cheap_inputs else inputs}[/yellow]")
+    table.add_row("[bold cyan]Expensive Inputs:[/bold cyan]",
+                  f"[yellow]{inputs}[/yellow]")
+    table.add_row("[bold cyan]Recycle Nodes:[/bold cyan]",
+                  f"[yellow]{recycle_nodes}[/yellow]")
+    console.print(table)
+    console.print()
+
+    # load structures
+    if use_smiles:
+        from neb_dynamics.nodes.nodehelpers import create_pairs_from_smiles
+        from neb_dynamics.arbalign import align_structures
+
+        console.print(
+            "[yellow]⚠ WARNING:[/yellow] Using RXNMapper to create atomic mapping. Carefully check output to see how labels affected reaction path.")
+        with console.status("[bold cyan]Creating structures from SMILES...[/bold cyan]"):
+            start_structure, end_structure = create_pairs_from_smiles(
+                smi1=start, smi2=end)
+            end_structure = align_structures(
+                start_structure, end_structure, distance_metric='RMSD')
+        all_structs = [start_structure, end_structure]
+    else:
+        if geometries is not None:
+            with console.status(f"[bold cyan]Loading geometries from {geometries}...[/bold cyan]"):
+                try:
+                    all_structs = read_multiple_structure_from_file(
+                        geometries, charge=charge, spinmult=multiplicity)
+                except ValueError:
+                    all_structs = read_multiple_structure_from_file(
+                        geometries, charge=None, spinmult=None)
+        elif start is not None and end is not None:
+            with console.status(f"[bold cyan]Loading structures...[/bold cyan]"):
+                start_ref = Structure.open(start)
+                end_ref = Structure.open(end)
+                if start_ref.charge != charge or start_ref.multiplicity != multiplicity:
+                    start_ref = Structure(
+                        geometry=start_ref.geometry,
+                        charge=charge,
+                        multiplicity=multiplicity,
+                        symbols=start_ref.symbols,
+                    )
+                if end_ref.charge != charge or end_ref.multiplicity != multiplicity:
+                    end_ref = Structure(
+                        geometry=end_ref.geometry,
+                        charge=charge,
+                        multiplicity=multiplicity,
+                        symbols=end_ref.symbols,
+                    )
+                all_structs = [start_ref, end_ref]
+        else:
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] Either 'geometries' or 'start' and 'end' flags must be populated!")
+            raise typer.Exit(1)
+
+    with console.status("[bold cyan]Loading input parameters...[/bold cyan]"):
+        expensive_input = RunInputs.open(inputs)
+        cheap_input = RunInputs.open(
+            cheap_inputs) if cheap_inputs else RunInputs.open(inputs)
+
+    console.print("[bold cyan]Cheap-level Inputs[/bold cyan]")
+    _render_runinputs(cheap_input)
+    console.print("[bold cyan]Expensive-level Inputs[/bold cyan]")
+    _render_runinputs(expensive_input)
+
+    all_nodes = [StructureNode(structure=s) for s in all_structs]
+    if minimize_ends:
+        console.print(
+            "[bold cyan]⟳ Minimizing input endpoints at cheap level...[/bold cyan]")
+        start_tr = cheap_input.engine.compute_geometry_optimization(
+            all_nodes[0], keywords={'coordsys': 'cart', 'maxiter': 500})
+        all_nodes[0] = start_tr[-1]
+        end_tr = cheap_input.engine.compute_geometry_optimization(
+            all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter': 500})
+        all_nodes[-1] = end_tr[-1]
+
+    cheap_chain = Chain.model_validate(
+        {"nodes": all_nodes, "parameters": cheap_input.chain_inputs}
+    )
+    cheap_msmep = MSMEP(inputs=cheap_input)
+
+    console.print(
+        f"[bold magenta]▶ CHEAP DISCOVERY RUN ({cheap_input.path_min_method})[/bold magenta]"
+    )
+    if recursive:
+        if not cheap_input.path_min_inputs.do_elem_step_checks:
+            console.print(
+                "[yellow]⚠ WARNING: do_elem_step_checks is False with --recursive. Setting it to True.[/yellow]"
+            )
+            cheap_input.path_min_inputs.do_elem_step_checks = True
+        cheap_history = cheap_msmep.run_recursive_minimize(cheap_chain)
+        if not cheap_history.data:
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] Cheap run returned no valid history."
+            )
+            raise typer.Exit(1)
+        cheap_output_chain = cheap_history.output_chain
+        cheap_minima = _extract_minima_nodes(cheap_history)
+    else:
+        cheap_neb, _ = cheap_msmep.run_minimize_chain(cheap_chain)
+        cheap_output_chain = cheap_neb.chain_trajectory[-1] if cheap_neb.chain_trajectory else cheap_neb.optimized
+        if cheap_output_chain is None:
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] Cheap run produced no optimized chain."
+            )
+            raise typer.Exit(1)
+        cheap_history = None
+        cheap_minima = _extract_minima_nodes_from_chain(cheap_output_chain)
+
+    base_name = name if name is not None else "mep_output"
+    data_dir = Path(os.getcwd())
+    cheap_chain_fp = data_dir / f"{base_name}_cheap.xyz"
+    cheap_tree_dir = data_dir / f"{base_name}_cheap_msmep"
+    cheap_output_chain.write_to_disk(cheap_chain_fp)
+    if cheap_history is not None:
+        cheap_history.write_to_disk(cheap_tree_dir)
+
+    cheap_minima = _dedupe_minima_nodes(cheap_minima, cheap_input.chain_inputs)
+    console.print(
+        f"[cyan]Discovered {len(cheap_minima)} unique cheap minima (including endpoints).[/cyan]"
+    )
+
+    console.print(
+        "[bold magenta]▶ REOPTIMIZING MINIMA AT EXPENSIVE LEVEL[/bold magenta]")
+    refined_minima: list[StructureNode] = []
+    refined_source_minima: list[StructureNode] = []
+    dropped_count = 0
+    kept_unoptimized_count = 0
+    for i, node in enumerate(cheap_minima):
+        optimized_successfully = False
+        try:
+            try:
+                traj = expensive_input.engine.compute_geometry_optimization(
+                    node, keywords={'coordsys': 'cart', 'maxiter': 500}
+                )
+            except TypeError:
+                traj = expensive_input.engine.compute_geometry_optimization(
+                    node)
+            opt_node = traj[-1]
+            optimized_successfully = True
+        except Exception:
+            console.print(
+                f"[yellow]⚠ Failed to optimize minimum {i}; keeping cheap-level geometry for refinement.[/yellow]"
+            )
+            console.print(
+                f"[yellow]Reason:[/yellow] {traceback.format_exc().strip()}"
+            )
+            opt_node = _clear_node_cached_properties(node)
+            kept_unoptimized_count += 1
+
+        if optimized_successfully and node.has_molecular_graph and opt_node.has_molecular_graph:
+            same_connectivity = _is_connectivity_identical(
+                node, opt_node, verbose=False
+            )
+            if not same_connectivity:
+                dropped_count += 1
+                continue
+        refined_minima.append(opt_node)
+        refined_source_minima.append(node.copy())
+
+    refined_minima, refined_source_minima = _dedupe_minima_and_sources(
+        refined_minima, refined_source_minima, expensive_input.chain_inputs
+    )
+    if len(refined_minima) < 2:
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] Fewer than 2 minima remain after expensive-level refinement."
+        )
+        raise typer.Exit(1)
+
+    refined_minima_chain = Chain.model_validate(
+        {"nodes": refined_minima, "parameters": expensive_input.chain_inputs}
+    )
+    refined_minima_fp = data_dir / f"{base_name}_refined_minima.xyz"
+    refined_minima_chain.write_to_disk(refined_minima_fp)
+    console.print(
+        f"[cyan]Retained {len(refined_minima)} minima, dropped {dropped_count} due to connectivity changes, kept {kept_unoptimized_count} without expensive optimization.[/cyan]"
+    )
+
+    console.print(
+        "[bold magenta]▶ EXPENSIVE PAIRWISE PATH MINIMIZATION[/bold magenta]")
+    pair_dir = data_dir / f"{base_name}_refined_pairs"
+    pair_dir.mkdir(exist_ok=True)
+    expensive_msmep = MSMEP(inputs=expensive_input)
+    if recursive and not expensive_input.path_min_inputs.do_elem_step_checks:
+        console.print(
+            "[yellow]⚠ WARNING: expensive do_elem_step_checks is False with --recursive. Setting it to True.[/yellow]"
+        )
+        expensive_input.path_min_inputs.do_elem_step_checks = True
+
+    pair_chains: list[Chain] = []
+    pair_inds = list(zip(range(len(refined_minima) - 1),
+                     range(1, len(refined_minima))))
+    for i, j in pair_inds:
+        endpoint_pair = Chain.model_validate(
+            {"nodes": [refined_minima[i], refined_minima[j]],
+                "parameters": expensive_input.chain_inputs}
+        )
+        pair = endpoint_pair
+        if recycle_nodes:
+            recycled_pair = _build_recycled_pair_chain(
+                cheap_output_chain=cheap_output_chain,
+                cheap_start_ref=refined_source_minima[i],
+                cheap_end_ref=refined_source_minima[j],
+                expensive_start=refined_minima[i],
+                expensive_end=refined_minima[j],
+                cheap_chain_inputs=cheap_input.chain_inputs,
+                expensive_chain_inputs=expensive_input.chain_inputs,
+                expected_nimages=expensive_input.gi_inputs.nimages,
+            )
+            if recycled_pair is not None:
+                pair = recycled_pair
+            else:
+                console.print(
+                    f"[yellow]⚠ Could not recycle cheap nodes for pair ({i}, {j}); using fresh interpolation.[/yellow]"
+                )
+        try:
+            if recursive:
+                pair_history = expensive_msmep.run_recursive_minimize(pair)
+                if not pair_history.data:
+                    console.print(
+                        f"[yellow]⚠ Pair ({i}, {j}) failed at expensive level; skipping.[/yellow]"
+                    )
+                    continue
+                out_chain = pair_history.output_chain
+                pair_history.write_to_disk(pair_dir / f"pair_{i}_{j}_msmep")
+            else:
+                neb_obj, _ = expensive_msmep.run_minimize_chain(pair)
+                out_chain = neb_obj.chain_trajectory[-1] if neb_obj.chain_trajectory else neb_obj.optimized
+            if out_chain is None:
+                console.print(
+                    f"[yellow]⚠ Pair ({i}, {j}) failed at expensive level; skipping.[/yellow]"
+                )
+                continue
+            pair_chains.append(out_chain)
+            out_chain.write_to_disk(pair_dir / f"pair_{i}_{j}.xyz")
+        except Exception:
+            console.print(
+                f"[yellow]⚠ Pair ({i}, {j}) failed at expensive level; skipping.[/yellow]"
+            )
+            continue
+
+    if len(pair_chains) == 0:
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] No expensive sequential pair paths converged."
+        )
+        raise typer.Exit(1)
+
+    refined_chain = _concat_chains(
+        pair_chains, expensive_input.chain_inputs)
+    refined_chain_fp = data_dir / f"{base_name}_refined.xyz"
+    refined_chain.write_to_disk(refined_chain_fp)
+
+    elapsed = time.time() - start_time
+    summary = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    summary.add_column(style="bold cyan")
+    summary.add_column(style="white")
+    summary.add_row(
+        "⏱ Walltime:", f"[yellow]{elapsed/60:.1f} min[/yellow]" if elapsed > 60 else f"[yellow]{elapsed:.1f} s[/yellow]")
+    summary.add_row("📁 Cheap chain:", f"[cyan]{cheap_chain_fp}[/cyan]")
+    summary.add_row("📁 Refined minima:", f"[cyan]{refined_minima_fp}[/cyan]")
+    summary.add_row("📁 Refined chain:", f"[cyan]{refined_chain_fp}[/cyan]")
+    summary.add_row("🔗 Pair sequence:",
+                    f"[white]{pair_inds}[/white]")
+    console.print(Panel(
+        summary, title="[bold green]✓ run-refine Complete![/bold green]", border_style="green"))
+
+    _ascii_profile_for_chain(refined_chain)
 
 
 @app.command("ts")

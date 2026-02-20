@@ -186,7 +186,7 @@ class QCOPEngine(Engine):
                 self.geometry_optimizer, dpi, collect_files=self.collect_files)
 
         else:  # DEC162025: Trying again... # OCT062025: bug where terachem optimizations werent being passed.
-            print("doing the thing")
+
             prog_input = ProgramInput(
                 structure=node.structure,
                 # Can be "energy", "gradient", "hessian", "optimization", "transition_state"

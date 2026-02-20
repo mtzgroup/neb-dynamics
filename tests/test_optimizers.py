@@ -4,6 +4,8 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.nodes.node import XYNode
 from neb_dynamics.optimizers.adam import AdamOptimizer
+from neb_dynamics.optimizers.amg import AdaptiveMomentumGradient
+from neb_dynamics.optimizers.fire import FIREOptimizer
 from neb_dynamics.optimizers.cg import ConjugateGradient
 from neb_dynamics.optimizers.lbfgs import LBFGS
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
@@ -69,6 +71,67 @@ def test_vpo_uses_force_step_when_gradient_is_large():
     np.testing.assert_allclose(new_chain.velocity, expected_displacement, atol=1e-12)
 
 
+def test_vpo_zero_gradient_is_noop_and_finite():
+    chain = _make_xy_chain(np.array([[0.0, 0.0], [1.0, -1.0]]))
+    grads = np.zeros_like(chain.coordinates)
+    opt = VelocityProjectedOptimizer(timestep=0.2, activation_tol=0.01)
+
+    new_chain = opt.optimize_step(chain=chain, chain_gradients=grads)
+
+    np.testing.assert_allclose(new_chain.coordinates, chain.coordinates, atol=1e-12)
+    assert np.all(np.isfinite(new_chain.coordinates))
+
+
+def test_conjugate_gradient_handles_zero_previous_gradient_without_nan():
+    chain = _make_xy_chain(np.array([[1.0, -2.0], [0.5, 0.5]]))
+    grads = np.array([[0.2, -0.4], [0.1, 0.1]])
+    opt = ConjugateGradient(timestep=0.1)
+    opt.g_old = np.zeros_like(grads)
+    opt.p_old = np.zeros(grads.size)
+
+    new_chain = opt.optimize_step(chain=chain, chain_gradients=grads)
+
+    assert np.all(np.isfinite(new_chain.coordinates))
+    np.testing.assert_allclose(new_chain.coordinates, chain.coordinates - 0.1 * grads, atol=1e-12)
+
+
+def test_amg_adapts_timestep_and_stays_finite():
+    chain = _make_xy_chain(np.array([[1.0, -1.0], [0.5, 0.25]]))
+    opt = AdaptiveMomentumGradient(timestep=0.05, max_step_norm=0.2)
+
+    # First step initializes history.
+    grads1 = np.array([[0.5, -0.5], [0.2, 0.1]])
+    chain = opt.optimize_step(chain=chain, chain_gradients=grads1)
+    t1 = opt.timestep
+
+    # Opposite gradients should reduce timestep.
+    grads2 = -grads1
+    chain = opt.optimize_step(chain=chain, chain_gradients=grads2)
+    t2 = opt.timestep
+
+    assert t2 <= t1
+    assert np.all(np.isfinite(chain.coordinates))
+
+
+def test_amg_step_clipping():
+    chain = _make_xy_chain(np.array([[3.0, -3.0], [2.0, -2.0]]))
+    grads = np.array([[100.0, -100.0], [80.0, -90.0]])
+    opt = AdaptiveMomentumGradient(timestep=1.0, max_step_norm=0.05)
+
+    new_chain = opt.optimize_step(chain=chain, chain_gradients=grads)
+    step = chain.coordinates - new_chain.coordinates
+    assert np.linalg.norm(step) <= 0.05 + 1e-12
+
+
+def test_fire_zero_gradient_no_nan():
+    chain = _make_xy_chain(np.array([[0.0, 0.0], [1.0, -1.0]]))
+    grads = np.zeros_like(chain.coordinates)
+    opt = FIREOptimizer(timestep=0.1)
+    new_chain = opt.optimize_step(chain=chain, chain_gradients=grads)
+    np.testing.assert_allclose(new_chain.coordinates, chain.coordinates, atol=1e-12)
+    assert np.all(np.isfinite(new_chain.coordinates))
+
+
 def test_lbfgs_first_step_matches_steepest_descent_direction():
     chain = _make_xy_chain(np.array([[1.0, 0.0], [0.0, -2.0]]))
     grads = np.array([[1.0, 0.0], [0.0, -2.0]])
@@ -100,6 +163,8 @@ def test_optimizer_steps_reduce_quadratic_objective():
         VelocityProjectedOptimizer(timestep=0.05, activation_tol=1e-8),
         LBFGS(timestep=0.2, history_size=5),
         AdamOptimizer(timestep=0.05),
+        AdaptiveMomentumGradient(timestep=0.05),
+        FIREOptimizer(timestep=0.05),
     ]
 
     for opt in optimizers:
