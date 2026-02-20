@@ -257,5 +257,71 @@ Using machine learning potentials with geodesic interpolation.
 ```python
 ri = RunInputs(
     path_min_method="MLPGI",
+    path_min_inputs={
+        # MLP backend config
+        "backend": "fairchem",
+        "device": "cpu",          # "cpu" or "cuda"
+        "dtype": "float32",       # "float32" or "float64"
+
+        # Checkpoint resolution
+        "model_path": "esen_sm_conserving_all.pt",
+        "model_repo": "facebook/OMol25",
+        "auto_download_model": True,
+        # Optional:
+        # "model_cache_dir": "/path/to/cache",
+        # "hf_token": "hf_xxx",
+    },
 )
 ```
+
+#### MLPGI Checkpoint Setup
+
+`MLPGI` requires a local fairchem checkpoint file. You can provide one directly
+or enable automatic download from Hugging Face.
+
+1. Manual checkpoint path:
+
+```python
+ri = RunInputs(
+    path_min_method="MLPGI",
+    path_min_inputs={
+        "backend": "fairchem",
+        "model_path": "/absolute/path/to/esen_sm_conserving_all.pt",
+        "auto_download_model": False,
+    },
+)
+```
+
+2. Auto-download from Hugging Face (`facebook/OMol25`):
+
+```python
+ri = RunInputs(
+    path_min_method="MLPGI",
+    path_min_inputs={
+        "backend": "fairchem",
+        "model_path": "esen_sm_conserving_all.pt",
+        "model_repo": "facebook/OMol25",
+        "auto_download_model": True,
+    },
+)
+```
+
+If the repo is gated/private, authenticate first:
+
+```bash
+huggingface-cli login
+```
+
+You can also set `HF_TOKEN` in your environment instead of interactive login.
+
+Manual download example (stores in local directory):
+
+```bash
+huggingface-cli download facebook/OMol25 checkpoints/esen_sm_conserving_all.pt --local-dir .
+```
+
+#### MLPGI Runtime Messaging
+
+MLPGI now reports progress through the same Rich/status pipeline used by NEB:
+spinner updates via `update_status(...)` in non-verbose mode, and plain prints
+in verbose mode. This keeps MLPGI output consistent with autosplitting runs.

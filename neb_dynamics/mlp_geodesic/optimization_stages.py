@@ -146,6 +146,9 @@ class FIRE_Stage(OptimizationStage):
         """
         log.info("--- Starting Stage: %s (Max iters: %d, Beta: %.2e, Climbing: %s) ---",
                  self.stage_name, self.max_iters, self.beta_for_loss, self.enable_climbing)
+        self.optimizer._emit_status(
+            f"{self.stage_name} started (max_iters={self.max_iters}, climbing={self.enable_climbing})"
+        )
 
         total_iters_performed = 0
         
@@ -172,11 +175,13 @@ class FIRE_Stage(OptimizationStage):
             try:
                 fire_optimizer.run(fmax=conv_config.fire_grad_tol, steps=self.max_iters - total_iters_performed)
                 log.info("FIRE finished: fmax or max_steps reached.")
+                self.optimizer._emit_status(f"{self.stage_name} reached FIRE stopping criteria")
                 total_iters_performed = calculator.step
                 break 
             except RuntimeError as e:
                 if calculator.structure_changed_on_last_step:
                     log.info(f"Restarting FIRE stage due to path refinement. (Details: {e})")
+                    self.optimizer._emit_status(f"{self.stage_name} restarting after path refinement")
                     total_iters_performed = calculator.step
                     continue 
                 else:
@@ -184,6 +189,7 @@ class FIRE_Stage(OptimizationStage):
                     raise 
             except StageConvergence as e:
                 log.info(f"FIRE finished: {e}")
+                self.optimizer._emit_status(f"{self.stage_name} converged")
                 total_iters_performed = calculator.step
                 break 
         
@@ -198,4 +204,6 @@ class FIRE_Stage(OptimizationStage):
 
         log.info("--- Stage: %s finished after %d total iterations. Final Grad Norm: %.2e ---",
                  self.stage_name, total_iters_performed, final_grad_norm)
-
+        self.optimizer._emit_status(
+            f"{self.stage_name} finished after {total_iters_performed} iterations"
+        )

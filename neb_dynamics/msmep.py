@@ -312,6 +312,7 @@ class MSMEP:
             n = MLPGI(
                 initial_chain=initial_chain,
                 engine=self.inputs.engine,
+                parameters=self.inputs.path_min_inputs,
             )
         else:
             raise NotImplementedError(
