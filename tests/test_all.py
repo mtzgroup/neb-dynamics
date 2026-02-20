@@ -1,38 +1,37 @@
 from pathlib import Path
 
-from types import SimpleNamespace
-import numpy as np
 import pytest
 
-from neb_dynamics.chain import Chain
-from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs, RunInputs
-from neb_dynamics.msmep import MSMEP
-from neb_dynamics.neb import NEB
-from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
-from neb_dynamics.optimizers.cg import ConjugateGradient
-from neb_dynamics.engines import QCOPEngine, ThreeWellPotential, FlowerPotential
-from neb_dynamics.nodes.node import XYNode
-from neb_dynamics.engines import Engine
-
-from qcio.models.inputs import ProgramInput, ProgramArgs
-
-import matplotlib.pyplot as plt
-from itertools import product
-from matplotlib.animation import FuncAnimation
-from neb_dynamics.nodes.node import StructureNode
-from qcio import Structure
-from neb_dynamics.engines.ase import ASEEngine
-
+TEST_DATA_DIR = Path(__file__).parent
 _REQUIRED_DATA_FILES = [
-    Path("/home/jdep/neb_dynamics/tests/test_traj.xyz"),
-    Path("/home/jdep/neb_dynamics/tests/traj_msmep.xyz"),
-    Path("/home/jdep/neb_dynamics/tests/test_msmep_results/node_0.xyz"),
+    TEST_DATA_DIR / "test_traj.xyz",
+    TEST_DATA_DIR / "traj_msmep.xyz",
+    TEST_DATA_DIR / "test_msmep_results/node_0.xyz",
 ]
 if not all(fp.exists() for fp in _REQUIRED_DATA_FILES):
     pytest.skip(
-        "Legacy integration tests require /home/jdep/neb_dynamics/tests fixture files.",
+        "Legacy integration tests require local tests fixtures that are not present.",
         allow_module_level=True,
     )
+
+from types import SimpleNamespace
+from itertools import product
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+import numpy as np
+from qcio import Structure
+from qcio.models.inputs import ProgramInput, ProgramArgs
+
+from neb_dynamics.chain import Chain
+from neb_dynamics.engines import Engine
+from neb_dynamics.engines import FlowerPotential, QCOPEngine, ThreeWellPotential
+from neb_dynamics.engines.ase import ASEEngine
+from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs, RunInputs
+from neb_dynamics.msmep import MSMEP
+from neb_dynamics.neb import NEB
+from neb_dynamics.nodes.node import StructureNode, XYNode
+from neb_dynamics.optimizers.cg import ConjugateGradient
+from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 
 xtb_calculator = pytest.importorskip(
     "xtb.ase.calculator", reason="xtb is required for integration tests in test_all.py"
@@ -92,7 +91,7 @@ def test_engine():
     from neb_dynamics.engines import QCOPEngine
 
     c = Chain.from_xyz(
-        "/home/jdep/neb_dynamics/tests/test_msmep_results/node_0.xyz",
+        TEST_DATA_DIR / "test_msmep_results/node_0.xyz",
         parameters=ChainInputs(),
     )
     eng = QCOPEngine(
@@ -112,7 +111,7 @@ def test_engine():
     ), "Engine is overwriting structures of chain."
 
 
-def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
+def test_neb(test_data_dir: Path = TEST_DATA_DIR):
     # tr = Trajectory.from_xyz(test_data_dir / "test_traj.xyz")
     tol = 0.05
     cni = ChainInputs(k=0.1, delta_k=0.09,
@@ -168,7 +167,7 @@ def test_neb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
         ), f"TS guess has a different geometry than reference. ref={ref_ts_guess}. test= {ts_guess.coords=}"
 
 
-def test_msmep(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
+def test_msmep(test_data_dir: Path = TEST_DATA_DIR):
 
     runinputs = RunInputs(path_min_method='NEB')
     runinputs.gi_inputs.nimages = 12
@@ -272,7 +271,7 @@ def test_ASE_engine():
     ), f"ASE Calculator giving incorrect energies, \n{reference=}\n{vals=}"
 
 
-def test_msmep_fneb(test_data_dir: Path = Path("/home/jdep/neb_dynamics/tests")):
+def test_msmep_fneb(test_data_dir: Path = TEST_DATA_DIR):
 
     runinputs = RunInputs(path_min_method='fneb')
 
