@@ -18,14 +18,13 @@ from neb_dynamics.nodes.nodehelpers import (
     _reset_comparison_results,
     is_identical,
 )
-from neb_dynamics.scripts.progress import stop_status, update_status
+from neb_dynamics.scripts.progress import stop_status, update_status, print_persistent
 from qcinf import structure_to_smiles
 
 # Rich imports for flashy CLI output
 try:
     from rich.console import Console
     from rich.panel import Panel
-    from rich.table import Table
     _console = Console()
     _rich_available = True
 except ImportError:
@@ -75,8 +74,8 @@ class IRCResults:
     number_grad_calls: int
 
 
-def _print_new_structure(node: Node) -> None:
-    """Print a minimal notification for a newly discovered structure."""
+def _print_new_structure(node: Node, message: str = "new structure found!") -> None:
+    """Print a notification for a newly discovered structure."""
     if node is None:
         return
     try:
@@ -85,16 +84,67 @@ def _print_new_structure(node: Node) -> None:
         smi = ""
     ascii_art = _render_molecule_ascii(
         smi, width=60, height=12) if smi else "new structure"
-    if _rich_available:
-        from rich.text import Text
+    print_persistent(message=message, ascii_block=ascii_art)
 
-        _console.print()
-        _console.print(Text(ascii_art, style="cyan"), markup=False)
-        _console.print("[bold green]new structure found![/bold green]")
-    else:
-        print()
-        print(ascii_art)
-        print("new structure found!")
+
+def _classify_new_structure(node: Node, reactant: Node, product: Node) -> str:
+    """Classify a discovered structure relative to endpoint molecular graphs."""
+    same_as_reactant = _is_connectivity_identical(
+        node, reactant, verbose=False)
+    same_as_product = _is_connectivity_identical(node, product, verbose=False)
+
+    if same_as_reactant and not same_as_product:
+        return "new reactant conformer found!"
+    if same_as_product and not same_as_reactant:
+        return "new product conformer found!"
+    if not same_as_reactant and not same_as_product:
+        return "new molecule found!"
+    return "new structure found!"
+
+
+def _deduplicate_discoveries(nodes: list[Node], reactant: Node, product: Node) -> list[tuple[Node, str]]:
+    """
+    Collapse duplicate discovery reports.
+    If both endpoint minimizations converge to connectivity-equivalent
+    structures with the same classification, print only once.
+    """
+    unique: list[tuple[Node, str]] = []
+    for node in nodes:
+        msg = _classify_new_structure(
+            node=node, reactant=reactant, product=product)
+        duplicate = False
+        for seen_node, seen_msg in unique:
+            if seen_msg != msg:
+                continue
+            if _is_connectivity_identical(node, seen_node, verbose=False):
+                duplicate = True
+                break
+        if not duplicate:
+            unique.append((node, msg))
+    return unique
+
+
+def _filter_new_structures(nodes: list[Node], reactant: Node, product: Node, chain: Chain) -> list[Node]:
+    """Keep only nodes that are not identical to either endpoint."""
+    new_nodes: list[Node] = []
+    for node in nodes:
+        is_r = is_identical(
+            node,
+            reactant,
+            fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
+            kcal_mol_cutoff=chain.parameters.node_ene_thre,
+            verbose=False,
+        )
+        is_p = is_identical(
+            node,
+            product,
+            fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
+            kcal_mol_cutoff=chain.parameters.node_ene_thre,
+            verbose=False,
+        )
+        if not (is_r or is_p):
+            new_nodes.append(node)
+    return new_nodes
 
 
 def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -> ElemStepResults:
@@ -146,6 +196,21 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
     n_geom_opt_grad_calls += concavity_results.number_grad_calls
 
     if concavity_results.is_not_concave:
+        new_structures = _filter_new_structures(
+            nodes=concavity_results.minimization_results,
+            reactant=chain[0],
+            product=chain[-1],
+            chain=inp_chain,
+        )
+        if new_structures:
+            if not verbose:
+                stop_status()
+            for node, msg in _deduplicate_discoveries(
+                nodes=new_structures, reactant=chain[0], product=chain[-1]
+            ):
+                _print_new_structure(node, message=msg)
+            if not verbose:
+                update_status("Checking if elementary step")
         if verbose:
             _print_all_comparisons()
         return ElemStepResults(
@@ -215,11 +280,12 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
         verbose=False,  # Suppress individual prints, use consolidated report
     )
 
-    new_structures = []
-    if (not found_r) and (not r_is_p):
-        new_structures.append(pseu_irc_results.found_reactant)
-    if (not found_p) and (not p_is_r):
-        new_structures.append(pseu_irc_results.found_product)
+    new_structures = _filter_new_structures(
+        nodes=[pseu_irc_results.found_reactant, pseu_irc_results.found_product],
+        reactant=chain[0],
+        product=chain[-1],
+        chain=inp_chain,
+    )
 
     if found_r and found_p:
         minimizing_gives_endpoints = True
@@ -247,11 +313,24 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
 
     elem_step = True if minimizing_gives_endpoints else False
 
-    if (not verbose) and new_structures:
-        stop_status()
-        for node in new_structures:
-            _print_new_structure(node)
-        update_status("Checking if elementary step")
+    if new_structures:
+        if not verbose:
+            stop_status()
+        for node, msg in _deduplicate_discoveries(
+            nodes=new_structures, reactant=chain[0], product=chain[-1]
+        ):
+            _print_new_structure(node, message=msg)
+        if not verbose:
+            update_status("Checking if elementary step")
+    elif not minimizing_gives_endpoints:
+        # We are splitting by maxima, but endpoint mapping did not produce explicit
+        # new endpoint structures. Emit a clear notice so recursive runs still show
+        # that a non-elementary path (possible new chemistry) was detected.
+        if _rich_available:
+            _console.print(
+                "[bold yellow]new structure pattern found (maxima split)[/bold yellow]")
+        else:
+            print("new structure pattern found (maxima split)")
 
     if verbose:
         _print_all_comparisons()

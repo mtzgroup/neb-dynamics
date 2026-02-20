@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import logging
 from ase import Atoms
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 from .mlp_tools import load_calculator, evaluate_mlp_batch
 from .path_tools import (
@@ -35,7 +35,8 @@ class GeodesicOptimizer:
         model_path: str,
         device: str,
         dtype: torch.dtype,
-        config: OptimizerConfig
+        config: OptimizerConfig,
+        status_callback: Callable[[str], None] | None = None,
     ):
         """
         Initializes the GeodesicOptimizer.
@@ -45,6 +46,7 @@ class GeodesicOptimizer:
         self.dtype = dtype
         self.config = config
         self.backend = backend
+        self.status_callback = status_callback
 
         self.Z = torch.as_tensor(frames[0].numbers, dtype=torch.long, device=self.device)
         self.num_atoms = len(self.Z)
@@ -59,6 +61,7 @@ class GeodesicOptimizer:
         dtype_str = 'float32' if self.dtype == torch.float32 else 'float64'
         self.calc, self.raw_module = load_calculator(backend, model_path, device, dtype_str)
         log.info(f"Loaded {backend} calculator.")
+        self._emit_status(f"Loaded {backend} model on {self.device.type}")
 
         if self.backend == 'fairchem' and self.dtype == torch.float64:
             log.warning("Fairchem backend with float64 is not recommended due to potential precision issues.")
@@ -67,6 +70,10 @@ class GeodesicOptimizer:
             numbers=self.Z.cpu().numpy(), positions=np.zeros((self.num_atoms, 3)),
             pbc=frames[0].get_pbc(), cell=frames[0].get_cell()
         )
+
+    def _emit_status(self, message: str):
+        if self.status_callback is not None:
+            self.status_callback(message)
 
     def _get_current_path_nodes(self) -> torch.Tensor:
         """Assembles the full path from the fixed endpoints and optimizable interior nodes."""
@@ -184,10 +191,15 @@ class GeodesicOptimizer:
             f"Optimality_Ratio = {optimality_ratio:.2f} |grad| = {gn:.2e}"
         )
         log.info(log_str)
+        if step == 1 or step % 20 == 0:
+            self._emit_status(
+                f"MLPGI {stage} step {step} | E_peak={barrier_fwd:.3f} | grad={gn:.2e}"
+            )
 
     def optimize(self) -> Tuple[np.ndarray, np.ndarray]:
         """Executes the full two-stage optimization process."""
         log.info("Starting two-stage FIRE optimization.")
+        self._emit_status("Starting MLPGI two-stage FIRE optimization")
         if self.config.tangent_project:
             log.info("Tangent projection mode is ENABLED for both stages.")
         if self.config.climb:
@@ -196,6 +208,7 @@ class GeodesicOptimizer:
             log.info("Climbing image is disabled by user configuration.")
 
         log.info("[Path Alignment] Performing initial alignment before Stage 1.")
+        self._emit_status("MLPGI aligning initial path")
         current_path_tensor = self._get_current_path_nodes()
         aligned_path = align_path_with_product_preservation(current_path_tensor, self.RN_initial_state)
         self._update_path_from_tensor(aligned_path)
@@ -208,6 +221,7 @@ class GeodesicOptimizer:
         stage1.execute()
 
         log.info("[Path Alignment] Aligning path after Stage 1.")
+        self._emit_status("MLPGI aligning path after stage 1")
         current_path_tensor = self._get_current_path_nodes()
         aligned_path = align_path_with_product_preservation(current_path_tensor, self.RN_initial_state)
         self._update_path_from_tensor(aligned_path)
@@ -225,5 +239,5 @@ class GeodesicOptimizer:
 
         final_path_data = self._evaluate_path_energies_forces(self._get_current_path_nodes().detach())
         log.info("Optimization finished.")
+        self._emit_status("MLPGI optimization finished")
         return final_path_data.nodes.cpu().numpy(), final_path_data.energies.cpu().numpy()
-

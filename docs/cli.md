@@ -218,3 +218,31 @@ max_steps = 500
 [optimizer_kwds]
 timestep = 0.5
 ```
+
+### MLPGI TOML Example
+
+```toml
+engine_name = "chemcloud"
+program = "crest"
+path_min_method = "mlpgi"
+
+[path_min_inputs]
+backend = "fairchem"
+device = "cpu"
+dtype = "float32"
+model_path = "esen_sm_conserving_all.pt"
+model_repo = "facebook/OMol25"
+auto_download_model = true
+```
+
+If auto-download is enabled and the model repo is gated, authenticate first:
+
+```bash
+huggingface-cli login
+```
+
+To pre-download the checkpoint manually:
+
+```bash
+huggingface-cli download facebook/OMol25 checkpoints/esen_sm_conserving_all.pt --local-dir .
+```

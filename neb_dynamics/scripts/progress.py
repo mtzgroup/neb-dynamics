@@ -1,5 +1,6 @@
 """Progress printing utilities for NEB Dynamics."""
 
+import os
 import sys
 import time
 from typing import Optional
@@ -13,6 +14,7 @@ try:
     from rich.table import Table
     from rich.style import Style
     from rich.status import Status
+    from rich.text import Text
     from rich import box
 
     _console = Console()
@@ -132,6 +134,11 @@ class ProgressPrinter:
         if self.use_rich and self._status and self._status_active:
             self._status.stop()
             self._status_active = False
+        if self.use_rich and self._live is not None:
+            # Ensure external rich prints (e.g., new-structure ASCII art)
+            # are not obscured by an active Live renderer.
+            self._live.stop()
+            self._live = None
 
     def print_step(
         self,
@@ -319,6 +326,37 @@ class ProgressPrinter:
 
     def flush(self):
         """Flush stdout."""
+        sys.stdout.flush()
+
+    def print_persistent(self, message: str, ascii_block: Optional[str] = None):
+        """Print a persistent message block, safely stopping any active live renderer first."""
+        if self.use_rich and self._live is not None:
+            self._live.stop()
+            self._live = None
+        if self.use_rich and self._status and self._status_active:
+            self._status.stop()
+            self._status_active = False
+
+        if self.use_rich:
+            if ascii_block:
+                _console.print()
+                _console.print(Text(ascii_block, style="cyan"), markup=False)
+            _console.print(f"[bold green]{message}[/bold green]")
+        else:
+            if ascii_block:
+                print()
+                print(ascii_block)
+            print(message)
+
+        # Optional raw stdout mirror for terminals that aggressively redraw
+        # live regions. Disabled by default to avoid duplicate prints.
+        if os.environ.get("NEB_DISCOVERY_STDOUT_MIRROR", "").lower() in {"1", "true", "yes"}:
+            raw = getattr(sys, "__stdout__", None)
+            if raw is not None:
+                raw.write(f"\n[NEB-DISCOVERY] {message}\n")
+                if ascii_block:
+                    raw.write(f"{ascii_block}\n")
+                raw.flush()
         sys.stdout.flush()
 
 
@@ -539,3 +577,9 @@ def stop_status():
     """Convenience function to stop a spinner status."""
     printer = get_progress_printer()
     printer.stop_status()
+
+
+def print_persistent(message: str, ascii_block: Optional[str] = None):
+    """Convenience function to print a persistent message block."""
+    printer = get_progress_printer()
+    printer.print_persistent(message=message, ascii_block=ascii_block)

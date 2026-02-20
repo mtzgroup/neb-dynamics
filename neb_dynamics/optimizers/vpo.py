@@ -28,7 +28,11 @@ class VelocityProjectedOptimizer(Optimizer):
         prev_velocity = chain.velocity
         # print(f"\n{np.linalg.norm(prev_velocity)=}")
         new_force = -(chain_gradients)
-        new_force_unit = new_force / np.linalg.norm(new_force)
+        force_norm = np.linalg.norm(new_force)
+        if force_norm <= 1e-16:
+            # Already stationary under current effective force.
+            return chain.model_copy(deep=True)
+        new_force_unit = new_force / force_norm
         timestep = self.timestep  # self.step_size_per_atom*atomn*len(chain)
 
         new_chain_gradients_fails = True

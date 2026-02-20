@@ -13,10 +13,12 @@ class ConjugateGradient(Optimizer):
 
     def __post_init__(self):
         self.g_old = None
+        self.p_old = None
         self.orig_timestep = self.timestep
 
     def reset(self):
         self.g_old = None
+        self.p_old = None
         self.timestep = self.orig_timestep
 
     def update_timestep(self, new_timestep: float) -> None:
@@ -52,15 +54,20 @@ class ConjugateGradient(Optimizer):
                 print("Warning: Gradient shapes do not match. Resetting the optimizer.")
                 self.reset()
                 return self.optimize_step(chain, chain_gradients)
-            beta = max(0, np.dot(g_new, g - g_new) /
-                       np.dot(g, g))  # Polak-Ribiere formula
-            # print("BETA---->", beta)
-            p = -g_new + beta * p
+            denom = np.dot(g, g)
+            if denom <= 1e-16:
+                beta = 0.0
+            else:
+                beta = max(0.0, np.dot(g_new, g_new - g) / denom)  # Polak-Ribiere+
 
-            g = g_new.copy()
-            self.g_old = g
+            prev_dir = self.p_old if self.p_old is not None else -g
+            p = -g_new + beta * prev_dir
+            self.g_old = g_new.reshape(chain_gradients.shape).copy()
         else:
             self.g_old = g_new.reshape(chain_gradients.shape).copy()
+            p = -g_new
+
+        self.p_old = p.copy()
 
         p = p.reshape(chain_gradients.shape)
         new_chain_coordinates = chain.coordinates + alpha * p
