@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.2">
     
     
       
@@ -587,6 +587,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="MLP Geodesic (MLPGI)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mlpgi-checkpoint-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLPGI Checkpoint Setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mlpgi-runtime-messaging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLPGI Runtime Messaging
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
       </ul>
@@ -934,6 +962,34 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="MLP Geodesic (MLPGI)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mlpgi-checkpoint-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLPGI Checkpoint Setup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#mlpgi-runtime-messaging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLPGI Runtime Messaging
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -1392,8 +1448,61 @@
 <p>Using machine learning potentials with geodesic interpolation.</p>
 <div class="highlight"><pre><span></span><code><span class="n">ri</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="p">(</span>
     <span class="n">path_min_method</span><span class="o">=</span><span class="s2">&quot;MLPGI&quot;</span><span class="p">,</span>
+    <span class="n">path_min_inputs</span><span class="o">=</span><span class="p">{</span>
+        <span class="c1"># MLP backend config</span>
+        <span class="s2">&quot;backend&quot;</span><span class="p">:</span> <span class="s2">&quot;fairchem&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;device&quot;</span><span class="p">:</span> <span class="s2">&quot;cpu&quot;</span><span class="p">,</span>          <span class="c1"># &quot;cpu&quot; or &quot;cuda&quot;</span>
+        <span class="s2">&quot;dtype&quot;</span><span class="p">:</span> <span class="s2">&quot;float32&quot;</span><span class="p">,</span>       <span class="c1"># &quot;float32&quot; or &quot;float64&quot;</span>
+
+        <span class="c1"># Checkpoint resolution</span>
+        <span class="s2">&quot;model_path&quot;</span><span class="p">:</span> <span class="s2">&quot;esen_sm_conserving_all.pt&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;model_repo&quot;</span><span class="p">:</span> <span class="s2">&quot;facebook/OMol25&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;auto_download_model&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+        <span class="c1"># Optional:</span>
+        <span class="c1"># &quot;model_cache_dir&quot;: &quot;/path/to/cache&quot;,</span>
+        <span class="c1"># &quot;hf_token&quot;: &quot;hf_xxx&quot;,</span>
+    <span class="p">},</span>
 <span class="p">)</span>
 </code></pre></div>
+<h4 id="mlpgi-checkpoint-setup">MLPGI Checkpoint Setup<a class="headerlink" href="#mlpgi-checkpoint-setup" title="Permanent link">🔗</a></h4>
+<p><code>MLPGI</code> requires a local fairchem checkpoint file. You can provide one directly
+or enable automatic download from Hugging Face.</p>
+<ol>
+<li>Manual checkpoint path:</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="n">ri</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="p">(</span>
+    <span class="n">path_min_method</span><span class="o">=</span><span class="s2">&quot;MLPGI&quot;</span><span class="p">,</span>
+    <span class="n">path_min_inputs</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;backend&quot;</span><span class="p">:</span> <span class="s2">&quot;fairchem&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;model_path&quot;</span><span class="p">:</span> <span class="s2">&quot;/absolute/path/to/esen_sm_conserving_all.pt&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;auto_download_model&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+</code></pre></div>
+<ol>
+<li>Auto-download from Hugging Face (<code>facebook/OMol25</code>):</li>
+</ol>
+<div class="highlight"><pre><span></span><code><span class="n">ri</span> <span class="o">=</span> <span class="n">RunInputs</span><span class="p">(</span>
+    <span class="n">path_min_method</span><span class="o">=</span><span class="s2">&quot;MLPGI&quot;</span><span class="p">,</span>
+    <span class="n">path_min_inputs</span><span class="o">=</span><span class="p">{</span>
+        <span class="s2">&quot;backend&quot;</span><span class="p">:</span> <span class="s2">&quot;fairchem&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;model_path&quot;</span><span class="p">:</span> <span class="s2">&quot;esen_sm_conserving_all.pt&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;model_repo&quot;</span><span class="p">:</span> <span class="s2">&quot;facebook/OMol25&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;auto_download_model&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="p">},</span>
+<span class="p">)</span>
+</code></pre></div>
+<p>If the repo is gated/private, authenticate first:</p>
+<div class="highlight"><pre><span></span><code>huggingface-cli<span class="w"> </span>login
+</code></pre></div>
+<p>You can also set <code>HF_TOKEN</code> in your environment instead of interactive login.</p>
+<p>Manual download example (stores in local directory):</p>
+<div class="highlight"><pre><span></span><code>huggingface-cli<span class="w"> </span>download<span class="w"> </span>facebook/OMol25<span class="w"> </span>checkpoints/esen_sm_conserving_all.pt<span class="w"> </span>--local-dir<span class="w"> </span>.
+</code></pre></div>
+<h4 id="mlpgi-runtime-messaging">MLPGI Runtime Messaging<a class="headerlink" href="#mlpgi-runtime-messaging" title="Permanent link">🔗</a></h4>
+<p>MLPGI now reports progress through the same Rich/status pipeline used by NEB:
+spinner updates via <code>update_status(...)</code> in non-verbose mode, and plain prints
+in verbose mode. This keeps MLPGI output consistent with autosplitting runs.</p>
 
 
 

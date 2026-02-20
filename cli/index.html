@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.1">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.2">
     
     
       
@@ -556,6 +556,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Input File Format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mlpgi-toml-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLPGI TOML Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -759,6 +776,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Input File Format">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mlpgi-toml-example" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MLPGI TOML Example
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1112,6 +1146,25 @@ mepd<span class="w"> </span>ts<span class="w"> </span>ts_guess.xyz<span class="w
 
 <span class="k">[optimizer_kwds]</span>
 <span class="n">timestep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span>
+</code></pre></div>
+<h3 id="mlpgi-toml-example">MLPGI TOML Example<a class="headerlink" href="#mlpgi-toml-example" title="Permanent link">🔗</a></h3>
+<div class="highlight"><pre><span></span><code><span class="n">engine_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;chemcloud&quot;</span>
+<span class="n">program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;crest&quot;</span>
+<span class="n">path_min_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;mlpgi&quot;</span>
+
+<span class="k">[path_min_inputs]</span>
+<span class="n">backend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;fairchem&quot;</span>
+<span class="n">device</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cpu&quot;</span>
+<span class="n">dtype</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;float32&quot;</span>
+<span class="n">model_path</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;esen_sm_conserving_all.pt&quot;</span>
+<span class="n">model_repo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;facebook/OMol25&quot;</span>
+<span class="n">auto_download_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<p>If auto-download is enabled and the model repo is gated, authenticate first:</p>
+<div class="highlight"><pre><span></span><code>huggingface-cli<span class="w"> </span>login
+</code></pre></div>
+<p>To pre-download the checkpoint manually:</p>
+<div class="highlight"><pre><span></span><code>huggingface-cli<span class="w"> </span>download<span class="w"> </span>facebook/OMol25<span class="w"> </span>checkpoints/esen_sm_conserving_all.pt<span class="w"> </span>--local-dir<span class="w"> </span>.
 </code></pre></div>
 
 
