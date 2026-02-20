@@ -57,6 +57,16 @@ class _SuppressWarningFilter(logging.Filter):
 
 logging.getLogger().addFilter(_SuppressWarningFilter())
 
+# Keep third-party transport chatter out of CLI output by default.
+for _logger_name in (
+    "chemcloud",
+    "chemcloud.client",
+    "chemcloud.models",
+    "httpx",
+    "httpcore",
+):
+    logging.getLogger(_logger_name).setLevel(logging.WARNING)
+
 
 ob_log_handler = openbabel.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
