@@ -68,6 +68,8 @@ for _logger_name in (
     "chemcloud",
     "chemcloud.client",
     "chemcloud.models",
+    "qccodec",
+    "qccodec.codec",
     "httpx",
     "httpcore",
 ):
