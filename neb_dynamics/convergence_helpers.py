@@ -109,7 +109,9 @@ def chain_converged(
 
     grad = chain_new.gradients
     springgrads = chain_new.springgradients
-    gperps = chain_new.gperps
+    # Use endpoint-padded gperps (length == n_nodes) so TS indexing by
+    # full-chain index is always valid.
+    gperps = ch.get_g_perps(chain_new)
     if chain_new.parameters.frozen_atom_indices:
         not_frozen_atoms = list(set(list(range(len(grad)))) - set(chain_new.parameters.frozen_atom_indices))
         grad = [g[not_frozen_atoms] for g in grad]

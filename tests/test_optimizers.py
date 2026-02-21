@@ -123,6 +123,30 @@ def test_amg_step_clipping():
     assert np.linalg.norm(step) <= 0.05 + 1e-12
 
 
+def test_amg_respects_converged_nodes_after_momentum_buildup():
+    chain = _make_xy_chain(
+        np.array([[1.0, 0.0], [2.0, -1.0], [0.5, 0.5]]),
+        converged=[False, False, False],
+    )
+    opt = AdaptiveMomentumGradient(timestep=0.2, max_step_norm=10.0)
+
+    # Build momentum on all nodes.
+    grads1 = np.array([[1.0, 0.0], [4.0, -3.0], [0.5, 0.5]])
+    chain = opt.optimize_step(chain=chain, chain_gradients=grads1)
+
+    # Freeze middle node; it must not move despite non-zero optimizer history.
+    frozen_chain = _make_xy_chain(
+        chain.coordinates.copy(),
+        converged=[False, True, False],
+    )
+    grads2 = np.array([[0.5, 0.0], [4.0, -3.0], [0.25, 0.25]])
+    new_chain = opt.optimize_step(chain=frozen_chain, chain_gradients=grads2)
+
+    np.testing.assert_allclose(new_chain.coordinates[1], frozen_chain.coordinates[1], atol=1e-12)
+    np.testing.assert_allclose(opt.m[1], np.zeros_like(opt.m[1]), atol=1e-12)
+    np.testing.assert_allclose(opt.v[1], np.zeros_like(opt.v[1]), atol=1e-12)
+
+
 def test_fire_zero_gradient_no_nan():
     chain = _make_xy_chain(np.array([[0.0, 0.0], [1.0, -1.0]]))
     grads = np.zeros_like(chain.coordinates)

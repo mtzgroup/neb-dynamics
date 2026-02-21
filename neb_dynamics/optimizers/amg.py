@@ -51,11 +51,11 @@ class AdaptiveMomentumGradient(Optimizer):
         self.timestep = max(self.min_timestep, min(self.max_timestep, self.timestep))
 
     def optimize_step(self, chain, chain_gradients):
-        for i, (node, grad) in enumerate(zip(chain.nodes, chain_gradients)):
-            if node.converged:
-                chain_gradients[i] = np.zeros_like(grad)
+        g = np.array(chain_gradients, dtype=float, copy=True)
+        converged_mask = np.array([node.converged for node in chain.nodes], dtype=bool)
+        if converged_mask.any():
+            g[converged_mask] = 0.0
 
-        g = chain_gradients.astype(float)
         if self.m is None or self.v is None or self.m.shape != g.shape:
             self.reset()
             self.m = np.zeros_like(g, dtype=float)
@@ -67,10 +67,15 @@ class AdaptiveMomentumGradient(Optimizer):
         self.t += 1
         self.m = self.beta1 * self.m + (1.0 - self.beta1) * g
         self.v = self.beta2 * self.v + (1.0 - self.beta2) * (g**2)
+        if converged_mask.any():
+            self.m[converged_mask] = 0.0
+            self.v[converged_mask] = 0.0
         m_hat = self.m / (1.0 - self.beta1**self.t)
         v_hat = self.v / (1.0 - self.beta2**self.t)
 
         step = self.timestep * m_hat / (np.sqrt(v_hat) + self.epsilon)
+        if converged_mask.any():
+            step[converged_mask] = 0.0
         step_norm = np.linalg.norm(step)
         if step_norm > self.max_step_norm and step_norm > 1e-16:
             step *= self.max_step_norm / step_norm
