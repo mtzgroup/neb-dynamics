@@ -332,7 +332,8 @@ def _find_matching_node_index(
     chain_inputs: ChainInputs,
 ) -> int | None:
     try:
-        dists = [np.linalg.norm(node.coords - target.coords) for node in chain.nodes]
+        dists = [np.linalg.norm(node.coords - target.coords)
+                 for node in chain.nodes]
         if len(dists) == 0:
             return None
         closest_idx = int(np.argmin(dists))
@@ -381,9 +382,11 @@ def _build_recycled_pair_chain(
         return None
 
     if start_idx < end_idx:
-        segment_nodes = [node.copy() for node in cheap_output_chain.nodes[start_idx:end_idx + 1]]
+        segment_nodes = [node.copy()
+                         for node in cheap_output_chain.nodes[start_idx:end_idx + 1]]
     else:
-        segment_nodes = [node.copy() for node in cheap_output_chain.nodes[end_idx:start_idx + 1]][::-1]
+        segment_nodes = [
+            node.copy() for node in cheap_output_chain.nodes[end_idx:start_idx + 1]][::-1]
 
     if len(segment_nodes) != expected_nimages:
         return None
