@@ -63,21 +63,32 @@ class _SuppressWarningFilter(logging.Filter):
 
 logging.getLogger().addFilter(_SuppressWarningFilter())
 
-# Keep third-party transport chatter out of CLI output by default.
-for _logger_name in (
-    "chemcloud",
-    "chemcloud.client",
-    "chemcloud.models",
-    "qccodec",
-    "qccodec.codec",
-    "geometric",
-    "geometric.nifty",
-    "neb_dynamics.geodesic_interpolation2",
-    "neb_dynamics.geodesic_interpolation2.morsegeodesic",
-    "httpx",
-    "httpcore",
-):
-    logging.getLogger(_logger_name).setLevel(logging.WARNING)
+
+def _configure_cli_logging():
+    """Keep noisy third-party loggers quiet for CLI runs."""
+    logger_specs = (
+        ("chemcloud", False),
+        ("chemcloud.client", False),
+        ("chemcloud.models", False),
+        ("qccodec", False),
+        ("qccodec.codec", False),
+        ("geometric", True),
+        ("geometric.nifty", True),
+        ("neb_dynamics.geodesic_interpolation2", False),
+        ("neb_dynamics.geodesic_interpolation2.morsegeodesic", False),
+        ("httpx", False),
+        ("httpcore", False),
+    )
+    for logger_name, disable in logger_specs:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.WARNING)
+        logger.propagate = False
+        for handler in logger.handlers:
+            handler.setLevel(logging.WARNING)
+        logger.disabled = disable
+
+
+_configure_cli_logging()
 
 
 ob_log_handler = openbabel.OBMessageHandler()
@@ -110,6 +121,7 @@ console = Console(theme=custom_theme)
 @app.callback(invoke_without_command=True)
 def callback(ctx: typer.Context):
     """Show banner before running any command."""
+    _configure_cli_logging()
     if ctx.invoked_subcommand is None:
         print_banner()
 

@@ -57,6 +57,54 @@ mepd run --start start.xyz --end end.xyz --use-tsopt --create-irc --inputs input
 
 ---
 
+### run-refine
+
+Run a two-stage refinement workflow:
+1. run a cheap discovery MEP/MSMEP,
+2. reoptimize discovered minima at an expensive level,
+3. run expensive pair-path minimizations between adjacent refined minima.
+
+```bash
+mepd run-refine PATH.xyz --inputs expensive.toml --cheap-inputs cheap.toml
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--start`, `-s` | Path to start structure file (or SMILES with `--use-smiles`) |
+| `--end`, `-e` | Path to end structure file (or SMILES with `--use-smiles`) |
+| `geometries` | Path to approximate path file (same convention as `run`) |
+| `--inputs`, `-i` | Required expensive RunInputs TOML |
+| `--cheap-inputs`, `-ci` | Optional cheap RunInputs TOML (defaults to `--inputs`) |
+| `--recursive` | Use recursive MSMEP in cheap stage and expensive pair stage |
+| `--recycle-nodes` | Seed expensive pair runs with cheap-path nodes instead of fresh interpolation |
+| `--minimize-ends` | Minimize endpoints at cheap level before discovery |
+| `--name` | Prefix for output files |
+| `--charge` | Molecular charge (default: 0) |
+| `--multiplicity` | Spin multiplicity (default: 1) |
+
+**Example:**
+
+```bash
+mepd run-refine examples/oxycope.xyz \
+  -i expensive_chemcloud_terachem.toml \
+  -ci cheap_chemcloud_crest.toml \
+  --recursive \
+  --recycle-nodes \
+  --name oxycope_refine
+```
+
+**Outputs:**
+
+- `<name>_cheap.xyz`
+- `<name>_cheap_msmep/` (recursive cheap stage)
+- `<name>_refined_minima.xyz`
+- `<name>_refined_pairs/`
+- `<name>_refined.xyz`
+
+---
+
 ### ts
 
 Optimize a transition state structure.

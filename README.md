@@ -81,6 +81,14 @@ If you have cloned the repository, `cd` to `examples/`.and run `run_oxycope.sh` 
 # Run NEB calculation
 mepd run --start start.xyz --end end.xyz --inputs inputs.toml
 
+# Two-stage refinement (cheap discovery -> expensive refinement)
+mepd run-refine examples/oxycope.xyz \
+  -i expensive.toml \
+  -ci cheap.toml \
+  --recursive \
+  --recycle-nodes \
+  --name oxycope_refine
+
 # Optimize transition state
 mepd ts ts_guess.xyz --inputs inputs.toml
 
