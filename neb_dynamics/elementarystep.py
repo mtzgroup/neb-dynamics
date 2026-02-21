@@ -90,8 +90,10 @@ def _print_new_structure(node: Node, message: str = "new structure found!") -> N
 def _classify_new_structure(node: Node, reactant: Node, product: Node) -> str:
     """Classify a discovered structure relative to endpoint molecular graphs."""
     same_as_reactant = _is_connectivity_identical(
-        node, reactant, verbose=False)
-    same_as_product = _is_connectivity_identical(node, product, verbose=False)
+        node, reactant, verbose=False, collect_comparison=False)
+    same_as_product = _is_connectivity_identical(
+        node, product, verbose=False, collect_comparison=False
+    )
 
     if same_as_reactant and not same_as_product:
         return "new reactant conformer found!"
@@ -134,6 +136,7 @@ def _filter_new_structures(nodes: list[Node], reactant: Node, product: Node, cha
             fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
             kcal_mol_cutoff=chain.parameters.node_ene_thre,
             verbose=False,
+            collect_comparison=False,
         )
         is_p = is_identical(
             node,
@@ -141,6 +144,7 @@ def _filter_new_structures(nodes: list[Node], reactant: Node, product: Node, cha
             fragment_rmsd_cutoff=chain.parameters.node_rms_thre,
             kcal_mol_cutoff=chain.parameters.node_ene_thre,
             verbose=False,
+            collect_comparison=False,
         )
         if not (is_r or is_p):
             new_nodes.append(node)

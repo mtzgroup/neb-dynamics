@@ -326,6 +326,7 @@ def is_identical(
     fragment_rmsd_cutoff: float = 1.0,
     kcal_mol_cutoff: float = 1.0,
     verbose: bool = True,
+    collect_comparison: bool = True,
 ) -> bool:
     """
     computes whether two nodes are identical.
@@ -344,14 +345,16 @@ def is_identical(
         elif verbose:
             print("elemsteps: Using graph and distance based comparison")
         conditions = [
-            _is_connectivity_identical(self, other, verbose=verbose),
+            _is_connectivity_identical(
+                self, other, verbose=verbose, collect_comparison=collect_comparison
+            ),
             _is_conformer_identical(
                 self,
                 other,
                 global_rmsd_cutoff=global_rmsd_cutoff,
                 fragment_rmsd_cutoff=fragment_rmsd_cutoff,
                 kcal_mol_cutoff=kcal_mol_cutoff,
-                verbose=verbose
+                verbose=verbose,
             ),
         ]
     else:
@@ -403,7 +406,9 @@ def _is_conformer_identical(
 
     per_frag_dists = []
     if self.has_molecular_graph:
-        if not _is_connectivity_identical(self, other, verbose=verbose):
+        if not _is_connectivity_identical(
+            self, other, verbose=verbose, collect_comparison=False
+        ):
             if verbose:
                 if _rich_available:
                     _console.print(Panel.fit(
@@ -498,7 +503,12 @@ def _is_conformer_identical(
         return False
 
 
-def _is_connectivity_identical(self: Node, other: Node, verbose: bool = True) -> bool:
+def _is_connectivity_identical(
+    self: Node,
+    other: Node,
+    verbose: bool = True,
+    collect_comparison: bool = True,
+) -> bool:
     """
     checks graphs of both nodes and returns whether they are isomorphic
     to each other.
@@ -528,7 +538,7 @@ def _is_connectivity_identical(self: Node, other: Node, verbose: bool = True) ->
         stereochem_identical = True
 
     # Always collect results for final consolidated report
-    if smi1 and smi2:
+    if collect_comparison and smi1 and smi2:
         _add_comparison_result({
             'smi1': smi1,
             'smi2': smi2,
