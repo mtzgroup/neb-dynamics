@@ -477,6 +477,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#run-refine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run-refine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#ts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -698,6 +709,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#run-refine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run-refine
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#ts" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -904,6 +926,85 @@ mepd<span class="w"> </span>run<span class="w"> </span>--start<span class="w"> <
 <span class="c1"># With TS optimization and IRC</span>
 mepd<span class="w"> </span>run<span class="w"> </span>--start<span class="w"> </span>start.xyz<span class="w"> </span>--end<span class="w"> </span>end.xyz<span class="w"> </span>--use-tsopt<span class="w"> </span>--create-irc<span class="w"> </span>--inputs<span class="w"> </span>inputs.toml
 </code></pre></div>
+<hr />
+<h3 id="run-refine">run-refine<a class="headerlink" href="#run-refine" title="Permanent link">🔗</a></h3>
+<p>Run a two-stage refinement workflow:
+1. run a cheap discovery MEP/MSMEP,
+2. reoptimize discovered minima at an expensive level,
+3. run expensive pair-path minimizations between adjacent refined minima.</p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>run-refine<span class="w"> </span>PATH.xyz<span class="w"> </span>--inputs<span class="w"> </span>expensive.toml<span class="w"> </span>--cheap-inputs<span class="w"> </span>cheap.toml
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--start</code>, <code>-s</code></td>
+<td>Path to start structure file (or SMILES with <code>--use-smiles</code>)</td>
+</tr>
+<tr>
+<td><code>--end</code>, <code>-e</code></td>
+<td>Path to end structure file (or SMILES with <code>--use-smiles</code>)</td>
+</tr>
+<tr>
+<td><code>geometries</code></td>
+<td>Path to approximate path file (same convention as <code>run</code>)</td>
+</tr>
+<tr>
+<td><code>--inputs</code>, <code>-i</code></td>
+<td>Required expensive RunInputs TOML</td>
+</tr>
+<tr>
+<td><code>--cheap-inputs</code>, <code>-ci</code></td>
+<td>Optional cheap RunInputs TOML (defaults to <code>--inputs</code>)</td>
+</tr>
+<tr>
+<td><code>--recursive</code></td>
+<td>Use recursive MSMEP in cheap stage and expensive pair stage</td>
+</tr>
+<tr>
+<td><code>--recycle-nodes</code></td>
+<td>Seed expensive pair runs with cheap-path nodes instead of fresh interpolation</td>
+</tr>
+<tr>
+<td><code>--minimize-ends</code></td>
+<td>Minimize endpoints at cheap level before discovery</td>
+</tr>
+<tr>
+<td><code>--name</code></td>
+<td>Prefix for output files</td>
+</tr>
+<tr>
+<td><code>--charge</code></td>
+<td>Molecular charge (default: 0)</td>
+</tr>
+<tr>
+<td><code>--multiplicity</code></td>
+<td>Spin multiplicity (default: 1)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>run-refine<span class="w"> </span>examples/oxycope.xyz<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-i<span class="w"> </span>expensive_chemcloud_terachem.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-ci<span class="w"> </span>cheap_chemcloud_crest.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--recursive<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--recycle-nodes<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--name<span class="w"> </span>oxycope_refine
+</code></pre></div>
+<p><strong>Outputs:</strong></p>
+<ul>
+<li><code>&lt;name&gt;_cheap.xyz</code></li>
+<li><code>&lt;name&gt;_cheap_msmep/</code> (recursive cheap stage)</li>
+<li><code>&lt;name&gt;_refined_minima.xyz</code></li>
+<li><code>&lt;name&gt;_refined_pairs/</code></li>
+<li><code>&lt;name&gt;_refined.xyz</code></li>
+</ul>
 <hr />
 <h3 id="ts">ts<a class="headerlink" href="#ts" title="Permanent link">🔗</a></h3>
 <p>Optimize a transition state structure.</p>
