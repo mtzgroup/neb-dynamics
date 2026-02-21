@@ -70,6 +70,10 @@ for _logger_name in (
     "chemcloud.models",
     "qccodec",
     "qccodec.codec",
+    "geometric",
+    "geometric.nifty",
+    "neb_dynamics.geodesic_interpolation2",
+    "neb_dynamics.geodesic_interpolation2.morsegeodesic",
     "httpx",
     "httpcore",
 ):
