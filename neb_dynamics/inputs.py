@@ -30,6 +30,7 @@ _QMMM_ENGINE_KEYS = {
     "rst7_fp_prod",
     "rst7_fp_react",
     "compute_program",
+    "chemcloud_queue",
 }
 
 
@@ -395,6 +396,7 @@ class RunInputs:
                 k: v for k, v in self.qmmm_inputs.items() if k in _QMMM_ENGINE_KEYS
             }
             qmmm_kwargs.setdefault("compute_program", "chemcloud")
+            qmmm_kwargs.setdefault("chemcloud_queue", self.chemcloud_queue)
             if not qmmm_kwargs.get("tcin_fp") and not qmmm_kwargs.get("tcin_text"):
                 qmmm_kwargs["tcin_text"] = _build_qmmm_tcin(
                     program_kwds=self.program_kwds, qmmm_inputs=self.qmmm_inputs

@@ -467,12 +467,29 @@ class NEB(PathMinimizer):
     def update_chain(self, chain: Chain) -> Chain:
         import neb_dynamics.chainhelpers as ch
 
+        if len(chain) == 0:
+            raise ElectronicStructureError(
+                msg="Cannot update an empty chain.",
+                obj=None,
+            )
+
         grads = self.engine.compute_gradients(chain)
         enes = self.engine.compute_energies(chain)
+        if len(grads) == 0 or len(enes) == 0:
+            raise ElectronicStructureError(
+                msg="Engine returned empty gradients or energies during NEB update.",
+                obj=None,
+            )
         self._update_cache(chain, grads, enes)
 
-        grad_step = ch.compute_NEB_gradient(
-            chain, geodesic_tangent=self.parameters.use_geodesic_tangent)
+        try:
+            grad_step = ch.compute_NEB_gradient(
+                chain, geodesic_tangent=self.parameters.use_geodesic_tangent)
+        except IndexError as exc:
+            raise ElectronicStructureError(
+                msg="Failed to compute NEB gradient (empty or malformed chain gradients).",
+                obj=None,
+            ) from exc
 
         if chain.parameters.frozen_atom_indices:
             inds = chain.parameters.frozen_atom_indices

@@ -26,7 +26,8 @@ from neb_dynamics.nodes.nodehelpers import (
     is_identical,
 )
 from neb_dynamics.inputs import RunInputs
-from neb_dynamics.constants import ANGSTROM_TO_BOHR
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
+from neb_dynamics.geodesic_interpolation2.fileio import write_xyz
 
 import typer
 from typing_extensions import Annotated
@@ -240,6 +241,49 @@ def _ascii_profile_for_chain(chain: Chain):
     plot = _build_ascii_energy_profile(energies, labels)
     console.print("\nASCII Reaction Profile (Energy vs Node)")
     console.print(plot, markup=False)
+
+
+def _write_chain_with_nan_fallback(chain: Chain, fp: Path) -> None:
+    """Write chain xyz plus energy/gradient sidecars; missing data is serialized as NaN."""
+    fp = Path(fp)
+    xyz_arr = chain.coordinates * BOHR_TO_ANGSTROMS
+    write_xyz(filename=fp, atoms=chain.symbols, coords=xyz_arr)
+
+    n_nodes = len(chain.nodes)
+    n_atoms = chain.coordinates.shape[1] if n_nodes > 0 else 0
+
+    ene_path = fp.parent / Path(f"{fp.stem}.energies")
+    grad_path = fp.parent / Path(f"{fp.stem}.gradients")
+    grad_shape_path = fp.parent / Path(f"{fp.stem}_grad_shapes.txt")
+
+    energies = []
+    missing_energies = False
+    for node in chain.nodes:
+        try:
+            energies.append(float(node.energy))
+        except Exception:
+            missing_energies = True
+            break
+    if missing_energies:
+        np.savetxt(ene_path, np.full(n_nodes, np.nan))
+    else:
+        np.savetxt(ene_path, np.array(energies))
+
+    gradients = []
+    missing_gradients = False
+    for node in chain.nodes:
+        try:
+            gradients.append(np.array(node.gradient, dtype=float))
+        except Exception:
+            missing_gradients = True
+            break
+    if missing_gradients:
+        np.savetxt(grad_path, np.full(n_nodes * n_atoms * 3, np.nan))
+        np.savetxt(grad_shape_path, np.array([n_nodes, n_atoms, 3]))
+    else:
+        grad_arr = np.array(gradients, dtype=float)
+        np.savetxt(grad_path, grad_arr.flatten())
+        np.savetxt(grad_shape_path, np.array(grad_arr.shape))
 
 
 def _extract_minima_nodes(history: TreeNode) -> list[StructureNode]:
@@ -748,13 +792,21 @@ def run(
             filename = data_dir / f"{fp.stem}_neb.xyz"
 
         end_time = time.time()
-        n.write_to_disk(filename)
         if n.chain_trajectory:
             chain_for_profile = n.chain_trajectory[-1]
-        else:
+        elif n.optimized is not None:
             chain_for_profile = n.optimized
+        else:
+            chain_for_profile = None
 
-        if use_tsopt:
+        if chain_for_profile is None:
+            console.print(
+                "[yellow]⚠ Skipping output write/profile because path minimization did not produce an optimized chain.[/yellow]"
+            )
+        else:
+            _write_chain_with_nan_fallback(chain_for_profile, filename)
+
+        if use_tsopt and n.optimized is not None:
             console.print("[bold cyan]⟳ Running TS opt...[/bold cyan]")
             try:
                 tsres = program_input.engine._compute_ts_result(
@@ -781,6 +833,10 @@ def run(
 
             else:
                 console.print("[yellow]⚠ TS optimization failed.[/yellow]")
+        elif use_tsopt:
+            console.print(
+                "[yellow]⚠ Skipping TS optimization because path minimization did not converge.[/yellow]"
+            )
 
         tot_grad_calls = n.grad_calls_made
         console.print(
