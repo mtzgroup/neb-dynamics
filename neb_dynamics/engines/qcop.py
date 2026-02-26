@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent
 from dataclasses import dataclass
 from typing import List, Union
+import os
 from numpy.typing import NDArray
 import numpy as np
 
@@ -24,9 +25,17 @@ from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 import copy
 
 AVAIL_PROGRAMS = ["qcop", "chemcloud"]
-CCQUEUE = 'celery'
-# CCQUEUE = 'jan'
-# CCQUEUE = 'gq-alt'
+
+
+def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
+    """Queue precedence: explicit (TOML) > env var > default."""
+    if explicit_queue:
+        return explicit_queue
+    for env_key in ("MEPD_CHEMCLOUD_QUEUE", "CHEMCLOUD_QUEUE", "CCQUEUE"):
+        env_val = os.getenv(env_key)
+        if env_val:
+            return env_val
+    return "celery"
 
 
 @dataclass
@@ -36,8 +45,12 @@ class QCOPEngine(Engine):
     program: str = "xtb"
     geometry_optimizer: str = "geometric"
     compute_program: str = "qcop"
+    chemcloud_queue: str | None = None
     biaser: ChainBiaser = None
     collect_files: bool = False
+
+    def __post_init__(self):
+        self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:
@@ -85,8 +98,7 @@ class QCOPEngine(Engine):
         if self.compute_program == "qcop":
             return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
-            # print("SUBMITTING TO : ", CCQUEUE)
-            return cc_compute(*args, queue=CCQUEUE, **kwargs)
+            return cc_compute(*args, queue=self.chemcloud_queue, **kwargs)
         else:
             raise ValueError(
                 f"Invalid compute program: {self.compute_program}. Must be one of: {AVAIL_PROGRAMS}"

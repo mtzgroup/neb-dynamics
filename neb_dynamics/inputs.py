@@ -204,6 +204,7 @@ class NetworkInputs:
 class RunInputs:
     engine_name: str = "chemcloud"
     program: str = "xtb"
+    chemcloud_queue: str = None
 
     path_min_method: str = 'NEB'
     path_min_inputs: dict = None
@@ -299,7 +300,8 @@ class RunInputs:
             from neb_dynamics.engines.qcop import QCOPEngine
             eng = QCOPEngine(program_args=self.program_kwds,
                              program=self.program,
-                             compute_program=self.engine_name
+                             compute_program=self.engine_name,
+                             chemcloud_queue=self.chemcloud_queue,
                              )
         elif self.engine_name == 'ase':
             from neb_dynamics.engines.ase import ASEEngine
