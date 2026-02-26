@@ -1,4 +1,6 @@
 from __future__ import annotations
+import contextlib
+import io
 import logging
 import networkx as nx
 import numpy as np
@@ -6,7 +8,11 @@ from typing import List
 from itertools import product
 from neb_dynamics.pot import plot_results_from_pot_obj
 from neb_dynamics.pot import Pot
-from neb_dynamics.helper_functions import compute_irc_chain
+from neb_dynamics.helper_functions import (
+    compute_irc_chain,
+    parse_symbols_from_prmtop,
+    rst7_to_coords_and_indices,
+)
 from neb_dynamics.inputs import NetworkInputs, ChainInputs
 from neb_dynamics.NetworkBuilder import NetworkBuilder
 from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_file
@@ -20,6 +26,7 @@ from neb_dynamics.nodes.nodehelpers import (
     is_identical,
 )
 from neb_dynamics.inputs import RunInputs
+from neb_dynamics.constants import ANGSTROM_TO_BOHR
 
 import typer
 from typing_extensions import Annotated
@@ -448,6 +455,7 @@ def _render_runinputs(program_input: RunInputs):
             "program": program_input.program,
             "path_min_method": program_input.path_min_method,
         }),
+        ("QMMM", _section_dict(program_input.qmmm_inputs) if getattr(program_input, "qmmm_inputs", None) else {}),
         ("Path Minimizer", _section_dict(program_input.path_min_inputs)),
         ("Chain", _section_dict(program_input.chain_inputs)),
         ("GI", _section_dict(program_input.gi_inputs)),
@@ -470,6 +478,32 @@ def _render_runinputs(program_input: RunInputs):
     )
 
 
+def _load_endpoint_structure(
+    path: str,
+    charge: int,
+    multiplicity: int,
+    rst7_endpoints: bool = False,
+    rst7_prmtop_text: str | None = None,
+) -> Structure:
+    fp = Path(path)
+    is_rst7 = fp.suffix.lower() == ".rst7"
+    if rst7_endpoints and is_rst7:
+        if rst7_prmtop_text is None:
+            raise ValueError(
+                "RST7 endpoint conversion requires --rst7-prmtop."
+            )
+        coords, _ = rst7_to_coords_and_indices(fp.read_text())
+        with contextlib.redirect_stdout(io.StringIO()):
+            symbols = parse_symbols_from_prmtop(rst7_prmtop_text)
+        return Structure(
+            geometry=coords * ANGSTROM_TO_BOHR,
+            charge=charge,
+            multiplicity=multiplicity,
+            symbols=symbols,
+        )
+    return Structure.open(path)
+
+
 @app.command("run")
 def run(
         start: Annotated[str, typer.Option(
@@ -488,6 +522,14 @@ def run(
         name: str = None,
         charge: int = 0,
         multiplicity: int = 1,
+        rst7_endpoints: Annotated[bool, typer.Option(
+            "--rst7-endpoints",
+            help="Treat --start/--end .rst7 files as endpoints and convert them to structures.",
+        )] = False,
+        rst7_prmtop: Annotated[str, typer.Option(
+            "--rst7-prmtop",
+            help="Path to AMBER prmtop used to map atomic symbols when converting rst7 endpoints.",
+        )] = None,
         create_irc: Annotated[bool, typer.Option(
             help='whether to run and output an IRC chain. Need to set --use_tsopt also, otherwise\
                 will attempt use the guess structure.')] = False,
@@ -540,8 +582,26 @@ def run(
                 console.print(
                     f"[dim]Charge: {charge}, Multiplicity: {multiplicity}[/dim]")
 
-                start_ref = Structure.open(start)
-                end_ref = Structure.open(end)
+                if rst7_endpoints and rst7_prmtop is None:
+                    console.print(
+                        "[bold red]✗ ERROR:[/bold red] --rst7-endpoints requires --rst7-prmtop."
+                    )
+                    raise typer.Exit(1)
+                prmtop_text = Path(rst7_prmtop).read_text() if rst7_endpoints else None
+                start_ref = _load_endpoint_structure(
+                    start,
+                    charge=charge,
+                    multiplicity=multiplicity,
+                    rst7_endpoints=rst7_endpoints,
+                    rst7_prmtop_text=prmtop_text,
+                )
+                end_ref = _load_endpoint_structure(
+                    end,
+                    charge=charge,
+                    multiplicity=multiplicity,
+                    rst7_endpoints=rst7_endpoints,
+                    rst7_prmtop_text=prmtop_text,
+                )
 
                 if start_ref.charge != charge or start_ref.multiplicity != multiplicity:
                     console.print(
@@ -767,7 +827,15 @@ def run_refine(
         minimize_ends: bool = False,
         name: str = None,
         charge: int = 0,
-        multiplicity: int = 1):
+        multiplicity: int = 1,
+        rst7_endpoints: Annotated[bool, typer.Option(
+            "--rst7-endpoints",
+            help="Treat --start/--end .rst7 files as endpoints and convert them to structures.",
+        )] = False,
+        rst7_prmtop: Annotated[str, typer.Option(
+            "--rst7-prmtop",
+            help="Path to AMBER prmtop used to map atomic symbols when converting rst7 endpoints.",
+        )] = None):
     """Two-stage refinement: cheap discovery -> expensive minima/path refinement."""
     console.print(BANNER)
 
@@ -819,8 +887,26 @@ def run_refine(
                         geometries, charge=None, spinmult=None)
         elif start is not None and end is not None:
             with console.status(f"[bold cyan]Loading structures...[/bold cyan]"):
-                start_ref = Structure.open(start)
-                end_ref = Structure.open(end)
+                if rst7_endpoints and rst7_prmtop is None:
+                    console.print(
+                        "[bold red]✗ ERROR:[/bold red] --rst7-endpoints requires --rst7-prmtop."
+                    )
+                    raise typer.Exit(1)
+                prmtop_text = Path(rst7_prmtop).read_text() if rst7_endpoints else None
+                start_ref = _load_endpoint_structure(
+                    start,
+                    charge=charge,
+                    multiplicity=multiplicity,
+                    rst7_endpoints=rst7_endpoints,
+                    rst7_prmtop_text=prmtop_text,
+                )
+                end_ref = _load_endpoint_structure(
+                    end,
+                    charge=charge,
+                    multiplicity=multiplicity,
+                    rst7_endpoints=rst7_endpoints,
+                    rst7_prmtop_text=prmtop_text,
+                )
                 if start_ref.charge != charge or start_ref.multiplicity != multiplicity:
                     start_ref = Structure(
                         geometry=start_ref.geometry,
