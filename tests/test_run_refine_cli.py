@@ -4,6 +4,7 @@ import numpy as np
 from qcio import Structure
 
 from neb_dynamics.chain import Chain
+from neb_dynamics.constants import ANGSTROM_TO_BOHR
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.scripts import main_cli
@@ -149,3 +150,29 @@ def test_run_refine_recycle_nodes_seeds_expensive_pairs_from_cheap_chain(monkeyp
     ]
     assert bond_lengths0 == [1.0, 10.0, 20.0]
     assert bond_lengths1 == [20.0, 30.0, 40.0]
+
+
+def test_load_endpoint_structure_converts_rst7_with_prmtop(tmp_path):
+    rst7_fp = tmp_path / "start.rst7"
+    rst7_fp.write_text(
+        "TITLE\n"
+        "2\n"
+        " 0.0000000  0.0000000  0.0000000  1.0000000  0.0000000  0.0000000\n"
+    )
+    prmtop_text = (
+        "%FLAG ATOMIC_NUMBER\n"
+        "%FORMAT(10I8)\n"
+        "       1       8\n"
+        "%FLAG END\n"
+    )
+
+    struct = main_cli._load_endpoint_structure(
+        path=str(rst7_fp),
+        charge=0,
+        multiplicity=1,
+        rst7_endpoints=True,
+        rst7_prmtop_text=prmtop_text,
+    )
+
+    assert struct.symbols == ["H", "O"]
+    assert np.isclose(struct.geometry[1][0], 1.0 * ANGSTROM_TO_BOHR)

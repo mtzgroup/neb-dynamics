@@ -41,6 +41,7 @@ class QMMMEngine(Engine):
                 rst7_fp_react=Path("./ref.rst7"))
     """
     tcin_fp: Path = None
+    tcin_text: str = None
     qminds_fp: Path = None
     prmtop_fp: Path = None
     rst7_fp_prod: Path = None
@@ -48,11 +49,16 @@ class QMMMEngine(Engine):
     compute_program: str = "qcop"
 
     def __post_init__(self):
-        self.inp_file = self.tcin_fp.read_text()  # Or your own function to create tc.in
+        if self.tcin_text is not None:
+            self.inp_file = self.tcin_text
+        elif self.tcin_fp is not None:
+            self.inp_file = self.tcin_fp.read_text()
+        else:
+            raise ValueError("QMMMEngine needs either tcin_text or tcin_fp.")
         self.qmindices = self.qminds_fp.read_text()
         self.prmtop = self.prmtop_fp.read_text()
         self.ref_rst7_react = self.rst7_fp_react.read_text()
-        self.ref_rst7_prod = self.rst7_fp_prod.read_text()
+        self.ref_rst7_prod = self.rst7_fp_prod.read_text() if self.rst7_fp_prod else None
         _, indices_coordinates = rst7_to_coords_and_indices(self.ref_rst7_react)
         self.indices_coordinates = indices_coordinates
 

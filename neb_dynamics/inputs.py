@@ -14,6 +14,70 @@ import tomli
 import tomli_w
 from pathlib import Path
 
+_QMMM_PATH_KEYS = {
+    "tcin_fp",
+    "qminds_fp",
+    "prmtop_fp",
+    "rst7_fp_prod",
+    "rst7_fp_react",
+}
+
+_QMMM_ENGINE_KEYS = {
+    "tcin_fp",
+    "tcin_text",
+    "qminds_fp",
+    "prmtop_fp",
+    "rst7_fp_prod",
+    "rst7_fp_react",
+    "compute_program",
+}
+
+
+def _format_tc_value(value):
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    return str(value)
+
+
+def _build_qmmm_tcin(program_kwds: ProgramArgs | dict | None, qmmm_inputs: dict) -> str:
+    model = {}
+    keywords = {}
+    if isinstance(program_kwds, ProgramArgs):
+        model = dict(program_kwds.model or {})
+        keywords = dict(program_kwds.keywords or {})
+    elif isinstance(program_kwds, dict):
+        model = dict(program_kwds.get("model") or {})
+        keywords = dict(program_kwds.get("keywords") or {})
+
+    charge = qmmm_inputs.get("charge", 0)
+    spinmult = qmmm_inputs.get("spinmult", 1)
+    run_type = qmmm_inputs.get("run_type", "gradient")
+    min_coordinates = qmmm_inputs.get("min_coordinates", "cartesian")
+
+    lines = [
+        "# Inputs",
+        "prmtop ref.prmtop",
+        "coordinates ref.rst7",
+        "qmindices qmindices.dat",
+        f"charge {charge}",
+        f"spinmult {spinmult}",
+        f"min_coordinates {min_coordinates}",
+        "",
+        "# Runtype",
+        f"run {run_type}",
+        "",
+        "# Method",
+        f"basis {model.get('basis', '3-21g')}",
+        f"method {model.get('method', 'ub3lyp')}",
+    ]
+
+    if keywords:
+        lines.extend(["", "# Keywords"])
+        for key in sorted(keywords.keys()):
+            lines.append(f"{key} {_format_tc_value(keywords[key])}")
+
+    return "\n".join(lines) + "\n"
+
 
 @dataclass
 class PathMinInputs:
@@ -204,6 +268,7 @@ class NetworkInputs:
 class RunInputs:
     engine_name: str = "chemcloud"
     program: str = "xtb"
+    qmmm_inputs: dict = None
 
     path_min_method: str = 'NEB'
     path_min_inputs: dict = None
@@ -275,6 +340,8 @@ class RunInputs:
                 program_args = ProgramArgs(
                     model={"method": "ub3lyp", "basis": "3-21g"},
                     keywords={})
+            elif self.engine_name == "qmmm":
+                program_args = None
             else:
                 raise ValueError("Need to specify program arguments")
 
@@ -283,6 +350,14 @@ class RunInputs:
         elif self.program_kwds is not None and self.engine_name in ['qcop', 'chemcloud']:
             program_args = ProgramArgs(**self.program_kwds)
             self.program_kwds = program_args
+
+        if self.qmmm_inputs is None:
+            self.qmmm_inputs = {}
+        else:
+            self.qmmm_inputs = dict(self.qmmm_inputs)
+        for key, val in self.qmmm_inputs.items():
+            if key in _QMMM_PATH_KEYS and val is not None:
+                self.qmmm_inputs[key] = Path(val)
 
         if self.chain_inputs is None:
             self.chain_inputs = ChainInputs()
@@ -301,6 +376,28 @@ class RunInputs:
                              program=self.program,
                              compute_program=self.engine_name
                              )
+        elif self.engine_name == 'qmmm':
+            from neb_dynamics.engines.qmmm import QMMMEngine
+            required_keys = [
+                "qminds_fp",
+                "prmtop_fp",
+                "rst7_fp_react",
+            ]
+            missing = [k for k in required_keys if not self.qmmm_inputs.get(k)]
+            if missing:
+                raise ValueError(
+                    "Missing required qmmm_inputs keys for QMMMEngine: "
+                    + ", ".join(missing)
+                )
+            qmmm_kwargs = {
+                k: v for k, v in self.qmmm_inputs.items() if k in _QMMM_ENGINE_KEYS
+            }
+            qmmm_kwargs.setdefault("compute_program", "chemcloud")
+            if not qmmm_kwargs.get("tcin_fp") and not qmmm_kwargs.get("tcin_text"):
+                qmmm_kwargs["tcin_text"] = _build_qmmm_tcin(
+                    program_kwds=self.program_kwds, qmmm_inputs=self.qmmm_inputs
+                )
+            eng = QMMMEngine(**qmmm_kwargs)
         elif self.engine_name == 'ase':
             from neb_dynamics.engines.ase import ASEEngine
             ase_progs = ['omol25']
@@ -338,8 +435,18 @@ class RunInputs:
     @classmethod
     def open(cls, fp):
 
+        fp = Path(fp)
         with open(fp, 'rb') as f:
             data = tomli.load(f)
+
+        qmmm_inputs = data.get("qmmm_inputs")
+        if isinstance(qmmm_inputs, dict):
+            for key, val in qmmm_inputs.items():
+                if key in _QMMM_PATH_KEYS and isinstance(val, str):
+                    p = Path(val)
+                    if not p.is_absolute():
+                        qmmm_inputs[key] = str((fp.parent / p).resolve())
+
         # data_dict = json.loads(data)
         obj = cls(**data)
         if hasattr(obj.program_kwds, 'files') and obj.program_kwds.files is not None:
