@@ -29,6 +29,17 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
+
+def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
+    if explicit_queue:
+        return explicit_queue
+    for env_key in ("MEPD_CHEMCLOUD_QUEUE", "CHEMCLOUD_QUEUE", "CCQUEUE"):
+        env_val = os.getenv(env_key)
+        if env_val:
+            return env_val
+    return "celery"
+
+
 @dataclass
 class QMMMEngine(Engine):
     """"
@@ -47,8 +58,10 @@ class QMMMEngine(Engine):
     rst7_fp_prod: Path = None
     rst7_fp_react: Path = None
     compute_program: str = "qcop"
+    chemcloud_queue: str | None = None
 
     def __post_init__(self):
+        self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
         if self.tcin_text is not None:
             self.inp_file = self.tcin_text
         elif self.tcin_fp is not None:
@@ -81,20 +94,42 @@ class QMMMEngine(Engine):
         qminds = [int(x) for x in self.qmindices.strip().split("\n")]
 
 
-        if self.compute_program.lower() != 'chemcloud':
-            outputs = []
-            for string in inputs:
-                outputs.append(compute("terachem", string, print_stdout=False))
-        else:
-            outputs = ccompute("terachem", inputs)
+        try:
+            if self.compute_program.lower() != 'chemcloud':
+                outputs = []
+                for string in inputs:
+                    outputs.append(compute("terachem", string, print_stdout=False))
+            else:
+                outputs = []
+                for inp in inputs:
+                    result = ccompute("terachem", inp, queue=self.chemcloud_queue)
+                    if hasattr(result, "get"):
+                        result = result.get()
+                    outputs.append(result)
+        except Exception as exc:
+            raise ElectronicStructureError(
+                msg=f"QMMM compute submission failed ({self.compute_program}): {exc}",
+                obj=None,
+            ) from exc
+
+        if len(outputs) != len(rst7_strings):
+            raise ElectronicStructureError(
+                msg=(
+                    "QMMM returned an unexpected number of results: "
+                    f"expected {len(rst7_strings)}, got {len(outputs)}"
+                ),
+                obj=outputs,
+            )
 
         gradients = []
         energies = []
         for output in outputs:
             qm_grad, mm_grad = parse_qmmm_gradients(output.stdout)
             if len(qm_grad) == 0:
-                print("SOMETHING FAILED")
-                print(output.stdout)
+                raise ElectronicStructureError(
+                    msg="QMMM gradient parsing failed (no QM gradients found in output).",
+                    obj=output,
+                )
             lines = output.stdout.split("\n")
             nlink_atom = int([l for l in lines if "link" in l][0].split()[6])
             if nlink_atom > 0:

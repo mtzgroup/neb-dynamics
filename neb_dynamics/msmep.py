@@ -79,6 +79,18 @@ class MSMEP:
             )
         return optimizer_map[optimizer_name](**kwds)
 
+    def _should_disable_graphs(self) -> bool:
+        return self.inputs.engine.__class__.__name__ == "QMMMEngine"
+
+    def _disable_molecular_graphs(self, chain: Chain) -> None:
+        if not self._should_disable_graphs():
+            return
+        for node in chain:
+            if hasattr(node, "has_molecular_graph"):
+                node.has_molecular_graph = False
+            if hasattr(node, "graph"):
+                node.graph = None
+
     def run_recursive_minimize(self, input_chain: Chain, tree_node_index=0) -> TreeNode:
         """Will take a chain as an input and run NEB minimizations until it exits out.
         NEB can exit due to the chain being converged, the chain needing to be split,
@@ -97,6 +109,7 @@ class MSMEP:
         if isinstance(input_chain, list):
             input_chain = Chain.model_validate(
                 {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
+        self._disable_molecular_graphs(input_chain)
 
         if self.inputs.path_min_inputs.skip_identical_graphs and input_chain[0].has_molecular_graph:
             if not _get_verbose(self.inputs):
@@ -324,6 +337,7 @@ class MSMEP:
         if isinstance(input_chain, list):
             input_chain = Chain.model_validate(
                 {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
+        self._disable_molecular_graphs(input_chain)
 
         # make sure the chain parameters are reset
         # if they come from a converged chain
@@ -338,6 +352,7 @@ class MSMEP:
 
         else:
             interpolation = input_chain
+        self._disable_molecular_graphs(interpolation)
 
         # Use spinner when v=0, print when v=1
         verbose = _get_verbose(self.inputs)
@@ -378,11 +393,20 @@ class MSMEP:
                 "\nWarning! A chain has electronic structure errors. \
                     Returning an unoptimized chain..."
             )
-            # print(e)
+            if getattr(e, "msg", None):
+                print(f"ElectronicStructureError message: {e.msg}")
+            if e.__cause__ is not None:
+                print(f"ElectronicStructureError cause: {type(e.__cause__).__name__}: {e.__cause__}")
             if e.obj is not None:
-                for i, po in enumerate(e.obj):
-                    print(f"Traceback {i}:")
-                    po.ptraceback
+                if isinstance(e.obj, (list, tuple)):
+                    print(
+                        f"ElectronicStructureError includes {len(e.obj)} result objects."
+                    )
+                else:
+                    print(
+                        "ElectronicStructureError includes a result object "
+                        f"of type {type(e.obj).__name__}."
+                    )
             out_chain = n.chain_trajectory[-1]
             elem_step_results = ElemStepResults(
                 is_elem_step=True,
