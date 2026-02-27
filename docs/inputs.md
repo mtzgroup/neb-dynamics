@@ -1,327 +1,334 @@
 # Input Parameters
 
-NEB Dynamics uses several input classes to configure calculations. This guide covers all available options.
+This page documents the `RunInputs` TOML schema accepted on the `master` branch.
+It is derived from `neb_dynamics/inputs.py` on this branch, so it reflects the
+actual keys and defaults the CLI accepts today.
 
-## NEBInputs
+## Top-Level Layout
 
-Controls Nudged Elastic Band optimization parameters.
+A typical inputs file looks like this:
 
-```python
-from neb_dynamics.inputs import NEBInputs
+```toml
+engine_name = "chemcloud"
+program = "xtb"
+chemcloud_queue = "celery"
+path_min_method = "NEB"
 
-nbi = NEBInputs(
-    # Convergence thresholds
-    tol=1e-4,                    # Overall tolerance (Hartrees)
-    en_thre=1e-4,                # Energy difference threshold
-    rms_grad_thre=0.02,          # RMS perpendicular gradient (Ha/Bohr)
-    max_rms_grad_thre=0.05,      # Maximum RMS gradient (Ha/Bohr)
-    ts_grad_thre=0.05,           # Transition state gradient threshold
-    ts_spring_thre=0.02,         # TS spring force threshold
-    barrier_thre=0.1,            # Barrier height change (kcal/mol)
+[path_min_inputs]
+max_steps = 500
+v = false
 
-    # NEB options
-    climb=False,                 # Enable climbing image NEB
-    use_geodesic_tangent=False,  # Use geodesic tangents
+[chain_inputs]
+k = 0.1
+delta_k = 0.09
+do_parallel = true
+use_geodesic_interpolation = true
+friction_optimal_gi = true
+node_freezing = true
+node_rms_thre = 5.0
+node_ene_thre = 5.0
+frozen_atom_indices = ""
 
-    # Early stopping
-    early_stop_force_thre=0.0,   # Early stop check threshold
+[gi_inputs]
+nimages = 10
+friction = 0.001
+nudge = 0.1
+align = true
 
-    # Step control
-    negative_steps_thre=10,      # Steps before halving step size
-    max_steps=500,               # Maximum optimization steps
+[gi_inputs.extra_kwds]
 
-    # Other options
-    skip_identical_graphs=True,   # Skip if endpoints have same graph
-    do_elem_step_checks=True,    # Check for elementary steps
-    v=True,                      # Verbose output
-)
+[program_kwds]
+cmdline_args = []
+
+[program_kwds.keywords]
+threads = 1
+
+[program_kwds.extras]
+
+[program_kwds.files]
+
+[program_kwds.model]
+method = "GFN2xTB"
+basis = "GFN2xTB"
+
+[program_kwds.model.extras]
+
+[optimizer_kwds]
+name = "cg"
+timestep = 0.5
 ```
 
-### Parameter Reference
+## Top-Level Keys
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `climb` | bool | False | Enable climbing image NEB to find exact saddle point |
-| `en_thre` | float | 1e-4 | Energy difference threshold (Hartrees) |
-| `rms_grad_thre` | float | 0.02 | RMS perpendicular gradient threshold (Ha/Bohr) |
-| `max_rms_grad_thre` | float | 0.05 | Maximum RMS gradient threshold (Ha/Bohr) |
-| `ts_grad_thre` | float | 0.05 | Transition state gradient infinity norm (Ha/Bohr) |
-| `ts_spring_thre` | float | 0.02 | TS spring force infinity norm (Ha/Bohr) |
-| `barrier_thre` | float | 0.1 | Barrier height change threshold (kcal/mol) |
-| `early_stop_force_thre` | float | 0.0 | Early stop check (0 = disabled) |
-| `negative_steps_thre` | int | 10 | Steps with poor gradient correlation before halving step size |
-| `max_steps` | int | 500 | Maximum optimization steps |
-| `skip_identical_graphs` | bool | True | Skip minimization if endpoints have identical molecular graphs |
-| `do_elem_step_checks` | bool | False | Check if path is elementary step during optimization |
-| `use_geodesic_tangent` | bool | False | Use geodesic-based tangents instead of standard |
-| `v` | bool | True | Verbose output |
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `engine_name` | `str` | `"chemcloud"` | Supported: `"qcop"`, `"chemcloud"`, `"ase"` |
+| `program` | `str` | `"xtb"` | Common values: `"xtb"`, `"crest"`, `"terachem"`; `ase` currently only supports `"omol25"` |
+| `chemcloud_queue` | `str \| null` | `null` | Queue passed to `QCOPEngine` when using `engine_name = "chemcloud"` |
+| `path_min_method` | `str` | `"NEB"` | Supported: `"NEB"`, `"FNEB"`, `"MLPGI"` |
+| `path_min_inputs` | `table` | branch-dependent defaults | See below |
+| `chain_inputs` | `table` | `ChainInputs()` defaults | See below |
+| `gi_inputs` | `table` | `GIInputs()` defaults | See below |
+| `program_kwds` | `table` | inferred from `engine_name`/`program` | Parsed into `qcio.ProgramArgs` for `qcop` / `chemcloud` |
+| `optimizer_kwds` | `table` | `{ name = "cg", timestep = 0.5 }` | See optimizer names below |
 
-## ChainInputs
+## `path_min_inputs` for `NEB`
 
-Controls the chain of images and path interpolation.
+These keys are accepted when `path_min_method = "NEB"`.
 
-```python
-from neb_dynamics.inputs import ChainInputs
+| Key | Type | Default |
+| --- | --- | --- |
+| `climb` | `bool` | `false` |
+| `en_thre` | `float` | `1e-4` |
+| `rms_grad_thre` | `float` | `0.02` |
+| `max_rms_grad_thre` | `float` | `0.05` |
+| `skip_identical_graphs` | `bool` | `true` |
+| `ts_grad_thre` | `float` | `0.05` |
+| `ts_spring_thre` | `float` | `0.02` |
+| `barrier_thre` | `float` | `0.1` |
+| `early_stop_force_thre` | `float` | `0.0` |
+| `negative_steps_thre` | `int` | `5` |
+| `positive_steps_thre` | `int` | `10` |
+| `use_geodesic_tangent` | `bool` | `false` |
+| `do_elem_step_checks` | `bool` | `false` |
+| `max_steps` | `float` | `500` |
+| `v` | `bool` | `false` |
 
-ci = ChainInputs(
-    # Spring constants
-    k=0.1,           # Maximum spring constant
-    delta_k=0.09,    # Energy-weighted spring constant parameter
+Example:
 
-    # Parallel computation
-    do_parallel=True, # Compute gradients in parallel
-
-    # Interpolation
-    use_geodesic_interpolation=True,  # Use geodesic interpolation
-    friction_optimal_gi=True,         # Optimize friction parameter
-
-    # Node freezing
-    node_freezing=True,    # Enable node freezing
-    node_rms_thre=5.0,     # RMS threshold for freezing (Bohr)
-    node_ene_thre=5.0,     # Energy threshold for freezing (kcal/mol)
-
-    # Frozen atoms
-    frozen_atom_indices="",  # Space-separated indices of frozen atoms
-)
+```toml
+[path_min_inputs]
+climb = false
+en_thre = 0.0001
+rms_grad_thre = 0.02
+max_rms_grad_thre = 0.05
+skip_identical_graphs = true
+ts_grad_thre = 0.05
+ts_spring_thre = 0.02
+barrier_thre = 0.1
+early_stop_force_thre = 0.03
+negative_steps_thre = 5
+positive_steps_thre = 10
+use_geodesic_tangent = false
+do_elem_step_checks = false
+max_steps = 500
+v = false
 ```
 
-### Parameter Reference
+## `path_min_inputs` for `FNEB`
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `k` | float | 0.1 | Maximum spring constant for NEB |
-| `delta_k` | float | 0.09 | Parameter for energy-weighted spring constants |
-| `do_parallel` | bool | True | Compute gradients in parallel |
-| `use_geodesic_interpolation` | bool | True | Use geodesic interpolation for initial path |
-| `friction_optimal_gi` | bool | True | Optimize friction parameter for GI |
-| `node_freezing` | bool | True | Freeze nodes that have converged |
-| `node_rms_thre` | float | 5.0 | RMS coordinate change threshold for freezing (Bohr) |
-| `node_ene_thre` | float | 5.0 | Energy change threshold for freezing (kcal/mol) |
-| `frozen_atom_indices` | str | "" | Indices of atoms to freeze during optimization |
+When `path_min_method = "FNEB"`, the branch provides these defaults:
 
-### Energy-Weighted Spring Constants
+| Key | Default |
+| --- | --- |
+| `max_min_iter` | `100` |
+| `max_grow_iter` | `20` |
+| `verbosity` | `1` |
+| `skip_identical_graphs` | `true` |
+| `do_elem_step_checks` | `true` |
+| `grad_tol` | `0.05` |
+| `barrier_thre` | `5` |
+| `tangent` | `"geodesic"` |
+| `tangent_alpha` | `1.0` |
+| `use_xtb_grow` | `true` |
+| `distance_metric` | `"GEODESIC"` |
+| `min_images` | `10` |
+| `todd_way` | `true` |
+| `dist_err` | `0.1` |
 
-The energy-weighted spring constant is calculated as:
+Any provided values override these defaults.
+
+## `path_min_inputs` for `MLPGI`
+
+`MLPGI` uses an empty default table on this branch. Keys are effectively
+backend-specific passthrough.
+
+## `chain_inputs`
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `k` | `float` | `0.1` | NEB spring constant |
+| `delta_k` | `float` | `0.09` | Energy-weighted spring parameter |
+| `do_parallel` | `bool` | `true` | Parallel gradient/energy computation |
+| `use_geodesic_interpolation` | `bool` | `true` | Use geodesic interpolation for initial path generation |
+| `friction_optimal_gi` | `bool` | `true` | Optimize GI friction parameter |
+| `node_freezing` | `bool` | `true` | Freeze converged nodes |
+| `node_rms_thre` | `float` | `5.0` | Node RMS threshold |
+| `node_ene_thre` | `float` | `5.0` | Node energy threshold |
+| `frozen_atom_indices` | `str` | `""` | Space-separated atom indices |
+
+Example:
+
+```toml
+[chain_inputs]
+k = 0.1
+delta_k = 0.09
+do_parallel = true
+use_geodesic_interpolation = true
+friction_optimal_gi = true
+node_freezing = true
+node_rms_thre = 5.0
+node_ene_thre = 5.0
+frozen_atom_indices = ""
 ```
-k_i = k * exp(-delta_k * (E_i - E_min) / (E_max - E_min))
+
+## `gi_inputs`
+
+| Key | Type | Default |
+| --- | --- | --- |
+| `nimages` | `int` | `10` |
+| `friction` | `float` | `0.001` |
+| `nudge` | `float` | `0.1` |
+| `align` | `bool` | `true` |
+| `extra_kwds` | `table` | `{}` |
+
+Example:
+
+```toml
+[gi_inputs]
+nimages = 10
+friction = 0.001
+nudge = 0.1
+align = true
+
+[gi_inputs.extra_kwds]
 ```
 
-This keeps images more tightly spaced near the barrier where energies change rapidly.
+## `program_kwds`
 
-## GIInputs
+For `engine_name = "qcop"` or `"chemcloud"`, this section is parsed into a
+`qcio.ProgramArgs` object.
 
-Controls geodesic interpolation for generating initial path guesses.
+### Structure
 
-```python
-from neb_dynamics.inputs import GIInputs
+```toml
+[program_kwds]
+cmdline_args = []
 
-gi = GIInputs(
-    nimages=10,           # Number of images
-    friction=0.001,       # Friction parameter
-    nudge=0.1,            # Nudge parameter
-    align=True,           # Align structures before interpolation
-    extra_kwds={},        # Additional keywords
-)
+[program_kwds.keywords]
+threads = 1
+
+[program_kwds.extras]
+
+[program_kwds.files]
+
+[program_kwds.model]
+method = "GFN2xTB"
+basis = "GFN2xTB"
+
+[program_kwds.model.extras]
 ```
 
-### Parameter Reference
+### Defaults
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `nimages` | int | 10 | Number of images in the chain |
-| `friction` | float | 0.001 | Friction parameter (controls path smoothness) |
-| `nudge` | float | 0.1 | Nudge parameter for path optimization |
-| `align` | bool | True | Align structures using RMSD before interpolation |
-| `extra_kwds` | dict | {} | Additional geodesic interpolation options |
+If `program_kwds` is omitted, defaults depend on `program`:
 
-### Tips for Geodesic Interpolation
+- `program = "xtb"`
+  - if `crest` is available: method/basis `gfn2`, `threads = 1`, and `program`
+    is internally changed to `"crest"`
+  - otherwise: method/basis `GFN2xTB`
+- `program` containing `"terachem"`
+  - method `ub3lyp`
+  - basis `3-21g`
 
-- **Higher `nudge` values** produce shorter paths but may be less smooth
-- **Lower `friction` values** allow more flexibility in atomic movements
-- Run multiple interpolations with different parameters and select the shortest path
+## `optimizer_kwds`
 
-## RunInputs
+`optimizer_kwds.name` selects the optimizer implementation.
 
-Complete input class for running MSMEP calculations.
+Supported names:
+
+- `cg`
+- `conjugate_gradient`
+- `vpo`
+- `velocity_projected`
+- `lbfgs`
+- `adam`
+- `amg`
+- `adaptive_momentum`
+- `fire`
+
+Defaults:
+
+```toml
+[optimizer_kwds]
+name = "cg"
+timestep = 0.5
+```
+
+## Minimal Examples
+
+### ChemCloud xTB run
+
+```toml
+engine_name = "chemcloud"
+program = "xtb"
+chemcloud_queue = "celery"
+path_min_method = "NEB"
+
+[path_min_inputs]
+max_steps = 250
+v = true
+
+[chain_inputs]
+use_geodesic_interpolation = true
+
+[gi_inputs]
+nimages = 10
+
+[optimizer_kwds]
+name = "cg"
+timestep = 0.5
+```
+
+### Local QCOP TeraChem run
+
+```toml
+engine_name = "qcop"
+program = "terachem"
+path_min_method = "NEB"
+
+[path_min_inputs]
+max_steps = 100
+v = true
+
+[program_kwds]
+cmdline_args = []
+
+[program_kwds.keywords]
+gpus = 1
+sphericalbasis = false
+
+[program_kwds.model]
+method = "b3lyp"
+basis = "6-31g**"
+
+[optimizer_kwds]
+name = "cg"
+timestep = 0.5
+```
+
+## Loading and Saving
 
 ```python
 from neb_dynamics.inputs import RunInputs
-from qcio import ProgramArgs
 
-ri = RunInputs(
-    # Engine settings
-    engine_name="qcop",      # "qcop", "ase", or "chemcloud"
-    program="xtb",           # Electronic structure program
-
-    # Path minimization
-    path_min_method="NEB",   # "NEB", "FNEB", or "MLPGI"
-
-    # Program arguments
-    program_kwds=ProgramArgs(
-        model={"method": "GFN2xTB", "basis": "GFN2xTB"},
-        keywords={}
-    ),
-
-    # Custom inputs
-    path_min_inputs=NEBInputs().__dict__,
-    chain_inputs=ChainInputs().__dict__,
-    gi_inputs=GIInputs().__dict__,
-
-    # Optimizer
-    optimizer_kwds={"timestep": 0.5},
-)
+ri = RunInputs.open("inputs.toml")
+ri.save("copied_inputs.toml")
 ```
 
-### Parameter Reference
+## CLI Notes
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `engine_name` | str | "qcop" | Engine to use: "qcop", "ase", or "chemcloud" |
-| `program` | str | "xtb" | Electronic structure program |
-| `path_min_method` | str | "NEB" | Path minimization method: "NEB", "FNEB", "MLPGI" |
-| `program_kwds` | ProgramArgs | None | Program-specific arguments |
-| `path_min_inputs` | dict | {} | NEBInputs as dictionary |
-| `chain_inputs` | dict | {} | ChainInputs as dictionary |
-| `gi_inputs` | dict | {} | GIInputs as dictionary |
-| `optimizer_kwds` | dict | {"timestep": 0.5} | Optimizer keyword arguments |
-
-### Loading/Saving Inputs
-
-```python
-# Save inputs to TOML file
-ri.save("my_inputs.toml")
-
-# Load inputs from TOML file
-ri = RunInputs.open("my_inputs.toml")
-```
-
-## NetworkInputs
-
-Settings for building reaction networks.
-
-```python
-from neb_dynamics.inputs import NetworkInputs
-
-ni = NetworkInputs(
-    # Conformer generation
-    n_max_conformers=10,      # Maximum conformers per endpoint
-    subsample_confs=True,      # Subsample conformers
-    conf_rmsd_cutoff=0.5,     # RMSD cutoff for new conformer (Angstroms)
-
-    # Network settings
-    network_nodes_are_conformers=False,  # Each conformer is a node
-    maximum_barrier_height=1000,         # Max barrier (kcal/mol)
-    tolerate_kinks=True,                  # Include paths with kinks
-
-    # Computing
-    use_slurm=False,           # Submit to SLURM queue
-
-    # CREST settings
-    CREST_temp=298.15,         # Temperature (K)
-    CREST_ewin=6.0,            # Energy window (kcal/mol)
-)
-```
-
-## Path Minimization Methods
-
-### Standard NEB
-
-The standard Nudged Elastic Band method with spring forces and perpendicular gradients.
-
-```python
-nbi = NEBInputs()
-```
-
-### Freezing NEB (FNEB)
-
-Grow the chain dynamically, freezing images once they converge.
-
-```python
-from neb_dynamics.inputs import RunInputs
-
-ri = RunInputs(
-    path_min_method="FNEB",
-    path_min_inputs={
-        "max_min_iter": 100,
-        "max_grow_iter": 20,
-        "grad_tol": 0.05,
-        "barrier_thre": 5,
-    }
-)
-```
-
-### MLP Geodesic (MLPGI)
-
-Using machine learning potentials with geodesic interpolation.
-
-```python
-ri = RunInputs(
-    path_min_method="MLPGI",
-    path_min_inputs={
-        # MLP backend config
-        "backend": "fairchem",
-        "device": "cpu",          # "cpu" or "cuda"
-        "dtype": "float32",       # "float32" or "float64"
-
-        # Checkpoint resolution
-        "model_path": "esen_sm_conserving_all.pt",
-        "model_repo": "facebook/OMol25",
-        "auto_download_model": True,
-        # Optional:
-        # "model_cache_dir": "/path/to/cache",
-        # "hf_token": "hf_xxx",
-    },
-)
-```
-
-#### MLPGI Checkpoint Setup
-
-`MLPGI` requires a local fairchem checkpoint file. You can provide one directly
-or enable automatic download from Hugging Face.
-
-1. Manual checkpoint path:
-
-```python
-ri = RunInputs(
-    path_min_method="MLPGI",
-    path_min_inputs={
-        "backend": "fairchem",
-        "model_path": "/absolute/path/to/esen_sm_conserving_all.pt",
-        "auto_download_model": False,
-    },
-)
-```
-
-2. Auto-download from Hugging Face (`facebook/OMol25`):
-
-```python
-ri = RunInputs(
-    path_min_method="MLPGI",
-    path_min_inputs={
-        "backend": "fairchem",
-        "model_path": "esen_sm_conserving_all.pt",
-        "model_repo": "facebook/OMol25",
-        "auto_download_model": True,
-    },
-)
-```
-
-If the repo is gated/private, authenticate first:
+The CLI reads this file with:
 
 ```bash
-huggingface-cli login
+mepd run --start start.xyz --end end.xyz --inputs inputs.toml
 ```
 
-You can also set `HF_TOKEN` in your environment instead of interactive login.
+A few options are CLI flags, not TOML keys. For example:
 
-Manual download example (stores in local directory):
+- `--recursive`
+- `--use-tsopt`
+- `--create-irc`
+- `--minimize-ends`
 
-```bash
-huggingface-cli download facebook/OMol25 checkpoints/esen_sm_conserving_all.pt --local-dir .
-```
-
-#### MLPGI Runtime Messaging
-
-MLPGI now reports progress through the same Rich/status pipeline used by NEB:
-spinner updates via `update_status(...)` in non-verbose mode, and plain prints
-in verbose mode. This keeps MLPGI output consistent with autosplitting runs.
+Those belong on the command line, not inside `inputs.toml`.
