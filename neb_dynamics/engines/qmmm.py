@@ -59,6 +59,7 @@ class QMMMEngine(Engine):
     rst7_fp_react: Path = None
     compute_program: str = "qcop"
     chemcloud_queue: str | None = None
+    print_stdout: bool = False
 
     def __post_init__(self):
         self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
@@ -98,7 +99,13 @@ class QMMMEngine(Engine):
             if self.compute_program.lower() != 'chemcloud':
                 outputs = []
                 for string in inputs:
-                    outputs.append(compute("terachem", string, print_stdout=False))
+                    outputs.append(
+                        compute(
+                            "terachem",
+                            string,
+                            print_stdout=self.print_stdout,
+                        )
+                    )
             else:
                 outputs = []
                 for inp in inputs:
