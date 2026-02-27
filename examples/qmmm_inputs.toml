@@ -7,6 +7,7 @@ qminds_fp = "./qmindices.dat"
 prmtop_fp = "./ref.prmtop"
 rst7_fp_react = "./ref.rst7"
 compute_program = "chemcloud"
+print_stdout = false
 charge = 0
 spinmult = 1
 run_type = "gradient"

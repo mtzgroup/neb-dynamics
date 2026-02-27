@@ -31,6 +31,7 @@ _QMMM_ENGINE_KEYS = {
     "rst7_fp_react",
     "compute_program",
     "chemcloud_queue",
+    "print_stdout",
 }
 
 

@@ -21,6 +21,7 @@ def test_qmmm_runinputs_open_resolves_relative_paths(tmp_path, monkeypatch):
                 'prmtop_fp = "ref.prmtop"',
                 'rst7_fp_react = "ref.rst7"',
                 'compute_program = "chemcloud"',
+                "print_stdout = true",
                 "charge = 0",
                 "spinmult = 1",
                 "",
@@ -52,6 +53,7 @@ def test_qmmm_runinputs_open_resolves_relative_paths(tmp_path, monkeypatch):
     assert run_inputs.engine.kwargs["prmtop_fp"] == Path(tmp_path / "ref.prmtop")
     assert run_inputs.engine.kwargs["rst7_fp_react"] == Path(tmp_path / "ref.rst7")
     assert run_inputs.engine.kwargs["compute_program"] == "chemcloud"
+    assert run_inputs.engine.kwargs["print_stdout"] is True
     tcin_text = run_inputs.engine.kwargs["tcin_text"]
     assert "method b3lyp" in tcin_text
     assert "basis 6-31g**" in tcin_text
