@@ -1,6 +1,8 @@
 from __future__ import annotations
+import base64
 import contextlib
 import io
+import json
 import logging
 import networkx as nx
 import numpy as np
@@ -20,6 +22,7 @@ from neb_dynamics.nodes.nodehelpers import displace_by_dr
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.chain import Chain
 from neb_dynamics.TreeNode import TreeNode
+from neb_dynamics.neb import NEB
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import (
     _is_connectivity_identical,
@@ -35,12 +38,14 @@ from typing_extensions import Annotated
 import os
 from openbabel import openbabel
 from qcio import Structure, ProgramOutput
+from qcio.view import generate_structure_viewer_html
 from qcop.exceptions import ExternalProgramError
 import sys
 from pathlib import Path
 import time
 import traceback
 from datetime import datetime
+import webbrowser
 
 from rich.console import Console
 from rich.theme import Theme
@@ -52,6 +57,7 @@ from rich.box import Box
 from rich.text import Text
 from rich.syntax import Syntax
 from rich import box
+from neb_dynamics.chainhelpers import generate_neb_plot
 
 # Custom theme for Claude Code-like styling
 custom_theme = Theme({
@@ -285,6 +291,108 @@ def _write_chain_with_nan_fallback(chain: Chain, fp: Path) -> None:
         grad_arr = np.array(gradients, dtype=float)
         np.savetxt(grad_path, grad_arr.flatten())
         np.savetxt(grad_shape_path, np.array(grad_arr.shape))
+
+
+def _load_chain_for_visualization(result_path: Path, charge: int = 0, multiplicity: int = 1) -> Chain:
+    """Load chain from either a serialized NEB result file or a recursive TreeNode folder."""
+    result_path = Path(result_path)
+    if not result_path.exists():
+        raise FileNotFoundError(f"Path does not exist: {result_path}")
+
+    if result_path.is_dir():
+        adj_matrix_fp = result_path / "adj_matrix.txt"
+        if adj_matrix_fp.exists():
+            tree = TreeNode.read_from_disk(
+                folder_name=result_path, charge=charge, multiplicity=multiplicity
+            )
+            return tree.output_chain
+        raise ValueError(
+            "Directory input must be a TreeNode folder containing adj_matrix.txt."
+        )
+
+    history_folder = result_path.parent / f"{result_path.stem}_history"
+    if history_folder.exists():
+        neb = NEB.read_from_disk(
+            fp=result_path,
+            history_folder=history_folder,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+        return neb.chain_trajectory[-1]
+
+    raise ValueError(
+        "Could not detect serialized result type. For NEB provide the .xyz output "
+        "that has a sibling '<stem>_history/' folder; for recursive MSMEP provide "
+        "the TreeNode directory with adj_matrix.txt."
+    )
+
+
+def _build_chain_visualizer_html(chain: Chain) -> str:
+    frames = []
+    for i, node in enumerate(chain.nodes):
+        struct_html = generate_structure_viewer_html(node.structure)
+        frames.append(
+            {
+                "structure_html_b64": base64.b64encode(struct_html.encode("utf-8")).decode("ascii"),
+                "plot_png_b64": generate_neb_plot(chain.nodes, ind_node=i),
+            }
+        )
+
+    payload = json.dumps(frames)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NEB Dynamics Visualizer</title>
+  <style>
+    body {{ font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0; padding: 16px; }}
+    .row {{ display: flex; gap: 16px; align-items: flex-start; }}
+    .panel {{ flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 12px; }}
+    .controls {{ margin-bottom: 12px; }}
+    img {{ width: 100%; max-width: 700px; }}
+  </style>
+</head>
+<body>
+  <h2>NEB Dynamics Interactive Viewer</h2>
+  <div class="controls">
+    <label for="frameSlider">Frame: <span id="frameLabel">0</span></label><br/>
+    <input id="frameSlider" type="range" min="0" max="{max(len(chain.nodes) - 1, 0)}" value="0" step="1" style="width: min(720px, 90vw);" />
+  </div>
+  <div class="row">
+    <div class="panel">
+      <h3>Structure</h3>
+      <div id="structurePanel"></div>
+    </div>
+    <div class="panel">
+      <h3>Energy Profile</h3>
+      <img id="energyPlot" alt="Energy profile" />
+    </div>
+  </div>
+  <script>
+    const frames = {payload};
+    function decodeB64UTF8(b64) {{
+      return decodeURIComponent(escape(window.atob(b64)));
+    }}
+    function renderFrame(i) {{
+      const frame = frames[i];
+      if (!frame) return;
+      document.getElementById("frameLabel").textContent = String(i);
+      document.getElementById("structurePanel").innerHTML = decodeB64UTF8(frame.structure_html_b64);
+      const img = document.getElementById("energyPlot");
+      if (frame.plot_png_b64 && frame.plot_png_b64.length > 0) {{
+        img.src = "data:image/png;base64," + frame.plot_png_b64;
+      }} else {{
+        img.removeAttribute("src");
+      }}
+    }}
+    const slider = document.getElementById("frameSlider");
+    slider.addEventListener("input", (e) => renderFrame(parseInt(e.target.value, 10)));
+    renderFrame(0);
+  </script>
+</body>
+</html>
+"""
 
 
 def _compute_ts_node(engine, ts_guess: StructureNode, bigchem: bool = False):
@@ -1390,6 +1498,39 @@ def make_netgen_path(
     chain.write_to_disk(
         name.parent / f"path_{'-'.join([str(a) for a in inds])}.xyz")
     console.print(f"[bold green]✓ Path written to disk![/bold green]")
+
+
+@app.command("visualize")
+def visualize(
+    result_path: Annotated[str, typer.Argument(help="Path to a NEB result .xyz or TreeNode result folder")],
+    output_html: Annotated[str, typer.Option("--output", "-o", help="Output HTML file path")] = None,
+    charge: Annotated[int, typer.Option(help="Charge used when reading serialized geometries")] = 0,
+    multiplicity: Annotated[int, typer.Option(help="Spin multiplicity used when reading serialized geometries")] = 1,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open browser window")] = False,
+):
+    console.print(BANNER)
+    src = Path(result_path).resolve()
+    with console.status("[bold cyan]Loading result object...[/bold cyan]"):
+        chain = _load_chain_for_visualization(
+            result_path=src,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+
+    with console.status("[bold cyan]Building interactive HTML...[/bold cyan]"):
+        html = _build_chain_visualizer_html(chain)
+
+    if output_html is None:
+        suffix = src.stem if src.is_file() else src.name
+        out_fp = Path.cwd() / f"{suffix}_visualize.html"
+    else:
+        out_fp = Path(output_html).resolve()
+    out_fp.write_text(html, encoding="utf-8")
+    console.print(f"[bold green]✓ Visualization written:[/bold green] {out_fp}")
+
+    if not no_open:
+        webbrowser.open(out_fp.resolve().as_uri())
+        console.print("[dim]Opened in default browser.[/dim]")
 
 
 @app.command("make-default-inputs")

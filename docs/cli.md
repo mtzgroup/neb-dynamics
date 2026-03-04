@@ -186,6 +186,38 @@ mepd make-default-inputs --name inputs.toml
 
 ---
 
+### visualize
+
+Render an interactive browser-based viewer for saved NEB/MSMEP results.
+
+```bash
+mepd visualize path/to/result
+```
+
+`result` can be either:
+
+- a NEB output `.xyz` with sibling `<stem>_history/` folder
+- a recursive MSMEP TreeNode folder containing `adj_matrix.txt`
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `result_path` | Path to result `.xyz` or TreeNode folder |
+| `--output`, `-o` | Output HTML path (default: `<name>_visualize.html`) |
+| `--charge` | Charge for reading serialized geometries (default: 0) |
+| `--multiplicity` | Multiplicity for reading serialized geometries (default: 1) |
+| `--no-open` | Do not automatically open browser |
+
+**Example:**
+
+```bash
+mepd visualize mep_output_neb.xyz
+mepd visualize mep_output_msmep --output msmep_view.html
+```
+
+---
+
 ### run-netgen
 
 Run network generation for multiple conformer pairs.
