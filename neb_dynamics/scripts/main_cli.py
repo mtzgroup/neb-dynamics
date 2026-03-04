@@ -287,6 +287,41 @@ def _write_chain_with_nan_fallback(chain: Chain, fp: Path) -> None:
         np.savetxt(grad_shape_path, np.array(grad_arr.shape))
 
 
+def _compute_ts_node(engine, ts_guess: StructureNode, bigchem: bool = False):
+    """Run TS optimization through the engine and normalize to (StructureNode|None, ProgramOutput|None)."""
+    try:
+        if bigchem and hasattr(engine, "_compute_ts_result"):
+            raw_out = engine._compute_ts_result(node=ts_guess, use_bigchem=True)
+            if getattr(raw_out, "success", False):
+                return StructureNode(structure=raw_out.return_result), raw_out
+            return None, raw_out
+
+        if hasattr(engine, "compute_transition_state"):
+            raw_out = engine.compute_transition_state(node=ts_guess)
+            if isinstance(raw_out, StructureNode):
+                return raw_out, None
+            if isinstance(raw_out, ProgramOutput):
+                if getattr(raw_out, "success", False):
+                    return StructureNode(structure=raw_out.return_result), raw_out
+                return None, raw_out
+            if getattr(raw_out, "success", False) and getattr(raw_out, "return_result", None) is not None:
+                return StructureNode(structure=raw_out.return_result), raw_out
+            return None, raw_out
+
+        if hasattr(engine, "_compute_ts_result"):
+            raw_out = engine._compute_ts_result(node=ts_guess, use_bigchem=bigchem)
+            if getattr(raw_out, "success", False):
+                return StructureNode(structure=raw_out.return_result), raw_out
+            return None, raw_out
+
+        raise AttributeError("Engine does not implement transition-state optimization.")
+    except Exception as exc:
+        program_output = getattr(exc, "program_output", None)
+        if program_output is not None:
+            return None, program_output
+        raise
+
+
 def _extract_minima_nodes(history: TreeNode) -> list[StructureNode]:
     """Extract minima candidates from recursive cheap-history leaves."""
     minima: list[StructureNode] = []
@@ -741,21 +776,34 @@ def run(
             for i, leaf in enumerate(history.ordered_leaves):
                 if not leaf.data:
                     continue
+                if not leaf.data.chain_trajectory:
+                    console.print(
+                        f"[yellow]⚠ Skipping TS optimization on leaf {i}: no chain trajectory.[/yellow]"
+                    )
+                    continue
                 console.print(
                     f"[bold cyan]⟳ Running TS opt on leaf {i}...[/bold cyan]")
                 try:
-                    tsres = program_input.engine._compute_ts_result(
-                        leaf.data.chain_trajectory[-1].get_ts_node())
-                except Exception as e:
-                    tsres = e.program_output
-                tsres.save(data_dir / (filename.stem+f"_tsres_{i}.qcio"))
-                if tsres.success:
-                    tsres.return_result.save(
-                        data_dir / (filename.stem+f"_ts_{i}.xyz"))
+                    ts_node, tsres = _compute_ts_node(
+                        engine=program_input.engine,
+                        ts_guess=leaf.data.chain_trajectory[-1].get_ts_node(),
+                    )
+                except Exception:
+                    console.print(
+                        f"[yellow]⚠ TS optimization crashed on leaf {i}: {traceback.format_exc()}[/yellow]"
+                    )
+                    continue
+
+                if tsres is not None and hasattr(tsres, "save"):
+                    tsres.save(data_dir / (filename.stem+f"_tsres_{i}.qcio"))
+                if ts_node is not None:
+                    ts_node.structure.save(data_dir / (filename.stem+f"_ts_{i}.xyz"))
                     if create_irc:
                         try:
-                            irc = compute_irc_chain(ts_node=StructureNode(
-                                structure=tsres.return_result), engine=program_input.engine)
+                            irc = compute_irc_chain(
+                                ts_node=ts_node,
+                                engine=program_input.engine,
+                            )
                             irc.write_to_disk(
                                 filename.stem+f"_tsres_{i}_IRC.xyz")
 
@@ -806,19 +854,27 @@ def run(
         if use_tsopt and n.optimized is not None:
             console.print("[bold cyan]⟳ Running TS opt...[/bold cyan]")
             try:
-                tsres = program_input.engine._compute_ts_result(
-                    n.chain_trajectory[-1].get_ts_node())
-            except Exception as e:
-                tsres = e.program_output
-            tsres.save(data_dir / (filename.stem+"_tsres.qcio"))
-            if tsres.success:
-                tsres.return_result.save(
+                source_chain = n.chain_trajectory[-1] if n.chain_trajectory else n.optimized
+                ts_node, tsres = _compute_ts_node(
+                    engine=program_input.engine,
+                    ts_guess=source_chain.get_ts_node(),
+                )
+            except Exception:
+                console.print(
+                    f"[yellow]⚠ TS optimization crashed: {traceback.format_exc()}[/yellow]"
+                )
+                ts_node, tsres = None, None
+            if tsres is not None and hasattr(tsres, "save"):
+                tsres.save(data_dir / (filename.stem+"_tsres.qcio"))
+            if ts_node is not None:
+                ts_node.structure.save(
                     data_dir / (filename.stem+"_ts.xyz"))
 
                 if create_irc:
                     try:
-                        irc = compute_irc_chain(ts_node=StructureNode(
-                            structure=tsres.return_result), engine=program_input.engine)
+                        irc = compute_irc_chain(
+                            ts_node=ts_node, engine=program_input.engine
+                        )
                         irc.write_to_disk(
                             filename.stem+"_tsres_IRC.xyz")
 
@@ -1230,16 +1286,26 @@ def ts(
             struct = Structure(**s_dict)
 
             node = StructureNode(structure=struct)
-            output = program_input.engine._compute_ts_result(
-                node=node, use_bigchem=bigchem)
+            ts_node, output = _compute_ts_node(
+                engine=program_input.engine,
+                ts_guess=node,
+                bigchem=bigchem,
+            )
 
-        except Exception as e:
-            output = e.program_output
+        except Exception:
+            console.print(
+                f"[bold red]✗ TS optimization failed:[/bold red] {traceback.format_exc()}"
+            )
+            raise typer.Exit(1)
 
-    output.save(results_name)
-    output.results.final_structure.save(filename)
+    if output is not None and hasattr(output, "save"):
+        output.save(results_name)
+        console.print(f"[dim]Results: {results_name}[/dim]")
+    if ts_node is None:
+        console.print("[bold red]✗ TS optimization did not converge.[/bold red]")
+        raise typer.Exit(1)
+    ts_node.structure.save(filename)
     console.print(f"[bold green]✓ TS optimization complete![/bold green]")
-    console.print(f"[dim]Results: {results_name}[/dim]")
     console.print(f"[dim]Geometry: {filename}[/dim]")
 
 

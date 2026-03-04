@@ -195,6 +195,61 @@ ri.save("my_inputs.toml")
 ri = RunInputs.open("my_inputs.toml")
 ```
 
+## QMMM TOML Inputs
+
+Use `engine_name = "qmmm"` with a `[qmmm_inputs]` block.
+
+```toml
+engine_name = "qmmm"
+program = "terachem"
+chemcloud_queue = "gpu-a100"   # optional; overrides env queue
+
+[program_kwds.model]
+method = "b3lyp"
+basis = "6-31g**"
+
+[program_kwds.keywords]
+dispersion = "yes"
+maxit = 500
+
+[qmmm_inputs]
+qminds_fp = "qmindices.dat"      # required
+prmtop_fp = "ref.prmtop"         # required
+rst7_fp_react = "ref.rst7"       # required
+tcin_fp = "tc.in"                # optional; if omitted, tc.in is generated from TOML
+compute_program = "chemcloud"    # "chemcloud" or "qcop"
+print_stdout = false             # stream QCOP stdout if true
+```
+
+### `qmmm_inputs` reference
+
+| Key | Required | Description |
+|-----|----------|-------------|
+| `qminds_fp` | yes | Path to QM atom index file |
+| `prmtop_fp` | yes | Path to AMBER topology |
+| `rst7_fp_react` | yes | Reference rst7 used for coordinate replacement |
+| `rst7_fp_prod` | no | Optional product reference rst7 |
+| `tcin_fp` | no | TeraChem input file path |
+| `tcin_text` | no | Inline `tc.in` contents |
+| `compute_program` | no | `"chemcloud"` (default) or `"qcop"` |
+| `chemcloud_queue` | no | Queue name (overrides env) |
+| `print_stdout` | no | Stream stdout during compute calls |
+| `debug_dump_inputs` | no | Dump bundled QM/MM inputs for debugging |
+| `debug_dump_dir` | no | Directory for debug input dumps |
+
+### Generated `tc.in`
+
+If `tcin_fp`/`tcin_text` is not provided, `RunInputs` generates `tc.in` from TOML:
+
+- QM/MM file references (`coordinates ref.rst7`, `qmindices qmindices.dat`, `prmtop ref.prmtop`)
+- `charge`, `spinmult`, `run` type
+- method/basis and extra keywords from `[program_kwds]`
+
+### Frozen atoms for QM/MM NEB
+
+Configure frozen atoms in `[chain_inputs]` using `frozen_atom_indices`.
+Keep endpoint and NEB frozen regions consistent to avoid interior images becoming artificially lower than endpoints.
+
 ## NetworkInputs
 
 Settings for building reaction networks.

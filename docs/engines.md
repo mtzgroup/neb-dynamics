@@ -7,6 +7,7 @@ NEB Dynamics supports multiple electronic structure engines through a common int
 | Engine | Description | Use Case |
 |--------|-------------|----------|
 | `QCOPEngine` | Uses QCOP to interface with quantum chemistry codes | Production calculations with ChemCloud, XTB, ORCA, etc. |
+| `QMMMEngine` | TeraChem QM/MM engine with `tc.in` + AMBER inputs | Protein/solvent QM/MM NEB and TS workflows |
 | `ASEEngine` | Interfaces with ASE calculators | ML potentials, custom methods |
 | `LEPSEngine` | Simple LEPS potential | Testing, model systems |
 | `ThreeWellEngine` | Three-well potential | Testing, model systems |
@@ -77,6 +78,39 @@ eng = QCOPEngine(program="orca")
 # TeraChem
 eng = QCOPEngine(program="terachem")
 ```
+
+## QMMMEngine
+
+`QMMMEngine` runs TeraChem QM/MM jobs from AMBER files and a TeraChem input template.
+
+### Required files
+
+- `qmindices.dat`
+- `ref.prmtop`
+- `ref.rst7` (reactant/reference coordinates)
+- `tc.in` (optional if `tcin_text` is provided in TOML)
+
+### Main capabilities
+
+- `compute_gradients(chain)` and `compute_energies(chain)`
+- `compute_geometry_optimization(node)`:
+  - uses `run minimize`
+  - preserves all method/basis/QM/MM settings from your TOML `tc.in`
+- `compute_transition_state(node)`:
+  - geomeTRIC TS optimization over QMMM energies/gradients
+
+### Queue and streaming behavior
+
+- ChemCloud queue precedence:
+  1. `chemcloud_queue` in TOML
+  2. environment variable (`MEPD_CHEMCLOUD_QUEUE`, `CHEMCLOUD_QUEUE`, `CCQUEUE`)
+  3. default `"celery"`
+- `print_stdout = true` forwards QCOP stdout streaming during QM/MM calls.
+
+### Notes for NEB users
+
+- If endpoint minimizations and NEB use different frozen-atom protocols, interior beads can drop below endpoint energies and produce an endpoint TS guess.
+- NEB now emits a warning when this profile is detected so you can align frozen-atom settings.
 
 ## ASEEngine
 

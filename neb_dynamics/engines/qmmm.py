@@ -28,6 +28,8 @@ from neb_dynamics.helper_functions import parse_symbols_from_prmtop, rst7_to_coo
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import re
+import tempfile
 
 
 def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
@@ -120,11 +122,11 @@ class QMMMEngine(Engine):
     def _next_debug_dump_counter(self) -> None:
         self._debug_dump_counter += 1
 
-    def _construct_input(self, rst7_string):
+    def _construct_input(self, rst7_string, tcin_text: str | None = None):
         # Create a FileInput object for TeraChem
         file_inp = FileInput(
             files={
-                "tc.in": self.inp_file,
+                "tc.in": self.inp_file if tcin_text is None else tcin_text,
                 "ref.rst7": rst7_string,
                 "qmindices.dat": self.qmindices,
                 "ref.prmtop": self.prmtop,
@@ -132,6 +134,105 @@ class QMMMEngine(Engine):
             cmdline_args=["tc.in"],
         )
         return file_inp
+
+    def _with_run_type(self, tcin_text: str, run_type: str) -> str:
+        pattern = re.compile(r"(?im)^\s*run\s+\S+\s*$")
+        replacement = f"run {run_type}"
+        if pattern.search(tcin_text):
+            return pattern.sub(replacement, tcin_text, count=1)
+        return tcin_text.rstrip() + f"\n\n# Runtype\n{replacement}\n"
+
+    def _apply_tcin_overrides(self, tcin_text: str, overrides: dict | None) -> str:
+        if not overrides:
+            return tcin_text
+        out = tcin_text
+        for key, value in overrides.items():
+            line = f"{key} {value}"
+            pattern = re.compile(rf"(?im)^\s*{re.escape(str(key))}\s+.*$")
+            if pattern.search(out):
+                out = pattern.sub(line, out, count=1)
+            else:
+                out = out.rstrip() + f"\n{line}\n"
+        return out
+
+    @staticmethod
+    def _extract_output_files(output) -> dict | None:
+        for files_obj in (
+            getattr(output, "files", None),
+            getattr(getattr(output, "results", None), "files", None),
+            getattr(getattr(output, "data", None), "files", None),
+        ):
+            if files_obj:
+                return files_obj
+        return None
+
+    def _extract_optimization_structures(self, output, reference_structure: Structure) -> list[Structure]:
+        trajectory = None
+        for tr in (
+            getattr(getattr(output, "results", None), "trajectory", None),
+            getattr(getattr(output, "data", None), "trajectory", None),
+            getattr(output, "trajectory", None),
+        ):
+            if tr:
+                trajectory = tr
+                break
+
+        if trajectory:
+            structures = []
+            for entry in trajectory:
+                struct = getattr(getattr(entry, "input_data", None), "structure", None)
+                if struct is not None:
+                    structures.append(struct)
+            if len(structures) > 0:
+                return structures
+
+        files = self._extract_output_files(output)
+        if files:
+            for key, contents in files.items():
+                if str(key).endswith("optim.xyz") or str(key) == "optim.xyz":
+                    with tempfile.TemporaryDirectory() as td:
+                        xyz_fp = Path(td) / "optim.xyz"
+                        if isinstance(contents, bytes):
+                            xyz_fp.write_bytes(contents)
+                        else:
+                            xyz_fp.write_text(str(contents))
+                        return Structure.open_multi(
+                            xyz_fp,
+                            charge=reference_structure.charge,
+                            multiplicity=reference_structure.multiplicity,
+                        )
+
+        return []
+
+    def _compute_minimize_output(self, rst7_string: str, keywords: dict | None = None):
+        tcin_text = self._with_run_type(self.inp_file, "minimize")
+        tcin_text = self._apply_tcin_overrides(tcin_text, keywords or {})
+        inp = self._construct_input(rst7_string, tcin_text=tcin_text)
+        self._dump_debug_inputs([rst7_string])
+        try:
+            if self.compute_program.lower() != "chemcloud":
+                return compute(
+                    "terachem",
+                    inp,
+                    print_stdout=self.print_stdout,
+                    collect_files=True,
+                )
+            out = ccompute(
+                "terachem",
+                inp,
+                queue=self.chemcloud_queue,
+                collect_files=True,
+            )
+            if hasattr(out, "get"):
+                out = out.get()
+            return out
+        except Exception as exc:
+            raise ElectronicStructureError(
+                msg=f"QMMM minimize submission failed ({self.compute_program}): {exc}",
+                obj=None,
+            ) from exc
+        finally:
+            self._next_debug_dump_counter()
 
     def _compute_enegrad(self, rst7_strings):
 
@@ -242,6 +343,101 @@ class QMMMEngine(Engine):
             grads = np.array([node.gradient for node in chain])
 
         return grads
+
+    def compute_geometry_optimization(self, node: StructureNode, keywords={'coordsys': 'cart', 'maxit': 500}) -> list[StructureNode]:
+        rst7_string = self.structure_to_rst7(node.structure)
+        output = self._compute_minimize_output(rst7_string=rst7_string, keywords=keywords)
+        structures = self._extract_optimization_structures(output, reference_structure=node.structure)
+        if len(structures) == 0:
+            raise ElectronicStructureError(
+                msg="QMMM minimize completed but no optimization trajectory was found (optim.xyz missing).",
+                obj=output,
+            )
+        return [StructureNode(structure=struct) for struct in structures]
+
+    def _run_geometric_transition_state(
+        self,
+        node: StructureNode,
+        keywords: dict | None = None,
+    ):
+        try:
+            import geometric
+            import geometric.engine
+            import geometric.molecule
+            import geometric.optimize
+        except ImportError as exc:
+            raise ElectronicStructureError(
+                msg=(
+                    "QMMM transition-state optimization requires the "
+                    "`geometric` package to be installed."
+                ),
+                obj=None,
+            ) from exc
+
+        class _GeometricQMMMEngine(geometric.engine.Engine):
+            def __init__(self, molecule, qmmm_engine, ref_node):
+                super().__init__(molecule)
+                self.qmmm_engine = qmmm_engine
+                self.ref_node = ref_node
+
+            def calc_new(self, coords, dirname):
+                curr_node = self.ref_node.copy().update_coords(np.array(coords))
+                energy = self.qmmm_engine.compute_energies([curr_node])[0]
+                gradient = self.qmmm_engine.compute_gradients([curr_node])[0]
+                # geomeTRIC expects gradient in Hartree/Angstrom.
+                return {
+                    "energy": energy,
+                    "gradient": np.array(gradient).reshape(-1) * BOHR_TO_ANGSTROMS,
+                }
+
+        molecule = geometric.molecule.Molecule()
+        molecule.elem = list(node.structure.symbols)
+        molecule.xyzs = [node.structure.geometry * ANGSTROM_TO_BOHR]
+        custom_engine = _GeometricQMMMEngine(
+            molecule=molecule,
+            qmmm_engine=self,
+            ref_node=node,
+        )
+
+        ts_keywords = {
+            "check": 1,
+            "transition": True,
+            "converge": ["gmax", "1.0e-5"],
+            "trust": 0.1,
+            "tmax": 0.3,
+            "maxiter": 800,
+        }
+        if keywords:
+            ts_keywords.update(keywords)
+        ts_keywords["transition"] = True
+
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmpf:
+            return geometric.optimize.run_optimizer(
+                customengine=custom_engine,
+                input=tmpf.name,
+                **ts_keywords,
+            )
+
+    def compute_transition_state(
+        self,
+        node: StructureNode,
+        keywords: dict | None = None,
+    ) -> StructureNode:
+        output = self._run_geometric_transition_state(node=node, keywords=keywords)
+        xyzs = getattr(output, "xyzs", None)
+        if not xyzs:
+            raise ElectronicStructureError(
+                msg=(
+                    "QMMM transition-state optimization completed but no trajectory "
+                    "coordinates were returned."
+                ),
+                obj=output,
+            )
+
+        final_coords_bohr = np.array(xyzs[-1]) * ANGSTROM_TO_BOHR
+        ts_node = node.copy().update_coords(final_coords_bohr)
+        ts_node._cached_energy = self.compute_energies([ts_node])[0]
+        return ts_node
 
     def structure_to_rst7(self, qmstructure):
         """

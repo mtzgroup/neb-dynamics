@@ -6,6 +6,7 @@ import numpy as np
 from qcio import Structure
 
 import neb_dynamics.engines.qmmm as qmmm_module
+from neb_dynamics.constants import ANGSTROM_TO_BOHR
 from neb_dynamics.engines.qmmm import QMMMEngine
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import RunInputs
@@ -217,3 +218,115 @@ def test_runinputs_qmmm_toml_debug_dump_passthrough(tmp_path):
     run_inputs = RunInputs.open(inputs_fp)
     assert run_inputs.engine.debug_dump_inputs is True
     assert run_inputs.engine.debug_dump_dir == (tmp_path / "debug_out").resolve()
+
+
+def test_qmmm_geometry_optimization_uses_minimize_and_parses_trajectory(monkeypatch, tmp_path):
+    _write_minimal_qmmm_files(tmp_path)
+    captured = {}
+
+    class _FakeOut:
+        def __init__(self, files):
+            self.files = files
+            self.stdout = "ok"
+
+    def _fake_compute(*args, **kwargs):
+        fi = args[1]
+        captured["tcin"] = fi.files["tc.in"]
+        captured["kwargs"] = kwargs
+        optim_xyz = (
+            "1\n"
+            "frame0\n"
+            "H 0.000000 0.000000 0.000000\n"
+            "1\n"
+            "frame1\n"
+            "H 0.100000 0.000000 0.000000\n"
+        )
+        return _FakeOut(files={"optim.xyz": optim_xyz})
+
+    monkeypatch.setattr(qmmm_module, "compute", _fake_compute)
+    eng = QMMMEngine(
+        tcin_text="\n".join(
+            [
+                "# Inputs",
+                "prmtop ref.prmtop",
+                "coordinates ref.rst7",
+                "qmindices qmindices.dat",
+                "charge 0",
+                "spinmult 1",
+                "",
+                "# Runtype",
+                "run gradient",
+                "",
+                "# Method",
+                "basis 6-31g**",
+                "method b3lyp",
+                "",
+            ]
+        ),
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+    )
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0]]),
+            symbols=["H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    traj = eng.compute_geometry_optimization(node=node, keywords={"maxit": 25})
+
+    assert len(traj) == 2
+    assert "run minimize" in captured["tcin"]
+    assert "basis 6-31g**" in captured["tcin"]
+    assert "method b3lyp" in captured["tcin"]
+    assert "maxit 25" in captured["tcin"]
+    assert captured["kwargs"]["collect_files"] is True
+
+
+def test_qmmm_transition_state_returns_final_node_with_energy(monkeypatch, tmp_path):
+    _write_minimal_qmmm_files(tmp_path)
+    captured = {}
+
+    class _FakeTSOut:
+        xyzs = [
+            np.array([[0.0, 0.0, 0.0]]),
+            np.array([[0.3, 0.1, -0.2]]),
+        ]
+
+    def _fake_run_ts(self, node, keywords=None):
+        captured["keywords"] = keywords
+        return _FakeTSOut()
+
+    def _fake_compute_energies(self, chain):
+        captured["final_coords"] = chain[0].coords.copy()
+        return np.array([-123.456])
+
+    monkeypatch.setattr(QMMMEngine, "_run_geometric_transition_state", _fake_run_ts)
+    monkeypatch.setattr(QMMMEngine, "compute_energies", _fake_compute_energies)
+
+    eng = QMMMEngine(
+        tcin_text="run gradient\n",
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+    )
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0]]),
+            symbols=["H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    ts_node = eng.compute_transition_state(node=node, keywords={"maxiter": 123})
+
+    assert np.allclose(captured["final_coords"], np.array([[0.3, 0.1, -0.2]]) * ANGSTROM_TO_BOHR)
+    assert np.allclose(ts_node.coords, np.array([[0.3, 0.1, -0.2]]) * ANGSTROM_TO_BOHR)
+    assert ts_node.energy == -123.456
+    assert captured["keywords"] == {"maxiter": 123}

@@ -57,9 +57,53 @@ NMINIMA_STEPS = 5
 
 NSTEPS_STRAIN = 10000000  # turning this off
 NADD = 1
+HARTREE_TO_KCAL_MOL = 627.509474
+ENERGY_INVERSION_WARN_KCAL = 1.0
 
 # percent gradient correlation to be above. If it happens many times, increase timestep.
 CORR_TOL = 0.95
+
+
+def _endpoint_energy_inversion_warning_text(
+    energies: np.ndarray,
+    is_qmmm_engine: bool = False,
+    frozen_atom_indices: list[int] | None = None,
+) -> str | None:
+    """Describe suspicious endpoint-vs-interior energy ordering when present."""
+    if energies is None:
+        return None
+    enes = np.array(energies, dtype=float)
+    if enes.size < 3:
+        return None
+
+    ts_ind = int(np.argmax(enes))
+    if ts_ind not in (0, len(enes) - 1):
+        return None
+
+    endpoint_min = float(min(enes[0], enes[-1]))
+    interior_min = float(np.min(enes[1:-1]))
+    drop_kcal = (endpoint_min - interior_min) * HARTREE_TO_KCAL_MOL
+    if drop_kcal < ENERGY_INVERSION_WARN_KCAL:
+        return None
+
+    msg = (
+        "Endpoint energies are higher than all interior images while the "
+        f"lowest interior image is {drop_kcal:.2f} kcal/mol below the lower-energy endpoint. "
+        "This can produce an endpoint TS guess and unstable NEB behavior."
+    )
+    if is_qmmm_engine:
+        frozen_count = len(frozen_atom_indices or [])
+        if frozen_count == 0:
+            msg += (
+                " For QM/MM this often means endpoints were minimized with frozen atoms "
+                "but the NEB run was not. Ensure endpoint and NEB frozen-atom protocols match."
+            )
+        else:
+            msg += (
+                " For QM/MM this often means endpoints used a different frozen region than "
+                f"the NEB run (current frozen atoms: {frozen_count}). Ensure they match."
+            )
+    return msg
 
 
 @dataclass
@@ -248,6 +292,7 @@ class NEB(PathMinimizer):
         nsteps_strained_node = 0
         prev_most_strained_node = 0
         prev_grad_corr = 0.0
+        warned_endpoint_energy_inversion = False
 
         # if self.parameters.preopt_with_xtb:
         #     chain_previous = self._do_xtb_preopt(self.initial_chain)
@@ -344,6 +389,24 @@ class NEB(PathMinimizer):
             ind_ts_guess = np.argmax(new_chain.energies)
             ts_guess_grad = np.amax(
                 np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
+            if not warned_endpoint_energy_inversion:
+                warning_text = _endpoint_energy_inversion_warning_text(
+                    energies=np.array(new_chain.energies, dtype=float),
+                    is_qmmm_engine="qmmm" in type(self.engine).__name__.lower(),
+                    frozen_atom_indices=self.parameters.frozen_atom_indices,
+                )
+                if warning_text:
+                    if self.parameters.v and _rich_available:
+                        _console.print(Panel.fit(
+                            f"[yellow]⚠ {warning_text}[/yellow]",
+                            border_style="yellow",
+                            title="[bold yellow]Energy Profile Warning[/bold yellow]",
+                        ))
+                    elif self.parameters.v:
+                        print(f"Warning: {warning_text}")
+                    else:
+                        update_status(f"Warning: {warning_text}")
+                    warned_endpoint_energy_inversion = True
             converged = chain_converged(
                 chain_prev=chain_previous,
                 chain_new=new_chain,
