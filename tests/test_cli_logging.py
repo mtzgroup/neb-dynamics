@@ -11,3 +11,6 @@ def test_cli_logging_suppresses_geometric_loggers():
     assert logging.getLogger("geometric").level == logging.WARNING
     assert logging.getLogger("geometric.nifty").level == logging.WARNING
 
+
+def test_cli_disables_rich_exception_locals():
+    assert main_cli.app.pretty_exceptions_show_locals is False

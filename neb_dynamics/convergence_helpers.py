@@ -53,6 +53,10 @@ def _check_springgrad_converged(spring_forces: NDArray, threshold: float) -> Tup
     for grad in spring_forces:
         N = len(grad)
         grad = np.array(grad)
+        if grad.size == 0 or N == 0:
+            grad_norms_components.append(0.0)
+            bools.append(True)
+            continue
         grad_norm = np.dot(grad.flatten(), grad.flatten()) / N
         grad_norms_components.append(grad_norm)
         bools.append(grad_norm < threshold)
@@ -65,7 +69,11 @@ def _check_gperps_converged(pe_grads: NDArray, threshold: float) -> Tuple[NDArra
     max_grad_components = []
 
     for grad in pe_grads:
-        max_grad = np.amax(np.abs(grad))
+        grad = np.array(grad)
+        if grad.size == 0:
+            max_grad = 0.0
+        else:
+            max_grad = np.amax(np.abs(grad))
         max_grad_components.append(max_grad)
         bools.append(max_grad < threshold)
 
@@ -89,7 +97,11 @@ def _check_rms_grad_converged(gradients: NDArray, threshold: float) -> Tuple[NDA
     rms_gperps = []
 
     for grad in gradients:
-        rms_gradient = np.sqrt(np.mean(np.square(grad)))
+        grad = np.array(grad)
+        if grad.size == 0:
+            rms_gradient = 0.0
+        else:
+            rms_gradient = np.sqrt(np.mean(np.square(grad)))
         rms_grad_converged = rms_gradient <= threshold
         rms_gperps.append(rms_gradient)
         bools.append(rms_grad_converged)
@@ -113,7 +125,10 @@ def chain_converged(
     # full-chain index is always valid.
     gperps = ch.get_g_perps(chain_new)
     if chain_new.parameters.frozen_atom_indices:
-        not_frozen_atoms = list(set(list(range(len(grad)))) - set(chain_new.parameters.frozen_atom_indices))
+        n_atoms = grad[0].shape[0] if len(grad) > 0 else 0
+        not_frozen_atoms = sorted(
+            set(range(n_atoms)) - set(chain_new.parameters.frozen_atom_indices)
+        )
         grad = [g[not_frozen_atoms] for g in grad]
         springgrads = [g[not_frozen_atoms] for g in springgrads]
         gperps = [g[not_frozen_atoms] for g in gperps]

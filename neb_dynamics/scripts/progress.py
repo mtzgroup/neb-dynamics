@@ -493,12 +493,21 @@ def _labels_for_chain(chain):
 def _endpoint_smiles_for_chain(chain):
     if structure_to_smiles is None or len(chain.nodes) == 0:
         return "N/A", "N/A"
+    start_node = chain.nodes[0]
+    end_node = chain.nodes[-1]
+    if not (
+        getattr(start_node, "has_molecular_graph", False)
+        and getattr(end_node, "has_molecular_graph", False)
+        and getattr(start_node, "graph", None) is not None
+        and getattr(end_node, "graph", None) is not None
+    ):
+        return "N/A", "N/A"
     try:
-        start = structure_to_smiles(chain.nodes[0].structure)
+        start = structure_to_smiles(start_node.structure)
     except Exception:
         start = "N/A"
     try:
-        end = structure_to_smiles(chain.nodes[-1].structure)
+        end = structure_to_smiles(end_node.structure)
     except Exception:
         end = "N/A"
     return start, end

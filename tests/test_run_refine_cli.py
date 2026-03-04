@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import numpy as np
 from qcio import Structure
+import pytest
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.constants import ANGSTROM_TO_BOHR
@@ -170,9 +171,19 @@ def test_load_endpoint_structure_converts_rst7_with_prmtop(tmp_path):
         path=str(rst7_fp),
         charge=0,
         multiplicity=1,
-        rst7_endpoints=True,
         rst7_prmtop_text=prmtop_text,
     )
 
     assert struct.symbols == ["H", "O"]
     assert np.isclose(struct.geometry[1][0], 1.0 * ANGSTROM_TO_BOHR)
+
+
+def test_run_requires_prmtop_for_rst7_endpoints():
+    with pytest.raises(main_cli.typer.Exit) as excinfo:
+        main_cli.run(
+            start="react.rst7",
+            end="prod.xyz",
+            inputs=None,
+        )
+
+    assert excinfo.value.exit_code == 1

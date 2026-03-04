@@ -16,6 +16,7 @@ from pathlib import Path
 
 _QMMM_PATH_KEYS = {
     "tcin_fp",
+    "debug_dump_dir",
     "qminds_fp",
     "prmtop_fp",
     "rst7_fp_prod",
@@ -32,6 +33,8 @@ _QMMM_ENGINE_KEYS = {
     "compute_program",
     "chemcloud_queue",
     "print_stdout",
+    "debug_dump_inputs",
+    "debug_dump_dir",
 }
 
 

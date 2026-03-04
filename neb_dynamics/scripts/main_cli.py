@@ -103,7 +103,8 @@ ob_log_handler = openbabel.OBMessageHandler()
 ob_log_handler.SetOutputLevel(0)
 
 app = typer.Typer(
-    rich_markup_mode="rich"
+    rich_markup_mode="rich",
+    pretty_exceptions_show_locals=False,
 )
 
 # CLI Banner
@@ -526,12 +527,11 @@ def _load_endpoint_structure(
     path: str,
     charge: int,
     multiplicity: int,
-    rst7_endpoints: bool = False,
     rst7_prmtop_text: str | None = None,
 ) -> Structure:
     fp = Path(path)
     is_rst7 = fp.suffix.lower() == ".rst7"
-    if rst7_endpoints and is_rst7:
+    if is_rst7:
         if rst7_prmtop_text is None:
             raise ValueError(
                 "RST7 endpoint conversion requires --rst7-prmtop."
@@ -566,10 +566,6 @@ def run(
         name: str = None,
         charge: int = 0,
         multiplicity: int = 1,
-        rst7_endpoints: Annotated[bool, typer.Option(
-            "--rst7-endpoints",
-            help="Treat --start/--end .rst7 files as endpoints and convert them to structures.",
-        )] = False,
         rst7_prmtop: Annotated[str, typer.Option(
             "--rst7-prmtop",
             help="Path to AMBER prmtop used to map atomic symbols when converting rst7 endpoints.",
@@ -625,25 +621,26 @@ def run(
             with console.status(f"[bold cyan]Loading structures...[/bold cyan]"):
                 console.print(
                     f"[dim]Charge: {charge}, Multiplicity: {multiplicity}[/dim]")
-
-                if rst7_endpoints and rst7_prmtop is None:
+                endpoint_paths = [Path(start), Path(end)]
+                needs_rst7_prmtop = any(
+                    fp.suffix.lower() == ".rst7" for fp in endpoint_paths
+                )
+                if needs_rst7_prmtop and rst7_prmtop is None:
                     console.print(
-                        "[bold red]✗ ERROR:[/bold red] --rst7-endpoints requires --rst7-prmtop."
+                        "[bold red]✗ ERROR:[/bold red] .rst7 endpoints require --rst7-prmtop."
                     )
                     raise typer.Exit(1)
-                prmtop_text = Path(rst7_prmtop).read_text() if rst7_endpoints else None
+                prmtop_text = Path(rst7_prmtop).read_text() if needs_rst7_prmtop else None
                 start_ref = _load_endpoint_structure(
                     start,
                     charge=charge,
                     multiplicity=multiplicity,
-                    rst7_endpoints=rst7_endpoints,
                     rst7_prmtop_text=prmtop_text,
                 )
                 end_ref = _load_endpoint_structure(
                     end,
                     charge=charge,
                     multiplicity=multiplicity,
-                    rst7_endpoints=rst7_endpoints,
                     rst7_prmtop_text=prmtop_text,
                 )
 
@@ -884,10 +881,6 @@ def run_refine(
         name: str = None,
         charge: int = 0,
         multiplicity: int = 1,
-        rst7_endpoints: Annotated[bool, typer.Option(
-            "--rst7-endpoints",
-            help="Treat --start/--end .rst7 files as endpoints and convert them to structures.",
-        )] = False,
         rst7_prmtop: Annotated[str, typer.Option(
             "--rst7-prmtop",
             help="Path to AMBER prmtop used to map atomic symbols when converting rst7 endpoints.",
@@ -943,24 +936,26 @@ def run_refine(
                         geometries, charge=None, spinmult=None)
         elif start is not None and end is not None:
             with console.status(f"[bold cyan]Loading structures...[/bold cyan]"):
-                if rst7_endpoints and rst7_prmtop is None:
+                endpoint_paths = [Path(start), Path(end)]
+                needs_rst7_prmtop = any(
+                    fp.suffix.lower() == ".rst7" for fp in endpoint_paths
+                )
+                if needs_rst7_prmtop and rst7_prmtop is None:
                     console.print(
-                        "[bold red]✗ ERROR:[/bold red] --rst7-endpoints requires --rst7-prmtop."
+                        "[bold red]✗ ERROR:[/bold red] .rst7 endpoints require --rst7-prmtop."
                     )
                     raise typer.Exit(1)
-                prmtop_text = Path(rst7_prmtop).read_text() if rst7_endpoints else None
+                prmtop_text = Path(rst7_prmtop).read_text() if needs_rst7_prmtop else None
                 start_ref = _load_endpoint_structure(
                     start,
                     charge=charge,
                     multiplicity=multiplicity,
-                    rst7_endpoints=rst7_endpoints,
                     rst7_prmtop_text=prmtop_text,
                 )
                 end_ref = _load_endpoint_structure(
                     end,
                     charge=charge,
                     multiplicity=multiplicity,
-                    rst7_endpoints=rst7_endpoints,
                     rst7_prmtop_text=prmtop_text,
                 )
                 if start_ref.charge != charge or start_ref.multiplicity != multiplicity:
