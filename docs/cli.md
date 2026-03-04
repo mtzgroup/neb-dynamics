@@ -38,6 +38,7 @@ mepd run --start START.xyz --end END.xyz --inputs inputs.toml
 | `--multiplicity` | Spin multiplicity (default: 1) |
 | `--create-irc` | Run IRC after TS optimization |
 | `--use-bigchem` | Use ChemCloud for Hessian calculations in TS optimization |
+| `--rst7-prmtop` | Required only when `--start` or `--end` is `.rst7`; used to convert rst7 endpoints to XYZ internally |
 
 **Example:**
 
@@ -53,6 +54,12 @@ mepd run --start start.xyz --end end.xyz --recursive --inputs inputs.toml
 
 # With TS optimization and IRC
 mepd run --start start.xyz --end end.xyz --use-tsopt --create-irc --inputs inputs.toml
+```
+
+For `.rst7` endpoints, provide a prmtop:
+
+```bash
+mepd run --start react.rst7 --end prod.rst7 --rst7-prmtop ref.prmtop --inputs qmmm_inputs.toml
 ```
 
 ---
@@ -130,6 +137,8 @@ mepd ts geometry.xyz --inputs inputs.toml
 mepd ts ts_guess.xyz --inputs inputs.toml
 mepd ts ts_guess.xyz --bigchem --name my_ts
 ```
+
+`mepd ts` now uses the engine-level TS protocol (`compute_transition_state`) when available, including `QMMMEngine`.
 
 ---
 
