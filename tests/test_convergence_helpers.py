@@ -72,3 +72,34 @@ def test_chain_converged_uses_endpoint_padded_gperps_for_ts_index(monkeypatch):
         verbose=False,
     )
     assert isinstance(out, (bool, np.bool_))
+
+
+def test_chain_converged_handles_large_frozen_atom_indices(monkeypatch):
+    chain_prev = _DummyChain(n_nodes=5, ts_index=2)
+    chain_new = _DummyChain(n_nodes=5, ts_index=2)
+    # Simulate realistic QMMM behavior: many frozen atom indices, all > n_nodes.
+    chain_new.parameters = SimpleNamespace(
+        frozen_atom_indices=list(range(100, 200)),
+        node_freezing=False,
+    )
+
+    monkeypatch.setattr(
+        "neb_dynamics.chainhelpers.get_g_perps",
+        lambda chain: [np.zeros((2, 3)) for _ in range(len(chain))],
+    )
+
+    parameters = SimpleNamespace(
+        rms_grad_thre=0.001,
+        max_rms_grad_thre=0.01,
+        ts_grad_thre=0.05,
+        ts_spring_thre=0.02,
+        barrier_thre=0.1,
+    )
+
+    out = conv.chain_converged(
+        chain_prev=chain_prev,
+        chain_new=chain_new,
+        parameters=parameters,
+        verbose=False,
+    )
+    assert isinstance(out, (bool, np.bool_))

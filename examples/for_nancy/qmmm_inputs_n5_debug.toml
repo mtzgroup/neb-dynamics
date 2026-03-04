@@ -4,11 +4,11 @@ path_min_method = "neb"
 
 [qmmm_inputs]
 qminds_fp = "./qmindices.dat"
-prmtop_fp = "./ref.prmtop"
-rst7_fp_react = "./ref.rst7"
+prmtop_fp = "./5p9i_sphere_nobox.prmtop"
+rst7_fp_react = "./react.rst7"
 compute_program = "chemcloud"
-print_stdout = false
-debug_dump_inputs = false
+debug_dump_inputs = true
+debug_dump_dir = "./qmmm_debug_inputs"
 charge = 0
 spinmult = 1
 run_type = "gradient"
@@ -27,9 +27,9 @@ early_stop_force_thre = 0.03
 negative_steps_thre = 5
 positive_steps_thre = 10
 use_geodesic_tangent = false
-do_elem_step_checks = true
-max_steps = 500
-v = false
+do_elem_step_checks = false
+max_steps = 2
+v = true
 
 [chain_inputs]
 k = 0.1
@@ -40,13 +40,12 @@ friction_optimal_gi = true
 node_freezing = true
 node_rms_thre = 5.0
 node_ene_thre = 5.0
-frozen_atom_indices = ""
 
 [gi_inputs]
-nimages = 10
+nimages = 5
 friction = 0.001
 nudge = 0.1
-align = true
+align = false
 
 [gi_inputs.extra_kwds]
 
@@ -54,12 +53,14 @@ align = true
 cmdline_args = []
 
 [program_kwds.keywords]
-dispersion = "d3"
-gpus = 1
-gpumem = 256
-sphericalbasis = false
-
+# dispersion = "d3"
+threall = 1e-14
+convthre =  1e-06
+maxit = 200
 [program_kwds.extras]
+
+
+
 
 [program_kwds.files]
 

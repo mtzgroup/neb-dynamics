@@ -60,9 +60,12 @@ class QMMMEngine(Engine):
     compute_program: str = "qcop"
     chemcloud_queue: str | None = None
     print_stdout: bool = False
+    debug_dump_inputs: bool = False
+    debug_dump_dir: Path | None = None
 
     def __post_init__(self):
         self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
+        self._debug_dump_counter = 0
         if self.tcin_text is not None:
             self.inp_file = self.tcin_text
         elif self.tcin_fp is not None:
@@ -73,8 +76,49 @@ class QMMMEngine(Engine):
         self.prmtop = self.prmtop_fp.read_text()
         self.ref_rst7_react = self.rst7_fp_react.read_text()
         self.ref_rst7_prod = self.rst7_fp_prod.read_text() if self.rst7_fp_prod else None
-        _, indices_coordinates = rst7_to_coords_and_indices(self.ref_rst7_react)
+        _, indices_coordinates = rst7_to_coords_and_indices(
+            self.ref_rst7_react)
         self.indices_coordinates = indices_coordinates
+
+    def _dump_debug_inputs(self, rst7_strings: list[str]) -> None:
+        if not self.debug_dump_inputs or len(rst7_strings) == 0:
+            return
+
+        dump_dir = Path(self.debug_dump_dir) if self.debug_dump_dir else Path.cwd(
+        ) / "qmmm_debug_inputs"
+        dump_dir.mkdir(parents=True, exist_ok=True)
+
+        selected_indices = sorted(
+            {0, len(rst7_strings) // 2, len(rst7_strings) - 1})
+        labels = {
+            0: "first",
+            len(rst7_strings) // 2: "middle",
+            len(rst7_strings) - 1: "last",
+        }
+
+        call_dir = dump_dir / f"call_{self._debug_dump_counter:04d}"
+        call_dir.mkdir(parents=True, exist_ok=True)
+        (call_dir / "README.txt").write_text(
+            "\n".join(
+                [
+                    f"call_index: {self._debug_dump_counter}",
+                    f"nimages: {len(rst7_strings)}",
+                    f"selected_indices: {' '.join(str(i) for i in selected_indices)}",
+                    "",
+                    "Each node dump contains the exact tc.in and ref.rst7 payload bundled for submission.",
+                ]
+            )
+            + "\n"
+        )
+
+        for idx in selected_indices:
+            label = labels[idx]
+            prefix = call_dir / f"node_{idx:03d}_{label}"
+            (prefix.with_suffix(".tc.in")).write_text(self.inp_file)
+            (prefix.with_suffix(".rst7")).write_text(rst7_strings[idx])
+
+    def _next_debug_dump_counter(self) -> None:
+        self._debug_dump_counter += 1
 
     def _construct_input(self, rst7_string):
         # Create a FileInput object for TeraChem
@@ -93,75 +137,80 @@ class QMMMEngine(Engine):
 
         inputs = [self._construct_input(string) for string in rst7_strings]
         qminds = [int(x) for x in self.qmindices.strip().split("\n")]
-
+        self._dump_debug_inputs(rst7_strings)
 
         try:
-            if self.compute_program.lower() != 'chemcloud':
-                outputs = []
-                for string in inputs:
-                    outputs.append(
-                        compute(
-                            "terachem",
-                            string,
-                            print_stdout=self.print_stdout,
+            try:
+                if self.compute_program.lower() != 'chemcloud':
+                    outputs = []
+                    for string in inputs:
+                        outputs.append(
+                            compute(
+                                "terachem",
+                                string,
+                                print_stdout=self.print_stdout,
+                            )
                         )
-                    )
-            else:
-                outputs = []
-                for inp in inputs:
-                    result = ccompute("terachem", inp, queue=self.chemcloud_queue)
-                    if hasattr(result, "get"):
-                        result = result.get()
-                    outputs.append(result)
-        except Exception as exc:
-            raise ElectronicStructureError(
-                msg=f"QMMM compute submission failed ({self.compute_program}): {exc}",
-                obj=None,
-            ) from exc
-
-        if len(outputs) != len(rst7_strings):
-            raise ElectronicStructureError(
-                msg=(
-                    "QMMM returned an unexpected number of results: "
-                    f"expected {len(rst7_strings)}, got {len(outputs)}"
-                ),
-                obj=outputs,
-            )
-
-        gradients = []
-        energies = []
-        for output in outputs:
-            qm_grad, mm_grad = parse_qmmm_gradients(output.stdout)
-            if len(qm_grad) == 0:
+                else:
+                    batch_input = inputs[0] if len(inputs) == 1 else inputs
+                    outputs = ccompute(
+                        "terachem", batch_input, queue=self.chemcloud_queue)
+                    if hasattr(outputs, "get"):
+                        outputs = outputs.get()
+                    if len(inputs) == 1 and not isinstance(outputs, list):
+                        outputs = [outputs]
+            except Exception as exc:
                 raise ElectronicStructureError(
-                    msg="QMMM gradient parsing failed (no QM gradients found in output).",
-                    obj=output,
+                    msg=f"QMMM compute submission failed ({self.compute_program}): {exc}",
+                    obj=None,
+                ) from exc
+
+            if len(outputs) != len(rst7_strings):
+                raise ElectronicStructureError(
+                    msg=(
+                        "QMMM returned an unexpected number of results: "
+                        f"expected {len(rst7_strings)}, got {len(outputs)}"
+                    ),
+                    obj=outputs,
                 )
-            lines = output.stdout.split("\n")
-            nlink_atom = int([l for l in lines if "link" in l][0].split()[6])
-            if nlink_atom > 0:
-                qm_grad = qm_grad[:-nlink_atom] # Get rid of linked-atoms
 
-            gradient = np.zeros((len(qm_grad)+len(mm_grad), 3))
-            # print("len qmgrad:", len(qm_grad))
-            # print("len mmgrad:", len(mm_grad))
-            allinds = list(range(len(gradient)))
-            mminds = np.delete(allinds, qminds)
-            gradient[qminds] = qm_grad
-            if len(mminds) > 0:
-                gradient[mminds] = mm_grad
+            gradients = []
+            energies = []
+            for output in outputs:
+                qm_grad, mm_grad = parse_qmmm_gradients(output.stdout)
+                if len(qm_grad) == 0:
+                    raise ElectronicStructureError(
+                        msg="QMMM gradient parsing failed (no QM gradients found in output).",
+                        obj=output,
+                    )
+                lines = output.stdout.split("\n")
+                nlink_atom = int(
+                    [l for l in lines if "link" in l][0].split()[6])
+                if nlink_atom > 0:
+                    qm_grad = qm_grad[:-nlink_atom]  # Get rid of linked-atoms
 
-            energy = parse_energy(output.stdout) # Parses FINAL ENERGY: line
+                gradient = np.zeros((len(qm_grad)+len(mm_grad), 3))
+                # print("len qmgrad:", len(qm_grad))
+                # print("len mmgrad:", len(mm_grad))
+                allinds = list(range(len(gradient)))
+                mminds = np.delete(allinds, qminds)
+                gradient[qminds] = qm_grad
+                if len(mminds) > 0:
+                    gradient[mminds] = mm_grad
 
-            energies.append(energy)
-            gradients.append(gradient)
+                # Parses FINAL ENERGY: line
+                energy = parse_energy(output.stdout)
 
-        return energies, gradients, outputs
+                energies.append(energy)
+                gradients.append(gradient)
+
+            return energies, gradients, outputs
+        finally:
+            self._next_debug_dump_counter()
 
     def compute_energies(self, chain: Chain):
         self.compute_gradients(chain)
         enes = np.array([node.energy for node in chain])
-
         return enes
 
     def compute_gradients(self, chain):
@@ -171,13 +220,13 @@ class QMMMEngine(Engine):
         except GradientsNotComputedError:
             qminds = [int(v) for v in self.qmindices.strip().split("\n")]
 
-            rst7strings = [self.structure_to_rst7(qmstructure=node.structure) for node in chain]
-
-
+            rst7strings = [self.structure_to_rst7(
+                qmstructure=node.structure) for node in chain]
 
             # print(rst7strings[0])
             energies, gradients, outputs = self._compute_enegrad(rst7strings)
             for node, energy, gradient in zip(chain, energies, gradients):
+                # print("\nEnergy:", energy, "\n")
                 node._cached_energy = energy
                 node._cached_gradient = gradient
                 # node._cached_result = enegrad_output[2]
@@ -209,14 +258,15 @@ class QMMMEngine(Engine):
         # reference_coords[qmindices] = aligned_geom
         reference_coords = aligned_geom
 
-        arr = np.array([46.4274321, 82.5659739, 37.1465461, 9.8415857, 51.2254588, 44.5854156])
+        arr = np.array([46.4274321, 82.5659739, 37.1465461,
+                       9.8415857, 51.2254588, 44.5854156])
 
         # Determine the maximum width of the integer part
         max_int_width = 0
         for x in arr:
             int_part_len = len(str(int(abs(x))))  # Handle negative numbers
             if x < 0:
-                int_part_len += 1 # Account for the negative sign
+                int_part_len += 1  # Account for the negative sign
             if int_part_len > max_int_width:
                 max_int_width = int_part_len
 
@@ -224,19 +274,18 @@ class QMMMEngine(Engine):
         def format_float_with_precision(x):
             return f"{x:{max_int_width + 8}.7f}"
 
-
         string = ""
-        i=0
+        i = 0
         for j, _ in enumerate(reference_coords):
             atom = reference_coords[j]
-            if i==0:
-                string+="  "+np.array2string(atom, separator='  ', prefix=' ', max_line_width=1e7, formatter={'float':format_float_with_precision})[1:-1]+" "
-                i+=1
-            elif i==1:
-                string+=np.array2string(atom, separator='  ', prefix=' ', max_line_width=1e7, formatter={'float':format_float_with_precision})[1:-1]+"\n"
-                i=0
-
-
+            if i == 0:
+                string += "  "+np.array2string(atom, separator='  ', prefix=' ', max_line_width=1e7, formatter={
+                                               'float': format_float_with_precision})[1:-1]+" "
+                i += 1
+            elif i == 1:
+                string += np.array2string(atom, separator='  ', prefix=' ', max_line_width=1e7, formatter={
+                                          'float': format_float_with_precision})[1:-1]+"\n"
+                i = 0
 
         reference_string = self.ref_rst7_react
 
@@ -244,8 +293,8 @@ class QMMMEngine(Engine):
         # headers+=velocities
 
         newfile = "\n".join(headers)
-        newfile+='\n'
-        newfile+=string
+        newfile += '\n'
+        newfile += string
         # print(newfile)
 
         return newfile
@@ -254,5 +303,6 @@ class QMMMEngine(Engine):
 def rst7prmtop_to_structure(rst7_str, prmtopdata_str):
     xyz_coords, coord_indices = rst7_to_coords_and_indices(rst7_str)
     symbols = np.array(parse_symbols_from_prmtop(prmtopdata_str))
-    structure = Structure(geometry=xyz_coords*ANGSTROM_TO_BOHR, symbols=symbols)
+    structure = Structure(geometry=xyz_coords *
+                          ANGSTROM_TO_BOHR, symbols=symbols)
     return structure
