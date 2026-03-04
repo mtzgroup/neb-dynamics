@@ -205,6 +205,8 @@ mepd visualize path/to/result
 |--------|-------------|
 | `result_path` | Path to result `.xyz` or TreeNode folder |
 | `--output`, `-o` | Output HTML path (default: `<name>_visualize.html`) |
+| `--qminds-fp` | Path to `qmindices.dat` to visualize only selected atoms |
+| `--atom-indices` | Comma/space-separated atom indices for subset visualization |
 | `--charge` | Charge for reading serialized geometries (default: 0) |
 | `--multiplicity` | Multiplicity for reading serialized geometries (default: 1) |
 | `--no-open` | Do not automatically open browser |
@@ -214,6 +216,8 @@ mepd visualize path/to/result
 ```bash
 mepd visualize mep_output_neb.xyz
 mepd visualize mep_output_msmep --output msmep_view.html
+mepd visualize mep_output_neb.xyz --qminds-fp qmindices.dat
+mepd visualize mep_output_neb.xyz --atom-indices "12,13,14,15"
 ```
 
 ---

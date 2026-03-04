@@ -68,6 +68,21 @@ def test_load_chain_for_visualization_detects_neb_file(monkeypatch, tmp_path):
     assert out is expected
 
 
+def test_load_chain_for_visualization_falls_back_to_chain_xyz(monkeypatch, tmp_path):
+    chain_fp = tmp_path / "plain_chain.xyz"
+    chain_fp.write_text("dummy")
+    expected = _chain()
+
+    monkeypatch.setattr(
+        main_cli.Chain,
+        "from_xyz",
+        staticmethod(lambda *args, **kwargs: expected),
+    )
+
+    out = main_cli._load_chain_for_visualization(chain_fp)
+    assert out is expected
+
+
 def test_visualize_command_writes_html_and_can_skip_open(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     src = tmp_path / "result.xyz"
@@ -97,3 +112,22 @@ def test_load_chain_for_visualization_raises_for_unknown_dir(tmp_path):
     folder.mkdir()
     with pytest.raises(ValueError):
         main_cli._load_chain_for_visualization(folder)
+
+
+def test_parse_visualize_atom_indices_from_file(tmp_path):
+    fp = tmp_path / "qmindices.dat"
+    fp.write_text("3\n1\n3\n")
+    assert main_cli._parse_visualize_atom_indices(qminds_fp=str(fp)) == [1, 3]
+
+
+def test_subset_chain_for_visualization_keeps_energies():
+    chain = _chain()
+    chain.nodes[0]._cached_energy = 10.0
+    chain.nodes[1]._cached_energy = 12.5
+    chain.nodes[2]._cached_energy = 11.0
+    out = main_cli._subset_chain_for_visualization(chain, [1])
+
+    assert len(out.nodes[0].structure.symbols) == 1
+    assert out.nodes[0].energy == 10.0
+    assert out.nodes[1].energy == 12.5
+    assert out.nodes[2].energy == 11.0

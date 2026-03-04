@@ -46,6 +46,7 @@ import time
 import traceback
 from datetime import datetime
 import webbrowser
+import shutil
 
 from rich.console import Console
 from rich.theme import Theme
@@ -293,6 +294,42 @@ def _write_chain_with_nan_fallback(chain: Chain, fp: Path) -> None:
         np.savetxt(grad_shape_path, np.array(grad_arr.shape))
 
 
+def _write_chain_history_with_nan_fallback(chain_trajectory: list[Chain], fp: Path) -> None:
+    out_folder = fp.resolve().parent / f"{fp.stem}_history"
+    if out_folder.exists():
+        shutil.rmtree(out_folder)
+    out_folder.mkdir(parents=True, exist_ok=True)
+    for i, chain in enumerate(chain_trajectory):
+        _write_chain_with_nan_fallback(chain, out_folder / f"traj_{i}.xyz")
+
+
+def _write_neb_results_with_history(neb_result, fp: Path) -> bool:
+    """Write final chain plus history for non-recursive NEB runs."""
+    if hasattr(neb_result, "write_to_disk"):
+        try:
+            neb_result.write_to_disk(fp, write_history=True)
+            return True
+        except Exception as exc:
+            console.print(
+                f"[yellow]⚠ Could not write full NEB history via write_to_disk: {exc}. "
+                "Falling back to NaN-safe writer.[/yellow]"
+            )
+
+    chain_for_profile = None
+    if getattr(neb_result, "chain_trajectory", None):
+        chain_for_profile = neb_result.chain_trajectory[-1]
+    elif getattr(neb_result, "optimized", None) is not None:
+        chain_for_profile = neb_result.optimized
+
+    if chain_for_profile is None:
+        return False
+
+    _write_chain_with_nan_fallback(chain_for_profile, fp)
+    if getattr(neb_result, "chain_trajectory", None):
+        _write_chain_history_with_nan_fallback(neb_result.chain_trajectory, fp)
+    return True
+
+
 def _load_chain_for_visualization(result_path: Path, charge: int = 0, multiplicity: int = 1) -> Chain:
     """Load chain from either a serialized NEB result file or a recursive TreeNode folder."""
     result_path = Path(result_path)
@@ -320,11 +357,19 @@ def _load_chain_for_visualization(result_path: Path, charge: int = 0, multiplici
         )
         return neb.chain_trajectory[-1]
 
-    raise ValueError(
-        "Could not detect serialized result type. For NEB provide the .xyz output "
-        "that has a sibling '<stem>_history/' folder; for recursive MSMEP provide "
-        "the TreeNode directory with adj_matrix.txt."
-    )
+    try:
+        return Chain.from_xyz(
+            result_path,
+            parameters=ChainInputs(),
+            charge=charge,
+            spinmult=multiplicity,
+        )
+    except Exception as exc:
+        raise ValueError(
+            "Could not detect serialized result type. For NEB provide the .xyz output "
+            "that has a sibling '<stem>_history/' folder; for recursive MSMEP provide "
+            "the TreeNode directory with adj_matrix.txt; or provide a valid chain xyz."
+        ) from exc
 
 
 def _build_chain_visualizer_html(chain: Chain) -> str:
@@ -362,7 +407,7 @@ def _build_chain_visualizer_html(chain: Chain) -> str:
   <div class="row">
     <div class="panel">
       <h3>Structure</h3>
-      <div id="structurePanel"></div>
+      <iframe id="structureFrame" style="width: 100%; height: 520px; border: 0;" title="Structure viewer"></iframe>
     </div>
     <div class="panel">
       <h3>Energy Profile</h3>
@@ -378,7 +423,8 @@ def _build_chain_visualizer_html(chain: Chain) -> str:
       const frame = frames[i];
       if (!frame) return;
       document.getElementById("frameLabel").textContent = String(i);
-      document.getElementById("structurePanel").innerHTML = decodeB64UTF8(frame.structure_html_b64);
+      const frameEl = document.getElementById("structureFrame");
+      frameEl.srcdoc = decodeB64UTF8(frame.structure_html_b64);
       const img = document.getElementById("energyPlot");
       if (frame.plot_png_b64 && frame.plot_png_b64.length > 0) {{
         img.src = "data:image/png;base64," + frame.plot_png_b64;
@@ -393,6 +439,59 @@ def _build_chain_visualizer_html(chain: Chain) -> str:
 </body>
 </html>
 """
+
+
+def _parse_visualize_atom_indices(
+    qminds_fp: str | None = None,
+    atom_indices: str | None = None,
+) -> list[int] | None:
+    if qminds_fp and atom_indices:
+        raise ValueError("Provide either --qminds-fp or --atom-indices, not both.")
+    if qminds_fp:
+        values = []
+        for raw in Path(qminds_fp).read_text().splitlines():
+            token = raw.strip()
+            if token:
+                values.append(int(token))
+        return sorted(set(values))
+    if atom_indices:
+        tokens = atom_indices.replace(",", " ").split()
+        return sorted(set(int(v) for v in tokens))
+    return None
+
+
+def _subset_chain_for_visualization(chain: Chain, atom_indices: list[int]) -> Chain:
+    if len(chain.nodes) == 0:
+        return chain
+    n_atoms = len(chain.nodes[0].structure.symbols)
+    bad = [i for i in atom_indices if i < 0 or i >= n_atoms]
+    if bad:
+        raise ValueError(f"Atom indices out of bounds for n_atoms={n_atoms}: {bad}")
+
+    new_nodes = []
+    for node in chain.nodes:
+        struct = node.structure
+        new_struct = Structure(
+            geometry=np.array(struct.geometry)[atom_indices],
+            symbols=[struct.symbols[i] for i in atom_indices],
+            charge=struct.charge,
+            multiplicity=struct.multiplicity,
+        )
+        new_node = StructureNode(structure=new_struct)
+        new_node.has_molecular_graph = False
+        new_node.graph = None
+        new_node._cached_energy = node._cached_energy
+        if node._cached_gradient is not None:
+            try:
+                grad_arr = np.array(node._cached_gradient)
+                if grad_arr.ndim == 2 and grad_arr.shape[0] >= max(atom_indices) + 1:
+                    new_node._cached_gradient = grad_arr[atom_indices]
+                else:
+                    new_node._cached_gradient = node._cached_gradient
+            except Exception:
+                new_node._cached_gradient = node._cached_gradient
+        new_nodes.append(new_node)
+    return Chain.model_validate({"nodes": new_nodes, "parameters": chain.parameters})
 
 
 def _compute_ts_node(engine, ts_guess: StructureNode, bigchem: bool = False):
@@ -945,19 +1044,16 @@ def run(
             filename = data_dir / f"{fp.stem}_neb.xyz"
 
         end_time = time.time()
+        wrote_outputs = _write_neb_results_with_history(n, filename)
         if n.chain_trajectory:
             chain_for_profile = n.chain_trajectory[-1]
         elif n.optimized is not None:
             chain_for_profile = n.optimized
-        else:
-            chain_for_profile = None
 
-        if chain_for_profile is None:
+        if not wrote_outputs:
             console.print(
                 "[yellow]⚠ Skipping output write/profile because path minimization did not produce an optimized chain.[/yellow]"
             )
-        else:
-            _write_chain_with_nan_fallback(chain_for_profile, filename)
 
         if use_tsopt and n.optimized is not None:
             console.print("[bold cyan]⟳ Running TS opt...[/bold cyan]")
@@ -1504,6 +1600,8 @@ def make_netgen_path(
 def visualize(
     result_path: Annotated[str, typer.Argument(help="Path to a NEB result .xyz or TreeNode result folder")],
     output_html: Annotated[str, typer.Option("--output", "-o", help="Output HTML file path")] = None,
+    qminds_fp: Annotated[str, typer.Option("--qminds-fp", help="Path to qmindices.dat for atom-subset visualization")] = None,
+    atom_indices: Annotated[str, typer.Option("--atom-indices", help="Comma/space-separated atom indices (e.g. '1,2,3' or '1 2 3')")] = None,
     charge: Annotated[int, typer.Option(help="Charge used when reading serialized geometries")] = 0,
     multiplicity: Annotated[int, typer.Option(help="Spin multiplicity used when reading serialized geometries")] = 1,
     no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open browser window")] = False,
@@ -1516,6 +1614,14 @@ def visualize(
             charge=charge,
             multiplicity=multiplicity,
         )
+        selected = _parse_visualize_atom_indices(
+            qminds_fp=qminds_fp, atom_indices=atom_indices
+        )
+        if selected is not None:
+            chain = _subset_chain_for_visualization(chain, selected)
+            console.print(
+                f"[dim]Visualizing atom subset with {len(selected)} atoms.[/dim]"
+            )
 
     with console.status("[bold cyan]Building interactive HTML...[/bold cyan]"):
         html = _build_chain_visualizer_html(chain)
