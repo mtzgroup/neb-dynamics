@@ -2,6 +2,7 @@ from neb_dynamics.engines.engine import Engine
 from neb_dynamics.errors import GradientsNotComputedError, ElectronicStructureError
 from dataclasses import dataclass
 from pathlib import Path
+from contextlib import contextmanager
 from neb_dynamics.TreeNode import TreeNode
 import neb_dynamics.chainhelpers as ch
 from neb_dynamics.chain import Chain
@@ -30,6 +31,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import re
 import tempfile
+import logging
 
 
 def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
@@ -374,6 +376,37 @@ class QMMMEngine(Engine):
                 obj=None,
             ) from exc
 
+        @contextmanager
+        def _geometric_log_context():
+            if not self.print_stdout:
+                yield
+                return
+
+            logger_names = ("geometric", "geometric.nifty", "geometric.optimize")
+            snapshots = []
+            stream_handler = logging.StreamHandler()
+            stream_handler.setLevel(logging.INFO)
+            stream_handler.setFormatter(logging.Formatter("%(message)s"))
+
+            for logger_name in logger_names:
+                logger = logging.getLogger(logger_name)
+                snapshots.append(
+                    (logger, logger.disabled, logger.level, logger.propagate, list(logger.handlers))
+                )
+                logger.disabled = False
+                logger.setLevel(logging.INFO)
+                logger.propagate = False
+                logger.addHandler(stream_handler)
+
+            try:
+                yield
+            finally:
+                for logger, disabled, level, propagate, handlers in snapshots:
+                    logger.handlers = handlers
+                    logger.disabled = disabled
+                    logger.setLevel(level)
+                    logger.propagate = propagate
+
         class _GeometricQMMMEngine(geometric.engine.Engine):
             def __init__(self, molecule, qmmm_engine, ref_node):
                 super().__init__(molecule)
@@ -382,6 +415,8 @@ class QMMMEngine(Engine):
 
             def calc_new(self, coords, dirname):
                 curr_node = self.ref_node.copy().update_coords(np.array(coords))
+                curr_node.has_molecular_graph = False
+                curr_node.graph = None
                 energy = self.qmmm_engine.compute_energies([curr_node])[0]
                 gradient = self.qmmm_engine.compute_gradients([curr_node])[0]
                 # geomeTRIC expects gradient in Hartree/Angstrom.
@@ -393,10 +428,13 @@ class QMMMEngine(Engine):
         molecule = geometric.molecule.Molecule()
         molecule.elem = list(node.structure.symbols)
         molecule.xyzs = [node.structure.geometry * ANGSTROM_TO_BOHR]
+        ref_node = node.copy()
+        ref_node.has_molecular_graph = False
+        ref_node.graph = None
         custom_engine = _GeometricQMMMEngine(
             molecule=molecule,
             qmmm_engine=self,
-            ref_node=node,
+            ref_node=ref_node,
         )
 
         ts_keywords = {
@@ -411,12 +449,13 @@ class QMMMEngine(Engine):
             ts_keywords.update(keywords)
         ts_keywords["transition"] = True
 
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmpf:
-            return geometric.optimize.run_optimizer(
-                customengine=custom_engine,
-                input=tmpf.name,
-                **ts_keywords,
-            )
+        with _geometric_log_context():
+            with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmpf:
+                return geometric.optimize.run_optimizer(
+                    customengine=custom_engine,
+                    input=tmpf.name,
+                    **ts_keywords,
+                )
 
     def compute_transition_state(
         self,
@@ -436,6 +475,8 @@ class QMMMEngine(Engine):
 
         final_coords_bohr = np.array(xyzs[-1]) * ANGSTROM_TO_BOHR
         ts_node = node.copy().update_coords(final_coords_bohr)
+        ts_node.has_molecular_graph = False
+        ts_node.graph = None
         ts_node._cached_energy = self.compute_energies([ts_node])[0]
         return ts_node
 

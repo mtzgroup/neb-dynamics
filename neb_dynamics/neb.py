@@ -390,10 +390,21 @@ class NEB(PathMinimizer):
             ts_guess_grad = np.amax(
                 np.abs(ch.get_g_perps(new_chain)[ind_ts_guess]))
             if not warned_endpoint_energy_inversion:
+                frozen_atom_indices = getattr(
+                    getattr(new_chain, "parameters", None),
+                    "frozen_atom_indices",
+                    None,
+                )
+                if isinstance(frozen_atom_indices, str):
+                    frozen_atom_indices = [
+                        int(tok)
+                        for tok in frozen_atom_indices.replace(",", " ").split()
+                        if tok.strip()
+                    ]
                 warning_text = _endpoint_energy_inversion_warning_text(
                     energies=np.array(new_chain.energies, dtype=float),
                     is_qmmm_engine="qmmm" in type(self.engine).__name__.lower(),
-                    frozen_atom_indices=self.parameters.frozen_atom_indices,
+                    frozen_atom_indices=frozen_atom_indices,
                 )
                 if warning_text:
                     if self.parameters.v and _rich_available:

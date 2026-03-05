@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
 from types import SimpleNamespace
+import sys
+import types
+import logging
 
 import numpy as np
 from qcio import Structure
@@ -329,4 +332,72 @@ def test_qmmm_transition_state_returns_final_node_with_energy(monkeypatch, tmp_p
     assert np.allclose(captured["final_coords"], np.array([[0.3, 0.1, -0.2]]) * ANGSTROM_TO_BOHR)
     assert np.allclose(ts_node.coords, np.array([[0.3, 0.1, -0.2]]) * ANGSTROM_TO_BOHR)
     assert ts_node.energy == -123.456
+    assert ts_node.has_molecular_graph is False
+    assert ts_node.graph is None
     assert captured["keywords"] == {"maxiter": 123}
+
+
+def test_qmmm_transition_state_print_stdout_enables_geometric_logs(monkeypatch, tmp_path):
+    _write_minimal_qmmm_files(tmp_path)
+    captured = {}
+
+    geometric_mod = types.ModuleType("geometric")
+    geometric_engine_mod = types.ModuleType("geometric.engine")
+    geometric_molecule_mod = types.ModuleType("geometric.molecule")
+    geometric_optimize_mod = types.ModuleType("geometric.optimize")
+
+    class _FakeBaseEngine:
+        def __init__(self, molecule):
+            self.molecule = molecule
+
+    class _FakeMolecule:
+        def __init__(self):
+            self.elem = []
+            self.xyzs = []
+
+    def _fake_run_optimizer(*args, **kwargs):
+        logger = logging.getLogger("geometric.optimize")
+        captured["disabled_during_run"] = logger.disabled
+        captured["handlers_during_run"] = len(logger.handlers)
+        return SimpleNamespace(xyzs=[np.array([[0.0, 0.0, 0.0]])])
+
+    geometric_engine_mod.Engine = _FakeBaseEngine
+    geometric_molecule_mod.Molecule = _FakeMolecule
+    geometric_optimize_mod.run_optimizer = _fake_run_optimizer
+
+    geometric_mod.engine = geometric_engine_mod
+    geometric_mod.molecule = geometric_molecule_mod
+    geometric_mod.optimize = geometric_optimize_mod
+
+    monkeypatch.setitem(sys.modules, "geometric", geometric_mod)
+    monkeypatch.setitem(sys.modules, "geometric.engine", geometric_engine_mod)
+    monkeypatch.setitem(sys.modules, "geometric.molecule", geometric_molecule_mod)
+    monkeypatch.setitem(sys.modules, "geometric.optimize", geometric_optimize_mod)
+
+    logger = logging.getLogger("geometric.optimize")
+    orig_disabled = logger.disabled
+    logger.disabled = True
+
+    eng = QMMMEngine(
+        tcin_text="run gradient\n",
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+        print_stdout=True,
+    )
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0]]),
+            symbols=["H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    eng._run_geometric_transition_state(node=node, keywords={"maxiter": 1})
+
+    assert captured["disabled_during_run"] is False
+    assert captured["handlers_during_run"] >= 1
+    assert logging.getLogger("geometric.optimize").disabled is True
+    logger.disabled = orig_disabled
