@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import logging
+from dataclasses import dataclass
 import networkx as nx
 import numpy as np
 from typing import List
@@ -12,6 +13,7 @@ from neb_dynamics.pot import plot_results_from_pot_obj
 from neb_dynamics.pot import Pot
 from neb_dynamics.helper_functions import (
     compute_irc_chain,
+    parse_terachem_input_file,
     parse_symbols_from_prmtop,
     rst7_to_coords_and_indices,
 )
@@ -47,6 +49,7 @@ import traceback
 from datetime import datetime
 import webbrowser
 import shutil
+import tomli_w
 
 from rich.console import Console
 from rich.theme import Theme
@@ -330,8 +333,52 @@ def _write_neb_results_with_history(neb_result, fp: Path) -> bool:
     return True
 
 
-def _load_chain_for_visualization(result_path: Path, charge: int = 0, multiplicity: int = 1) -> Chain:
-    """Load chain from either a serialized NEB result file or a recursive TreeNode folder."""
+@dataclass
+class _VisualizationData:
+    chain: Chain
+    chain_trajectory: list[Chain] | None = None
+    tree_layers: list[dict] | None = None
+
+
+def _neb_chains_for_visualization(neb_obj) -> list[Chain]:
+    if getattr(neb_obj, "chain_trajectory", None):
+        return list(neb_obj.chain_trajectory)
+    if getattr(neb_obj, "optimized", None) is not None:
+        return [neb_obj.optimized]
+    return []
+
+
+def _collect_tree_layers_for_visualization(tree: TreeNode) -> list[dict]:
+    layers: list[dict] = []
+    by_depth: dict[int, list[dict]] = {}
+    stack: list[tuple[TreeNode, int, int | None]] = [(tree, 0, None)]
+    while stack:
+        tree_node, depth, parent_index = stack.pop()
+        if getattr(tree_node, "data", None):
+            chains = _neb_chains_for_visualization(tree_node.data)
+            if chains:
+                by_depth.setdefault(depth, []).append(
+                    {
+                        "label": f"Node {tree_node.index}",
+                        "node_index": int(tree_node.index),
+                        "parent_index": parent_index,
+                        "chains": chains,
+                    }
+                )
+        for child in reversed(tree_node.children):
+            stack.append((child, depth + 1, int(tree_node.index)))
+
+    for depth in sorted(by_depth):
+        layers.append({"depth": depth, "groups": by_depth[depth]})
+    return layers
+
+
+def _load_visualization_data(
+    result_path: Path,
+    charge: int = 0,
+    multiplicity: int = 1,
+) -> _VisualizationData:
+    """Load visualization payload from NEB file, TreeNode folder, or plain chain xyz."""
     result_path = Path(result_path)
     if not result_path.exists():
         raise FileNotFoundError(f"Path does not exist: {result_path}")
@@ -342,7 +389,11 @@ def _load_chain_for_visualization(result_path: Path, charge: int = 0, multiplici
             tree = TreeNode.read_from_disk(
                 folder_name=result_path, charge=charge, multiplicity=multiplicity
             )
-            return tree.output_chain
+            return _VisualizationData(
+                chain=tree.output_chain,
+                chain_trajectory=None,
+                tree_layers=_collect_tree_layers_for_visualization(tree),
+            )
         raise ValueError(
             "Directory input must be a TreeNode folder containing adj_matrix.txt."
         )
@@ -355,15 +406,20 @@ def _load_chain_for_visualization(result_path: Path, charge: int = 0, multiplici
             charge=charge,
             multiplicity=multiplicity,
         )
-        return neb.chain_trajectory[-1]
+        if neb.chain_trajectory:
+            return _VisualizationData(
+                chain=neb.chain_trajectory[-1],
+                chain_trajectory=list(neb.chain_trajectory),
+            )
+        if getattr(neb, "optimized", None) is not None:
+            return _VisualizationData(chain=neb.optimized, chain_trajectory=None)
+        raise ValueError("Loaded NEB object has no optimized chain or history.")
 
     try:
-        return Chain.from_xyz(
-            result_path,
-            parameters=ChainInputs(),
-            charge=charge,
-            spinmult=multiplicity,
+        chain = Chain.from_xyz(
+            result_path, parameters=ChainInputs(), charge=charge, spinmult=multiplicity
         )
+        return _VisualizationData(chain=chain, chain_trajectory=None)
     except Exception as exc:
         raise ValueError(
             "Could not detect serialized result type. For NEB provide the .xyz output "
@@ -372,18 +428,121 @@ def _load_chain_for_visualization(result_path: Path, charge: int = 0, multiplici
         ) from exc
 
 
-def _build_chain_visualizer_html(chain: Chain) -> str:
-    frames = []
-    for i, node in enumerate(chain.nodes):
-        struct_html = generate_structure_viewer_html(node.structure)
-        frames.append(
-            {
-                "structure_html_b64": base64.b64encode(struct_html.encode("utf-8")).decode("ascii"),
-                "plot_png_b64": generate_neb_plot(chain.nodes, ind_node=i),
-            }
-        )
+def _load_chain_for_visualization(result_path: Path, charge: int = 0, multiplicity: int = 1) -> Chain:
+    """Backward-compatible wrapper returning only the chain."""
+    return _load_visualization_data(
+        result_path=result_path, charge=charge, multiplicity=multiplicity
+    ).chain
 
-    payload = json.dumps(frames)
+
+def _generate_opt_history_plot_b64(
+    chain_trajectory: list[Chain], selected_index: int
+) -> str:
+    if not chain_trajectory:
+        return ""
+    try:
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(figsize=(6.4, 4.8))
+        selected_index = max(0, min(selected_index, len(chain_trajectory) - 1))
+        for i, chain in enumerate(chain_trajectory):
+            x = chain.integrated_path_length
+            y = chain.energies_kcalmol
+            if i == selected_index:
+                ax.plot(x, y, "o-", color="tab:blue", alpha=1.0, linewidth=2.0)
+            else:
+                ax.plot(x, y, "o-", color="gray", alpha=0.2, linewidth=1.0)
+        ax.set_xlabel("Integrated path length")
+        ax.set_ylabel("Energy (kcal/mol)")
+        ax.set_title("Optimization History")
+        fig.tight_layout()
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight")
+        buf.seek(0)
+        image_base64 = base64.b64encode(buf.read()).decode("utf-8")
+        buf.close()
+        plt.close(fig)
+        return image_base64
+    except Exception:
+        return ""
+
+
+def _build_chain_visualizer_html(
+    chain: Chain,
+    chain_trajectory: list[Chain] | None = None,
+    tree_layers: list[dict] | None = None,
+) -> str:
+    def _serialize_chains(chains: list[Chain]) -> dict:
+        chain_payload = []
+        for chain_ind, chain_obj in enumerate(chains):
+            frames = []
+            for i, node in enumerate(chain_obj.nodes):
+                struct_html = generate_structure_viewer_html(node.structure)
+                frames.append(
+                    {
+                        "structure_html_b64": base64.b64encode(
+                            struct_html.encode("utf-8")
+                        ).decode("ascii"),
+                        "plot_png_b64": generate_neb_plot(chain_obj.nodes, ind_node=i),
+                    }
+                )
+            chain_payload.append({"index": chain_ind, "frames": frames})
+        default_chain_index = max(len(chains) - 1, 0)
+        if len(chains) > 1:
+            history_plots = [
+                _generate_opt_history_plot_b64(chains, selected_index=i)
+                for i in range(len(chains))
+            ]
+        else:
+            history_plots = []
+        return {
+            "chains": chain_payload,
+            "default_chain_index": default_chain_index,
+            "history_plots": history_plots,
+        }
+
+    if tree_layers:
+        layers_payload = []
+        for layer in tree_layers:
+            groups_payload = []
+            for group in layer["groups"]:
+                groups_payload.append(
+                    {
+                        "label": group["label"],
+                        "node_index": int(group["node_index"]),
+                        "parent_index": (
+                            int(group["parent_index"])
+                            if group["parent_index"] is not None
+                            else None
+                        ),
+                        "viz": _serialize_chains(group["chains"]),
+                    }
+                )
+            layers_payload.append({"depth": layer["depth"], "groups": groups_payload})
+        default_layer_index = max(len(layers_payload) - 1, 0)
+        default_group_index = 0
+        has_tree_layers = True
+    else:
+        chains_to_visualize = list(chain_trajectory) if chain_trajectory else [chain]
+        layers_payload = [
+            {
+                "depth": 0,
+                "groups": [
+                    {
+                        "label": "NEB",
+                        "node_index": 0,
+                        "parent_index": None,
+                        "viz": _serialize_chains(chains_to_visualize),
+                    }
+                ],
+            }
+        ]
+        default_layer_index = 0
+        default_group_index = 0
+        has_tree_layers = False
+
+    payload = json.dumps(layers_payload)
+    tree_panel_style = "" if has_tree_layers else "display:none;"
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -401,8 +560,16 @@ def _build_chain_visualizer_html(chain: Chain) -> str:
 <body>
   <h2>NEB Dynamics Interactive Viewer</h2>
   <div class="controls">
+    <div id="treePanel" style="{tree_panel_style} margin-bottom: 12px;">
+      <div style="font-weight: 600; margin-bottom: 6px;">Optimization Tree</div>
+      <svg id="treeSvg" width="100%" height="220" viewBox="0 0 900 220" style="border: 1px solid #e6e6e6; border-radius: 8px; background: #fafafa;"></svg>
+      <div style="font-size: 12px; color: #666; margin-top: 6px;">Click a node to load that NEB object's data.</div>
+    </div>
+    <label for="chainSelect">Chain: </label>
+    <select id="chainSelect"></select>
+    <br/>
     <label for="frameSlider">Frame: <span id="frameLabel">0</span></label><br/>
-    <input id="frameSlider" type="range" min="0" max="{max(len(chain.nodes) - 1, 0)}" value="0" step="1" style="width: min(720px, 90vw);" />
+    <input id="frameSlider" type="range" min="0" max="0" value="0" step="1" style="width: min(720px, 90vw);" />
   </div>
   <div class="row">
     <div class="panel">
@@ -410,16 +577,190 @@ def _build_chain_visualizer_html(chain: Chain) -> str:
       <iframe id="structureFrame" style="width: 100%; height: 520px; border: 0;" title="Structure viewer"></iframe>
     </div>
     <div class="panel">
-      <h3>Energy Profile</h3>
+      <h3>Energy Profile (Selected Chain)</h3>
       <img id="energyPlot" alt="Energy profile" />
+      <div id="historyPanel" style="margin-top: 18px; display:none;">
+        <h3>Optimization History</h3>
+        <img id="historyPlot" alt="Optimization history" />
+      </div>
     </div>
   </div>
   <script>
-    const frames = {payload};
+    const layers = {payload};
     function decodeB64UTF8(b64) {{
       return decodeURIComponent(escape(window.atob(b64)));
     }}
+    function clamp(val, low, high) {{
+      return Math.max(low, Math.min(high, val));
+    }}
+    let currentLayer = {default_layer_index};
+    let currentGroup = {default_group_index};
+    let currentChain = 0;
+    function getCurrentLayer() {{
+      return layers[currentLayer] || null;
+    }}
+    function getCurrentGroups() {{
+      const layer = getCurrentLayer();
+      return layer ? (layer.groups || []) : [];
+    }}
+    function getCurrentViz() {{
+      const groups = getCurrentGroups();
+      const group = groups[currentGroup];
+      return group ? group.viz : null;
+    }}
+    function getCurrentFrames() {{
+      const viz = getCurrentViz();
+      if (!viz) return [];
+      const chain = viz.chains[currentChain];
+      return chain ? chain.frames : [];
+    }}
+    const treeNodeMap = {{}};
+    function renderTreeGraph() {{
+      const svg = document.getElementById("treeSvg");
+      if (!svg || layers.length <= 1) return;
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+      const width = 900;
+      const height = 220;
+      const topPad = 30;
+      const bottomPad = 30;
+      const leftPad = 40;
+      const rightPad = 40;
+
+      for (let layerIdx = 0; layerIdx < layers.length; layerIdx++) {{
+        const layer = layers[layerIdx];
+        const groups = layer.groups || [];
+        const y = layers.length === 1
+          ? height / 2
+          : topPad + (layerIdx * (height - topPad - bottomPad) / (layers.length - 1));
+        for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {{
+          const g = groups[groupIdx];
+          const x = groups.length === 1
+            ? width / 2
+            : leftPad + (groupIdx * (width - leftPad - rightPad) / (groups.length - 1));
+          treeNodeMap[g.node_index] = {{
+            layerIdx: layerIdx,
+            groupIdx: groupIdx,
+            x: x,
+            y: y,
+            parent: g.parent_index,
+            label: g.label
+          }};
+        }}
+      }}
+
+      Object.values(treeNodeMap).forEach((node) => {{
+        if (node.parent == null || !(node.parent in treeNodeMap)) return;
+        const parent = treeNodeMap[node.parent];
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", String(parent.x));
+        line.setAttribute("y1", String(parent.y));
+        line.setAttribute("x2", String(node.x));
+        line.setAttribute("y2", String(node.y));
+        line.setAttribute("stroke", "#b7b7b7");
+        line.setAttribute("stroke-width", "1.5");
+        svg.appendChild(line);
+      }});
+
+      Object.entries(treeNodeMap).forEach(([nodeIndex, node]) => {{
+        const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        group.setAttribute("data-node-index", nodeIndex);
+        group.style.cursor = "pointer";
+
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", String(node.x));
+        circle.setAttribute("cy", String(node.y));
+        circle.setAttribute("r", "12");
+        circle.setAttribute("fill", "#1f77b4");
+        circle.setAttribute("stroke", "#0f4872");
+        circle.setAttribute("stroke-width", "1");
+        group.appendChild(circle);
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", String(node.x + 16));
+        text.setAttribute("y", String(node.y + 4));
+        text.setAttribute("font-size", "12");
+        text.setAttribute("fill", "#222");
+        text.textContent = node.label;
+        group.appendChild(text);
+
+        group.addEventListener("click", () => {{
+          currentLayer = node.layerIdx;
+          currentGroup = node.groupIdx;
+          syncChainOptions();
+          syncSlider(0);
+          renderHistory();
+          renderFrame(parseInt(slider.value, 10));
+          updateTreeSelection();
+        }});
+
+        svg.appendChild(group);
+      }});
+      updateTreeSelection();
+    }}
+    function updateTreeSelection() {{
+      const svg = document.getElementById("treeSvg");
+      if (!svg || layers.length <= 1) return;
+      const groups = getCurrentGroups();
+      const selectedGroup = groups[currentGroup];
+      const selectedNode = selectedGroup ? selectedGroup.node_index : null;
+      svg.querySelectorAll("g[data-node-index]").forEach((elem) => {{
+        const c = elem.querySelector("circle");
+        if (!c) return;
+        if (String(selectedNode) === elem.getAttribute("data-node-index")) {{
+          c.setAttribute("fill", "#f59e0b");
+          c.setAttribute("stroke", "#7a4b00");
+          c.setAttribute("stroke-width", "2");
+        }} else {{
+          c.setAttribute("fill", "#1f77b4");
+          c.setAttribute("stroke", "#0f4872");
+          c.setAttribute("stroke-width", "1");
+        }}
+      }});
+    }}
+    function syncChainOptions() {{
+      const chainSelect = document.getElementById("chainSelect");
+      const viz = getCurrentViz();
+      if (!viz || !viz.chains.length) {{
+        chainSelect.innerHTML = "";
+        chainSelect.disabled = true;
+        currentChain = 0;
+        return;
+      }}
+      const options = viz.chains
+        .map((_, i) => `<option value="${{i}}">Chain ${{i}}</option>`)
+        .join("");
+      chainSelect.innerHTML = options;
+      currentChain = clamp(viz.default_chain_index || 0, 0, viz.chains.length - 1);
+      chainSelect.value = String(currentChain);
+      chainSelect.disabled = viz.chains.length <= 1;
+    }}
+    function renderHistory() {{
+      const panel = document.getElementById("historyPanel");
+      const img = document.getElementById("historyPlot");
+      const viz = getCurrentViz();
+      if (!viz || !viz.history_plots || viz.history_plots.length <= 1) {{
+        panel.style.display = "none";
+        img.removeAttribute("src");
+        return;
+      }}
+      panel.style.display = "block";
+      const p = viz.history_plots[currentChain];
+      if (p && p.length > 0) {{
+        img.src = "data:image/png;base64," + p;
+      }} else {{
+        img.removeAttribute("src");
+      }}
+    }}
+    function syncSlider(frameIndex = 0) {{
+      const slider = document.getElementById("frameSlider");
+      const frames = getCurrentFrames();
+      const maxFrame = Math.max(frames.length - 1, 0);
+      slider.max = String(maxFrame);
+      slider.value = String(clamp(frameIndex, 0, maxFrame));
+    }}
     function renderFrame(i) {{
+      const frames = getCurrentFrames();
       const frame = frames[i];
       if (!frame) return;
       document.getElementById("frameLabel").textContent = String(i);
@@ -433,8 +774,20 @@ def _build_chain_visualizer_html(chain: Chain) -> str:
       }}
     }}
     const slider = document.getElementById("frameSlider");
+    const chainSelect = document.getElementById("chainSelect");
+    chainSelect.addEventListener("change", (e) => {{
+      currentChain = parseInt(e.target.value, 10) || 0;
+      syncSlider(0);
+      renderHistory();
+      renderFrame(parseInt(slider.value, 10));
+      updateTreeSelection();
+    }});
     slider.addEventListener("input", (e) => renderFrame(parseInt(e.target.value, 10)));
-    renderFrame(0);
+    renderTreeGraph();
+    syncChainOptions();
+    syncSlider(0);
+    renderHistory();
+    renderFrame(parseInt(slider.value, 10));
   </script>
 </body>
 </html>
@@ -494,6 +847,34 @@ def _subset_chain_for_visualization(chain: Chain, atom_indices: list[int]) -> Ch
     return Chain.model_validate({"nodes": new_nodes, "parameters": chain.parameters})
 
 
+def _subset_chain_trajectory_for_visualization(
+    chain_trajectory: list[Chain], atom_indices: list[int]
+) -> list[Chain]:
+    return [
+        _subset_chain_for_visualization(chain=chain, atom_indices=atom_indices)
+        for chain in chain_trajectory
+    ]
+
+
+def _subset_tree_layers_for_visualization(
+    tree_layers: list[dict], atom_indices: list[int]
+) -> list[dict]:
+    subset_layers = []
+    for layer in tree_layers:
+        subset_groups = []
+        for group in layer["groups"]:
+            subset_groups.append(
+                {
+                    "label": group["label"],
+                    "node_index": group["node_index"],
+                    "parent_index": group["parent_index"],
+                    "chains": _subset_chain_trajectory_for_visualization(
+                        group["chains"], atom_indices
+                    ),
+                }
+            )
+        subset_layers.append({"depth": layer["depth"], "groups": subset_groups})
+    return subset_layers
 def _compute_ts_node(engine, ts_guess: StructureNode, bigchem: bool = False):
     """Run TS optimization through the engine and normalize to (StructureNode|None, ProgramOutput|None)."""
     try:
@@ -727,7 +1108,20 @@ def _flatten_params(data, prefix=""):
             next_prefix = f"{prefix}.{key}" if prefix else str(key)
             rows.extend(_flatten_params(data[key], next_prefix))
         return rows
-    return [(prefix if prefix else "value", str(data))]
+    return [(prefix if prefix else "value", _format_param_value(data))]
+
+
+def _format_param_value(value, max_str: int = 160):
+    if isinstance(value, list):
+        if len(value) > 20:
+            head = ", ".join(str(v) for v in value[:8])
+            tail = ", ".join(str(v) for v in value[-3:])
+            return f"[{head}, ..., {tail}] (n={len(value)})"
+        return str(value)
+    s = str(value)
+    if len(s) > max_str:
+        return s[: max_str - 3] + "..."
+    return s
 
 
 def _render_runinputs(program_input: RunInputs):
@@ -1609,7 +2003,7 @@ def visualize(
     console.print(BANNER)
     src = Path(result_path).resolve()
     with console.status("[bold cyan]Loading result object...[/bold cyan]"):
-        chain = _load_chain_for_visualization(
+        viz_data = _load_visualization_data(
             result_path=src,
             charge=charge,
             multiplicity=multiplicity,
@@ -1618,13 +2012,25 @@ def visualize(
             qminds_fp=qminds_fp, atom_indices=atom_indices
         )
         if selected is not None:
-            chain = _subset_chain_for_visualization(chain, selected)
+            viz_data.chain = _subset_chain_for_visualization(viz_data.chain, selected)
+            if viz_data.chain_trajectory:
+                viz_data.chain_trajectory = _subset_chain_trajectory_for_visualization(
+                    viz_data.chain_trajectory, selected
+                )
+            if viz_data.tree_layers:
+                viz_data.tree_layers = _subset_tree_layers_for_visualization(
+                    viz_data.tree_layers, selected
+                )
             console.print(
                 f"[dim]Visualizing atom subset with {len(selected)} atoms.[/dim]"
             )
 
     with console.status("[bold cyan]Building interactive HTML...[/bold cyan]"):
-        html = _build_chain_visualizer_html(chain)
+        html = _build_chain_visualizer_html(
+            chain=viz_data.chain,
+            chain_trajectory=viz_data.chain_trajectory,
+            tree_layers=viz_data.tree_layers,
+        )
 
     if output_html is None:
         suffix = src.stem if src.is_file() else src.name
@@ -1654,6 +2060,112 @@ def make_default_inputs(
     ri.save(out.parent / (out.stem+".toml"))
     console.print(
         f"[bold green]✓ Default inputs saved to:[/bold green] {out.parent / (out.stem+'.toml')}")
+
+
+def _path_str_for_toml(path_text: str | None, source_dir: Path, output_dir: Path) -> str | None:
+    if path_text is None:
+        return None
+    src = Path(path_text)
+    if not src.is_absolute():
+        src = (source_dir / src).resolve()
+    try:
+        return str(src.relative_to(output_dir))
+    except ValueError:
+        return str(src)
+
+
+def _resolve_tcin_reference(path_text: str | None, source_dir: Path) -> str | None:
+    if path_text is None:
+        return None
+    p = Path(path_text)
+    if p.is_absolute():
+        return str(p) if p.exists() else None
+
+    direct = (source_dir / p)
+    if direct.exists():
+        return str(p)
+
+    stem, suffix = p.stem, p.suffix
+    candidates = sorted(source_dir.glob(f"{stem}*{suffix}"))
+    if len(candidates) == 1:
+        return candidates[0].name
+
+    if "react" in stem.lower():
+        react_candidates = sorted(source_dir.glob(f"*react*{suffix}"))
+        if len(react_candidates) == 1:
+            return react_candidates[0].name
+
+    return None
+
+
+@app.command("toml-from-tcin")
+def toml_from_tcin(
+    tcin: Annotated[str, typer.Argument(help="Path to TeraChem input file (.in/.tc.in)")],
+    output: Annotated[str, typer.Option("--output", "-o", help="Output TOML file path")] = "qmmm_inputs_from_tc.toml",
+    compute_program: Annotated[str, typer.Option("--compute-program", help="QMMM backend: chemcloud or qcop")] = "chemcloud",
+    queue: Annotated[str, typer.Option("--queue", help="Optional ChemCloud queue to store in TOML")] = None,
+):
+    console.print(BANNER)
+    tcin_fp = Path(tcin).resolve()
+    if not tcin_fp.exists():
+        raise typer.BadParameter(f"TeraChem input not found: {tcin_fp}")
+    out_fp = Path(output).resolve()
+    parsed = parse_terachem_input_file(tcin_fp)
+    resolved_qminds = _resolve_tcin_reference(parsed["qmindices"], tcin_fp.parent)
+    resolved_prmtop = _resolve_tcin_reference(parsed["prmtop"], tcin_fp.parent)
+    resolved_coords = _resolve_tcin_reference(parsed["coordinates"], tcin_fp.parent)
+
+    missing = []
+    if resolved_qminds is None:
+        missing.append(f"qmindices ({parsed['qmindices']})")
+    if resolved_prmtop is None:
+        missing.append(f"prmtop ({parsed['prmtop']})")
+    if resolved_coords is None:
+        missing.append(f"coordinates ({parsed['coordinates']})")
+    if missing:
+        raise typer.BadParameter(
+            "Could not resolve required file references from tc.in: " + ", ".join(missing)
+        )
+
+    qmmm_inputs = {
+        "qminds_fp": _path_str_for_toml(resolved_qminds, tcin_fp.parent, out_fp.parent),
+        "prmtop_fp": _path_str_for_toml(resolved_prmtop, tcin_fp.parent, out_fp.parent),
+        "rst7_fp_react": _path_str_for_toml(resolved_coords, tcin_fp.parent, out_fp.parent),
+        "compute_program": compute_program,
+        "charge": parsed["charge"],
+        "spinmult": parsed["spinmult"],
+        # NEB requires ene+grad evaluations; tc.in references are often minimization inputs.
+        "run_type": "gradient",
+        "min_coordinates": parsed["min_coordinates"],
+    }
+    qmmm_inputs = {k: v for k, v in qmmm_inputs.items() if v is not None}
+
+    out = {
+        "engine_name": "qmmm",
+        "program": "terachem",
+        "path_min_method": "neb",
+        "program_kwds": {
+            "model": {
+                "method": parsed["method"],
+                "basis": parsed["basis"],
+            },
+            "keywords": parsed["keywords"],
+        },
+        "qmmm_inputs": qmmm_inputs,
+        "chain_inputs": {
+            "frozen_atom_indices": parsed["frozen_atom_indices"],
+            "use_geodesic_interpolation": False,
+        },
+    }
+    if queue:
+        out["chemcloud_queue"] = queue
+
+    out_fp.parent.mkdir(parents=True, exist_ok=True)
+    out_fp.write_text(tomli_w.dumps(out))
+
+    n_frozen = len(parsed["frozen_atom_indices"])
+    console.print(f"[bold green]✓ QMMM inputs TOML written:[/bold green] {out_fp}")
+    console.print(f"[dim]Parsed {n_frozen} frozen atoms from $constraints.[/dim]")
 
 
 @app.command("run-netgen")
