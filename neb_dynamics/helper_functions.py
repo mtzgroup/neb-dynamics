@@ -4,6 +4,7 @@ import math
 
 # from openeye import oechem
 import warnings
+import re
 from pathlib import Path
 
 import numpy as np
@@ -377,36 +378,110 @@ def naturals(n):
 
 
 def _load_info_from_tcin(file_path):
-    method = None
-    basis = None
+    parsed = parse_terachem_input_file(file_path)
+    return (
+        parsed["method"],
+        parsed["basis"],
+        parsed["charge"],
+        parsed["spinmult"],
+        parsed["keywords"],
+    )
 
-    charge = None
-    spinmult = None
 
-    inp_kwds = {}
-    tcin = open(file_path).read().splitlines()
-    assert (
-        len(tcin) >= 2
-    ), "File path given needs to have at least method and basis specified."
-    for line in tcin:
-        key, val = line.split()
-        if key == "run":
+def parse_terachem_input_file(file_path: str | Path) -> dict:
+    """
+    Parse a TeraChem input file for QMMM TOML generation.
+
+    Returns a dictionary with:
+    - method, basis, charge, spinmult
+    - run_type, min_coordinates
+    - prmtop, coordinates, qmindices
+    - keywords: additional key/value pairs
+    - frozen_atom_indices: 0-based atom indices parsed from $constraints
+    """
+    fp = Path(file_path)
+    lines = fp.read_text().splitlines()
+    if len(lines) < 2:
+        raise ValueError("TeraChem input must have at least two lines.")
+
+    parsed = {
+        "method": None,
+        "basis": None,
+        "charge": None,
+        "spinmult": None,
+        "run_type": "gradient",
+        "min_coordinates": "cartesian",
+        "prmtop": None,
+        "coordinates": None,
+        "qmindices": None,
+        "keywords": {},
+        "frozen_atom_indices": [],
+    }
+
+    in_constraints = False
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line:
             continue
-        elif key == "method":
-            method = val
+
+        lower = line.lower()
+        if lower.startswith("$constraints"):
+            in_constraints = True
+            continue
+        if in_constraints and lower.startswith("$end"):
+            in_constraints = False
+            continue
+        if in_constraints and lower.startswith("$"):
+            in_constraints = False
+
+        if in_constraints:
+            tokens = line.split()
+            if tokens and tokens[0].lower() == "atom" and len(tokens) >= 2:
+                m = re.search(r"-?\d+", tokens[1])
+                if m:
+                    parsed["frozen_atom_indices"].append(int(m.group()) - 1)
+            continue
+
+        if line.startswith("#"):
+            continue
+
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+
+        key = parts[0].lower()
+        val = " ".join(parts[1:])
+
+        if key == "method":
+            parsed["method"] = val
         elif key == "basis":
-            basis = val
-        elif key == "coordinates":
-            continue
+            parsed["basis"] = val
         elif key == "charge":
-            charge = int(val)
+            parsed["charge"] = int(val)
         elif key == "spinmult":
-            spinmult = int(val)
+            parsed["spinmult"] = int(val)
+        elif key == "run":
+            parsed["run_type"] = val
+        elif key == "min_coordinates":
+            parsed["min_coordinates"] = val
+        elif key == "prmtop":
+            parsed["prmtop"] = val
+        elif key == "coordinates":
+            parsed["coordinates"] = val
+        elif key == "qmindices":
+            parsed["qmindices"] = val
+        elif key != "scrdir":
+            parsed["keywords"][parts[0]] = val
 
-        else:
-            inp_kwds[key] = val
+    if parsed["method"] is None or parsed["basis"] is None:
+        raise ValueError("TeraChem input must include both 'method' and 'basis'.")
+    if parsed["charge"] is None:
+        parsed["charge"] = 0
+    if parsed["spinmult"] is None:
+        parsed["spinmult"] = 1
 
-    return method, basis, charge, spinmult, inp_kwds
+    parsed["frozen_atom_indices"] = sorted(set(parsed["frozen_atom_indices"]))
+    return parsed
 
 
 def _calculate_chain_distances(chain_traj):
