@@ -160,6 +160,7 @@ def test_build_chain_visualizer_html_includes_chain_dropdown_default_last(monkey
     assert 'id="chainSelect"' in html
     assert "default_chain_index" in html
     assert "Optimization History" in html
+    assert "<\\/script>" in html
 
 
 def test_build_chain_visualizer_html_tree_mode_has_layer_options(monkeypatch):

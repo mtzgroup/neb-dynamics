@@ -647,7 +647,7 @@ def _build_chain_visualizer_html(
       }};
       document.head.appendChild(script);
     }}
-  </script>
+  <\\/script>
 </body>
 </html>`.replace("__XYZ_B64__", xyzB64);
     }}
