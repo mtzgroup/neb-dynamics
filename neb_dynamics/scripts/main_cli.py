@@ -472,33 +472,39 @@ def _build_chain_visualizer_html(
     chain_trajectory: list[Chain] | None = None,
     tree_layers: list[dict] | None = None,
 ) -> str:
+    def _chain_plot_payload(chain_obj: Chain) -> dict[str, list[float]]:
+        try:
+            x_vals = [float(v) for v in chain_obj.integrated_path_length]
+            y_vals = [float(v) for v in chain_obj.energies_kcalmol]
+        except Exception:
+            x_vals = []
+            y_vals = []
+        return {"x": x_vals, "y": y_vals}
+
     def _serialize_chains(chains: list[Chain]) -> dict:
         chain_payload = []
         for chain_ind, chain_obj in enumerate(chains):
             frames = []
-            for i, node in enumerate(chain_obj.nodes):
-                struct_html = generate_structure_viewer_html(node.structure)
+            plot_payload = _chain_plot_payload(chain_obj)
+            for node in chain_obj.nodes:
                 frames.append(
                     {
-                        "structure_html_b64": base64.b64encode(
-                            struct_html.encode("utf-8")
+                        "xyz_b64": base64.b64encode(
+                            node.structure.to_xyz().encode("utf-8")
                         ).decode("ascii"),
-                        "plot_png_b64": generate_neb_plot(chain_obj.nodes, ind_node=i),
                     }
                 )
-            chain_payload.append({"index": chain_ind, "frames": frames})
+            chain_payload.append(
+                {
+                    "index": chain_ind,
+                    "frames": frames,
+                    "plot": plot_payload,
+                }
+            )
         default_chain_index = max(len(chains) - 1, 0)
-        if len(chains) > 1:
-            history_plots = [
-                _generate_opt_history_plot_b64(chains, selected_index=i)
-                for i in range(len(chains))
-            ]
-        else:
-            history_plots = []
         return {
             "chains": chain_payload,
             "default_chain_index": default_chain_index,
-            "history_plots": history_plots,
         }
 
     if tree_layers:
@@ -578,10 +584,10 @@ def _build_chain_visualizer_html(
     </div>
     <div class="panel">
       <h3>Energy Profile (Selected Chain)</h3>
-      <img id="energyPlot" alt="Energy profile" />
+      <div id="energyPlot" style="width: 100%; max-width: 700px;"></div>
       <div id="historyPanel" style="margin-top: 18px; display:none;">
         <h3>Optimization History</h3>
-        <img id="historyPlot" alt="Optimization history" />
+        <div id="historyPlot" style="width: 100%; max-width: 700px;"></div>
       </div>
     </div>
   </div>
@@ -592,6 +598,138 @@ def _build_chain_visualizer_html(
     }}
     function clamp(val, low, high) {{
       return Math.max(low, Math.min(high, val));
+    }}
+    function makeStructureSrcdoc(xyzB64) {{
+      return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body, #viewer {{
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: white;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }}
+    #status {{
+      padding: 12px;
+      color: #555;
+      font-size: 14px;
+    }}
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <div id="status">Loading 3D viewer...</div>
+  <script>
+    const xyz = decodeURIComponent(escape(atob("__XYZ_B64__")));
+    function boot() {{
+      const status = document.getElementById("status");
+      const host = document.getElementById("viewer");
+      status.remove();
+      const viewer = $3Dmol.createViewer(host, {{ backgroundColor: "white" }});
+      viewer.addModel(xyz, "xyz");
+      viewer.setStyle({{}}, {{ stick: {{}}, sphere: {{ scale: 0.3 }} }});
+      viewer.zoomTo();
+      viewer.render();
+    }}
+    if (window.$3Dmol) {{
+      boot();
+    }} else {{
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/3dmol@2.5.3/build/3Dmol-min.js";
+      script.onload = boot;
+      script.onerror = () => {{
+        const status = document.getElementById("status");
+        status.textContent = "Failed to load 3Dmol.js";
+      }};
+      document.head.appendChild(script);
+    }}
+  </script>
+</body>
+</html>`.replace("__XYZ_B64__", xyzB64);
+    }}
+    function renderPlot(containerId, traces, selectedTraceIndex = null, selectedPointIndex = null, title = "") {{
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      if (!traces || !traces.length) {{
+        container.innerHTML = "<div style=\\"color:#666;font-size:13px;\\">No plot data available.</div>";
+        return;
+      }}
+
+      const width = 700;
+      const height = 420;
+      const margin = {{ top: 28, right: 20, bottom: 44, left: 58 }};
+      const xs = traces.flatMap((trace) => trace.x || []);
+      const ys = traces.flatMap((trace) => trace.y || []);
+      if (!xs.length || !ys.length) {{
+        container.innerHTML = "<div style=\\"color:#666;font-size:13px;\\">No plot data available.</div>";
+        return;
+      }}
+
+      let minX = Math.min(...xs);
+      let maxX = Math.max(...xs);
+      let minY = Math.min(...ys);
+      let maxY = Math.max(...ys);
+      if (minX === maxX) maxX = minX + 1;
+      if (minY === maxY) maxY = minY + 1;
+      const yPad = (maxY - minY) * 0.08;
+      minY -= yPad;
+      maxY += yPad;
+
+      const plotW = width - margin.left - margin.right;
+      const plotH = height - margin.top - margin.bottom;
+      const sx = (x) => margin.left + ((x - minX) / (maxX - minX)) * plotW;
+      const sy = (y) => margin.top + (1 - (y - minY) / (maxY - minY)) * plotH;
+      const polyline = (xVals, yVals) => xVals.map((x, i) => `${{sx(x)}},${{sy(yVals[i])}}`).join(" ");
+
+      const ticks = 5;
+      const gridLines = [];
+      for (let i = 0; i <= ticks; i++) {{
+        const t = i / ticks;
+        const x = margin.left + t * plotW;
+        const y = margin.top + t * plotH;
+        const xv = minX + t * (maxX - minX);
+        const yv = maxY - t * (maxY - minY);
+        gridLines.push(`<line x1="${{x}}" y1="${{margin.top}}" x2="${{x}}" y2="${{height - margin.bottom}}" stroke="#eee" />`);
+        gridLines.push(`<line x1="${{margin.left}}" y1="${{y}}" x2="${{width - margin.right}}" y2="${{y}}" stroke="#eee" />`);
+        gridLines.push(`<text x="${{x}}" y="${{height - margin.bottom + 18}}" text-anchor="middle" font-size="11" fill="#666">${{xv.toFixed(2)}}</text>`);
+        gridLines.push(`<text x="${{margin.left - 8}}" y="${{y + 4}}" text-anchor="end" font-size="11" fill="#666">${{yv.toFixed(2)}}</text>`);
+      }}
+
+      const series = traces.map((trace, idx) => {{
+        const active = selectedTraceIndex === null ? true : idx === selectedTraceIndex;
+        const lineColor = active ? "#18834a" : "#b7b7b7";
+        const lineWidth = active ? 2.5 : 1.5;
+        const opacity = active ? 1.0 : 0.45;
+        const points = (trace.x || []).map((x, pointIdx) => {{
+          const y = trace.y[pointIdx];
+          const selected = idx === selectedTraceIndex && pointIdx === selectedPointIndex;
+          const r = selected ? 7 : 4;
+          const fill = selected ? "#f59e0b" : (active ? "#18834a" : "#9ca3af");
+          const stroke = selected ? "#7a4b00" : "none";
+          return `<circle cx="${{sx(x)}}" cy="${{sy(y)}}" r="${{r}}" fill="${{fill}}" stroke="${{stroke}}" stroke-width="1.5" />`;
+        }}).join("");
+        return `
+          <polyline fill="none" stroke="${{lineColor}}" stroke-width="${{lineWidth}}" opacity="${{opacity}}" points="${{polyline(trace.x || [], trace.y || [])}}" />
+          ${{points}}
+        `;
+      }}).join("");
+
+      container.innerHTML = `
+        <svg viewBox="0 0 ${{width}} ${{height}}" width="100%" role="img" aria-label="${{title || "Plot"}}">
+          <rect x="0" y="0" width="${{width}}" height="${{height}}" fill="white" rx="8" />
+          ${{gridLines.join("")}}
+          <line x1="${{margin.left}}" y1="${{height - margin.bottom}}" x2="${{width - margin.right}}" y2="${{height - margin.bottom}}" stroke="#444" />
+          <line x1="${{margin.left}}" y1="${{margin.top}}" x2="${{margin.left}}" y2="${{height - margin.bottom}}" stroke="#444" />
+          <text x="${{width / 2}}" y="18" text-anchor="middle" font-size="15" fill="#222">${{title}}</text>
+          <text x="${{width / 2}}" y="${{height - 8}}" text-anchor="middle" font-size="12" fill="#444">Integrated path length</text>
+          <text x="16" y="${{height / 2}}" text-anchor="middle" font-size="12" fill="#444" transform="rotate(-90 16 ${{height / 2}})">Energy (kcal/mol)</text>
+          ${{series}}
+        </svg>
+      `;
     }}
     let currentLayer = {default_layer_index};
     let currentGroup = {default_group_index};
@@ -737,20 +875,23 @@ def _build_chain_visualizer_html(
     }}
     function renderHistory() {{
       const panel = document.getElementById("historyPanel");
-      const img = document.getElementById("historyPlot");
       const viz = getCurrentViz();
-      if (!viz || !viz.history_plots || viz.history_plots.length <= 1) {{
+      if (!viz || !viz.chains || viz.chains.length <= 1) {{
         panel.style.display = "none";
-        img.removeAttribute("src");
         return;
       }}
       panel.style.display = "block";
-      const p = viz.history_plots[currentChain];
-      if (p && p.length > 0) {{
-        img.src = "data:image/png;base64," + p;
-      }} else {{
-        img.removeAttribute("src");
-      }}
+      renderPlot(
+        "historyPlot",
+        viz.chains.map((chain, i) => ({{
+          x: chain.plot ? chain.plot.x : [],
+          y: chain.plot ? chain.plot.y : [],
+          label: `Chain ${{i}}`,
+        }})),
+        currentChain,
+        null,
+        "Optimization History"
+      );
     }}
     function syncSlider(frameIndex = 0) {{
       const slider = document.getElementById("frameSlider");
@@ -765,13 +906,19 @@ def _build_chain_visualizer_html(
       if (!frame) return;
       document.getElementById("frameLabel").textContent = String(i);
       const frameEl = document.getElementById("structureFrame");
-      frameEl.srcdoc = decodeB64UTF8(frame.structure_html_b64);
-      const img = document.getElementById("energyPlot");
-      if (frame.plot_png_b64 && frame.plot_png_b64.length > 0) {{
-        img.src = "data:image/png;base64," + frame.plot_png_b64;
-      }} else {{
-        img.removeAttribute("src");
-      }}
+      frameEl.srcdoc = makeStructureSrcdoc(frame.xyz_b64);
+      const viz = getCurrentViz();
+      const chain = viz && viz.chains ? viz.chains[currentChain] : null;
+      renderPlot(
+        "energyPlot",
+        [{{
+          x: chain && chain.plot ? chain.plot.x : [],
+          y: chain && chain.plot ? chain.plot.y : [],
+        }}],
+        0,
+        i,
+        "Energy Profile"
+      );
     }}
     const slider = document.getElementById("frameSlider");
     const chainSelect = document.getElementById("chainSelect");
