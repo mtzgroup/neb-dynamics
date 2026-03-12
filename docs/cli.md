@@ -186,6 +186,30 @@ mepd make-default-inputs --name inputs.toml
 
 ---
 
+### toml-from-tcin
+
+Create a QMMM `RunInputs` TOML from a TeraChem input file (including frozen atoms from `$constraints`).
+
+```bash
+mepd toml-from-tcin tc.in --output qmmm_inputs_s0min_frozen.toml
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `tcin` | Path to TeraChem input file (`.in` / `tc.in`) |
+| `--output`, `-o` | Output TOML path (default: `qmmm_inputs_from_tc.toml`) |
+| `--compute-program` | QMMM backend (`chemcloud` or `qcop`, default: `chemcloud`) |
+| `--queue` | Optional ChemCloud queue to write into TOML |
+
+Notes:
+- Parses `method`, `basis`, `charge`, `spinmult`, `run`, and `min_coordinates`.
+- Parses additional TeraChem keywords into `[program_kwds.keywords]`.
+- Parses `$constraints` lines of the form `atom N` into 0-based `chain_inputs.frozen_atom_indices`.
+
+---
+
 ### visualize
 
 Render an interactive browser-based viewer for saved NEB/MSMEP results.
@@ -219,6 +243,123 @@ mepd visualize mep_output_msmep --output msmep_view.html
 mepd visualize mep_output_neb.xyz --qminds-fp qmindices.dat
 mepd visualize mep_output_neb.xyz --atom-indices "12,13,14,15"
 ```
+
+---
+
+### netgen-smiles
+
+Grow a retropaths reaction network from a root SMILES string, convert each node into a structure-bearing NEB network, minimize endpoints, queue recursive MSMEP runs, and write a live status page.
+
+```bash
+mepd netgen-smiles \
+  --smiles "C=CC(O)CC=C" \
+  --environment "O" \
+  --inputs examples/example_inputs.toml \
+  --name allylic_alcohol_water
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--smiles`, `-s` | Root reactant SMILES |
+| `--environment`, `-e` | Environment SMILES (optional) |
+| `--inputs`, `-i` | Path minimization `RunInputs` TOML |
+| `--name` | Workspace name / default output directory |
+| `--directory`, `-d` | Existing or new workspace directory |
+| `--timeout-seconds` | Retropaths growth timeout |
+| `--max-nodes` | Maximum retropaths pot size |
+| `--max-depth` | Maximum retropaths search depth |
+| `--max-parallel-nebs` | Number of recursive NEBs to run concurrently |
+| `--no-open` | Do not automatically open `status.html` |
+
+**Example:**
+
+```bash
+uv run mepd netgen-smiles \
+  --smiles "C=CC(O)CC=C" \
+  --environment "O" \
+  --inputs examples/example_inputs.toml \
+  --name allylic_alcohol_water \
+  --max-nodes 10 \
+  --max-parallel-nebs 4
+```
+
+**What it does:**
+
+1. grows the retropaths pot from the input SMILES
+2. converts each pot node into a `StructureNode` while preserving molecular graph atom indices
+3. minimizes each endpoint structure once, caching the optimization result in the workspace
+4. builds a persistent NEB queue
+5. runs recursive MSMEP on queued pairs
+6. reconstructs a completed-results NEB pot from the finished leaf chains
+
+**Workspace outputs:**
+
+- `workspace.json`
+- `retropaths_pot.json`
+- `neb_pot.json`
+- `neb_queue.json`
+- `neb_pot_annotated.json`
+- `queue_runs/`
+- `endpoint_optimizations/`
+- `status.html`
+
+Notes:
+- completed NEB chains are treated as bidirectional when reconstructing the completed network
+- each autosplit leaf is labeled as `ReactionName(step N)` in the completed NEB graph
+- reverse edges inherit the same step label and use the reversed chain with the reverse barrier
+
+---
+
+### status
+
+Regenerate the live status page for a `netgen-smiles` workspace.
+
+```bash
+mepd status --directory ./allylic_alcohol_water
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--directory`, `-d` | Workspace directory containing `workspace.json` |
+| `--output`, `-o` | Optional output path for the generated HTML |
+| `--temperature` | Temperature in kelvin for the kinetics widget |
+| `--initial-condition` | Repeatable `NODE=VALUE` override for initial concentrations |
+| `--no-open` | Do not automatically open the browser |
+
+**Examples:**
+
+```bash
+uv run mepd status -d ./allylic_alcohol_water
+
+uv run mepd status \
+  -d ./allylic_alcohol_water \
+  --temperature 350 \
+  --initial-condition 0=0.8 \
+  --initial-condition 1=0.2
+```
+
+`status.html` includes:
+
+- the original retropaths pot graph
+- the completed-results NEB pot graph
+- graph-delta counts
+- queue status tables
+- clickable per-edge NEB viewers
+- a concentration-vs-time kinetics widget over the completed directed NEB graph
+
+Kinetics defaults:
+- all nodes start at `0.0 M`
+- node `0` starts at `1.0 M`
+
+Kinetics note:
+- the status-page kinetics widget now solves the linear rate equations over the directed completed NEB graph
+- `End Time` is the simulation horizon
+- `Time Points` is the numerical resolution used by the ODE integrator
+- the time axis is currently best interpreted as relative/arbitrary time, not a validated physical seconds scale
 
 ---
 

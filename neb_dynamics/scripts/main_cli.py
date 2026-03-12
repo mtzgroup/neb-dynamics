@@ -62,6 +62,14 @@ from rich.text import Text
 from rich.syntax import Syntax
 from rich import box
 from neb_dynamics.chainhelpers import generate_neb_plot
+from neb_dynamics.retropaths_workflow import (
+    RetropathsWorkspace,
+    create_workspace,
+    prepare_neb_workspace,
+    run_netgen_smiles_workflow,
+    summarize_queue,
+    write_status_html,
+)
 
 # Custom theme for Claude Code-like styling
 custom_theme = Theme({
@@ -110,6 +118,30 @@ _configure_cli_logging()
 
 
 ob_log_handler = openbabel.OBMessageHandler()
+
+
+def _parse_kmc_initial_condition_overrides(
+    overrides: list[str] | None,
+) -> dict[int, float] | None:
+    if not overrides:
+        return None
+
+    parsed: dict[int, float] = {}
+    for override in overrides:
+        if "=" not in override:
+            raise typer.BadParameter(
+                f"Invalid --initial-condition '{override}'. Use NODE=VALUE, for example 0=1.0."
+            )
+        node_text, value_text = override.split("=", 1)
+        try:
+            node_index = int(node_text.strip())
+            value = float(value_text.strip())
+        except ValueError as exc:
+            raise typer.BadParameter(
+                f"Invalid --initial-condition '{override}'. Use NODE=VALUE, for example 0=1.0."
+            ) from exc
+        parsed[node_index] = value
+    return parsed
 ob_log_handler.SetOutputLevel(0)
 
 app = typer.Typer(
@@ -1464,13 +1496,29 @@ def run(
     all_nodes = [StructureNode(structure=s) for s in all_structs]
     if minimize_ends:
         console.print("[bold cyan]⟳ Minimizing input endpoints...[/bold cyan]")
-        start_tr = program_input.engine.compute_geometry_optimization(
-            all_nodes[0], keywords={'coordsys': 'cart', 'maxiter': 500})
-
-        all_nodes[0] = start_tr[-1]
-        end_tr = program_input.engine.compute_geometry_optimization(
-            all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter': 500})
-        all_nodes[-1] = end_tr[-1]
+        batch_optimizer = getattr(program_input.engine, "compute_geometry_optimizations", None)
+        if callable(batch_optimizer):
+            console.print("[dim]Submitting batched endpoint geometry optimizations...[/dim]")
+            try:
+                trajectories = batch_optimizer(
+                    [all_nodes[0], all_nodes[-1]],
+                    keywords={'coordsys': 'cart', 'maxiter': 500},
+                )
+                all_nodes[0] = trajectories[0][-1]
+                all_nodes[-1] = trajectories[-1][-1]
+            except TypeError:
+                trajectories = batch_optimizer([all_nodes[0], all_nodes[-1]])
+                all_nodes[0] = trajectories[0][-1]
+                all_nodes[-1] = trajectories[-1][-1]
+        else:
+            console.print("[dim]Minimizing start endpoint...[/dim]")
+            start_tr = program_input.engine.compute_geometry_optimization(
+                all_nodes[0], keywords={'coordsys': 'cart', 'maxiter': 500})
+            all_nodes[0] = start_tr[-1]
+            console.print("[dim]Minimizing end endpoint...[/dim]")
+            end_tr = program_input.engine.compute_geometry_optimization(
+                all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter': 500})
+            all_nodes[-1] = end_tr[-1]
         console.print("[bold green]✓ Done![/bold green]")
 
     # create Chain
@@ -2207,6 +2255,131 @@ def make_default_inputs(
     ri.save(out.parent / (out.stem+".toml"))
     console.print(
         f"[bold green]✓ Default inputs saved to:[/bold green] {out.parent / (out.stem+'.toml')}")
+
+
+@app.command("netgen-smiles")
+def netgen_smiles(
+    smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES")] = None,
+    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES")] = "",
+    name: Annotated[str, typer.Option("--name", help="Run name / default workspace folder name")] = None,
+    directory: Annotated[str, typer.Option("--directory", "-d", help="Workspace directory")] = None,
+    timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
+    max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
+    max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
+    max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of recursive NEBs to run concurrently")] = 1,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the generated status HTML")] = False,
+):
+    console.print(BANNER)
+    if smiles is None:
+        raise typer.BadParameter("--smiles is required.")
+    if inputs is None:
+        raise typer.BadParameter("--inputs/-i is required.")
+
+    requested_dir = Path(directory).resolve() if directory else None
+    if requested_dir is not None and (requested_dir / "workspace.json").exists():
+        workspace = RetropathsWorkspace.read(requested_dir)
+        workspace.max_parallel_nebs = max_parallel_nebs
+        workspace.write()
+    else:
+        workspace = create_workspace(
+            root_smiles=smiles,
+            environment_smiles=environment,
+            inputs_fp=inputs,
+            name=name,
+            directory=directory,
+            timeout_seconds=timeout_seconds,
+            max_nodes=max_nodes,
+            max_depth=max_depth,
+            max_parallel_nebs=max_parallel_nebs,
+        )
+
+    console.print(f"[bold cyan]Workspace:[/bold cyan] [white]{workspace.workdir}[/white]")
+    console.print(f"[bold cyan]Root SMILES:[/bold cyan] [white]{workspace.root_smiles}[/white]")
+    console.print(f"[bold cyan]Environment:[/bold cyan] [white]{workspace.environment_smiles or '(none)'}[/white]")
+
+    with console.status("[bold cyan]Preparing retropaths cache, converted pot, and queue...[/bold cyan]"):
+        prepare_neb_workspace(workspace)
+        queue, _, status_fp = write_status_html(workspace)
+    console.print(f"[dim]Initial status HTML: {status_fp}[/dim]")
+
+    try:
+        queue, _pot = run_netgen_smiles_workflow(
+            workspace,
+            progress=lambda msg: console.print(f"[cyan]{msg}[/cyan]"),
+        )
+    finally:
+        queue, _, status_fp = write_status_html(workspace)
+
+    counts = summarize_queue(queue)
+    summary = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    summary.add_column(style="bold cyan")
+    summary.add_column(style="white")
+    summary.add_row("Workspace", workspace.workdir)
+    summary.add_row("Queue Items", str(counts["items"]))
+    summary.add_row("Completed", str(counts.get("completed", 0)))
+    summary.add_row("Running", str(counts.get("running", 0)))
+    summary.add_row("Pending", str(counts.get("pending", 0)))
+    summary.add_row("Failed", str(counts.get("failed", 0)))
+    summary.add_row("Incompatible", str(counts.get("incompatible", 0)))
+    summary.add_row("Optimized Endpoints", str(sum(bool(_pot.graph.nodes[n].get("endpoint_optimized")) for n in _pot.graph.nodes)))
+    summary.add_row("Status HTML", str(status_fp))
+    console.print(Panel(summary, title="[bold green]✓ netgen-smiles Finished[/bold green]", border_style="green"))
+
+    if not no_open:
+        webbrowser.open(status_fp.resolve().as_uri())
+
+
+@app.command("status")
+def status_cmd(
+    directory: Annotated[str, typer.Option("--directory", "-d", help="Workspace directory containing workspace.json")] = ".",
+    output_html: Annotated[str, typer.Option("--output", "-o", help="Optional override path for generated status HTML")] = None,
+    temperature: Annotated[float, typer.Option("--temperature", help="KMC temperature in kelvin for the status page")] = 298.15,
+    initial_conditions: Annotated[List[str], typer.Option("--initial-condition", help="Override KMC initial conditions as NODE=VALUE. Repeatable.")] = None,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open browser window")] = False,
+):
+    console.print(BANNER)
+    workspace_dir = Path(directory).resolve()
+    workspace_fp = workspace_dir / "workspace.json"
+    if not workspace_fp.exists():
+        console.print(f"[bold red]✗ ERROR:[/bold red] No workspace.json found in {workspace_dir}")
+        raise typer.Exit(1)
+
+    workspace = RetropathsWorkspace.read(workspace_dir)
+    kmc_initial_conditions = _parse_kmc_initial_condition_overrides(initial_conditions)
+    queue, pot, status_fp = write_status_html(
+        workspace,
+        kmc_temperature_kelvin=temperature,
+        kmc_initial_conditions=kmc_initial_conditions,
+    )
+    counts = summarize_queue(queue)
+
+    if output_html is not None:
+        out_fp = Path(output_html).resolve()
+        out_fp.write_text(status_fp.read_text(encoding="utf-8"), encoding="utf-8")
+        status_fp = out_fp
+
+    summary = Table(box=box.ROUNDED, border_style="cyan", show_header=False)
+    summary.add_column(style="bold cyan")
+    summary.add_column(style="white")
+    summary.add_row("Workspace", workspace.workdir)
+    summary.add_row("Root", workspace.root_smiles)
+    summary.add_row("Environment", workspace.environment_smiles or "(none)")
+    summary.add_row("Queue Items", str(counts["items"]))
+    summary.add_row("Completed", str(counts.get("completed", 0)))
+    summary.add_row("Running", str(counts.get("running", 0)))
+    summary.add_row("Pending", str(counts.get("pending", 0)))
+    summary.add_row("Failed", str(counts.get("failed", 0)))
+    summary.add_row("Incompatible", str(counts.get("incompatible", 0)))
+    summary.add_row("Network Nodes", str(pot.graph.number_of_nodes()))
+    summary.add_row("Network Edges", str(pot.graph.number_of_edges()))
+    summary.add_row("Optimized Endpoints", str(sum(bool(pot.graph.nodes[n].get("endpoint_optimized")) for n in pot.graph.nodes)))
+    summary.add_row("KMC Temperature (K)", f"{temperature:.2f}")
+    summary.add_row("Status HTML", str(status_fp))
+    console.print(Panel(summary, title="[bold cyan]Network Status[/bold cyan]", border_style="cyan"))
+
+    if not no_open:
+        webbrowser.open(status_fp.resolve().as_uri())
 
 
 def _path_str_for_toml(path_text: str | None, source_dir: Path, output_dir: Path) -> str | None:

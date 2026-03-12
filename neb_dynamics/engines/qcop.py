@@ -356,3 +356,67 @@ class QCOPEngine(Engine):
             for struct, result in zip(structures, all_outputs)
 
         ]
+
+    def compute_geometry_optimizations(
+        self,
+        nodes: list[StructureNode],
+        keywords={'coordsys': 'cart', 'maxit': 500},
+    ) -> list[list[StructureNode]]:
+        """
+        Batch geometry optimizations when the backend can accept a list of inputs.
+        ChemCloud supports list submission, so use that path there; otherwise fall
+        back to sequential single-node optimizations.
+        """
+        if len(nodes) == 0:
+            return []
+
+        if self.compute_program != "chemcloud":
+            return [self.compute_geometry_optimization(node=node, keywords=keywords) for node in nodes]
+
+        program_inputs = []
+        for node in nodes:
+            if "terachem" not in self.program:
+                program_inputs.append(
+                    DualProgramInput(
+                        calctype="optimization",  # type: ignore
+                        structure=node.structure,
+                        subprogram=self.program,
+                        subprogram_args={
+                            "model": self.program_args.model,
+                            "keywords": self.program_args.keywords,
+                        },
+                        keywords=keywords,
+                    )
+                )
+            else:
+                program_inputs.append(
+                    ProgramInput(
+                        structure=node.structure,
+                        calctype="optimization",  # type: ignore
+                        model=self.program_args.model,
+                        keywords={
+                            "purify": "no",
+                            "new_minimizer": "yes",
+                        },
+                    )
+                )
+
+        outputs = self.compute_func(
+            self.geometry_optimizer if "terachem" not in self.program else "terachem",
+            program_inputs if len(program_inputs) > 1 else program_inputs[0],
+            collect_files=self.collect_files,
+        )
+        if len(program_inputs) == 1:
+            outputs = [outputs]
+
+        trajectories: list[list[StructureNode]] = []
+        for output in outputs:
+            all_outputs = output.results.trajectory
+            structures = [result.input_data.structure for result in all_outputs]
+            trajectories.append(
+                [
+                    StructureNode(structure=struct, _cached_result=result)
+                    for struct, result in zip(structures, all_outputs)
+                ]
+            )
+        return trajectories
