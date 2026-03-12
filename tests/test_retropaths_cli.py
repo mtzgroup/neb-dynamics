@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from pathlib import Path
 
 import networkx as nx
 
@@ -18,11 +19,13 @@ def test_create_workspace_writes_workspace_json(tmp_path):
         root_smiles="C=CC(O)CC=C",
         environment_smiles="O",
         inputs_fp=tmp_path / "inputs.toml",
+        reactions_fp=tmp_path / "reactions.p",
         directory=tmp_path / "run",
     )
 
     assert workspace.workspace_fp.exists()
     assert workspace.directory == (tmp_path / "run").resolve()
+    assert workspace.reactions_path == (tmp_path / "reactions.p").resolve()
 
 
 def test_status_command_reads_workspace_and_writes_summary(monkeypatch, tmp_path):
@@ -113,3 +116,63 @@ def test_status_command_parses_kmc_inputs(monkeypatch, tmp_path):
     )
 
     assert captured == {"temperature": 425.0, "initial_conditions": {0: 0.4, 2: 0.6}}
+
+
+def test_netgen_smiles_passes_reactions_fp(monkeypatch, tmp_path):
+    reactions_fp = tmp_path / "reactions.p"
+    reactions_fp.write_text("x")
+    status_fp = tmp_path / "status.html"
+    status_fp.write_text("<html>ok</html>")
+
+    created = {}
+
+    monkeypatch.setattr(
+        main_cli,
+        "create_workspace",
+        lambda **kwargs: created.update(kwargs) or SimpleNamespace(
+            workdir=str(tmp_path),
+            root_smiles=kwargs["root_smiles"],
+            environment_smiles=kwargs["environment_smiles"],
+            reactions_path=reactions_fp.resolve(),
+        ),
+    )
+    monkeypatch.setattr(main_cli, "prepare_neb_workspace", lambda _workspace: None)
+    monkeypatch.setattr(
+        main_cli,
+        "write_status_html",
+        lambda workspace, kmc_temperature_kelvin=298.15, kmc_initial_conditions=None: (
+            RetropathsNEBQueue(),
+            SimpleNamespace(graph=nx.DiGraph()),
+            status_fp,
+        ),
+    )
+    monkeypatch.setattr(
+        main_cli,
+        "run_netgen_smiles_workflow",
+        lambda workspace, progress=None: (
+            RetropathsNEBQueue(),
+            SimpleNamespace(graph=nx.DiGraph()),
+        ),
+    )
+    monkeypatch.setattr(
+        main_cli,
+        "summarize_queue",
+        lambda _queue: {"items": 0, "completed": 0, "running": 0, "pending": 0, "failed": 0, "incompatible": 0},
+    )
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0, endpoint_optimized=False)
+    monkeypatch.setattr(
+        main_cli,
+        "run_netgen_smiles_workflow",
+        lambda workspace, progress=None: (RetropathsNEBQueue(), pot),
+    )
+
+    main_cli.netgen_smiles(
+        smiles="C",
+        inputs=str(tmp_path / "inputs.toml"),
+        reactions_fp=str(reactions_fp),
+        no_open=True,
+    )
+
+    assert Path(created["reactions_fp"]).resolve() == reactions_fp.resolve()

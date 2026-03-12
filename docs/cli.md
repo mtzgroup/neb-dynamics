@@ -254,6 +254,7 @@ Grow a retropaths reaction network from a root SMILES string, convert each node 
 mepd netgen-smiles \
   --smiles "C=CC(O)CC=C" \
   --environment "O" \
+  --reactions-fp /path/to/reactions.p \
   --inputs examples/example_inputs.toml \
   --name allylic_alcohol_water
 ```
@@ -264,6 +265,7 @@ mepd netgen-smiles \
 |--------|-------------|
 | `--smiles`, `-s` | Root reactant SMILES |
 | `--environment`, `-e` | Environment SMILES (optional) |
+| `--reactions-fp` | Path to the retropaths `reactions.p` library |
 | `--inputs`, `-i` | Path minimization `RunInputs` TOML |
 | `--name` | Workspace name / default output directory |
 | `--directory`, `-d` | Existing or new workspace directory |
@@ -279,6 +281,7 @@ mepd netgen-smiles \
 uv run mepd netgen-smiles \
   --smiles "C=CC(O)CC=C" \
   --environment "O" \
+  --reactions-fp /Users/janestrada/retropaths/data/reactions.p \
   --inputs examples/example_inputs.toml \
   --name allylic_alcohol_water \
   --max-nodes 10 \
@@ -288,6 +291,7 @@ uv run mepd netgen-smiles \
 **What it does:**
 
 1. grows the retropaths pot from the input SMILES
+   using the configured `reactions.p` library
 2. converts each pot node into a `StructureNode` while preserving molecular graph atom indices
 3. minimizes each endpoint structure once, caching the optimization result in the workspace
 4. builds a persistent NEB queue

@@ -44,6 +44,7 @@ class RetropathsWorkspace:
     root_smiles: str
     environment_smiles: str
     inputs_fp: str
+    reactions_fp: str = ""
     timeout_seconds: int = 30
     max_nodes: int = 40
     max_depth: int = 4
@@ -85,6 +86,12 @@ class RetropathsWorkspace:
     def edge_visualizations_dir(self) -> Path:
         return self.directory / "edge_visualizations"
 
+    @property
+    def reactions_path(self) -> Path:
+        if self.reactions_fp:
+            return Path(self.reactions_fp)
+        return _retropaths_repo() / "data" / "reactions.p"
+
     def write(self) -> None:
         self.directory.mkdir(parents=True, exist_ok=True)
         self.workspace_fp.write_text(json.dumps(asdict(self), indent=2, sort_keys=True))
@@ -104,6 +111,7 @@ def create_workspace(
     root_smiles: str,
     environment_smiles: str,
     inputs_fp: Path | str,
+    reactions_fp: Path | str | None = None,
     name: str | None = None,
     directory: Path | str | None = None,
     timeout_seconds: int = 30,
@@ -119,6 +127,7 @@ def create_workspace(
         root_smiles=root_smiles,
         environment_smiles=environment_smiles,
         inputs_fp=str(Path(inputs_fp).resolve()),
+        reactions_fp=str(Path(reactions_fp).resolve()) if reactions_fp else "",
         timeout_seconds=timeout_seconds,
         max_nodes=max_nodes,
         max_depth=max_depth,
@@ -163,7 +172,7 @@ def load_or_grow_retropaths_pot(workspace: RetropathsWorkspace):
     if workspace.retropaths_pot_fp.exists():
         return RetropathsPot.from_json(workspace.retropaths_pot_fp)
 
-    library = hf.pload(_retropaths_repo() / "data" / "reactions.p")
+    library = hf.pload(workspace.reactions_path)
     root = Molecule.from_smiles(workspace.root_smiles)
     environment = (
         Molecule.from_smiles(workspace.environment_smiles)
@@ -760,6 +769,7 @@ def build_status_html(
     <div><strong>Root:</strong> <code>{workspace.root_smiles}</code></div>
     <div><strong>Environment:</strong> <code>{workspace.environment_smiles or '(none)'}</code></div>
     <div><strong>Inputs:</strong> <code>{workspace.inputs_fp}</code></div>
+    <div><strong>Reactions File:</strong> <code>{workspace.reactions_path}</code></div>
     <div><strong>Workspace:</strong> <code>{workspace.workdir}</code></div>
   </div>
 

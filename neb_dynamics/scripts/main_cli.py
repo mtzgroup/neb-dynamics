@@ -2261,6 +2261,7 @@ def make_default_inputs(
 def netgen_smiles(
     smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES")] = None,
     inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
     environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES")] = "",
     name: Annotated[str, typer.Option("--name", help="Run name / default workspace folder name")] = None,
     directory: Annotated[str, typer.Option("--directory", "-d", help="Workspace directory")] = None,
@@ -2280,12 +2281,15 @@ def netgen_smiles(
     if requested_dir is not None and (requested_dir / "workspace.json").exists():
         workspace = RetropathsWorkspace.read(requested_dir)
         workspace.max_parallel_nebs = max_parallel_nebs
+        if reactions_fp is not None:
+            workspace.reactions_fp = str(Path(reactions_fp).resolve())
         workspace.write()
     else:
         workspace = create_workspace(
             root_smiles=smiles,
             environment_smiles=environment,
             inputs_fp=inputs,
+            reactions_fp=reactions_fp,
             name=name,
             directory=directory,
             timeout_seconds=timeout_seconds,
@@ -2297,6 +2301,7 @@ def netgen_smiles(
     console.print(f"[bold cyan]Workspace:[/bold cyan] [white]{workspace.workdir}[/white]")
     console.print(f"[bold cyan]Root SMILES:[/bold cyan] [white]{workspace.root_smiles}[/white]")
     console.print(f"[bold cyan]Environment:[/bold cyan] [white]{workspace.environment_smiles or '(none)'}[/white]")
+    console.print(f"[bold cyan]Reactions File:[/bold cyan] [white]{workspace.reactions_path}[/white]")
 
     with console.status("[bold cyan]Preparing retropaths cache, converted pot, and queue...[/bold cyan]"):
         prepare_neb_workspace(workspace)
