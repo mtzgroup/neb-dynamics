@@ -6,6 +6,7 @@ from typing import List, Union
 import os
 from numpy.typing import NDArray
 import numpy as np
+from pydantic import ValidationError
 
 import qcop
 from qcop.exceptions import ExternalProgramError
@@ -98,7 +99,23 @@ class QCOPEngine(Engine):
         if self.compute_program == "qcop":
             return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
-            return cc_compute(*args, queue=self.chemcloud_queue, **kwargs)
+            try:
+                return cc_compute(*args, queue=self.chemcloud_queue, **kwargs)
+            except ValidationError as exc:
+                message = str(exc)
+                if "ProgramOutput" not in message:
+                    raise
+                program = str(args[0]) if args else self.program
+                raise ExternalProgramError(
+                    program=program,
+                    message=(
+                        "ChemCloud returned a response that is incompatible with the installed "
+                        "qcio/chemcloud ProgramOutput schema. This usually happens when ChemCloud "
+                        "tries to materialize a failed task using an older ProgramOutput layout. "
+                        "Check the remote task failure details and align the chemcloud/qcio versions."
+                    ),
+                    original_exception=exc,
+                ) from exc
         else:
             raise ValueError(
                 f"Invalid compute program: {self.compute_program}. Must be one of: {AVAIL_PROGRAMS}"
