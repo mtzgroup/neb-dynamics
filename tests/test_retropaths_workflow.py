@@ -187,9 +187,16 @@ def test_write_status_html_writes_visible_pot_sections(monkeypatch, tmp_path):
     chain = Chain.model_validate(
         {"nodes": [_node(0.8), _node(1.0), _node(1.2)], "parameters": ChainInputs()}
     )
+    reverse_bad = Chain.model_validate(
+        {"nodes": [_node(1.2), _node(1.0), _node(0.8)], "parameters": ChainInputs()}
+    )
+    reverse_bad.nodes[0]._cached_energy = 1.2
+    reverse_bad.nodes[1]._cached_energy = 1.0
+    reverse_bad.nodes[2]._cached_energy = 0.8
     neb_pot.graph.add_node(0, molecule=_node(0.8).graph, td=_node(0.8))
     neb_pot.graph.add_node(1, molecule=_node(1.2).graph, td=_node(1.2))
     neb_pot.graph.add_edge(0, 1, reaction="0->1", list_of_nebs=[chain], barrier=1.23)
+    neb_pot.graph.add_edge(1, 0, reaction="1->0", list_of_nebs=[reverse_bad], barrier=0.0)
     neb_pot.write_to_disk(workspace.neb_pot_fp)
 
     workspace.queue_fp.write_text('{"attempted_pairs": {}, "items": [], "version": 1}')
@@ -232,6 +239,8 @@ def test_write_status_html_writes_visible_pot_sections(monkeypatch, tmp_path):
     assert 'data-node-id="0"' in html
     assert 'data-node-id="1"' in html
     assert "350.00" in html
+    assert "Suppressed KMC Edges" in html
+    assert "start_endpoint_is_chain_maximum" in html
     assert "edge_visualizations/edge_0_1.html" in html
     assert (workspace.edge_visualizations_dir / "edge_0_1.html").read_text() == "<html>viewer</html>"
 
