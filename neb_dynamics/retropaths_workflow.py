@@ -655,6 +655,22 @@ def _kmc_summary_rows(final_populations: dict[int, float], labels: dict[int, str
     return "".join(rows) or "<tr><td colspan='3'>No data</td></tr>"
 
 
+def _kmc_suppressed_rows(items: list[dict[str, str | float]]) -> str:
+    if not items:
+        return "<tr><td colspan='5'>None</td></tr>"
+    rows = []
+    for item in items:
+        rows.append(
+            "<tr>"
+            f"<td>{item['source']} -&gt; {item['target']}</td>"
+            f"<td>{item['reaction']}</td>"
+            f"<td>{float(item['barrier']):.6f}</td>"
+            f"<td>{item['reason']}</td>"
+            "</tr>"
+        )
+    return "".join(rows)
+
+
 def build_status_html(
     workspace: RetropathsWorkspace,
     retropaths_pot,
@@ -708,6 +724,7 @@ def build_status_html(
         },
         labels=kmc_labels,
     )
+    kmc_suppressed_rows = _kmc_suppressed_rows(kmc_payload.get("suppressed_edges", []))
 
     def _rows(items):
         if not items:
@@ -872,6 +889,14 @@ def build_status_html(
       <h3 style="margin-top: 0;">Trajectories</h3>
       <svg id="kmc-plot" width="960" height="360" viewBox="0 0 960 360" style="width: 100%; height: auto; border: 1px solid #d8ccb9; background: #fff;"></svg>
     </div>
+    <div class="card" style="margin-top: 12px;">
+      <h3 style="margin-top: 0;">Suppressed KMC Edges</h3>
+      <div style="margin-bottom: 8px;">Edges are excluded from kinetics when the directed chain starts at the highest-energy endpoint and therefore produces an artificial zero barrier.</div>
+      <table>
+        <tr><th>Edge</th><th>Reaction</th><th>Barrier</th><th>Reason</th></tr>
+        {kmc_suppressed_rows}
+      </table>
+    </div>
   </div>
 
   <div class="section">
@@ -951,16 +976,52 @@ def build_status_html(
         return matrix;
       }}
 
-      function derivative(matrix, state) {{
-        return matrix.map((row) => row.reduce((sum, value, idx) => sum + value * state[idx], 0));
+      function solveLinearSystem(matrix, rhs) {{
+        const n = rhs.length;
+        const a = matrix.map((row, rowIdx) => row.map((value) => Number(value)).concat([Number(rhs[rowIdx] || 0)]));
+        for (let pivot = 0; pivot < n; pivot += 1) {{
+          let maxRow = pivot;
+          for (let row = pivot + 1; row < n; row += 1) {{
+            if (Math.abs(a[row][pivot]) > Math.abs(a[maxRow][pivot])) {{
+              maxRow = row;
+            }}
+          }}
+          if (Math.abs(a[maxRow][pivot]) < 1e-18) {{
+            return rhs.slice();
+          }}
+          if (maxRow !== pivot) {{
+            const tmp = a[pivot];
+            a[pivot] = a[maxRow];
+            a[maxRow] = tmp;
+          }}
+          const pivotValue = a[pivot][pivot];
+          for (let col = pivot; col <= n; col += 1) {{
+            a[pivot][col] /= pivotValue;
+          }}
+          for (let row = 0; row < n; row += 1) {{
+            if (row === pivot) {{
+              continue;
+            }}
+            const factor = a[row][pivot];
+            if (factor === 0) {{
+              continue;
+            }}
+            for (let col = pivot; col <= n; col += 1) {{
+              a[row][col] -= factor * a[pivot][col];
+            }}
+          }}
+        }}
+        return a.map((row) => row[n]);
       }}
 
-      function rk4Step(matrix, state, dt) {{
-        const k1 = derivative(matrix, state);
-        const k2 = derivative(matrix, state.map((value, idx) => value + 0.5 * dt * k1[idx]));
-        const k3 = derivative(matrix, state.map((value, idx) => value + 0.5 * dt * k2[idx]));
-        const k4 = derivative(matrix, state.map((value, idx) => value + dt * k3[idx]));
-        const nextState = state.map((value, idx) => value + (dt / 6) * (k1[idx] + 2 * k2[idx] + 2 * k3[idx] + k4[idx]));
+      function implicitEulerStep(matrix, state, dt) {{
+        if (dt <= 0) {{
+          return state.slice();
+        }}
+        const lhs = matrix.map((row, rowIdx) => row.map((value, colIdx) => (
+          (rowIdx === colIdx ? 1 : 0) - dt * Number(value)
+        )));
+        const nextState = solveLinearSystem(lhs, state);
         for (let i = 0; i < nextState.length; i += 1) {{
           if (nextState[i] < 0) {{
             nextState[i] = 0;
@@ -996,7 +1057,7 @@ def build_status_html(
         const dt = finalTime / maxSteps;
         for (let step = 0; step < maxSteps; step += 1) {{
           if (dt > 0) {{
-            state = rk4Step(matrix, state, dt);
+            state = implicitEulerStep(matrix, state, dt);
           }}
           time += dt;
           history.push({{
@@ -1131,7 +1192,13 @@ def write_status_html(
 ) -> tuple[RetropathsNEBQueue, Pot, Path]:
     queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
     retropaths_pot = load_retropaths_pot(workspace)
-    pot = load_partial_annotated_pot(workspace)
+    try:
+        pot = load_partial_annotated_pot(workspace)
+    except FileNotFoundError:
+        cached_pot = _safe_read_pot(workspace.annotated_neb_pot_fp)
+        if cached_pot is None:
+            raise
+        pot = cached_pot
     full_pot = _safe_read_pot(workspace.neb_pot_fp)
     optimized_nodes = 0
     if full_pot is not None:
