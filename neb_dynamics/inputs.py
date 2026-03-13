@@ -3,6 +3,7 @@ import shutil
 from qcio import ProgramArgs
 from types import SimpleNamespace
 from dataclasses import dataclass, field
+from dataclasses import is_dataclass, asdict
 
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
 from neb_dynamics.optimizers.cg import ConjugateGradient
@@ -35,6 +36,7 @@ _QMMM_ENGINE_KEYS = {
     "print_stdout",
     "debug_dump_inputs",
     "debug_dump_dir",
+    "frozen_atom_indices",
 }
 
 
@@ -82,6 +84,35 @@ def _build_qmmm_tcin(program_kwds: ProgramArgs | dict | None, qmmm_inputs: dict)
             lines.append(f"{key} {_format_tc_value(keywords[key])}")
 
     return "\n".join(lines) + "\n"
+
+
+def _serialize_input_value(value):
+    if value is None:
+        return None
+    if is_dataclass(value):
+        return asdict(value)
+    if isinstance(value, SimpleNamespace):
+        return dict(value.__dict__)
+    if isinstance(value, dict):
+        return dict(value)
+    if hasattr(value, "__dict__"):
+        return dict(value.__dict__)
+    return value
+
+
+def _toml_safe(value):
+    if isinstance(value, dict):
+        safe = {}
+        for key, item in value.items():
+            if item is None:
+                continue
+            safe[key] = _toml_safe(item)
+        return safe
+    if isinstance(value, (list, tuple)):
+        return [_toml_safe(item) for item in value if item is not None]
+    if isinstance(value, Path):
+        return str(value)
+    return value
 
 
 @dataclass
@@ -401,6 +432,9 @@ class RunInputs:
             }
             qmmm_kwargs.setdefault("compute_program", "chemcloud")
             qmmm_kwargs.setdefault("chemcloud_queue", self.chemcloud_queue)
+            qmmm_kwargs.setdefault(
+                "frozen_atom_indices", self.chain_inputs.frozen_atom_indices
+            )
             if not qmmm_kwargs.get("tcin_fp") and not qmmm_kwargs.get("tcin_text"):
                 qmmm_kwargs["tcin_text"] = _build_qmmm_tcin(
                     program_kwds=self.program_kwds, qmmm_inputs=self.qmmm_inputs
@@ -473,7 +507,7 @@ class RunInputs:
         del json_dict['optimizer']
         for key, val in json_dict.items():
             if 'input' in key:
-                json_dict[key] = val.__dict__
+                json_dict[key] = _serialize_input_value(val)
             elif 'program_kwds' in key:
                 d = val.json()
 
@@ -483,6 +517,8 @@ class RunInputs:
                 else:
                     d = ""
                     json_dict[key] = d
+
+        json_dict = _toml_safe(json_dict)
 
         with open(fp, "w+") as f:
             # json.dump(json_dict, f)

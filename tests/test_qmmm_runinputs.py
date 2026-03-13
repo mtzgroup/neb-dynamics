@@ -2,6 +2,8 @@ import sys
 import types
 from pathlib import Path
 
+import tomli
+
 from neb_dynamics.inputs import RunInputs
 
 
@@ -97,3 +99,14 @@ def test_qmmm_runinputs_legacy_tcin_fp_and_rst7_prod_passthrough(tmp_path, monke
     assert run_inputs.engine.kwargs["tcin_fp"] == Path(tmp_path / "tc.in")
     assert run_inputs.engine.kwargs["rst7_fp_prod"] == Path(tmp_path / "optim_product.rst7")
     assert "tcin_text" not in run_inputs.engine.kwargs
+
+
+def test_runinputs_save_handles_default_qmmm_dict(tmp_path):
+    output_fp = tmp_path / "default_inputs.toml"
+
+    run_inputs = RunInputs(path_min_method="neb")
+    run_inputs.save(output_fp)
+
+    saved = tomli.loads(output_fp.read_text())
+    assert saved["qmmm_inputs"] == {}
+    assert saved["path_min_inputs"]["climb"] is False
