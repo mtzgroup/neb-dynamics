@@ -118,6 +118,8 @@ class QCOPEngine(Engine):
             "503",
             "504",
             "bad gateway",
+            "all connection attempts failed",
+            "connecterror",
             "service unavailable",
             "gateway timeout",
             "temporarily unavailable",

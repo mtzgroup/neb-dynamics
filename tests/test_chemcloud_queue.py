@@ -136,6 +136,28 @@ def test_qcop_engine_chemcloud_no_retry_non_retryable(monkeypatch):
     assert calls["n"] == 1
 
 
+def test_qcop_engine_chemcloud_retries_connect_error_message(monkeypatch):
+    calls = {"n": 0, "slept": 0}
+
+    class _ConnectError(Exception):
+        pass
+
+    def _fake_cc_compute(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise _ConnectError("All connection attempts failed")
+        return "ok"
+
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    monkeypatch.setattr(qcop_module.time, "sleep", lambda _: calls.__setitem__("slept", calls["slept"] + 1))
+    eng = QCOPEngine(compute_program="chemcloud")
+
+    out = eng._chemcloud_compute_with_retries("xtb", object())
+    assert out == "ok"
+    assert calls["n"] == 2
+    assert calls["slept"] == 1
+
+
 def test_runinputs_toml_chemcloud_queue_propagates(tmp_path: Path):
     inputs_fp = tmp_path / "inputs.toml"
     inputs_fp.write_text(
