@@ -173,6 +173,37 @@ def test_runinputs_toml_chemcloud_queue_propagates(tmp_path: Path):
     assert run_inputs.engine.chemcloud_queue == "toml-queue"
 
 
+def test_runinputs_toml_write_qcio_propagates(tmp_path: Path):
+    inputs_fp = tmp_path / "inputs.toml"
+    inputs_fp.write_text(
+        "\n".join(
+            [
+                'engine_name = "chemcloud"',
+                'program = "xtb"',
+                "write_qcio = true",
+            ]
+        )
+    )
+    run_inputs = RunInputs.open(inputs_fp)
+    assert run_inputs.write_qcio is True
+    assert run_inputs.engine.write_qcio is True
+
+
+def test_qcop_engine_warns_when_write_qcio_enabled(monkeypatch):
+    calls = []
+
+    monkeypatch.setattr(
+        qcop_module.logging,
+        "warning",
+        lambda message, *args, **kwargs: calls.append(message % args if args else message),
+    )
+
+    eng = QCOPEngine(write_qcio=True)
+
+    assert eng.write_qcio is True
+    assert any("write_qcio=True" in message for message in calls)
+
+
 def test_qcop_engine_chemcloud_run_calc_submits_each_geometry_individually(monkeypatch):
     calls = []
 

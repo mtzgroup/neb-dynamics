@@ -131,8 +131,12 @@ def _ascii_profile_for_chain(chain: Chain):
     return _cli_visualize._ascii_profile_for_chain(chain, console)
 
 
-def _write_neb_results_with_history(neb_result, fp: Path) -> bool:
-    return _write_neb_results_with_history_impl(neb_result, fp, console=console)
+def _write_neb_results_with_history(
+    neb_result, fp: Path, write_qcio: bool = False
+) -> bool:
+    return _write_neb_results_with_history_impl(
+        neb_result, fp, console=console, write_qcio=write_qcio
+    )
 
 
 def _collect_tree_layers_for_visualization(tree: TreeNode) -> list[dict]:
@@ -645,10 +649,11 @@ def _write_recursive_split_request_artifacts(
     output_dir: Path,
     request_id: int,
     history: TreeNode,
+    write_qcio: bool = False,
 ):
     history.output_chain.write_to_disk(
-        output_dir / f"request_{request_id}.xyz")
-    history.write_to_disk(output_dir / f"request_{request_id}_msmep")
+        output_dir / f"request_{request_id}.xyz", write_qcio=write_qcio)
+    history.write_to_disk(output_dir / f"request_{request_id}_msmep", write_qcio=write_qcio)
 
 
 def _build_recursive_split_network_summary(
@@ -782,6 +787,7 @@ def _run_recursive_network_splits(
         output_dir=output_dir,
         request_id=0,
         history=history,
+        write_qcio=program_input.write_qcio,
     )
     initial_path_nodes = _ordered_leaf_path_nodes(
         history=history, chain_inputs=program_input.chain_inputs
@@ -956,6 +962,7 @@ def _run_recursive_network_splits(
             output_dir=output_dir,
             request_id=request.request_id,
             history=request_history,
+            write_qcio=program_input.write_qcio,
         )
         request_path_nodes = _ordered_leaf_path_nodes(
             history=request_history, chain_inputs=program_input.chain_inputs
@@ -1382,8 +1389,8 @@ def run(
         leaves_nebs = [
             obj for obj in history.get_optimization_history() if obj]
         end_time = time.time()
-        history.output_chain.write_to_disk(filename)
-        history.write_to_disk(foldername)
+        history.output_chain.write_to_disk(filename, write_qcio=program_input.write_qcio)
+        history.write_to_disk(foldername, write_qcio=program_input.write_qcio)
         chain_for_profile = history.output_chain
         _write_run_status(
             status_fp,
@@ -1522,7 +1529,9 @@ def run(
             raise
 
         end_time = time.time()
-        wrote_outputs = _write_neb_results_with_history(n, filename)
+        wrote_outputs = _write_neb_results_with_history(
+            n, filename, write_qcio=program_input.write_qcio
+        )
         if n.chain_trajectory:
             chain_for_profile = n.chain_trajectory[-1]
         elif n.optimized is not None:
@@ -2565,8 +2574,8 @@ def run_netgen(
         try:
             history = m.run_recursive_minimize(chain)
 
-            history.output_chain.write_to_disk(filename)
-            history.write_to_disk(foldername)
+            history.output_chain.write_to_disk(filename, write_qcio=program_input.write_qcio)
+            history.write_to_disk(foldername, write_qcio=program_input.write_qcio)
         except Exception:
             console.print(f"[bold red]✗ Failed on pair {i}[/bold red]")
             continue

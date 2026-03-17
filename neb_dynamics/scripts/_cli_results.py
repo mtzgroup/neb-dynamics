@@ -12,7 +12,7 @@ from neb_dynamics.geodesic_interpolation2.fileio import write_xyz
 from neb_dynamics.pot import Pot
 
 
-def _write_chain_with_nan_fallback(chain, fp: Path) -> None:
+def _write_chain_with_nan_fallback(chain, fp: Path, write_qcio: bool = False) -> None:
     """Write chain xyz plus energy/gradient sidecars; missing data is serialized as NaN."""
     fp = Path(fp)
     xyz_arr = chain.coordinates * BOHR_TO_ANGSTROMS
@@ -54,21 +54,32 @@ def _write_chain_with_nan_fallback(chain, fp: Path) -> None:
         np.savetxt(grad_path, grad_arr.flatten())
         np.savetxt(grad_shape_path, np.array(grad_arr.shape))
 
+    if write_qcio:
+        for i, node in enumerate(chain.nodes):
+            if getattr(node, "_cached_result", None) is not None:
+                node._cached_result.save(fp.parent / Path(f"{fp.stem}_node_{i}.qcio"))
 
-def _write_chain_history_with_nan_fallback(chain_trajectory: list, fp: Path) -> None:
+
+def _write_chain_history_with_nan_fallback(
+    chain_trajectory: list, fp: Path, write_qcio: bool = False
+) -> None:
     out_folder = fp.resolve().parent / f"{fp.stem}_history"
     if out_folder.exists():
         shutil.rmtree(out_folder)
     out_folder.mkdir(parents=True, exist_ok=True)
     for i, chain in enumerate(chain_trajectory):
-        _write_chain_with_nan_fallback(chain, out_folder / f"traj_{i}.xyz")
+        _write_chain_with_nan_fallback(
+            chain, out_folder / f"traj_{i}.xyz", write_qcio=write_qcio
+        )
 
 
-def _write_neb_results_with_history(neb_result, fp: Path, console=None) -> bool:
+def _write_neb_results_with_history(
+    neb_result, fp: Path, console=None, write_qcio: bool = False
+) -> bool:
     """Write final chain plus history for non-recursive NEB runs."""
     if hasattr(neb_result, "write_to_disk"):
         try:
-            neb_result.write_to_disk(fp, write_history=True)
+            neb_result.write_to_disk(fp, write_history=True, write_qcio=write_qcio)
             return True
         except Exception as exc:
             if console is not None:
@@ -86,9 +97,11 @@ def _write_neb_results_with_history(neb_result, fp: Path, console=None) -> bool:
     if chain_for_profile is None:
         return False
 
-    _write_chain_with_nan_fallback(chain_for_profile, fp)
+    _write_chain_with_nan_fallback(chain_for_profile, fp, write_qcio=write_qcio)
     if getattr(neb_result, "chain_trajectory", None):
-        _write_chain_history_with_nan_fallback(neb_result.chain_trajectory, fp)
+        _write_chain_history_with_nan_fallback(
+            neb_result.chain_trajectory, fp, write_qcio=write_qcio
+        )
     return True
 
 

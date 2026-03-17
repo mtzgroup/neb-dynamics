@@ -317,6 +317,7 @@ timestep = 0.5
 ```toml
 engine_name = "chemcloud"
 program = "crest"
+write_qcio = true
 path_min_method = "mlpgi"
 
 [path_min_inputs]
@@ -327,6 +328,8 @@ model_path = "esen_sm_conserving_all.pt"
 model_repo = "facebook/OMol25"
 auto_download_model = true
 ```
+
+`write_qcio` is a top-level optional flag and defaults to `false`. When enabled, saved CLI outputs also include cached `qcio.ProgramOutput` sidecars (`*.qcio`), which can take substantial disk space.
 
 If auto-download is enabled and the model repo is gated, authenticate first:
 

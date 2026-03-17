@@ -101,9 +101,15 @@ class QCOPEngine(Engine):
     chemcloud_queue: str | None = None
     biaser: ChainBiaser = None
     collect_files: bool = False
+    write_qcio: bool = False
 
     def __post_init__(self):
         self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
+        if self.write_qcio:
+            logging.warning(
+                "QCOPEngine write_qcio=True: cached qcio.ProgramOutput objects will be "
+                "written when results are saved to disk. This can consume substantial disk space."
+            )
         if self.compute_program == "chemcloud":
             _configure_chemcloud_client(self.chemcloud_queue)
 

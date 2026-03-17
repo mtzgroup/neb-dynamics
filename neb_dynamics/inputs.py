@@ -305,6 +305,7 @@ class RunInputs:
     engine_name: str = "chemcloud"
     program: str = "xtb"
     chemcloud_queue: str = None
+    write_qcio: bool = False
     qmmm_inputs: dict = None
 
     path_min_method: str = 'NEB'
@@ -413,6 +414,7 @@ class RunInputs:
                              program=self.program,
                              compute_program=self.engine_name,
                              chemcloud_queue=self.chemcloud_queue,
+                             write_qcio=self.write_qcio,
                              )
         elif self.engine_name == 'qmmm':
             from neb_dynamics.engines.qmmm import QMMMEngine
