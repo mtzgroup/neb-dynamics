@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import concurrent
+import inspect
 from dataclasses import dataclass
 from typing import List, Union
 import os
+import time
+import logging
 from numpy.typing import NDArray
 import numpy as np
 from pydantic import ValidationError
@@ -14,7 +17,10 @@ from qcio.models.inputs import DualProgramInput, ProgramInput, ProgramArgs
 from qcio import ProgramOutput
 import shutil
 
+from chemcloud import CCClient
 from chemcloud import compute as cc_compute
+from chemcloud import configure_client as cc_configure_client
+from chemcloud.config import Settings as ChemCloudSettings
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.engines.engine import Engine
@@ -39,6 +45,52 @@ def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
     return "celery"
 
 
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _configure_chemcloud_client(queue: str) -> None:
+    """Handle ChemCloud client API drift across installed versions."""
+    client_params = {}
+    settings_kwargs = {
+        "chemcloud_queue": queue,
+        "chemcloud_concurrency": _env_int("MEPD_CHEMCLOUD_CONCURRENCY", 1),
+        "chemcloud_connect_timeout": _env_int("MEPD_CHEMCLOUD_CONNECT_TIMEOUT", 120),
+        "chemcloud_read_timeout": _env_int("MEPD_CHEMCLOUD_READ_TIMEOUT", 900),
+        "chemcloud_write_timeout": _env_int("MEPD_CHEMCLOUD_WRITE_TIMEOUT", 120),
+        "chemcloud_pool_timeout": _env_int("MEPD_CHEMCLOUD_POOL_TIMEOUT", 120),
+    }
+
+    try:
+        ccclient_params = inspect.signature(CCClient).parameters
+    except Exception:
+        ccclient_params = {}
+
+    if "queue" in ccclient_params:
+        client_params["queue"] = queue
+    else:
+        client_params["chemcloud_queue"] = queue
+
+    direct_setting_keys = {
+        key for key in settings_kwargs if key in ccclient_params and key != "chemcloud_queue"
+    }
+    for key in direct_setting_keys:
+        client_params[key] = settings_kwargs.pop(key)
+
+    if "settings" in ccclient_params and settings_kwargs:
+        client_params["settings"] = ChemCloudSettings(**settings_kwargs)
+    else:
+        client_params.update(settings_kwargs)
+
+    cc_configure_client(**client_params)
+
+
 @dataclass
 class QCOPEngine(Engine):
     program_args: ProgramArgs = ProgramArgs(
@@ -52,6 +104,47 @@ class QCOPEngine(Engine):
 
     def __post_init__(self):
         self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
+        if self.compute_program == "chemcloud":
+            _configure_chemcloud_client(self.chemcloud_queue)
+
+    @staticmethod
+    def _is_retryable_chemcloud_error(exc: Exception) -> bool:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code is not None:
+            return int(status_code) >= 500
+        msg = str(exc).lower()
+        retry_markers = (
+            "502",
+            "503",
+            "504",
+            "bad gateway",
+            "service unavailable",
+            "gateway timeout",
+            "temporarily unavailable",
+            "connection reset",
+            "timed out",
+            "connecttimeout",
+        )
+        return any(token in msg for token in retry_markers)
+
+    def _chemcloud_compute_with_retries(self, *args, **kwargs):
+        max_attempts = 5
+        delay_sec = 5.0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return cc_compute(*args, queue=self.chemcloud_queue, **kwargs)
+            except Exception as exc:
+                retryable = self._is_retryable_chemcloud_error(exc)
+                if attempt >= max_attempts or not retryable:
+                    raise
+                logging.warning(
+                    "QCOP ChemCloud call failed on attempt %d/%d (%s). Retrying in %.1fs...",
+                    attempt,
+                    max_attempts,
+                    exc,
+                    delay_sec,
+                )
+                time.sleep(delay_sec)
 
     def compute_gradients(self, chain: Union[Chain, List]) -> NDArray:
         try:
@@ -70,10 +163,8 @@ class QCOPEngine(Engine):
 
         if self.biaser:
             new_grads = grads.copy()
-            for i, (node, grad) in enumerate(zip(chain, grads)):
-                for ref_chain in self.biaser.reference_chains:
-                    g_bias = self.biaser.gradient_node_bias(node=node)
-                    new_grads[i] += g_bias
+            for i, node in enumerate(chain):
+                new_grads[i] += self.biaser.gradient_node_bias(node=node)
             grads = new_grads
         return grads
 
@@ -83,15 +174,8 @@ class QCOPEngine(Engine):
 
         if self.biaser:
             new_enes = enes.copy()
-            for i, (node, ene) in enumerate(zip(chain, enes)):
-                for ref_chain in self.biaser.reference_chains:
-                    dist = self.biaser.compute_min_dist_to_ref(
-                        node=node,
-                        dist_func=self.biaser.compute_euclidean_distance,
-                        reference=ref_chain
-                    )
-                    new_enes[i] += self.biaser.energy_gaussian_bias(
-                        distance=dist)
+            for i, node in enumerate(chain):
+                new_enes[i] += self.biaser.energy_node_bias(node=node)
             enes = new_enes
         return enes
 
@@ -100,7 +184,7 @@ class QCOPEngine(Engine):
             return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
             try:
-                return cc_compute(*args, queue=self.chemcloud_queue, **kwargs)
+                return self._chemcloud_compute_with_retries(*args, **kwargs)
             except ValidationError as exc:
                 message = str(exc)
                 if "ProgramOutput" not in message:
@@ -166,17 +250,16 @@ class QCOPEngine(Engine):
                 non_frozen_results = list(executor.map(helper, iterables))
 
         if self.compute_program == "chemcloud":
-            # the following hack is implemented until chemcloud can accept single-length lists.
-            if len(non_frozen_prog_inps) == 1:
-                non_frozen_prog_inps = non_frozen_prog_inps[0]
-                non_frozen_results = self.compute_func(
-                    self.program, non_frozen_prog_inps, collect_files=self.collect_files
+            # Submit ChemCloud jobs one geometry at a time. Batched NEB-image submissions
+            # have been timing out on crest/xtb requests for this workflow.
+            non_frozen_results = [
+                self.compute_func(
+                    self.program,
+                    prog_inp,
+                    collect_files=self.collect_files,
                 )
-                non_frozen_results = [non_frozen_results]
-            else:
-                non_frozen_results = self.compute_func(
-                    self.program, non_frozen_prog_inps, collect_files=self.collect_files
-                )
+                for prog_inp in non_frozen_prog_inps
+            ]
 
         else:
             non_frozen_results = [
