@@ -185,6 +185,14 @@ def test_run_recursive_network_splits_enqueues_intermediate_targets(monkeypatch,
     )
     assert network_dump["nodes"]["0"]["root"] is True
     assert network_dump["nodes"]["1"]["requested_target"] is True
+    best_path_meta = json.loads(
+        (tmp_path / "rgs_network_splits" / "rgs_best_path.json").read_text()
+    )
+    assert best_path_meta["root_index"] == 0
+    assert best_path_meta["target_index"] == 1
+    assert best_path_meta["path"] == [0, 1]
+    assert (tmp_path / "rgs_network_splits" / "rgs_best_path.xyz").exists()
+    assert (tmp_path / "rgs_network_splits" / "rgs_best_path.energies").exists()
 
 
 def test_run_network_splits_forces_recursive_mode(monkeypatch, tmp_path):
