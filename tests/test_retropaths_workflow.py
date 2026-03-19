@@ -232,9 +232,15 @@ def test_write_status_html_writes_visible_pot_sections(monkeypatch, tmp_path):
     assert "Retropaths Pot" in html
     assert "NEB Pot" in html
     assert "Graph Delta" in html
+    assert "Network Explorer" in html
+    assert "Targeted Reaction" in html
+    assert "Template Data" in html
+    assert "Template Visualization" in html
     assert "Prepared Queue Edges" in html
     assert "Completed NEB Edges" in html
     assert "Kinetic Monte Carlo" in html
+    assert 'id="retropaths-network-payload"' in html
+    assert 'id="neb-network-payload"' in html
     assert 'id="kmc-temperature"' in html
     assert 'data-node-id="0"' in html
     assert 'data-node-id="1"' in html

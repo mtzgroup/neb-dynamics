@@ -62,6 +62,7 @@ from rich.text import Text
 from rich.syntax import Syntax
 from rich import box
 from neb_dynamics.chainhelpers import generate_neb_plot
+from neb_dynamics.mepd_drive import launch_mepd_drive
 from neb_dynamics.retropaths_workflow import (
     RetropathsWorkspace,
     create_workspace,
@@ -115,6 +116,31 @@ def _configure_cli_logging():
 
 
 _configure_cli_logging()
+
+
+def _format_drive_access_panel(
+    *,
+    actual_host: str,
+    actual_port: int,
+    ssh_login: str | None = None,
+    local_port: int | None = None,
+) -> Panel:
+    local_port = int(local_port or actual_port)
+    lines = [
+        "[bold cyan]MEPD Drive[/bold cyan]",
+        f"[white]http://{actual_host}:{actual_port}/[/white]",
+        "[dim]Press Ctrl+C to stop the server.[/dim]",
+    ]
+    if ssh_login:
+        lines.extend(
+            [
+                "",
+                "[bold]SSH Tunnel[/bold]",
+                f"[white]ssh -N -L {local_port}:127.0.0.1:{actual_port} {ssh_login}[/white]",
+                f"[dim]Then open http://127.0.0.1:{local_port}/ on your laptop.[/dim]",
+            ]
+        )
+    return Panel.fit("\n".join(lines), border_style="cyan")
 
 
 ob_log_handler = openbabel.OBMessageHandler()
@@ -2385,6 +2411,55 @@ def status_cmd(
 
     if not no_open:
         webbrowser.open(status_fp.resolve().as_uri())
+
+
+@app.command("drive")
+def drive(
+    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
+    directory: Annotated[str, typer.Option("--directory", "-d", help="Directory where MEPD Drive workspaces should be created")] = None,
+    host: Annotated[str, typer.Option("--host", help="Host interface for the local drive server")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Port for the local drive server (0 selects a free port)")] = 0,
+    ssh_login: Annotated[str, typer.Option("--ssh-login", help="SSH target to print a ready-made tunnel command, e.g. user@cluster")] = None,
+    local_port: Annotated[int, typer.Option("--local-port", help="Laptop-side port for the printed SSH tunnel command")] = None,
+    timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
+    max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
+    max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
+    max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of autosplitting NEBs to run concurrently")] = 1,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the browser")] = False,
+):
+    console.print(BANNER)
+    if inputs is None:
+        raise typer.BadParameter("--inputs/-i is required.")
+
+    server = launch_mepd_drive(
+        directory=directory,
+        inputs_fp=inputs,
+        reactions_fp=reactions_fp,
+        host=host,
+        port=port,
+        timeout_seconds=timeout_seconds,
+        max_nodes=max_nodes,
+        max_depth=max_depth,
+        max_parallel_nebs=max_parallel_nebs,
+        open_browser=not no_open,
+    )
+    actual_host, actual_port = server.server_address[:2]
+    console.print(
+        _format_drive_access_panel(
+            actual_host=actual_host,
+            actual_port=actual_port,
+            ssh_login=ssh_login,
+            local_port=local_port,
+        )
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        console.print("[dim]Stopping MEPD Drive.[/dim]")
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def _path_str_for_toml(path_text: str | None, source_dir: Path, output_dir: Path) -> str | None:

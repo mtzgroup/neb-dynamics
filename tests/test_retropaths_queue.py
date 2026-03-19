@@ -17,6 +17,7 @@ from neb_dynamics.retropaths_compat import structure_node_from_graph_like_molecu
 from neb_dynamics.retropaths_queue import (
     NEBQueueItem,
     RetropathsNEBQueue,
+    _optimize_single_node,
     build_balanced_endpoints,
     build_retropaths_neb_queue,
     pair_is_direct_neb_compatible,
@@ -238,6 +239,60 @@ def test_run_retropaths_neb_queue_skips_duplicate_pairs_before_execution(
     assert len(_FakeMSMEP.calls) == 1
     assert queue.items[0].status == "completed"
     assert queue.items[1].status == "skipped_attempted"
+
+
+def test_run_retropaths_neb_queue_skips_identical_endpoints_after_optimization(
+    monkeypatch, tmp_path
+):
+    source = structure_node_from_graph_like_molecule(Molecule.from_smiles("CCO"))
+    target = structure_node_from_graph_like_molecule(Molecule.from_smiles("COC"))
+    pot = _test_pot({0: target, 1: source}, [(1, 0)])
+    queue_fp = tmp_path / "queue.json"
+    output_dir = tmp_path / "out"
+
+    identical = structure_node_from_graph_like_molecule(Molecule.from_smiles("COC"))
+
+    class _GraphCollapsingEngine:
+        def compute_geometry_optimization(self, node, keywords=None):
+            return [identical.copy()]
+
+    monkeypatch.setattr("neb_dynamics.retropaths_queue.MSMEP", _FakeMSMEP)
+    _FakeMSMEP.calls = []
+
+    queue = run_retropaths_neb_queue(
+        pot=pot,
+        run_inputs=SimpleNamespace(
+            engine=_GraphCollapsingEngine(),
+            chain_inputs=ChainInputs(),
+            path_min_inputs=SimpleNamespace(do_elem_step_checks=False, skip_identical_graphs=True),
+        ),
+        queue_fp=queue_fp,
+        output_dir=output_dir,
+        pot_fp=tmp_path / "neb_pot.json",
+    )
+
+    assert len(_FakeMSMEP.calls) == 0
+    assert queue.items[0].status == "skipped_identical"
+    assert "identical" in (queue.items[0].error or "").lower()
+
+
+def test_optimize_single_node_refreshes_graph_from_optimized_structure():
+    start = structure_node_from_graph_like_molecule(Molecule.from_smiles("CC"))
+    optimized = structure_node_from_graph_like_molecule(Molecule.from_smiles("C=C"))
+
+    class _ChangingEngine:
+        def compute_geometry_optimization(self, node, keywords=None):
+            return [optimized.copy()]
+
+    out, error = _optimize_single_node(
+        start,
+        SimpleNamespace(engine=_ChangingEngine()),
+    )
+
+    assert error is None
+    assert out.has_molecular_graph is True
+    assert out.graph.is_bond_isomorphic_to(Molecule.from_smiles("C=C"))
+    assert not out.graph.is_bond_isomorphic_to(start.graph)
 
 
 def test_recover_stale_running_items_marks_interrupted_jobs_failed():

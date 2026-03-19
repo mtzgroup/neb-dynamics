@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import math
 
 import numpy as np
@@ -9,6 +11,12 @@ from neb_dynamics.pot import Pot
 K_BOLTZMANN = 1.380649e-23
 PLANCK = 6.62607015e-34
 R_GAS_KCAL = 0.00198720425864083
+
+
+def _quiet_force_smiles(molecule_like) -> str:
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        return str(molecule_like.force_smiles())
 
 
 def default_initial_conditions(pot: Pot) -> dict[int, float]:
@@ -38,7 +46,7 @@ def node_label(pot: Pot, node_index: int) -> str:
     molecule = node_attrs.get("molecule")
     if molecule is not None:
         try:
-            smiles = molecule.force_smiles()
+            smiles = _quiet_force_smiles(molecule)
             if smiles:
                 return f"{node_index}: {smiles}"
         except Exception:
@@ -47,7 +55,7 @@ def node_label(pot: Pot, node_index: int) -> str:
     graph = getattr(td, "graph", None)
     if graph is not None:
         try:
-            smiles = graph.force_smiles()
+            smiles = _quiet_force_smiles(graph)
             if smiles:
                 return f"{node_index}: {smiles}"
         except Exception:

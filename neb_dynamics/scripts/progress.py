@@ -1,8 +1,10 @@
 """Progress printing utilities for NEB Dynamics."""
 
+import json
 import os
 import sys
 import time
+from pathlib import Path
 from typing import Optional
 
 # Rich-based progress printer (used when rich is available)
@@ -28,6 +30,32 @@ except Exception:
     structure_to_smiles = None
 
 
+def _append_progress_log(message: str) -> None:
+    fp = os.environ.get("MEPD_DRIVE_PROGRESS_LOG", "").strip()
+    if not fp:
+        return
+    try:
+        path = Path(fp)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{message}\n")
+    except Exception:
+        return
+
+
+def _write_progress_chain_payload(payload: dict | None) -> None:
+    fp = os.environ.get("MEPD_DRIVE_CHAIN_JSON", "").strip()
+    if not fp or payload is None:
+        return
+    try:
+        path = Path(fp)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle)
+    except Exception:
+        return
+
+
 class ProgressPrinter:
     """
     A class to handle progress printing with optional rich formatting.
@@ -49,6 +77,8 @@ class ProgressPrinter:
         self._last_ascii_plot = None
         self._last_caption = None
         self._last_status_message = None
+        self._last_chain_plot_payload = None
+        self._chain_plot_history = []
 
         # Throttle updates to avoid too much output
         self._throttle = 0.5  # Only print every 0.5 seconds by default
@@ -97,6 +127,7 @@ class ProgressPrinter:
 
     def start_status(self, message: str):
         """Start a spinner status message."""
+        _append_progress_log(message)
         if self.use_rich and self._live is not None:
             self._update_live_caption(message)
             return
@@ -114,6 +145,7 @@ class ProgressPrinter:
 
     def update_status(self, message: str):
         """Update the spinner status message."""
+        _append_progress_log(message)
         if self.use_rich and self._live is not None:
             self._update_live_caption(message)
             return
@@ -223,6 +255,7 @@ class ProgressPrinter:
 
     def print_convergence(self, message: str = "Converged!"):
         """Print convergence message."""
+        _append_progress_log(message)
         if self.use_rich and self._live is not None:
             self._live.stop()
             self._live = None
@@ -233,6 +266,7 @@ class ProgressPrinter:
 
     def print_warning(self, message: str):
         """Print a warning message."""
+        _append_progress_log(f"WARNING: {message}")
         if self.use_rich and self._live is not None:
             self._live.stop()
             self._live = None
@@ -243,6 +277,7 @@ class ProgressPrinter:
 
     def print_error(self, message: str):
         """Print an error message."""
+        _append_progress_log(f"ERROR: {message}")
         if self.use_rich and self._live is not None:
             self._live.stop()
             self._live = None
@@ -288,6 +323,14 @@ class ProgressPrinter:
         else:
             sys.stdout.write(f"\n{caption}\n{ascii_plot}\n")
             sys.stdout.flush()
+        _write_progress_chain_payload(
+            {
+                "ascii_plot": self._last_ascii_plot,
+                "caption": self._last_caption,
+                "plot": self._last_chain_plot_payload,
+                "history": list(self._chain_plot_history),
+            }
+        )
 
     def _update_live_caption(self, message: str):
         """Update live table caption without repainting duplicate frames."""
@@ -324,12 +367,67 @@ class ProgressPrinter:
             sys.stdout.write(f"\n{caption}\n{self._last_ascii_plot}\n")
             sys.stdout.flush()
 
+    def record_chain_plot(self, chain, caption: str):
+        try:
+            x_vals = [float(v) for v in chain.integrated_path_length]
+        except Exception:
+            x_vals = []
+        try:
+            y_vals = [float(v) for v in chain.energies_kcalmol]
+        except Exception:
+            try:
+                y_vals = [float(v) for v in chain.energies]
+            except Exception:
+                y_vals = []
+        start_smiles, end_smiles = _endpoint_smiles_for_chain(chain)
+        self._last_chain_plot_payload = {
+            "caption": caption,
+            "x": x_vals,
+            "y": y_vals,
+            "reactant_smiles": start_smiles if start_smiles != "N/A" else "",
+            "product_smiles": end_smiles if end_smiles != "N/A" else "",
+        }
+        if x_vals and y_vals and len(x_vals) == len(y_vals):
+            self._chain_plot_history.append(
+                {
+                    "caption": caption,
+                    "x": x_vals,
+                    "y": y_vals,
+                    "reactant_smiles": start_smiles if start_smiles != "N/A" else "",
+                    "product_smiles": end_smiles if end_smiles != "N/A" else "",
+                }
+            )
+            self._chain_plot_history = self._chain_plot_history[-120:]
+        _write_progress_chain_payload(
+            {
+                "ascii_plot": self._last_ascii_plot,
+                "caption": caption,
+                "plot": self._last_chain_plot_payload,
+                "history": list(self._chain_plot_history),
+            }
+        )
+
+    def get_live_chain_payload(self):
+        if self._last_ascii_plot is None and self._last_chain_plot_payload is None:
+            return None
+        payload = {
+            "ascii_plot": self._last_ascii_plot,
+            "caption": self._last_caption,
+            "plot": self._last_chain_plot_payload,
+            "history": list(self._chain_plot_history),
+        }
+        _write_progress_chain_payload(payload)
+        return payload
+
     def flush(self):
         """Flush stdout."""
         sys.stdout.flush()
 
     def print_persistent(self, message: str, ascii_block: Optional[str] = None):
         """Print a persistent message block, safely stopping any active live renderer first."""
+        _append_progress_log(message)
+        if ascii_block:
+            _append_progress_log(ascii_block)
         if self.use_rich and self._live is not None:
             self._live.stop()
             self._live = None
@@ -562,6 +660,7 @@ def format_neb_caption(
 def print_chain_step(chain, caption: str, force_update: bool = False):
     printer = get_progress_printer()
     ascii_plot = ascii_profile_for_chain(chain)
+    printer.record_chain_plot(chain, caption)
     printer.print_chain_ascii(ascii_plot, caption, force_update=force_update)
 
 
@@ -586,6 +685,11 @@ def stop_status():
     """Convenience function to stop a spinner status."""
     printer = get_progress_printer()
     printer.stop_status()
+
+
+def get_live_chain_payload():
+    printer = get_progress_printer()
+    return printer.get_live_chain_payload()
 
 
 def print_persistent(message: str, ascii_block: Optional[str] = None):

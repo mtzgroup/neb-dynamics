@@ -17,8 +17,10 @@ from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import RunInputs
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.msmep import MSMEP
+from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.pot import Pot
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.retropaths_compat import annotate_pot_with_neb_results
 from neb_dynamics.retropaths_compat import structure_node_from_graph_like_molecule
@@ -408,6 +410,8 @@ def _run_single_item_worker(
 
     result_dir_path = Path(result_dir)
     output_chain_fp = Path(output_chain_xyz)
+    result_dir_path.parent.mkdir(parents=True, exist_ok=True)
+    output_chain_fp.parent.mkdir(parents=True, exist_ok=True)
     history.write_to_disk(result_dir_path)
     output_chain.write_to_disk(output_chain_fp)
     return {
@@ -466,6 +470,22 @@ def _make_pair_chain(pot: Pot, item: NEBQueueItem, run_inputs: RunInputs) -> Cha
     )
 
 
+def _identical_endpoint_skip_reason(pair: Chain, run_inputs: RunInputs) -> str | None:
+    start = pair.nodes[0]
+    end = pair.nodes[-1]
+    if (
+        getattr(run_inputs.path_min_inputs, "skip_identical_graphs", False)
+        and getattr(start, "has_molecular_graph", False)
+        and getattr(end, "has_molecular_graph", False)
+    ):
+        try:
+            if _is_connectivity_identical(start, end, verbose=False, collect_comparison=False):
+                return "Skipped NEB because optimized endpoints have identical molecular graphs."
+        except Exception:
+            pass
+    return None
+
+
 def _optimize_single_node(node: StructureNode, run_inputs: RunInputs) -> tuple[StructureNode, str | None]:
     try:
         try:
@@ -475,8 +495,12 @@ def _optimize_single_node(node: StructureNode, run_inputs: RunInputs) -> tuple[S
         except TypeError:
             traj = run_inputs.engine.compute_geometry_optimization(node)
         optimized = traj[-1]
-        optimized.graph = node.graph
-        optimized.has_molecular_graph = node.has_molecular_graph
+        if node.has_molecular_graph:
+            optimized.graph = structure_to_molecule(optimized.structure)
+            optimized.has_molecular_graph = True
+        else:
+            optimized.graph = node.graph
+            optimized.has_molecular_graph = node.has_molecular_graph
         return optimized, None
     except Exception as exc:
         fallback = node.copy()
@@ -505,8 +529,12 @@ def _optimize_nodes(
             optimized_nodes: list[tuple[StructureNode, str | None]] = []
             for original, traj in zip(nodes, trajectories):
                 optimized = traj[-1]
-                optimized.graph = original.graph
-                optimized.has_molecular_graph = original.has_molecular_graph
+                if original.has_molecular_graph:
+                    optimized.graph = structure_to_molecule(optimized.structure)
+                    optimized.has_molecular_graph = True
+                else:
+                    optimized.graph = original.graph
+                    optimized.has_molecular_graph = original.has_molecular_graph
                 optimized_nodes.append((optimized, None))
             if len(optimized_nodes) == len(nodes):
                 return optimized_nodes
@@ -604,6 +632,21 @@ def run_retropaths_neb_queue(
         _ensure_pair_endpoints_optimized(pot=pot, item=item, run_inputs=run_inputs)
         if pot_fp is not None:
             pot.write_to_disk(pot_fp)
+        pair = _make_pair_chain(pot=pot, item=item, run_inputs=run_inputs)
+        skip_reason = _identical_endpoint_skip_reason(pair, run_inputs)
+        if skip_reason:
+            item.status = "skipped_identical"
+            item.finished_at = _utcnow_iso()
+            item.error = skip_reason
+            queue.attempted_pairs[item.attempt_key].update(
+                {
+                    "status": "skipped_identical",
+                    "finished_at": item.finished_at,
+                    "error": skip_reason,
+                }
+            )
+            queue.write_to_disk(queue_fp)
+            continue
         runnable_items.append(item)
 
     def _item_job_payload(item: NEBQueueItem) -> tuple[Chain, RunInputs, str, str]:

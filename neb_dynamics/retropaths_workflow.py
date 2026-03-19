@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import contextlib
+import io
 import json
 import re
 import sys
 import types
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs
@@ -332,9 +333,11 @@ def _write_edge_visualizations(workspace: RetropathsWorkspace, pot: Pot) -> list
         start_smiles = ""
         end_smiles = ""
         if len(chain.nodes) > 0 and getattr(chain[0], "graph", None) is not None:
-            start_smiles = chain[0].graph.force_smiles()
+            with contextlib.suppress(Exception):
+                start_smiles = _quiet_force_smiles(chain[0].graph)
         if len(chain.nodes) > 0 and getattr(chain[-1], "graph", None) is not None:
-            end_smiles = chain[-1].graph.force_smiles()
+            with contextlib.suppress(Exception):
+                end_smiles = _quiet_force_smiles(chain[-1].graph)
         title_html = (
             f"<div style=\"font-family: -apple-system, BlinkMacSystemFont, sans-serif; "
             f"margin: 0 0 12px 0; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;\">"
@@ -366,6 +369,137 @@ def _write_edge_visualizations(workspace: RetropathsWorkspace, pot: Pot) -> list
         )
 
     return rows
+
+
+def _json_safe(value: Any, depth: int = 0) -> Any:
+    if depth > 3:
+        return repr(value)
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {
+            str(key): _json_safe(val, depth + 1)
+            for key, val in list(value.items())[:40]
+        }
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(item, depth + 1) for item in list(value)[:40]]
+    if hasattr(value, "force_smiles"):
+        with contextlib.suppress(Exception):
+            return _quiet_force_smiles(value)
+    if hasattr(value, "smiles"):
+        with contextlib.suppress(Exception):
+            return str(value.smiles)
+    if hasattr(value, "to_dict"):
+        with contextlib.suppress(Exception):
+            return _json_safe(value.to_dict(), depth + 1)
+    if hasattr(value, "model_dump"):
+        with contextlib.suppress(Exception):
+            return _json_safe(value.model_dump(), depth + 1)
+    if hasattr(value, "__dict__"):
+        with contextlib.suppress(Exception):
+            return {
+                str(key): _json_safe(val, depth + 1)
+                for key, val in list(vars(value).items())[:40]
+                if not str(key).startswith("_") and not callable(val)
+            }
+    return repr(value)
+
+
+def _load_template_payloads(workspace: RetropathsWorkspace) -> dict[str, dict[str, Any]]:
+    try:
+        hf, _Molecule, _RetropathsPot = _load_retropaths_classes()
+        library = hf.pload(workspace.reactions_path)
+    except Exception:
+        return {}
+
+    payloads: dict[str, dict[str, Any]] = {}
+    for reaction_name, reaction_obj in getattr(library, "items", lambda: [])():
+        visualization_html = ""
+        draw = getattr(reaction_obj, "draw", None)
+        if callable(draw):
+            with contextlib.suppress(Exception):
+                visualization_html = str(draw(string_mode=True, size=(420, 320)))
+        payloads[str(reaction_name)] = {
+            "name": str(reaction_name),
+            "data": _json_safe(reaction_obj),
+            "visualization_html": visualization_html,
+        }
+    return payloads
+
+
+def _quiet_force_smiles(molecule_like: Any) -> str:
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        return str(molecule_like.force_smiles())
+
+
+def _node_label_for_explorer(node_index: int, attrs: dict[str, Any]) -> str:
+    molecule = attrs.get("molecule")
+    if molecule is not None:
+        if isinstance(molecule, str):
+            return molecule
+        if hasattr(molecule, "force_smiles"):
+            with contextlib.suppress(Exception):
+                return _quiet_force_smiles(molecule)
+        if hasattr(molecule, "smiles"):
+            with contextlib.suppress(Exception):
+                return str(molecule.smiles)
+    return str(node_index)
+
+
+def _build_network_explorer_payload(
+    graph,
+    *,
+    template_payloads: dict[str, dict[str, Any]] | None = None,
+    edge_visualizations: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    template_payloads = template_payloads or {}
+    viewer_by_edge = {
+        item["edge"]: f"edge_visualizations/{item['href']}"
+        for item in (edge_visualizations or [])
+    }
+
+    nodes = []
+    for node_index in sorted(graph.nodes):
+        attrs = graph.nodes[node_index]
+        nodes.append(
+            {
+                "id": int(node_index),
+                "label": _node_label_for_explorer(node_index, attrs),
+                "data": _json_safe(dict(attrs)),
+            }
+        )
+
+    edges = []
+    for source, target in sorted(graph.edges):
+        attrs = graph.edges[(source, target)]
+        reaction_name = str(attrs.get("reaction") or "")
+        template_payload = template_payloads.get(reaction_name) or {}
+        edge_key = f"{source} -> {target}"
+        edges.append(
+            {
+                "source": int(source),
+                "target": int(target),
+                "reaction": reaction_name,
+                "barrier": (
+                    float(attrs["barrier"]) if attrs.get("barrier") is not None else None
+                ),
+                "chains": len(attrs.get("list_of_nebs") or []),
+                "viewer_href": viewer_by_edge.get(edge_key),
+                "data": _json_safe(
+                    {
+                        key: value
+                        for key, value in dict(attrs).items()
+                        if key != "list_of_nebs"
+                    }
+                ),
+                "template": template_payload,
+            }
+        )
+
+    return {"nodes": nodes, "edges": edges}
 
 
 def summarize_queue(queue: RetropathsNEBQueue) -> dict[str, int]:
@@ -431,8 +565,12 @@ def _optimize_single_endpoint(
         except TypeError:
             traj = run_inputs.engine.compute_geometry_optimization(node)
         optimized = traj[-1]
-        optimized.graph = node.graph
-        optimized.has_molecular_graph = node.has_molecular_graph
+        if node.has_molecular_graph:
+            optimized.graph = structure_to_molecule(optimized.structure)
+            optimized.has_molecular_graph = True
+        else:
+            optimized.graph = node.graph
+            optimized.has_molecular_graph = node.has_molecular_graph
         return optimized, None
     except Exception as exc:
         fallback = node.copy()
@@ -461,8 +599,12 @@ def _optimize_endpoint_batch(
             optimized_nodes: list[tuple[StructureNode, str | None]] = []
             for original, traj in zip(nodes, trajectories):
                 optimized = traj[-1]
-                optimized.graph = original.graph
-                optimized.has_molecular_graph = original.has_molecular_graph
+                if original.has_molecular_graph:
+                    optimized.graph = structure_to_molecule(optimized.structure)
+                    optimized.has_molecular_graph = True
+                else:
+                    optimized.graph = original.graph
+                    optimized.has_molecular_graph = original.has_molecular_graph
                 optimized_nodes.append((optimized, None))
             if len(optimized_nodes) == len(nodes):
                 return optimized_nodes
@@ -707,8 +849,20 @@ def build_status_html(
         int(node["id"]): str(node["label"])
         for node in kmc_payload["nodes"]
     }
+    template_payloads = _load_template_payloads(workspace)
+    retropaths_explorer_payload = _build_network_explorer_payload(
+        retropaths_pot.graph,
+        template_payloads=template_payloads,
+    )
+    neb_explorer_payload = _build_network_explorer_payload(
+        pot.graph,
+        template_payloads=template_payloads,
+        edge_visualizations=edge_visualizations,
+    )
     kmc_payload_json = json.dumps(kmc_payload)
     kmc_default_result_json = json.dumps(kmc_default_result)
+    retropaths_explorer_payload_json = json.dumps(retropaths_explorer_payload)
+    neb_explorer_payload_json = json.dumps(neb_explorer_payload)
     kmc_initial_table_rows = "".join(
         "<tr>"
         f"<td>{int(node['id'])}</td>"
@@ -778,6 +932,32 @@ def build_status_html(
     h1, h2 {{ margin: 0 0 10px 0; }}
     .section {{ margin-top: 24px; }}
     code {{ background: #f0e7da; padding: 2px 4px; }}
+    .tab-row {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }}
+    .tab-button {{ border: 1px solid #b9a98f; background: #f8f5ef; color: #3b3026; padding: 8px 12px; cursor: pointer; }}
+    .tab-button.active {{ background: #d8a13b; color: #23170b; border-color: #b07f29; }}
+    .tab-panel {{ display: none; }}
+    .tab-panel.active {{ display: block; }}
+    .explorer-layout {{ display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 16px; }}
+    .explorer-card {{ border: 1px solid #c8b99f; background: #fffdf8; padding: 14px; }}
+    .explorer-svg {{ width: 100%; height: auto; min-height: 360px; border: 1px solid #d8ccb9; background: linear-gradient(180deg, #fffdf8, #f6efe2); }}
+    .info-tabs {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }}
+    .info-tab-button {{ border: 1px solid #c8b99f; background: #f8f0e2; padding: 6px 10px; cursor: pointer; }}
+    .info-tab-button.active {{ background: #d8a13b; border-color: #b07f29; }}
+    .info-tab-panel {{ display: none; }}
+    .info-tab-panel.active {{ display: block; }}
+    .placeholder {{ color: #6b6157; font-style: italic; }}
+    .network-node {{ fill: #7b6b58; stroke: #fdf7ee; stroke-width: 2; cursor: pointer; }}
+    .network-node.root {{ fill: #b35c1e; }}
+    .network-node.selected {{ fill: #d8a13b; stroke: #6b3f07; stroke-width: 3; }}
+    .network-edge-hitbox {{ stroke: transparent; stroke-width: 16; cursor: pointer; fill: none; }}
+    .network-edge-line {{ stroke: #8e7f6d; stroke-width: 2.5; fill: none; }}
+    .network-edge-line.selected {{ stroke: #d8a13b; stroke-width: 4; }}
+    .network-label {{ font-size: 12px; fill: #2d241c; pointer-events: none; }}
+    .template-visualization svg {{ max-width: 100%; height: auto; }}
+    pre.json-block {{ margin: 0; white-space: pre-wrap; word-break: break-word; background: #f6f0e7; border: 1px solid #e0d4c3; padding: 12px; }}
+    @media (max-width: 960px) {{
+      .explorer-layout {{ grid-template-columns: 1fr; }}
+    }}
   </style>
 </head>
 <body>
@@ -822,6 +1002,56 @@ def build_status_html(
       <strong>NEB nodes:</strong> {pot.graph.number_of_nodes()}<br />
       <strong>NEB edges:</strong> {pot.graph.number_of_edges()}<br />
       <strong>NEB edges with chains:</strong> {sum(bool(pot.graph.edges[e].get('list_of_nebs')) for e in pot.graph.edges)}<br />
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Network Explorer</h2>
+    <div class="tab-row" data-tab-group="network-explorer">
+      <button class="tab-button active" data-tab-target="retropaths-network">Retropaths Network</button>
+      <button class="tab-button" data-tab-target="neb-network">NEB Network</button>
+    </div>
+
+    <div id="retropaths-network" class="tab-panel active">
+      <div class="explorer-layout">
+        <div class="explorer-card">
+          <h3 style="margin-top: 0;">Retropaths Reaction Network</h3>
+          <svg id="retropaths-network-svg" class="explorer-svg" viewBox="0 0 960 560" role="img" aria-label="Retropaths network graph"></svg>
+        </div>
+        <div class="explorer-card">
+          <h3 id="retropaths-network-title" style="margin-top: 0;">Select an edge or node</h3>
+          <div id="retropaths-network-summary" class="placeholder">Click a network edge to inspect the targeted reaction and template details.</div>
+          <div class="info-tabs" data-info-tabs="retropaths-network">
+            <button class="info-tab-button active" data-info-target="retropaths-network-targeted">Targeted Reaction</button>
+            <button class="info-tab-button" data-info-target="retropaths-network-template-data">Template Data</button>
+            <button class="info-tab-button" data-info-target="retropaths-network-template-visualization">Template Visualization</button>
+          </div>
+          <div id="retropaths-network-targeted" class="info-tab-panel active"></div>
+          <div id="retropaths-network-template-data" class="info-tab-panel"></div>
+          <div id="retropaths-network-template-visualization" class="info-tab-panel template-visualization"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="neb-network" class="tab-panel">
+      <div class="explorer-layout">
+        <div class="explorer-card">
+          <h3 style="margin-top: 0;">NEB Reaction Network</h3>
+          <svg id="neb-network-svg" class="explorer-svg" viewBox="0 0 960 560" role="img" aria-label="NEB network graph"></svg>
+        </div>
+        <div class="explorer-card">
+          <h3 id="neb-network-title" style="margin-top: 0;">Select an edge or node</h3>
+          <div id="neb-network-summary" class="placeholder">Click an annotated NEB edge to inspect barrier, chain count, and any linked viewer.</div>
+          <div class="info-tabs" data-info-tabs="neb-network">
+            <button class="info-tab-button active" data-info-target="neb-network-targeted">Targeted Reaction</button>
+            <button class="info-tab-button" data-info-target="neb-network-template-data">Template Data</button>
+            <button class="info-tab-button" data-info-target="neb-network-template-visualization">Template Visualization</button>
+          </div>
+          <div id="neb-network-targeted" class="info-tab-panel active"></div>
+          <div id="neb-network-template-data" class="info-tab-panel"></div>
+          <div id="neb-network-template-visualization" class="info-tab-panel template-visualization"></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -916,10 +1146,255 @@ def build_status_html(
   </div>
   <script id="kmc-payload" type="application/json">{kmc_payload_json}</script>
   <script id="kmc-default-result" type="application/json">{kmc_default_result_json}</script>
+  <script id="retropaths-network-payload" type="application/json">{retropaths_explorer_payload_json}</script>
+  <script id="neb-network-payload" type="application/json">{neb_explorer_payload_json}</script>
   <script>
     (function() {{
+      function escapeHtml(value) {{
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }}
+
+      document.querySelectorAll("[data-tab-group]").forEach((group) => {{
+        const buttons = Array.from(group.querySelectorAll("[data-tab-target]"));
+        buttons.forEach((button) => {{
+          button.addEventListener("click", () => {{
+            const targetId = button.getAttribute("data-tab-target");
+            buttons.forEach((elem) => {{
+              elem.classList.toggle("active", elem === button);
+              const panelId = elem.getAttribute("data-tab-target");
+              const panel = panelId ? document.getElementById(panelId) : null;
+              if (panel) {{
+                panel.classList.toggle("active", panelId === targetId);
+              }}
+            }});
+          }});
+        }});
+      }});
+
+      document.querySelectorAll("[data-info-tabs]").forEach((group) => {{
+        const buttons = Array.from(group.querySelectorAll("[data-info-target]"));
+        buttons.forEach((button) => {{
+          button.addEventListener("click", () => {{
+            const targetId = button.getAttribute("data-info-target");
+            buttons.forEach((elem) => {{
+              elem.classList.toggle("active", elem === button);
+              const panelId = elem.getAttribute("data-info-target");
+              const panel = panelId ? document.getElementById(panelId) : null;
+              if (panel) {{
+                panel.classList.toggle("active", panelId === targetId);
+              }}
+            }});
+          }});
+        }});
+      }});
+
+      function renderNetworkExplorer(prefix, payload) {{
+        const svg = document.getElementById(`${{prefix}}-svg`);
+        const titleEl = document.getElementById(`${{prefix}}-title`);
+        const summaryEl = document.getElementById(`${{prefix}}-summary`);
+        const targetedEl = document.getElementById(`${{prefix}}-targeted`);
+        const templateDataEl = document.getElementById(`${{prefix}}-template-data`);
+        const templateVisualizationEl = document.getElementById(`${{prefix}}-template-visualization`);
+        if (!svg) return;
+
+        const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+        const edges = Array.isArray(payload.edges) ? payload.edges : [];
+        if (!nodes.length) {{
+          summaryEl.innerHTML = '<div class="placeholder">No network data available.</div>';
+          targetedEl.innerHTML = "";
+          templateDataEl.innerHTML = "";
+          templateVisualizationEl.innerHTML = "";
+          return;
+        }}
+
+        while (svg.firstChild) svg.removeChild(svg.firstChild);
+        const width = 960;
+        const height = 560;
+        const nodeElems = new Map();
+        const edgeElems = [];
+
+        function makeSvg(tag) {{
+          return document.createElementNS("http://www.w3.org/2000/svg", tag);
+        }}
+
+        function setInfo(selection) {{
+          edgeElems.forEach((item) => item.line.classList.toggle("selected", item.edge === selection.edge));
+          nodeElems.forEach((elem, nodeId) => {{
+            const selectedNodeId = selection.node ? Number(selection.node.id) : null;
+            elem.classList.toggle("selected", selectedNodeId === Number(nodeId));
+          }});
+
+          if (selection.edge) {{
+            const edge = selection.edge;
+            const template = edge.template || {{}};
+            titleEl.textContent = `Edge ${{edge.source}} -> ${{edge.target}}`;
+            summaryEl.innerHTML = `
+              <div><strong>Reaction:</strong> ${{escapeHtml(edge.reaction || "Unknown")}}</div>
+              <div><strong>Barrier:</strong> ${{edge.barrier == null ? "n/a" : escapeHtml(edge.barrier.toFixed(3))}}</div>
+              <div><strong>Chains:</strong> ${{escapeHtml(edge.chains ?? 0)}}</div>
+              <div><strong>Targeted Reaction:</strong> ${{escapeHtml(edge.reaction || "Unknown")}}</div>
+              ${{edge.viewer_href ? `<div><strong>Viewer:</strong> <a href="${{escapeHtml(edge.viewer_href)}}">Open edge viewer</a></div>` : ""}}
+            `;
+            targetedEl.innerHTML = `
+              <div><strong>Targeted reaction:</strong> ${{escapeHtml(edge.reaction || "Unknown")}}</div>
+              <div style="margin-top: 8px;"><strong>Raw edge data:</strong></div>
+              <pre class="json-block">${{escapeHtml(JSON.stringify(edge.data || {{}}, null, 2))}}</pre>
+            `;
+            templateDataEl.innerHTML = template.data
+              ? `<pre class="json-block">${{escapeHtml(JSON.stringify(template.data, null, 2))}}</pre>`
+              : '<div class="placeholder">No template data was available for this reaction.</div>';
+            templateVisualizationEl.innerHTML = template.visualization_html
+              ? template.visualization_html
+              : '<div class="placeholder">No template visualization was available for this reaction.</div>';
+            return;
+        }}
+
+          if (selection.node) {{
+            const node = selection.node;
+            titleEl.textContent = `Node ${{node.id}}`;
+            summaryEl.innerHTML = `
+              <div><strong>Label:</strong> ${{escapeHtml(node.label || String(node.id))}}</div>
+              <div><strong>Node:</strong> ${{escapeHtml(node.id)}}</div>
+            `;
+            targetedEl.innerHTML = '<div class="placeholder">Select an edge to inspect the targeted reaction.</div>';
+            templateDataEl.innerHTML = `<pre class="json-block">${{escapeHtml(JSON.stringify(node.data || {{}}, null, 2))}}</pre>`;
+            templateVisualizationEl.innerHTML = '<div class="placeholder">Template visualization is only available for edge selections.</div>';
+          }}
+        }}
+
+        edges.forEach((edge) => {{
+          const group = makeSvg("g");
+          const hitbox = makeSvg("line");
+          hitbox.setAttribute("class", "network-edge-hitbox");
+          const line = makeSvg("line");
+          line.setAttribute("class", "network-edge-line");
+          group.appendChild(hitbox);
+          group.appendChild(line);
+          group.addEventListener("click", () => setInfo({{ edge }}));
+          svg.appendChild(group);
+          edgeElems.push({{ edge, line, hitbox }});
+        }});
+
+        const simulationNodes = nodes.map((node, index) => ({{
+          id: Number(node.id),
+          node,
+          x: width / 2 + ((index % 5) - 2) * 24,
+          y: height / 2 + (Math.floor(index / 5) - 2) * 24,
+          fixed: false,
+        }}));
+        const simulationNodeById = new Map(simulationNodes.map((node) => [node.id, node]));
+
+        nodes.forEach((node) => {{
+          const simNode = simulationNodeById.get(Number(node.id));
+          if (!simNode) return;
+          const group = makeSvg("g");
+          group.style.cursor = "pointer";
+          const circle = makeSvg("circle");
+          circle.setAttribute("r", "18");
+          circle.setAttribute("class", `network-node${{Number(node.id) === 0 ? " root" : ""}}`);
+          const text = makeSvg("text");
+          text.setAttribute("y", "36");
+          text.setAttribute("text-anchor", "middle");
+          text.setAttribute("class", "network-label");
+          text.textContent = String(node.id);
+          group.appendChild(circle);
+          group.appendChild(text);
+          group.addEventListener("click", () => setInfo({{ node }}));
+          svg.appendChild(group);
+          nodeElems.set(Number(node.id), circle);
+          simNode.group = group;
+        }});
+
+        if (window.d3 && typeof d3.layout?.force === "function") {{
+          const force = d3.layout.force()
+            .size([width, height])
+            .nodes(simulationNodes)
+            .links(edges.map((edge) => ({{
+              source: simulationNodeById.get(Number(edge.source)),
+              target: simulationNodeById.get(Number(edge.target)),
+              edge,
+            }})))
+            .charge(Math.max(-900, -140 - nodes.length * 12))
+            .linkDistance(Math.max(90, Math.min(220, 110 + nodes.length * 1.5)))
+            .gravity(0.06)
+            .friction(0.82)
+            .on("tick", () => {{
+              edgeElems.forEach((item) => {{
+                const source = simulationNodeById.get(Number(item.edge.source));
+                const target = simulationNodeById.get(Number(item.edge.target));
+                if (!source || !target) return;
+                item.line.setAttribute("x1", String(source.x));
+                item.line.setAttribute("y1", String(source.y));
+                item.line.setAttribute("x2", String(target.x));
+                item.line.setAttribute("y2", String(target.y));
+                item.hitbox.setAttribute("x1", String(source.x));
+                item.hitbox.setAttribute("y1", String(source.y));
+                item.hitbox.setAttribute("x2", String(target.x));
+                item.hitbox.setAttribute("y2", String(target.y));
+              }});
+              simulationNodes.forEach((simNode) => {{
+                simNode.x = Math.max(28, Math.min(width - 28, simNode.x));
+                simNode.y = Math.max(28, Math.min(height - 42, simNode.y));
+                if (simNode.group) {{
+                  simNode.group.setAttribute("transform", `translate(${{simNode.x}},${{simNode.y}})`);
+                }}
+              }});
+            }});
+          force.start();
+          for (let i = 0; i < Math.max(80, nodes.length * 6); i += 1) {{
+            force.tick();
+          }}
+          force.stop();
+        }} else {{
+          simulationNodes.forEach((simNode, index) => {{
+            const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
+            const row = Math.floor(index / cols);
+            const col = index % cols;
+            const x = 80 + col * Math.max(110, Math.floor((width - 160) / cols));
+            const y = 80 + row * 100;
+            if (simNode.group) {{
+              simNode.group.setAttribute("transform", `translate(${{x}},${{y}})`);
+            }}
+          }});
+          edgeElems.forEach((item) => {{
+            const source = simulationNodeById.get(Number(item.edge.source));
+            const target = simulationNodeById.get(Number(item.edge.target));
+            if (!source || !target || !source.group || !target.group) return;
+            const sourceTransform = source.group.getAttribute("transform") || "translate(0,0)";
+            const targetTransform = target.group.getAttribute("transform") || "translate(0,0)";
+            const sourceMatch = /translate\\(([^,]+),([^\\)]+)\\)/.exec(sourceTransform);
+            const targetMatch = /translate\\(([^,]+),([^\\)]+)\\)/.exec(targetTransform);
+            const sx = sourceMatch ? Number(sourceMatch[1]) : 0;
+            const sy = sourceMatch ? Number(sourceMatch[2]) : 0;
+            const tx = targetMatch ? Number(targetMatch[1]) : 0;
+            const ty = targetMatch ? Number(targetMatch[2]) : 0;
+            item.line.setAttribute("x1", String(sx));
+            item.line.setAttribute("y1", String(sy));
+            item.line.setAttribute("x2", String(tx));
+            item.line.setAttribute("y2", String(ty));
+            item.hitbox.setAttribute("x1", String(sx));
+            item.hitbox.setAttribute("y1", String(sy));
+            item.hitbox.setAttribute("x2", String(tx));
+            item.hitbox.setAttribute("y2", String(ty));
+          }});
+        }}
+
+        if (edges.length) {{
+          setInfo({{ edge: edges[0] }});
+        }} else {{
+          setInfo({{ node: nodes[0] }});
+        }}
+      }}
+
       const payload = JSON.parse(document.getElementById("kmc-payload").textContent);
       const defaultResult = JSON.parse(document.getElementById("kmc-default-result").textContent);
+      const retropathsNetworkPayload = JSON.parse(document.getElementById("retropaths-network-payload").textContent);
+      const nebNetworkPayload = JSON.parse(document.getElementById("neb-network-payload").textContent);
       const nodeLabels = new Map(payload.nodes.map(node => [Number(node.id), String(node.label)]));
       const temperatureInput = document.getElementById("kmc-temperature");
       const endTimeInput = document.getElementById("kmc-end-time");
@@ -1177,6 +1652,8 @@ def build_status_html(
 
       runButton.addEventListener("click", () => render(simulate()));
       resetButton.addEventListener("click", resetDefaults);
+      renderNetworkExplorer("retropaths-network", retropathsNetworkPayload);
+      renderNetworkExplorer("neb-network", nebNetworkPayload);
       render(defaultResult);
     }})();
   </script>
