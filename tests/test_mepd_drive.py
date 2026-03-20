@@ -555,6 +555,77 @@ def test_build_drive_payload_uses_completed_queue_result_when_no_direct_neb_edge
     assert edge["result_from_completed_queue"] is True
 
 
+def test_build_drive_payload_prefers_completed_queue_viewer_over_reconstructed_edge_viewer(monkeypatch, tmp_path):
+    queue = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                source_node=4,
+                target_node=1,
+                status="completed",
+                started_at="2026-03-20T12:00:00",
+                finished_at="2026-03-20T12:05:00",
+                error=None,
+                result_dir=str(tmp_path / "result"),
+                output_chain_xyz=None,
+            ),
+        ]
+    )
+    retropaths_pot = SimpleNamespace(graph=nx.DiGraph())
+    retropaths_pot.graph.add_node(1)
+    retropaths_pot.graph.add_node(4)
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(1, td=SimpleNamespace(structure="xyz"), molecule="A")
+    pot.graph.add_node(4, td=SimpleNamespace(structure="xyz"), molecule="B")
+    pot.graph.add_edge(4, 1, reaction="r1", list_of_nebs=["reconstructed"], barrier=5.0)
+
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "queue.json",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        inputs_fp=tmp_path / "inputs.toml",
+        workdir=str(tmp_path),
+        run_name="drive",
+        root_smiles="C",
+        environment_smiles="",
+        reactions_path=tmp_path / "reactions.p",
+        edge_visualizations_dir=tmp_path / "edge_visualizations",
+    )
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.load_retropaths_pot", lambda _workspace: retropaths_pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RetropathsNEBQueue.read_from_disk", lambda _fp: queue)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot", lambda _workspace: pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_edge_visualizations",
+        lambda workspace, pot: [{"edge": "4 -> 1", "href": "edge_4_1.html"}],
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_completed_queue_visualizations",
+        lambda workspace, queue: [{"edge": "4 -> 1", "href": "queue_edge_4_1.html", "barrier": 6.5}],
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_template_payloads", lambda workspace: {})
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RunInputs.open", lambda _fp: SimpleNamespace(engine_name="fake"))
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_network_explorer_payload",
+        lambda graph, template_payloads=None, edge_visualizations=None: {
+            "nodes": [
+                {"id": 1, "label": "A", "data": {}},
+                {"id": 4, "label": "B", "data": {}},
+            ],
+            "edges": [
+                {"source": 4, "target": 1, "reaction": "r1", "barrier": 5.0, "chains": 1, "viewer_href": "edge_visualizations/edge_4_1.html", "data": {}, "template": {}},
+            ],
+        },
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._node_structure_payload", lambda _attrs: None)
+
+    payload = _build_drive_payload(workspace)
+    edge = payload["network"]["edges"][0]
+
+    assert edge["viewer_href"] == "edge_visualizations/queue_edge_4_1.html"
+    assert edge["result_from_completed_queue"] is True
+
+
 def test_write_completed_queue_visualizations_reuses_cached_metadata(monkeypatch, tmp_path):
     workspace = SimpleNamespace(edge_visualizations_dir=tmp_path / "edge_visualizations")
     queue = SimpleNamespace(
@@ -575,7 +646,11 @@ def test_write_completed_queue_visualizations_reuses_cached_metadata(monkeypatch
 {
   "barrier": 7.5,
   "finished_at": "2026-03-20T10:00:00",
-  "result_dir": "%s"
+  "result_dir": "%s",
+  "source_node": 1,
+  "target_node": 0,
+  "source_structure": {"xyz_b64": "source-xyz"},
+  "target_structure": {"xyz_b64": "target-xyz"}
 }
 """
         % (tmp_path / "result"),
@@ -589,7 +664,167 @@ def test_write_completed_queue_visualizations_reuses_cached_metadata(monkeypatch
 
     rows = _write_completed_queue_visualizations(workspace, queue)
 
-    assert rows == [{"edge": "1 -> 0", "barrier": 7.5, "href": "queue_edge_1_0.html"}]
+    assert rows == [
+        {
+            "edge": "1 -> 0",
+            "barrier": 7.5,
+            "href": "queue_edge_1_0.html",
+            "source_node": 1,
+            "target_node": 0,
+            "source_structure": {"xyz_b64": "source-xyz"},
+            "target_structure": {"xyz_b64": "target-xyz"},
+        }
+    ]
+
+
+def test_write_completed_queue_visualizations_prefers_saved_output_chain_xyz(monkeypatch, tmp_path):
+    workspace = SimpleNamespace(edge_visualizations_dir=tmp_path / "edge_visualizations")
+    queue = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                source_node=4,
+                target_node=1,
+                status="completed",
+                result_dir=str(tmp_path / "result"),
+                output_chain_xyz=str(tmp_path / "pair_4_1.xyz"),
+                finished_at="2026-03-20T10:00:00",
+            )
+        ]
+    )
+
+    used = {}
+
+    class _FakeStructure:
+        def __init__(self, xyz):
+            self._xyz = xyz
+            self.symbols = ["H", "H"]
+
+        def to_xyz(self):
+            return self._xyz
+
+    class _FakeChain:
+        def __init__(self):
+            self.nodes = [
+                SimpleNamespace(structure=_FakeStructure("2\nsource\nH 0 0 0\nH 0 0 1\n"), graph="A"),
+                SimpleNamespace(structure=_FakeStructure("2\ntarget\nH 0 0 0\nH 0 0 2\n"), graph="B"),
+            ]
+
+        def get_eA_chain(self):
+            return 4.25
+
+        def __len__(self):
+            return len(self.nodes)
+
+        def __getitem__(self, index):
+            return self.nodes[index]
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.Chain.from_xyz",
+        lambda fp, parameters: used.update({"xyz": str(fp)}) or _FakeChain(),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.TreeNode.read_from_disk",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("TreeNode.read_from_disk should not be used when output_chain_xyz exists")),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.scripts.main_cli._build_chain_visualizer_html",
+        lambda chain, chain_trajectory=None: "<html><body>viewer</body></html>",
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._molecule_visual_payload",
+        lambda molecule_like: {"smiles": str(molecule_like)},
+    )
+
+    rows = _write_completed_queue_visualizations(workspace, queue)
+
+    assert used["xyz"] == str(tmp_path / "pair_4_1.xyz")
+    assert rows[0]["edge"] == "4 -> 1"
+    assert rows[0]["barrier"] == 4.25
+    assert rows[0]["href"] == "queue_edge_4_1.html"
+    assert rows[0]["source_structure"]["xyz_b64"] != rows[0]["target_structure"]["xyz_b64"]
+    assert rows[0]["source_node"] == 4
+    assert rows[0]["target_node"] == 1
+
+
+def test_build_drive_payload_prefers_completed_queue_structures_for_structures_tab(monkeypatch, tmp_path):
+    queue = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                source_node=4,
+                target_node=1,
+                status="completed",
+                started_at="2026-03-20T12:00:00",
+                finished_at="2026-03-20T12:05:00",
+                error=None,
+                result_dir=str(tmp_path / "result"),
+                output_chain_xyz=None,
+            ),
+        ]
+    )
+    retropaths_pot = SimpleNamespace(graph=nx.DiGraph())
+    retropaths_pot.graph.add_node(1)
+    retropaths_pot.graph.add_node(4)
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(1, td=SimpleNamespace(structure="graph-target"), molecule="graph-target")
+    pot.graph.add_node(4, td=SimpleNamespace(structure="graph-source"), molecule="graph-source")
+    pot.graph.add_edge(4, 1, reaction="r1")
+
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "queue.json",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        inputs_fp=tmp_path / "inputs.toml",
+        workdir=str(tmp_path),
+        run_name="drive",
+        root_smiles="C",
+        environment_smiles="",
+        reactions_path=tmp_path / "reactions.p",
+        edge_visualizations_dir=tmp_path / "edge_visualizations",
+    )
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.load_retropaths_pot", lambda _workspace: retropaths_pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RetropathsNEBQueue.read_from_disk", lambda _fp: queue)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot", lambda _workspace: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_edge_visualizations", lambda workspace, pot: [])
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_completed_queue_visualizations",
+        lambda workspace, queue: [
+            {
+                "edge": "4 -> 1",
+                "href": "queue_edge_4_1.html",
+                "barrier": 6.5,
+                "source_node": 4,
+                "target_node": 1,
+                "source_structure": {"xyz_b64": "queue-source"},
+                "target_structure": {"xyz_b64": "queue-target"},
+            }
+        ],
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_template_payloads", lambda workspace: {})
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RunInputs.open", lambda _fp: SimpleNamespace(engine_name="fake"))
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_network_explorer_payload",
+        lambda graph, template_payloads=None, edge_visualizations=None: {
+            "nodes": [
+                {"id": 1, "label": "A", "data": {}},
+                {"id": 4, "label": "B", "data": {}},
+            ],
+            "edges": [
+                {"source": 4, "target": 1, "reaction": "r1", "barrier": None, "chains": 0, "viewer_href": None, "data": {}, "template": {}},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._node_structure_payload",
+        lambda attrs: {"xyz_b64": f"graph-{attrs['td'].structure}"},
+    )
+
+    payload = _build_drive_payload(workspace)
+    edge = payload["network"]["edges"][0]
+
+    assert edge["source_structure"]["xyz_b64"] == "queue-source"
+    assert edge["target_structure"]["xyz_b64"] == "queue-target"
 
 
 def test_snapshot_includes_active_action(monkeypatch, tmp_path):

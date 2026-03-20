@@ -19,8 +19,9 @@ from typing import Any, Callable
 
 from qcio import Structure
 
+from neb_dynamics.chain import Chain
 from neb_dynamics.constants import ANGSTROM_TO_BOHR
-from neb_dynamics.inputs import RunInputs
+from neb_dynamics.inputs import ChainInputs, RunInputs
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.pot import Pot
 from neb_dynamics.qcio_structure_helpers import molecule_to_structure, structure_to_molecule
@@ -495,6 +496,64 @@ def _node_structure_payload(node_attrs: dict[str, Any]) -> dict[str, Any] | None
     }
 
 
+def _structure_payload_from_structure(
+    structure: Any,
+    *,
+    molecule_like: Any = None,
+) -> dict[str, Any] | None:
+    if structure is None:
+        return None
+    return {
+        "xyz_b64": base64.b64encode(structure.to_xyz().encode("utf-8")).decode("ascii"),
+        "symbols": list(structure.symbols),
+        "molecule_viz": _molecule_visual_payload(molecule_like if molecule_like is not None else structure),
+    }
+
+
+def _load_completed_queue_chain(item: Any) -> Chain | Any | None:
+    chain = None
+    output_chain_xyz = str(getattr(item, "output_chain_xyz", "") or "").strip()
+    if output_chain_xyz:
+        with contextlib.suppress(Exception):
+            chain = Chain.from_xyz(
+                output_chain_xyz,
+                ChainInputs(),
+            )
+    if chain is not None:
+        return chain
+    try:
+        history = TreeNode.read_from_disk(
+            folder_name=item.result_dir,
+            charge=0,
+            multiplicity=1,
+        )
+    except Exception:
+        return None
+    return getattr(history, "output_chain", None)
+
+
+def _completed_queue_endpoint_payloads(item: Any) -> dict[str, Any] | None:
+    chain = _load_completed_queue_chain(item)
+    if chain is None or len(chain) < 2:
+        return None
+    source_node = chain[0]
+    target_node = chain[-1]
+    return {
+        "source_node": int(item.source_node),
+        "target_node": int(item.target_node),
+        "source_structure": _structure_payload_from_structure(
+            getattr(source_node, "structure", None),
+            molecule_like=getattr(source_node, "graph", None),
+        ),
+        "target_structure": _structure_payload_from_structure(
+            getattr(target_node, "structure", None),
+            molecule_like=getattr(target_node, "graph", None),
+        ),
+        "barrier": float(chain.get_eA_chain()) if hasattr(chain, "get_eA_chain") else None,
+        "chain": chain,
+    }
+
+
 def _merge_drive_pot(workspace: RetropathsWorkspace) -> Pot:
     base_pot = Pot.read_from_disk(workspace.neb_pot_fp)
     try:
@@ -610,26 +669,25 @@ def _write_completed_queue_visualizations(
                 if (
                     meta.get("result_dir") == cache_key["result_dir"]
                     and meta.get("finished_at") == cache_key["finished_at"]
+                    and "source_structure" in meta
+                    and "target_structure" in meta
                 ):
                     rows.append(
                         {
                             "edge": f"{int(item.source_node)} -> {int(item.target_node)}",
                             "barrier": meta.get("barrier"),
                             "href": filename,
+                            "source_node": int(meta.get("source_node", item.source_node)),
+                            "target_node": int(meta.get("target_node", item.target_node)),
+                            "source_structure": meta.get("source_structure"),
+                            "target_structure": meta.get("target_structure"),
                         }
                     )
                     continue
-        try:
-            history = TreeNode.read_from_disk(
-                folder_name=item.result_dir,
-                charge=0,
-                multiplicity=1,
-            )
-        except Exception:
+        queue_payload = _completed_queue_endpoint_payloads(item)
+        if queue_payload is None:
             continue
-        chain = getattr(history, "output_chain", None)
-        if chain is None:
-            continue
+        chain = queue_payload["chain"]
 
         title_html = (
             f"<div style=\"font-family: -apple-system, BlinkMacSystemFont, sans-serif; "
@@ -642,14 +700,16 @@ def _write_completed_queue_visualizations(
         html = html.replace("<body>", f"<body>\n  {title_html}", 1)
         out_fp.write_text(html, encoding="utf-8")
 
-        barrier = None
-        with contextlib.suppress(Exception):
-            barrier = float(chain.get_eA_chain())
+        barrier = queue_payload["barrier"]
         with contextlib.suppress(Exception):
             meta_fp.write_text(
                 json.dumps(
                     {
                         **cache_key,
+                        "source_node": queue_payload["source_node"],
+                        "target_node": queue_payload["target_node"],
+                        "source_structure": queue_payload["source_structure"],
+                        "target_structure": queue_payload["target_structure"],
                         "barrier": barrier,
                     },
                     indent=2,
@@ -662,6 +722,10 @@ def _write_completed_queue_visualizations(
                 "edge": f"{int(item.source_node)} -> {int(item.target_node)}",
                 "barrier": barrier,
                 "href": filename,
+                "source_node": queue_payload["source_node"],
+                "target_node": queue_payload["target_node"],
+                "source_structure": queue_payload["source_structure"],
+                "target_structure": queue_payload["target_structure"],
             }
         )
 
@@ -749,7 +813,7 @@ def _build_drive_payload(
         if queue_result is not None:
             if edge["barrier"] is None and queue_result.get("barrier") is not None:
                 edge["barrier"] = float(queue_result["barrier"])
-            if not edge["viewer_href"] and queue_result.get("href"):
+            if queue_result.get("href"):
                 edge["viewer_href"] = f"edge_visualizations/{queue_result['href']}"
             if edge["chains"] == 0:
                 edge["chains"] = 1
@@ -760,6 +824,15 @@ def _build_drive_payload(
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
         edge["source_structure"] = _node_structure_payload(pot.graph.nodes[source])
         edge["target_structure"] = _node_structure_payload(pot.graph.nodes[target])
+        if queue_result is not None:
+            queue_source = int(queue_result.get("source_node", source))
+            queue_target = int(queue_result.get("target_node", target))
+            if queue_source == source and queue_target == target:
+                edge["source_structure"] = queue_result.get("source_structure") or edge["source_structure"]
+                edge["target_structure"] = queue_result.get("target_structure") or edge["target_structure"]
+            elif queue_source == target and queue_target == source:
+                edge["source_structure"] = queue_result.get("target_structure") or edge["source_structure"]
+                edge["target_structure"] = queue_result.get("source_structure") or edge["target_structure"]
 
     user_started_items = [
         item for item in queue.items
