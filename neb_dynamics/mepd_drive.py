@@ -25,6 +25,7 @@ from neb_dynamics.molecule import Molecule
 from neb_dynamics.pot import Pot
 from neb_dynamics.qcio_structure_helpers import molecule_to_structure, structure_to_molecule
 from neb_dynamics.rdkit_draw import moldrawsvg
+from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.retropaths_queue import (
     _identical_endpoint_skip_reason,
     _ensure_pair_endpoints_optimized,
@@ -41,6 +42,9 @@ from neb_dynamics.retropaths_workflow import (
     _quiet_force_smiles,
     _strip_cached_result,
     _write_edge_visualizations,
+    add_manual_edge,
+    apply_reactions_to_node,
+    initialize_workspace_with_progress,
     RetropathsWorkspace,
     create_workspace,
     load_partial_annotated_pot,
@@ -106,6 +110,53 @@ def _run_geometry_optimization_with_trajectory(node: Any, run_inputs: RunInputs)
         return fallback, f"{type(exc).__name__}: {exc}", None
 
 
+def _run_geometry_optimization_batch_with_trajectories(
+    nodes: list[Any],
+    run_inputs: RunInputs,
+) -> list[tuple[Any, str | None, list[Any] | None]]:
+    if not nodes:
+        return []
+
+    batch_optimizer = getattr(run_inputs.engine, "compute_geometry_optimizations", None)
+    compute_program = str(getattr(run_inputs.engine, "compute_program", "") or "").lower()
+    engine_name = str(getattr(run_inputs, "engine_name", "") or "").lower()
+    use_batch = callable(batch_optimizer) and (compute_program == "chemcloud" or engine_name == "chemcloud")
+    if not use_batch:
+        return [
+            _run_geometry_optimization_with_trajectory(node=node, run_inputs=run_inputs)
+            for node in nodes
+        ]
+
+    try:
+        try:
+            trajectories = batch_optimizer(
+                nodes,
+                keywords={"coordsys": "cart", "maxiter": 500},
+            )
+        except TypeError:
+            trajectories = batch_optimizer(nodes)
+
+        optimized_nodes: list[tuple[Any, str | None, list[Any] | None]] = []
+        for original, traj in zip(nodes, trajectories):
+            optimized = traj[-1]
+            if getattr(original, "has_molecular_graph", False):
+                optimized.graph = structure_to_molecule(optimized.structure)
+                optimized.has_molecular_graph = True
+            else:
+                optimized.graph = original.graph
+                optimized.has_molecular_graph = original.has_molecular_graph
+            optimized_nodes.append((optimized, None, traj))
+        if len(optimized_nodes) == len(nodes):
+            return optimized_nodes
+    except Exception:
+        pass
+
+    return [
+        _run_geometry_optimization_with_trajectory(node=node, run_inputs=run_inputs)
+        for node in nodes
+    ]
+
+
 def _resolve_minimize_target_indices(
     workspace: RetropathsWorkspace,
     node_indices: list[int] | None,
@@ -117,7 +168,8 @@ def _resolve_minimize_target_indices(
         if selected and int(node_index) not in selected:
             continue
         attrs = pot.graph.nodes[node_index]
-        if attrs.get("td") is None:
+        minimizable, _note = _node_minimize_status(int(node_index), attrs)
+        if not minimizable:
             continue
         resolved.append(int(node_index))
     return resolved
@@ -132,6 +184,18 @@ def _node_minimize_status(node_index: int, node_attrs: dict[str, Any]) -> tuple[
         return False, f"Node {node_index} has no 3D structure attached, so it cannot be minimized."
     if node_attrs.get("endpoint_optimization_error"):
         return True, str(node_attrs.get("endpoint_optimization_error"))
+    if node_attrs.get("endpoint_optimized"):
+        return False, f"Node {node_index} is already geometry-optimized."
+    return True, ""
+
+
+def _node_apply_reaction_status(node_index: int, node_attrs: dict[str, Any]) -> tuple[bool, str]:
+    molecule = node_attrs.get("molecule")
+    if molecule is None:
+        td = node_attrs.get("td")
+        molecule = getattr(td, "graph", None)
+    if molecule is None:
+        return False, f"Node {node_index} has no molecular graph, so reaction templates cannot be applied to it."
     return True, ""
 
 
@@ -223,6 +287,19 @@ def _build_neb_live_payload(
     }
 
 
+def _build_growth_live_payload(active_action: dict[str, Any] | None) -> dict[str, Any] | None:
+    if active_action is None or active_action.get("type") not in {"initialize", "apply-reactions"}:
+        return None
+    progress = _read_growth_progress(active_action.get("progress_fp")) or {}
+    return {
+        "type": "growth",
+        "title": str(progress.get("title") or active_action.get("label") or "Growing Retropaths network"),
+        "note": str(progress.get("note") or ""),
+        "phase": str(progress.get("phase") or "growing"),
+        "network": dict(progress.get("network") or {"nodes": [], "edges": []}),
+    }
+
+
 def _read_log_tail(log_fp: Any, max_chars: int = 12000) -> str:
     if not log_fp:
         return ""
@@ -240,6 +317,15 @@ def _read_chain_payload(chain_fp: Any) -> dict[str, Any] | None:
         return None
     try:
         return json.loads(Path(str(chain_fp)).read_text())
+    except Exception:
+        return None
+
+
+def _read_growth_progress(progress_fp: Any) -> dict[str, Any] | None:
+    if not progress_fp:
+        return None
+    try:
+        return json.loads(Path(str(progress_fp)).read_text())
     except Exception:
         return None
 
@@ -432,6 +518,51 @@ def _merge_drive_pot(workspace: RetropathsWorkspace) -> Pot:
     return merged
 
 
+def _namespace_payload(value: Any) -> dict[str, Any]:
+    if value is None:
+        return {}
+    if isinstance(value, dict):
+        return _json_safe(value)
+    with contextlib.suppress(Exception):
+        return _json_safe(vars(value))
+    return {}
+
+
+def _inputs_summary_payload(workspace: RetropathsWorkspace) -> dict[str, Any]:
+    summary = {
+        "path": str(workspace.inputs_fp),
+        "engine_name": "",
+        "program": "",
+        "path_min_method": "",
+        "path_min_inputs": {},
+        "chain_inputs": {},
+        "gi_inputs": {},
+        "optimizer_kwds": {},
+        "program_kwds": {},
+        "error": "",
+    }
+    try:
+        run_inputs = RunInputs.open(workspace.inputs_fp)
+    except Exception as exc:
+        summary["error"] = f"{type(exc).__name__}: {exc}"
+        return summary
+
+    summary["engine_name"] = str(getattr(run_inputs, "engine_name", "") or "")
+    summary["program"] = str(getattr(run_inputs, "program", "") or "")
+    summary["path_min_method"] = str(getattr(run_inputs, "path_min_method", "") or "")
+    summary["path_min_inputs"] = _namespace_payload(getattr(run_inputs, "path_min_inputs", None))
+    summary["chain_inputs"] = _namespace_payload(getattr(run_inputs, "chain_inputs", None))
+    summary["gi_inputs"] = _namespace_payload(getattr(run_inputs, "gi_inputs", None))
+    summary["optimizer_kwds"] = _namespace_payload(getattr(run_inputs, "optimizer_kwds", None))
+    program_kwds = getattr(run_inputs, "program_kwds", None)
+    if isinstance(program_kwds, dict):
+        summary["program_kwds"] = _json_safe(program_kwds)
+    elif hasattr(program_kwds, "model_dump"):
+        with contextlib.suppress(Exception):
+            summary["program_kwds"] = _json_safe(program_kwds.model_dump())
+    return summary
+
+
 def _neb_backed_nodes(graph) -> set[int]:
     backed: set[int] = set()
     for source, target in graph.edges:
@@ -440,6 +571,101 @@ def _neb_backed_nodes(graph) -> set[int]:
             backed.add(int(source))
             backed.add(int(target))
     return backed
+
+
+def _resolve_display_edge_attrs(graph, source: int, target: int) -> tuple[dict[str, Any], bool]:
+    attrs = dict(graph.edges[(source, target)])
+    if attrs.get("list_of_nebs") or attrs.get("barrier") is not None:
+        return attrs, False
+    if graph.has_edge(target, source):
+        reverse_attrs = dict(graph.edges[(target, source)])
+        if reverse_attrs.get("list_of_nebs") or reverse_attrs.get("barrier") is not None:
+            return reverse_attrs, True
+    return attrs, False
+
+
+def _write_completed_queue_visualizations(
+    workspace: RetropathsWorkspace,
+    queue: RetropathsNEBQueue,
+) -> list[dict[str, Any]]:
+    from neb_dynamics.scripts.main_cli import _build_chain_visualizer_html
+
+    rows: list[dict[str, Any]] = []
+    out_dir = workspace.edge_visualizations_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for item in queue.items:
+        if item.status != "completed" or not item.result_dir:
+            continue
+        filename = f"queue_edge_{int(item.source_node)}_{int(item.target_node)}.html"
+        out_fp = out_dir / filename
+        meta_fp = out_dir / f"queue_edge_{int(item.source_node)}_{int(item.target_node)}.meta.json"
+        cache_key = {
+            "result_dir": str(item.result_dir),
+            "finished_at": str(item.finished_at or ""),
+        }
+        if out_fp.exists() and meta_fp.exists():
+            with contextlib.suppress(Exception):
+                meta = json.loads(meta_fp.read_text(encoding="utf-8"))
+                if (
+                    meta.get("result_dir") == cache_key["result_dir"]
+                    and meta.get("finished_at") == cache_key["finished_at"]
+                ):
+                    rows.append(
+                        {
+                            "edge": f"{int(item.source_node)} -> {int(item.target_node)}",
+                            "barrier": meta.get("barrier"),
+                            "href": filename,
+                        }
+                    )
+                    continue
+        try:
+            history = TreeNode.read_from_disk(
+                folder_name=item.result_dir,
+                charge=0,
+                multiplicity=1,
+            )
+        except Exception:
+            continue
+        chain = getattr(history, "output_chain", None)
+        if chain is None:
+            continue
+
+        title_html = (
+            f"<div style=\"font-family: -apple-system, BlinkMacSystemFont, sans-serif; "
+            f"margin: 0 0 12px 0; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;\">"
+            f"<div><strong>Attempted Edge:</strong> {int(item.source_node)} -&gt; {int(item.target_node)}</div>"
+            f"<div><strong>Queue Status:</strong> completed</div>"
+            f"</div>"
+        )
+        html = _build_chain_visualizer_html(chain=chain, chain_trajectory=None)
+        html = html.replace("<body>", f"<body>\n  {title_html}", 1)
+        out_fp.write_text(html, encoding="utf-8")
+
+        barrier = None
+        with contextlib.suppress(Exception):
+            barrier = float(chain.get_eA_chain())
+        with contextlib.suppress(Exception):
+            meta_fp.write_text(
+                json.dumps(
+                    {
+                        **cache_key,
+                        "barrier": barrier,
+                    },
+                    indent=2,
+                    sort_keys=True,
+                ),
+                encoding="utf-8",
+            )
+        rows.append(
+            {
+                "edge": f"{int(item.source_node)} -> {int(item.target_node)}",
+                "barrier": barrier,
+                "href": filename,
+            }
+        )
+
+    return rows
 
 
 def _build_drive_payload(
@@ -453,6 +679,17 @@ def _build_drive_payload(
     queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
     pot = _merge_drive_pot(workspace)
     edge_visualizations = _write_edge_visualizations(workspace=workspace, pot=pot)
+    completed_queue_visualizations = _write_completed_queue_visualizations(workspace=workspace, queue=queue)
+    viewer_by_edge = {
+        str(item.get("edge") or ""): f"edge_visualizations/{item['href']}"
+        for item in edge_visualizations
+        if item.get("edge") and item.get("href")
+    }
+    queue_result_by_edge = {
+        str(item.get("edge") or ""): item
+        for item in completed_queue_visualizations
+        if item.get("edge")
+    }
     template_payloads = _load_template_payloads(workspace)
     explorer = _build_network_explorer_payload(
         pot.graph,
@@ -482,6 +719,7 @@ def _build_drive_payload(
         node["endpoint_optimized"] = bool(attrs.get("endpoint_optimized"))
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
+        node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
         node["neb_backed"] = node_index in backed_nodes
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
@@ -489,8 +727,34 @@ def _build_drive_payload(
         source = int(edge["source"])
         target = int(edge["target"])
         attrs = pot.graph.edges[(source, target)]
+        display_attrs, used_reverse_result = _resolve_display_edge_attrs(pot.graph, source, target)
         queue_item = queue_by_edge.get((source, target))
-        edge["neb_backed"] = bool(attrs.get("list_of_nebs"))
+        queue_result = queue_result_by_edge.get(f"{source} -> {target}") or (
+            queue_result_by_edge.get(f"{target} -> {source}") if used_reverse_result else None
+        )
+        viewer_edge_key = f"{target} -> {source}" if used_reverse_result else f"{source} -> {target}"
+        edge["neb_backed"] = bool(display_attrs.get("list_of_nebs"))
+        edge["barrier"] = float(display_attrs["barrier"]) if display_attrs.get("barrier") is not None else None
+        edge["chains"] = len(display_attrs.get("list_of_nebs") or [])
+        edge["viewer_href"] = viewer_by_edge.get(viewer_edge_key)
+        edge["data"] = _json_safe(
+            {
+                key: value
+                for key, value in dict(display_attrs).items()
+                if key != "list_of_nebs"
+            }
+        )
+        edge["result_from_reverse_edge"] = bool(used_reverse_result)
+        edge["result_from_completed_queue"] = False
+        if queue_result is not None:
+            if edge["barrier"] is None and queue_result.get("barrier") is not None:
+                edge["barrier"] = float(queue_result["barrier"])
+            if not edge["viewer_href"] and queue_result.get("href"):
+                edge["viewer_href"] = f"edge_visualizations/{queue_result['href']}"
+            if edge["chains"] == 0:
+                edge["chains"] = 1
+            edge["neb_backed"] = edge["neb_backed"] or bool(edge["viewer_href"]) or edge["barrier"] is not None
+            edge["result_from_completed_queue"] = True
         edge["queue_status"] = queue_item.status if queue_item is not None else ""
         edge["queue_error"] = queue_item.error if queue_item is not None else ""
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
@@ -528,6 +792,7 @@ def _build_drive_payload(
             "optimized_endpoints": int(optimized_endpoints),
             "neb_backed_edges": int(neb_backed_edges),
         },
+        "inputs": _inputs_summary_payload(workspace),
         "queue": drive_queue_counts,
         "version": _drive_network_version(workspace),
         "network": explorer,
@@ -557,6 +822,7 @@ def _build_drive_payload_fast(
         node["endpoint_optimized"] = bool(attrs.get("endpoint_optimized"))
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
+        node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
         node["neb_backed"] = False
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
@@ -607,6 +873,7 @@ def _build_drive_payload_fast(
             "optimized_endpoints": int(optimized_endpoints),
             "neb_backed_edges": 0,
         },
+        "inputs": _inputs_summary_payload(workspace),
         "queue": drive_queue_counts,
         "version": _drive_network_version(workspace),
         "network": explorer,
@@ -643,6 +910,7 @@ def _build_drive_payload_fast_neb(
         node["endpoint_optimized"] = bool(attrs.get("endpoint_optimized"))
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
+        node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
         node["neb_backed"] = False
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
@@ -693,6 +961,7 @@ def _build_drive_payload_fast_neb(
             "optimized_endpoints": int(optimized_endpoints),
             "neb_backed_edges": 0,
         },
+        "inputs": _inputs_summary_payload(workspace),
         "queue": drive_queue_counts,
         "version": _drive_network_version(workspace),
         "network": explorer,
@@ -707,17 +976,19 @@ def _initialize_workspace_job(
     workspace_dir: str,
     inputs_fp: str,
     reactions_fp: str | None,
+    environment_smiles: str = "",
     timeout_seconds: int,
     max_nodes: int,
     max_depth: int,
     max_parallel_nebs: int,
+    progress_fp: str | None = None,
 ) -> dict[str, Any]:
     workspace_path = Path(workspace_dir).resolve()
     if workspace_path.exists():
         shutil.rmtree(workspace_path)
     workspace = create_workspace(
         root_smiles=reactant["smiles"],
-        environment_smiles="",
+        environment_smiles=str(environment_smiles or ""),
         inputs_fp=inputs_fp,
         reactions_fp=reactions_fp,
         name=run_name,
@@ -727,7 +998,25 @@ def _initialize_workspace_job(
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
     )
-    prepare_neb_workspace(workspace)
+    if progress_fp:
+        initialize_workspace_with_progress(workspace, progress_fp=progress_fp)
+    else:
+        prepare_neb_workspace(workspace)
+    return _workspace_snapshot_payload(
+        workspace,
+        reactant=reactant,
+        product=product,
+        message=f"Initialized workspace {workspace.run_name}.",
+    )
+
+
+def _workspace_snapshot_payload(
+    workspace: RetropathsWorkspace,
+    *,
+    reactant: dict[str, Any] | None = None,
+    product: dict[str, Any] | None = None,
+    message: str = "",
+) -> dict[str, Any]:
     return {
         "workspace": {
             "workdir": workspace.workdir,
@@ -741,9 +1030,9 @@ def _initialize_workspace_job(
             "max_depth": workspace.max_depth,
             "max_parallel_nebs": workspace.max_parallel_nebs,
         },
-        "reactant": reactant,
+        "reactant": reactant if reactant is not None else {"smiles": workspace.root_smiles},
         "product": product,
-        "message": f"Initialized workspace {workspace.run_name}.",
+        "message": message or f"Loaded workspace {workspace.run_name}.",
     }
 
 
@@ -777,65 +1066,136 @@ def _optimize_selected_nodes(
         return {"message": "No geometries matched the minimization request."}
 
     total = len(pending_indices)
-    for offset, (node_index, node) in enumerate(zip(pending_indices, pending_nodes), start=1):
-        progress(f"Optimizing geometry {offset}/{total}: node {node_index}")
-        on_node_update(
-            {
-                "node_id": int(node_index),
-                "status": "running",
-                "index": offset,
-                "total": total,
-            }
+    batch_optimizer = getattr(run_inputs.engine, "compute_geometry_optimizations", None)
+    compute_program = str(getattr(run_inputs.engine, "compute_program", "") or "").lower()
+    engine_name = str(getattr(run_inputs, "engine_name", "") or "").lower()
+    use_chemcloud_batch = callable(batch_optimizer) and (compute_program == "chemcloud" or engine_name == "chemcloud") and total > 1
+
+    if use_chemcloud_batch:
+        progress(f"Submitting {total} geometry optimizations to ChemCloud in parallel.")
+        for offset, node_index in enumerate(pending_indices, start=1):
+            on_node_update(
+                {
+                    "node_id": int(node_index),
+                    "status": "running",
+                    "index": offset,
+                    "total": total,
+                }
+            )
+        results = _run_geometry_optimization_batch_with_trajectories(
+            nodes=pending_nodes,
+            run_inputs=run_inputs,
         )
-        optimized_td, error, trajectory = _run_geometry_optimization_with_trajectory(node=node, run_inputs=run_inputs)
-        attrs = pot.graph.nodes[node_index]
-        result_fp = None
-        if error is None:
-            result_fp = _persist_endpoint_optimization_result(
-                workspace=workspace,
-                node_index=node_index,
-                optimized_td=optimized_td,
-            )
-            if result_fp is not None:
-                optimized_td = _strip_cached_result(optimized_td)
-        attrs["td"] = optimized_td
-        attrs["endpoint_optimized"] = error is None
-        if error is None:
-            attrs.pop("endpoint_optimization_error", None)
-            if result_fp is not None:
-                attrs["endpoint_optimization_result_fp"] = result_fp
-        else:
-            attrs["endpoint_optimization_error"] = error
-            attrs.pop("endpoint_optimization_result_fp", None)
-        pot.write_to_disk(workspace.neb_pot_fp)
-        if error is None:
-            progress(f"Finished geometry {offset}/{total}: node {node_index}")
+        for offset, (node_index, (optimized_td, error, trajectory)) in enumerate(zip(pending_indices, results), start=1):
+            progress(f"Collecting ChemCloud geometry {offset}/{total}: node {node_index}")
+            attrs = pot.graph.nodes[node_index]
+            result_fp = None
+            if error is None:
+                result_fp = _persist_endpoint_optimization_result(
+                    workspace=workspace,
+                    node_index=node_index,
+                    optimized_td=optimized_td,
+                )
+                if result_fp is not None:
+                    optimized_td = _strip_cached_result(optimized_td)
+            attrs["td"] = optimized_td
+            attrs["endpoint_optimized"] = error is None
+            if error is None:
+                attrs.pop("endpoint_optimization_error", None)
+                if result_fp is not None:
+                    attrs["endpoint_optimization_result_fp"] = result_fp
+            else:
+                attrs["endpoint_optimization_error"] = error
+                attrs.pop("endpoint_optimization_result_fp", None)
+            pot.write_to_disk(workspace.neb_pot_fp)
+            if error is None:
+                progress(f"Finished geometry {offset}/{total}: node {node_index}")
+                on_node_update(
+                    {
+                        "node_id": int(node_index),
+                        "status": "completed",
+                        "index": offset,
+                        "total": total,
+                        "plot": _trajectory_plot_payload(
+                            trajectory,
+                            title=f"Node {node_index} optimization trajectory",
+                            x_label="Trajectory step",
+                            y_label="Energy (Hartree)",
+                        ),
+                        "structure": _node_structure_payload(attrs),
+                    }
+                )
+            else:
+                progress(f"Geometry {offset}/{total} failed for node {node_index}: {error}")
+                on_node_update(
+                    {
+                        "node_id": int(node_index),
+                        "status": "failed",
+                        "index": offset,
+                        "total": total,
+                        "error": error,
+                    }
+                )
+    else:
+        for offset, (node_index, node) in enumerate(zip(pending_indices, pending_nodes), start=1):
+            progress(f"Optimizing geometry {offset}/{total}: node {node_index}")
             on_node_update(
                 {
                     "node_id": int(node_index),
-                    "status": "completed",
+                    "status": "running",
                     "index": offset,
                     "total": total,
-                    "plot": _trajectory_plot_payload(
-                        trajectory,
-                        title=f"Node {node_index} optimization trajectory",
-                        x_label="Trajectory step",
-                        y_label="Energy (Hartree)",
-                    ),
-                    "structure": _node_structure_payload(attrs),
                 }
             )
-        else:
-            progress(f"Geometry {offset}/{total} failed for node {node_index}: {error}")
-            on_node_update(
-                {
-                    "node_id": int(node_index),
-                    "status": "failed",
-                    "index": offset,
-                    "total": total,
-                    "error": error,
-                }
-            )
+            optimized_td, error, trajectory = _run_geometry_optimization_with_trajectory(node=node, run_inputs=run_inputs)
+            attrs = pot.graph.nodes[node_index]
+            result_fp = None
+            if error is None:
+                result_fp = _persist_endpoint_optimization_result(
+                    workspace=workspace,
+                    node_index=node_index,
+                    optimized_td=optimized_td,
+                )
+                if result_fp is not None:
+                    optimized_td = _strip_cached_result(optimized_td)
+            attrs["td"] = optimized_td
+            attrs["endpoint_optimized"] = error is None
+            if error is None:
+                attrs.pop("endpoint_optimization_error", None)
+                if result_fp is not None:
+                    attrs["endpoint_optimization_result_fp"] = result_fp
+            else:
+                attrs["endpoint_optimization_error"] = error
+                attrs.pop("endpoint_optimization_result_fp", None)
+            pot.write_to_disk(workspace.neb_pot_fp)
+            if error is None:
+                progress(f"Finished geometry {offset}/{total}: node {node_index}")
+                on_node_update(
+                    {
+                        "node_id": int(node_index),
+                        "status": "completed",
+                        "index": offset,
+                        "total": total,
+                        "plot": _trajectory_plot_payload(
+                            trajectory,
+                            title=f"Node {node_index} optimization trajectory",
+                            x_label="Trajectory step",
+                            y_label="Energy (Hartree)",
+                        ),
+                        "structure": _node_structure_payload(attrs),
+                    }
+                )
+            else:
+                progress(f"Geometry {offset}/{total} failed for node {node_index}: {error}")
+                on_node_update(
+                    {
+                        "node_id": int(node_index),
+                        "status": "failed",
+                        "index": offset,
+                        "total": total,
+                        "error": error,
+                    }
+                )
 
     return {
         "message": f"Queued minimization finished for {len(pending_indices)} geometries.",
@@ -989,12 +1349,10 @@ def _load_existing_workspace_job(workspace_path: str) -> dict[str, Any]:
     # Rebuild the annotated overlay immediately so completed NEB results
     # are visible as soon as the workspace is opened in drive.
     load_partial_annotated_pot(workspace)
-    return {
-        "workspace": workspace.__dict__,
-        "reactant": {"smiles": workspace.root_smiles},
-        "product": None,
-        "message": f"Loaded existing workspace {workspace.run_name}.",
-    }
+    return _workspace_snapshot_payload(
+        workspace,
+        message=f"Loaded existing workspace {workspace.run_name}.",
+    )
 
 
 def _drive_html() -> str:
@@ -1019,7 +1377,9 @@ def _drive_html() -> str:
     body { margin: 0; font-family: Georgia, serif; background: radial-gradient(circle at top, #fbf7f1, var(--bg)); color: var(--ink); }
     .shell { padding: 20px; display: grid; gap: 16px; }
     .panel { background: var(--panel); border: 1px solid var(--line); padding: 16px; }
-    .hero { display: grid; grid-template-columns: 1.1fr 1.7fr; gap: 16px; }
+    .page-title { padding: 20px; background: linear-gradient(135deg, #fff8ee, #f3e7d3); }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+    .section-head h2 { margin: 0; }
     .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
     .stat { border: 1px solid var(--line); padding: 10px; background: #fbf7ef; }
     .muted { color: var(--muted); }
@@ -1031,7 +1391,36 @@ def _drive_html() -> str:
     button.secondary { background: #e5f0eb; border-color: #8ab0a3; }
     button:disabled { opacity: 0.55; cursor: default; }
     .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-    .graph-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(360px, 1fr); gap: 16px; }
+    .summary-strip { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 1.6fr); gap: 16px; align-items: start; margin-bottom: 14px; }
+    .tool-tabs, .detail-tabs { display: flex; gap: 8px; margin: 10px 0 14px; flex-wrap: wrap; }
+    .tool-tab, .detail-tab { padding: 7px 10px; border: 1px solid var(--line); background: #f4ecdf; cursor: pointer; }
+    .tool-tab.active, .detail-tab.active { background: var(--accent); color: white; border-color: #8f4b1c; }
+    .tool-panel, .detail-panel { display: none; }
+    .tool-panel.active, .detail-panel.active { display: block; }
+    .inputs-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr); gap: 16px; }
+    .network-canvas-shell { position: relative; }
+    .network-toolbar {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 3;
+      min-width: 220px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 253, 248, 0.96);
+      box-shadow: 0 10px 24px rgba(36, 29, 24, 0.12);
+    }
+    .network-toolbar-title { font-weight: 600; margin-bottom: 6px; }
+    .network-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .network-tool-button {
+      min-width: 44px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      background: #f7efe2;
+      font-size: 20px;
+      line-height: 1;
+    }
+    .network-tool-button.active { background: var(--accent-2); color: #fff; border-color: #165546; }
     .explorer-svg { width: 100%; min-height: 620px; border: 1px solid var(--line); background: linear-gradient(180deg, #fffdf8, #f8f0e0); }
     .network-edge-line { stroke: #8f8271; stroke-width: 2.2; fill: none; }
     .network-edge-line.neb-backed { stroke: var(--backed); stroke-width: 3.4; }
@@ -1042,12 +1431,8 @@ def _drive_html() -> str:
     .network-node.neb-backed { fill: var(--backed); }
     .network-node.target { fill: #81467b; }
     .network-node.selected { fill: #d79e35; stroke: #5f3706; stroke-width: 3; }
+    .network-node.connect-source { fill: #1f6a57; stroke: #fdf8ef; stroke-width: 3.2; }
     .network-label { font-size: 11px; fill: #2d241c; pointer-events: none; }
-    .detail-tabs { display: flex; gap: 8px; margin: 10px 0 14px; flex-wrap: wrap; }
-    .detail-tab { padding: 7px 10px; border: 1px solid var(--line); background: #f4ecdf; cursor: pointer; }
-    .detail-tab.active { background: var(--accent); color: white; border-color: #8f4b1c; }
-    .detail-panel { display: none; }
-    .detail-panel.active { display: block; }
     .viewer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     iframe.structure { width: 100%; height: 320px; border: 1px solid var(--line); background: white; }
     .mol-card { width: 100%; min-height: 320px; border: 1px solid var(--line); background: white; display: grid; align-content: start; }
@@ -1057,9 +1442,24 @@ def _drive_html() -> str:
     pre { margin: 0; white-space: pre-wrap; word-break: break-word; background: #f7f1e9; border: 1px solid #e4d7c5; padding: 12px; }
     .badge { display: inline-block; padding: 2px 8px; border: 1px solid var(--line); background: #faf2e5; margin-right: 6px; }
     .message { padding: 10px 12px; border: 1px solid var(--line); background: #faf5eb; }
+    .kv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
+    .kv-card { border: 1px solid var(--line); background: #fbf7ef; padding: 10px; }
+    .code-block { background: #f7f1e9; border: 1px solid #e4d7c5; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
     .live-activity { margin-top: 12px; border: 1px solid var(--line); background: #fbf7ef; padding: 12px; }
     .live-activity svg { width: 100%; height: auto; border: 1px solid var(--line); background: white; }
     .live-activity pre { margin-top: 10px; font-size: 12px; max-height: 220px; overflow: auto; }
+    .live-activity-inline {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      z-index: 2;
+      width: min(460px, calc(100% - 32px));
+      max-height: calc(100% - 32px);
+      margin-top: 0;
+      overflow: auto;
+      box-shadow: 0 14px 28px rgba(36, 29, 24, 0.14);
+      backdrop-filter: blur(1px);
+    }
     .live-neb-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr) 190px; gap: 12px; align-items: start; }
     .live-neb-layout .mol-card { min-height: 210px; }
     .job-list { display: grid; gap: 8px; margin-top: 12px; }
@@ -1067,8 +1467,9 @@ def _drive_html() -> str:
     .job-row.running { border-color: #1f6a57; }
     .job-row.completed { border-color: #8ab0a3; }
     .job-row.failed { border-color: #b03a2e; }
+    .log-grid { display: grid; gap: 12px; }
     @media (max-width: 1080px) {
-      .hero, .graph-grid, .form-grid, .viewer-grid { grid-template-columns: 1fr; }
+      .summary-strip, .inputs-grid, .form-grid, .viewer-grid { grid-template-columns: 1fr; }
       .explorer-svg { min-height: 480px; }
       .live-neb-layout { grid-template-columns: 1fr; }
     }
@@ -1076,76 +1477,161 @@ def _drive_html() -> str:
 </head>
 <body>
   <div class="shell">
-    <div class="hero">
-      <div class="panel">
-        <h1 style="margin-top:0;">MEPD Drive</h1>
-        <div class="muted" style="margin-bottom:12px;">Initialize a Retropaths workspace from reactant-only or reactant/product inputs, inspect the live network, and queue geometry minimizations or autosplitting NEBs directly from the graph.</div>
-        <div id="job-banner" class="message">Idle.</div>
-        <div id="job-subtext" class="muted" style="margin-top:8px;">No action submitted yet.</div>
+    <div class="panel page-title">
+      <h1 style="margin:0 0 6px;">MEPD Drive</h1>
+      <div class="muted" style="margin-bottom:12px;">Set inputs, grow the reaction network, interact directly with the graph, then queue exploration work and inspect logs from a single workspace.</div>
+      <div id="job-banner" class="message">Idle.</div>
+      <div id="job-subtext" class="muted" style="margin-top:8px;">No action submitted yet.</div>
+    </div>
+
+    <div class="panel">
+      <div class="section-head">
+        <h2>Inputs</h2>
+        <div class="muted">Starting geometries, workspace controls, and current path-minimization settings.</div>
       </div>
-      <div class="panel">
-        <div class="form-grid">
+      <div class="tool-tabs">
+        <button class="tool-tab active" data-tool-tab="inputs" data-tool-target="setup">Workspace Setup</button>
+        <button class="tool-tab" data-tool-tab="inputs" data-tool-target="pathmin">Path Minimization Inputs</button>
+      </div>
+      <div id="tool-panel-inputs-setup" class="tool-panel active">
+        <div class="inputs-grid">
           <div>
-            <label>Mode</label>
-            <select id="mode">
-              <option value="reactant">Reactant only</option>
-              <option value="reactant-product">Reactant and product</option>
-            </select>
+            <div class="form-grid">
+              <div>
+                <label>Mode</label>
+                <select id="mode">
+                  <option value="reactant">Reactant only</option>
+                  <option value="reactant-product">Reactant and product</option>
+                </select>
+              </div>
+              <div>
+                <label>Run name</label>
+                <input id="run-name" type="text" placeholder="Optional workspace name" />
+              </div>
+              <div>
+                <label>Existing workspace path</label>
+                <input id="workspace-path" type="text" placeholder="Path to an existing mepd-drive workspace or workspace.json" />
+              </div>
+              <div>
+                <label>Inputs TOML</label>
+                <input id="inputs-path" type="text" placeholder="Path to RunInputs TOML (optional if drive was launched with --inputs)" />
+              </div>
+              <div>
+                <label>Reactions File</label>
+                <input id="reactions-path" type="text" placeholder="Optional path to retropaths reactions.p" />
+              </div>
+              <div>
+                <label>Environment SMILES</label>
+                <input id="environment-smiles" type="text" placeholder="Optional environment SMILES" />
+              </div>
+              <div>
+                <label>Reactant SMILES</label>
+                <input id="reactant-smiles" type="text" placeholder="SMILES or leave blank if you paste XYZ below" />
+              </div>
+              <div>
+                <label>Product SMILES</label>
+                <input id="product-smiles" type="text" placeholder="Optional product SMILES" />
+              </div>
+              <div>
+                <label>Reactant XYZ</label>
+                <textarea id="reactant-xyz" placeholder="Paste an XYZ block here if you want to initialize from a 3D structure"></textarea>
+              </div>
+              <div>
+                <label>Product XYZ</label>
+                <textarea id="product-xyz" placeholder="Optional product XYZ block"></textarea>
+              </div>
+            </div>
+            <div style="margin-top:12px;">
+              <button id="initialize" class="primary">Build Retropaths Network</button>
+              <button id="load-workspace" class="secondary">Load Existing Workspace</button>
+              <button id="minimize-all" class="secondary">Queue Minimization For All Geometries</button>
+            </div>
           </div>
           <div>
-            <label>Run name</label>
-            <input id="run-name" type="text" placeholder="Optional workspace name" />
-          </div>
-          <div>
-            <label>Existing workspace path</label>
-            <input id="workspace-path" type="text" placeholder="Path to an existing mepd-drive workspace or workspace.json" />
-          </div>
-          <div>
-            <label>Reactant SMILES</label>
-            <input id="reactant-smiles" type="text" placeholder="SMILES or leave blank if you paste XYZ below" />
-          </div>
-          <div>
-            <label>Product SMILES</label>
-            <input id="product-smiles" type="text" placeholder="Optional product SMILES" />
-          </div>
-          <div>
-            <label>Reactant XYZ</label>
-            <textarea id="reactant-xyz" placeholder="Paste an XYZ block here if you want to initialize from a 3D structure"></textarea>
-          </div>
-          <div>
-            <label>Product XYZ</label>
-            <textarea id="product-xyz" placeholder="Optional product XYZ block"></textarea>
+            <div id="workspace-summary" class="muted">No workspace initialized yet.</div>
+            <div id="inputs-summary" style="margin-top:12px;"></div>
           </div>
         </div>
-        <div style="margin-top:12px;">
-          <button id="initialize" class="primary">Build Retropaths Network</button>
-          <button id="load-workspace" class="secondary">Load Existing Workspace</button>
-          <button id="minimize-all" class="secondary">Queue Minimization For All Geometries</button>
+      </div>
+      <div id="tool-panel-inputs-pathmin" class="tool-panel">
+        <div id="pathmin-config-panel" class="muted">Load or initialize a workspace to inspect the current path minimization inputs.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="section-head">
+        <h2>Reaction Network</h2>
+        <div class="muted">The populated reaction network is the main workspace. Click nodes and edges directly on the canvas.</div>
+      </div>
+      <div class="summary-strip">
+        <div id="network-summary" class="muted">No workspace initialized yet.</div>
+        <div id="stats" class="stats"></div>
+      </div>
+      <div class="network-canvas-shell">
+        <div id="network-toolbar" class="network-toolbar"></div>
+        <svg id="network-svg" class="explorer-svg" viewBox="0 0 1180 680" role="img" aria-label="MEPD Drive network graph"></svg>
+        <div id="live-activity-inline" class="live-activity live-activity-inline" style="display:none;"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="section-head">
+        <h2>Exploration</h2>
+        <div class="muted">Queue NEBs, minimizations, reaction-template application, and inspect the selected graph item.</div>
+      </div>
+      <div id="detail-title" style="font-size:22px; margin-bottom:6px;">Select a node or edge</div>
+      <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
+      <div class="detail-tabs">
+        <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
+        <button class="detail-tab" data-tab="template-data">Template Data</button>
+        <button class="detail-tab" data-tab="structures">Structures</button>
+        <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
+      </div>
+      <div id="panel-targeted" class="detail-panel active"></div>
+      <div id="panel-template-data" class="detail-panel"></div>
+      <div id="panel-structures" class="detail-panel"></div>
+      <div id="panel-manual-edge" class="detail-panel">
+        <div class="form-grid">
+          <div>
+            <label>Manual edge source node</label>
+            <input id="manual-edge-source" type="number" min="0" placeholder="Source node id" />
+          </div>
+          <div>
+            <label>Manual edge target node</label>
+            <input id="manual-edge-target" type="number" min="0" placeholder="Target node id" />
+          </div>
+          <div>
+            <label>Manual edge label</label>
+            <input id="manual-edge-label" type="text" placeholder="Optional reaction label" />
+          </div>
+          <div style="display:flex; align-items:end;">
+            <button id="add-manual-edge" class="secondary" style="width:100%;">Attempt To Add Manual Edge</button>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="panel">
-      <div id="workspace-summary" class="muted">No workspace initialized yet.</div>
-      <div id="stats" class="stats" style="margin-top:12px;"></div>
-      <div id="live-activity-panel" class="live-activity" style="display:none;"></div>
-    </div>
-
-    <div class="graph-grid">
-      <div class="panel">
-        <svg id="network-svg" class="explorer-svg" viewBox="0 0 1180 680" role="img" aria-label="MEPD Drive network graph"></svg>
+      <div class="section-head">
+        <h2>Logging</h2>
+        <div class="muted">Live monitors, debug state, and detailed backend output.</div>
       </div>
-      <div class="panel">
-        <h2 id="detail-title" style="margin-top:0;">Select a node or edge</h2>
-        <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
-        <div class="detail-tabs">
-          <button class="detail-tab active" data-tab="targeted">Targeted Reaction</button>
-          <button class="detail-tab" data-tab="template-data">Template Data</button>
-          <button class="detail-tab" data-tab="structures">3D Structures</button>
+      <div class="tool-tabs">
+        <button class="tool-tab active" data-tool-tab="logging" data-tool-target="activity">Activity</button>
+        <button class="tool-tab" data-tool-tab="logging" data-tool-target="console">Console</button>
+        <button class="tool-tab" data-tool-tab="logging" data-tool-target="state">State</button>
+      </div>
+      <div id="tool-panel-logging-activity" class="tool-panel active">
+        <div id="live-activity-panel" class="live-activity" style="display:none;"></div>
+      </div>
+      <div id="tool-panel-logging-console" class="tool-panel">
+        <div id="log-console" class="code-block">No log output yet.</div>
+      </div>
+      <div id="tool-panel-logging-state" class="tool-panel">
+        <div class="log-grid">
+          <div id="log-status" class="message">Idle.</div>
+          <div id="log-state" class="code-block">No state captured yet.</div>
         </div>
-        <div id="panel-targeted" class="detail-panel active"></div>
-        <div id="panel-template-data" class="detail-panel"></div>
-        <div id="panel-structures" class="detail-panel"></div>
       </div>
     </div>
   </div>
@@ -1156,7 +1642,13 @@ def _drive_html() -> str:
       snapshot: null,
       selected: null,
       networkVersion: "",
+      connectSourceNodeId: null,
     };
+
+    function setManualEdgeEndpoint(which, nodeId) {
+      const input = document.getElementById(which === "source" ? "manual-edge-source" : "manual-edge-target");
+      if (input) input.value = String(Number(nodeId));
+    }
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -1243,7 +1735,7 @@ def _drive_html() -> str:
     }
 
     function setButtonsDisabled(disabled) {
-      ["initialize", "load-workspace", "minimize-all"].forEach((id) => {
+      ["initialize", "load-workspace", "minimize-all", "add-manual-edge"].forEach((id) => {
         const elem = document.getElementById(id);
         if (elem) elem.disabled = disabled;
       });
@@ -1291,17 +1783,146 @@ def _drive_html() -> str:
     }
 
     function renderWorkspaceSummary(snapshot) {
-      const el = document.getElementById("workspace-summary");
+      const inputEl = document.getElementById("workspace-summary");
+      const networkEl = document.getElementById("network-summary");
+      if (!inputEl || !networkEl) return;
       if (!snapshot || !snapshot.initialized || !snapshot.drive) {
-        el.textContent = "No workspace initialized yet.";
+        inputEl.textContent = "No workspace initialized yet.";
+        networkEl.textContent = "No workspace initialized yet.";
         return;
       }
       const workspace = snapshot.drive.workspace;
-      el.innerHTML = `
+      const html = `
         <span class="badge">${escapeHtml(workspace.run_name)}</span>
         <span class="badge">${escapeHtml(workspace.root_smiles)}</span>
         ${snapshot.product?.smiles ? `<span class="badge">Target: ${escapeHtml(snapshot.product.smiles)}</span>` : ""}
+        ${workspace.environment_smiles ? `<span class="badge">Environment: ${escapeHtml(workspace.environment_smiles)}</span>` : ""}
         <div style="margin-top:8px;"><strong>Workspace:</strong> ${escapeHtml(workspace.directory)}</div>
+      `;
+      inputEl.innerHTML = html;
+      networkEl.innerHTML = `
+        <div style="margin-bottom:6px;"><strong>${escapeHtml(workspace.run_name)}</strong></div>
+        <div class="muted">Root: ${escapeHtml(workspace.root_smiles)}</div>
+        ${snapshot.product?.smiles ? `<div class="muted">Target: ${escapeHtml(snapshot.product.smiles)}</div>` : ""}
+        <div class="muted">Workspace: ${escapeHtml(workspace.directory)}</div>
+      `;
+    }
+
+    function formatJsonBlock(value) {
+      const text = JSON.stringify(value || {}, null, 2);
+      return `<div class="code-block">${escapeHtml(text)}</div>`;
+    }
+
+    function renderInputsPanels(snapshot) {
+      const summary = document.getElementById("inputs-summary");
+      const pathmin = document.getElementById("pathmin-config-panel");
+      if (!summary || !pathmin) return;
+      if (!snapshot || !snapshot.initialized || !snapshot.drive) {
+        summary.innerHTML = `<div class="muted">No initialized workspace. Fill in the starting geometries here or load an existing workspace.</div>`;
+        pathmin.innerHTML = `<div class="muted">Load or initialize a workspace to inspect the current path minimization inputs.</div>`;
+        return;
+      }
+      const inputs = snapshot.drive.inputs || {};
+      summary.innerHTML = `
+        <div class="kv-grid">
+          <div class="kv-card"><div class="muted">Inputs File</div><div>${escapeHtml(inputs.path || "Unavailable")}</div></div>
+          <div class="kv-card"><div class="muted">Path Method</div><div>${escapeHtml(inputs.path_min_method || "Unavailable")}</div></div>
+          <div class="kv-card"><div class="muted">Engine</div><div>${escapeHtml(inputs.engine_name || "Unavailable")}</div></div>
+          <div class="kv-card"><div class="muted">Program</div><div>${escapeHtml(inputs.program || "Unavailable")}</div></div>
+        </div>
+        ${inputs.error ? `<div style="margin-top:12px; color: var(--warn);">${escapeHtml(inputs.error)}</div>` : ""}
+      `;
+      pathmin.innerHTML = `
+        <div class="kv-grid" style="margin-bottom:12px;">
+          <div class="kv-card"><div class="muted">Path Minimization Method</div><div>${escapeHtml(inputs.path_min_method || "Unavailable")}</div></div>
+          <div class="kv-card"><div class="muted">Engine</div><div>${escapeHtml(inputs.engine_name || "Unavailable")}</div></div>
+          <div class="kv-card"><div class="muted">Program</div><div>${escapeHtml(inputs.program || "Unavailable")}</div></div>
+          <div class="kv-card"><div class="muted">Inputs File</div><div>${escapeHtml(inputs.path || "Unavailable")}</div></div>
+        </div>
+        ${inputs.error ? `<div style="margin-bottom:12px; color: var(--warn);">${escapeHtml(inputs.error)}</div>` : ""}
+        <div style="display:grid; gap:12px;">
+          <div>
+            <div style="font-weight:600; margin-bottom:6px;">Path Minimization Inputs</div>
+            ${formatJsonBlock(inputs.path_min_inputs || {})}
+          </div>
+          <div>
+            <div style="font-weight:600; margin-bottom:6px;">Chain Inputs</div>
+            ${formatJsonBlock(inputs.chain_inputs || {})}
+          </div>
+          <div>
+            <div style="font-weight:600; margin-bottom:6px;">Geodesic Interpolation Inputs</div>
+            ${formatJsonBlock(inputs.gi_inputs || {})}
+          </div>
+          <div>
+            <div style="font-weight:600; margin-bottom:6px;">Optimizer Inputs</div>
+            ${formatJsonBlock(inputs.optimizer_kwds || {})}
+          </div>
+          <div>
+            <div style="font-weight:600; margin-bottom:6px;">Program Inputs</div>
+            ${formatJsonBlock(inputs.program_kwds || {})}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderLogging(snapshot) {
+      const consoleEl = document.getElementById("log-console");
+      const stateEl = document.getElementById("log-state");
+      const statusEl = document.getElementById("log-status");
+      if (!consoleEl || !stateEl || !statusEl) return;
+      const activity = snapshot?.live_activity || null;
+      const consoleText = activity?.console_text || snapshot?.last_error || snapshot?.last_message || "No log output yet.";
+      consoleEl.textContent = consoleText;
+      statusEl.innerHTML = `
+        <strong>Status:</strong> ${escapeHtml(snapshot?.busy ? "Busy" : "Idle")}
+        <div class="muted" style="margin-top:6px;">${escapeHtml(snapshot?.last_message || "Idle.")}</div>
+        ${snapshot?.last_error ? `<div style="margin-top:6px; color: var(--warn);">${escapeHtml(snapshot.last_error)}</div>` : ""}
+      `;
+      stateEl.textContent = JSON.stringify({
+        busy: snapshot?.busy || false,
+        active_action: snapshot?.active_action || null,
+        drive: snapshot?.drive ? {
+          workspace: snapshot.drive.workspace || {},
+          queue: snapshot.drive.queue || {},
+          inputs: snapshot.drive.inputs || {},
+        } : null,
+      }, null, 2);
+    }
+
+    function renderNetworkToolbar() {
+      const toolbar = document.getElementById("network-toolbar");
+      if (!toolbar) return;
+      const selection = state.selected;
+      if (!selection) {
+        toolbar.innerHTML = `
+          <div class="network-toolbar-title">Network Actions</div>
+          <div class="muted">Select a node or edge to see actions here.</div>
+        `;
+        return;
+      }
+      if (selection.kind === "node") {
+        const node = selection.node;
+        const connectActive = Number(state.connectSourceNodeId) === Number(node.id);
+        toolbar.innerHTML = `
+          <div class="network-toolbar-title">Node ${escapeHtml(node.id)} Actions</div>
+          <div class="muted">${connectActive ? "Click a second node to create an edge from this source." : "Node tools are available directly from the graph."}</div>
+          <div class="network-toolbar-actions">
+            <button class="network-tool-button" data-drive-action="toolbar-minimize-node" title="Minimize geometry" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>↓</button>
+            <button class="network-tool-button" data-drive-action="toolbar-apply-node" title="Apply reaction templates" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>+</button>
+            <button class="network-tool-button ${connectActive ? "active" : ""}" data-drive-action="toolbar-connect-node" title="Connect to new node" onclick="beginConnectMode(${Number(node.id)})">→</button>
+          </div>
+        `;
+        return;
+      }
+
+      const edge = selection.edge;
+      toolbar.innerHTML = `
+        <div class="network-toolbar-title">Edge ${escapeHtml(edge.source)} → ${escapeHtml(edge.target)} Actions</div>
+        <div class="muted">Queue work on both endpoints or launch an autosplitting NEB for this edge.</div>
+        <div class="network-toolbar-actions">
+          <button class="network-tool-button" data-drive-action="toolbar-minimize-edge" title="Minimize both endpoint geometries" onclick="queueMinimizePair(${Number(edge.source)}, ${Number(edge.target)})">↓↓</button>
+          <button class="network-tool-button" data-drive-action="toolbar-neb-edge" title="Queue NEB minimization" onclick="queueEdgeNeb(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_queue_neb ? "" : "disabled"}>#</button>
+        </div>
       `;
     }
 
@@ -1401,19 +2022,101 @@ def _drive_html() -> str:
       `;
     }
 
-    function renderLiveActivity(snapshot) {
-      const panel = document.getElementById("live-activity-panel");
-      const activity = snapshot?.live_activity || null;
-      if (!panel) return;
-      if (!activity) {
-        panel.style.display = "none";
-        panel.innerHTML = "";
-        return;
+    function drawGrowthGraphSvg(activity) {
+      const payload = activity?.network || {};
+      const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+      const edges = Array.isArray(payload.edges) ? payload.edges : [];
+      if (!nodes.length) {
+        return `<div class="muted">Waiting for the first growth update...</div>`;
       }
-      panel.style.display = "block";
+
+      const width = 760;
+      const height = 280;
+      const levels = new Map();
+      const parentsByNode = new Map();
+      edges.forEach((edge) => {
+        const source = Number(edge.source);
+        const target = Number(edge.target);
+        const parents = parentsByNode.get(source) || [];
+        parents.push(target);
+        parentsByNode.set(source, parents);
+      });
+
+      const depthMemo = new Map();
+      function depthFor(nodeId) {
+        if (depthMemo.has(nodeId)) return depthMemo.get(nodeId);
+        if (Number(nodeId) === 0) {
+          depthMemo.set(nodeId, 0);
+          return 0;
+        }
+        const parents = parentsByNode.get(Number(nodeId)) || [];
+        if (!parents.length) {
+          depthMemo.set(nodeId, 1);
+          return 1;
+        }
+        const depth = 1 + Math.min(...parents.map((parentId) => depthFor(parentId)));
+        depthMemo.set(nodeId, depth);
+        return depth;
+      }
+
+      nodes.forEach((node) => {
+        const depth = depthFor(Number(node.id));
+        const row = levels.get(depth) || [];
+        row.push(node);
+        levels.set(depth, row);
+      });
+
+      const maxDepth = Math.max(...Array.from(levels.keys()));
+      const xForDepth = (depth) => 70 + (maxDepth === 0 ? 0 : (depth / Math.max(maxDepth, 1)) * (width - 140));
+      const positions = new Map();
+      Array.from(levels.entries()).sort((a, b) => a[0] - b[0]).forEach(([depth, levelNodes]) => {
+        const count = levelNodes.length;
+        levelNodes.sort((a, b) => Number(a.id) - Number(b.id)).forEach((node, index) => {
+          const y = count === 1 ? height / 2 : 40 + (index / Math.max(count - 1, 1)) * (height - 80);
+          positions.set(Number(node.id), { x: xForDepth(depth), y });
+        });
+      });
+
+      return `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Live reaction-network growth">
+          ${edges.map((edge) => {
+            const source = positions.get(Number(edge.source));
+            const target = positions.get(Number(edge.target));
+            if (!source || !target) return "";
+            return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="#8f8271" stroke-width="2" />`;
+          }).join("")}
+          ${nodes.map((node) => {
+            const pos = positions.get(Number(node.id));
+            if (!pos) return "";
+            return `
+              <g transform="translate(${pos.x},${pos.y})">
+                <circle r="18" fill="${node.growing ? "#d79e35" : (Number(node.id) === 0 ? "#8e4d1c" : "#7b6a57")}" stroke="#fffaf2" stroke-width="2.5"></circle>
+                ${node.growing ? `
+                  <circle r="24" fill="none" stroke="#1f6a57" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round">
+                    <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="1.2s" repeatCount="indefinite"/>
+                  </circle>
+                ` : ""}
+                <text y="4" text-anchor="middle" font-size="12" fill="#ffffff">${escapeHtml(node.label || node.id)}</text>
+              </g>
+            `;
+          }).join("")}
+        </svg>
+      `;
+    }
+
+    function renderLiveActivityContent(activity) {
+      if (!activity) return "";
+      if (activity.type === "growth") {
+        return `
+          <div style="font-weight:600; margin-bottom:8px;">Reaction-Network Growth</div>
+          <div class="muted" style="margin-bottom:10px;">${escapeHtml(activity.title || "Growing Retropaths network")}</div>
+          ${drawGrowthGraphSvg(activity)}
+          <div class="muted" style="margin-top:10px;">${escapeHtml(activity.note || "")}</div>
+        `;
+      }
       if (activity.type === "minimize") {
         const jobs = Array.isArray(activity.jobs) ? activity.jobs : [];
-        panel.innerHTML = `
+        return `
           <div style="font-weight:600; margin-bottom:8px;">Geometry Optimization Monitor</div>
           <div class="muted" style="margin-bottom:10px;">${escapeHtml(activity.title || "Running geometry minimizations")}</div>
           ${activity.plot ? drawLinePlotSvg(activity.plot, "Geometry optimization trajectory") : `<div class="muted">${escapeHtml(activity.note || "Waiting for geometry optimization updates...")}</div>`}
@@ -1427,9 +2130,8 @@ def _drive_html() -> str:
             `).join("")}
           </div>
         `;
-        return;
       }
-      panel.innerHTML = `
+      return `
         <div style="font-weight:600; margin-bottom:8px;">NEB Optimization Monitor</div>
         <div class="muted" style="margin-bottom:10px;">${escapeHtml(activity.title || "Running autosplitting NEB")}</div>
         <div class="live-neb-layout">
@@ -1448,6 +2150,25 @@ def _drive_html() -> str:
       `;
     }
 
+    function renderLiveActivity(snapshot) {
+      const panel = document.getElementById("live-activity-panel");
+      const inline = document.getElementById("live-activity-inline");
+      const activity = snapshot?.live_activity || null;
+      if (!panel || !inline) return;
+      if (!activity) {
+        panel.style.display = "none";
+        panel.innerHTML = "";
+        inline.style.display = "none";
+        inline.innerHTML = "";
+        return;
+      }
+      const content = renderLiveActivityContent(activity);
+      panel.style.display = "block";
+      panel.innerHTML = content;
+      inline.style.display = "block";
+      inline.innerHTML = content;
+    }
+
     function renderDetail(selection) {
       const targeted = document.getElementById("panel-targeted");
       const templateData = document.getElementById("panel-template-data");
@@ -1461,6 +2182,7 @@ def _drive_html() -> str:
         targeted.innerHTML = "";
         templateData.innerHTML = "";
         structures.innerHTML = "";
+        renderNetworkToolbar();
         return;
       }
 
@@ -1472,28 +2194,41 @@ def _drive_html() -> str:
           <div><strong>Endpoint optimized:</strong> ${node.endpoint_optimized ? "yes" : "no"}</div>
           ${node.endpoint_optimization_error ? `<div><strong>Last optimization error:</strong> <span style="color:#b03a2e;">${escapeHtml(node.endpoint_optimization_error)}</span></div>` : ""}
           <div><strong>Can queue minimization:</strong> ${node.minimizable ? "yes" : "no"}</div>
+          <div><strong>Can apply reactions:</strong> ${node.can_apply_reactions ? "yes" : "no"}</div>
           ${node.minimize_note ? `<div><strong>Minimization note:</strong> ${escapeHtml(node.minimize_note)}</div>` : ""}
+          ${node.apply_reactions_note ? `<div><strong>Reaction note:</strong> ${escapeHtml(node.apply_reactions_note)}</div>` : ""}
           <div><strong>NEB-backed:</strong> ${node.neb_backed ? "yes" : "no"}</div>
         `;
         targeted.innerHTML = `
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="minimize-node" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>Queue Minimization For This Geometry</button></div>
+          <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="apply-reactions" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>Apply Reactions To This Node</button></div>
+          <div style="margin-bottom:10px; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;">
+            <button class="secondary" onclick="setManualEdgeEndpoint('source', ${Number(node.id)})">Use As Manual Edge Source</button>
+            <button class="secondary" onclick="setManualEdgeEndpoint('target', ${Number(node.id)})">Use As Manual Edge Target</button>
+          </div>
           ${node.minimize_note ? `<div style="margin-bottom:10px; color:${node.minimizable ? "#6f6558" : "#b03a2e"};">${escapeHtml(node.minimize_note)}</div>` : ""}
+          ${node.apply_reactions_note ? `<div style="margin-bottom:10px; color:${node.can_apply_reactions ? "#6f6558" : "#b03a2e"};">${escapeHtml(node.apply_reactions_note)}</div>` : ""}
           <pre>${escapeHtml(JSON.stringify(node.data || {}, null, 2))}</pre>
         `;
         templateData.innerHTML = `<pre>${escapeHtml(JSON.stringify(node.data || {}, null, 2))}</pre>`;
         structures.innerHTML = node.structure?.xyz_b64
           ? `<iframe class="structure" srcdoc="${escapeHtml(makeStructureSrcdoc(node.structure.xyz_b64))}"></iframe>`
           : `<div class="muted">No 3D structure is available for this node.</div>`;
+        renderNetworkToolbar();
         return;
       }
 
       const edge = selection.edge;
       const template = edge.template || {};
+      const hasTemplateData = Boolean(template.data && Object.keys(template.data).length);
+      const hasNebResultData = edge.barrier != null || edge.viewer_href || Number(edge.chains || 0) > 0 || edge.neb_backed;
       title.textContent = `Edge ${edge.source} → ${edge.target}`;
       summary.innerHTML = `
         <div><strong>Reaction:</strong> ${escapeHtml(edge.reaction || "Unknown")}</div>
         <div><strong>Queue status:</strong> ${escapeHtml(edge.queue_status || "not queued")}</div>
         <div><strong>NEB-backed:</strong> ${edge.neb_backed ? "yes" : "no"}</div>
+        ${edge.result_from_reverse_edge ? `<div><strong>Displayed NEB result:</strong> reverse-directed edge</div>` : ""}
+        ${edge.result_from_completed_queue ? `<div><strong>Displayed NEB result:</strong> completed queue attempt</div>` : ""}
         ${edge.queue_note ? `<div><strong>Queue note:</strong> ${escapeHtml(edge.queue_note)}</div>` : ""}
         ${edge.barrier == null ? "" : `<div><strong>Barrier:</strong> ${escapeHtml(Number(edge.barrier).toFixed(3))}</div>`}
       `;
@@ -1504,13 +2239,26 @@ def _drive_html() -> str:
         <div style="margin-bottom:10px;">
           <strong>Targeted reaction:</strong> ${escapeHtml(edge.reaction || "Unknown")}
         </div>
+        ${edge.result_from_reverse_edge ? `<div style="margin-bottom:10px;" class="muted">Showing completed NEB data reconstructed from the reverse-directed edge because this directed edge does not carry the chain payload directly.</div>` : ""}
+        ${edge.result_from_completed_queue ? `<div style="margin-bottom:10px;" class="muted">Showing NEB data from the completed attempted pair because autosplitting did not leave a direct annotated edge for this exact selection.</div>` : ""}
         ${edge.queue_note ? `<div style="margin-bottom:10px; color: ${edge.can_queue_neb ? "#6f6558" : "#b03a2e"};"><strong>${edge.can_queue_neb ? "Queue note" : "Edge cannot run as-is"}:</strong> ${escapeHtml(edge.queue_note)}</div>` : ""}
         ${edge.viewer_href ? `<div style="margin-bottom:10px;"><a href="${escapeHtml(edge.viewer_href)}" target="_blank" rel="noreferrer">Open completed NEB viewer</a></div>` : ""}
         <pre>${escapeHtml(JSON.stringify(edge.data || {}, null, 2))}</pre>
       `;
-      templateData.innerHTML = template.data
-        ? `<pre>${escapeHtml(JSON.stringify(template.data, null, 2))}</pre>`
-        : `<div class="muted">No template data was available for this reaction.</div>`;
+      templateData.innerHTML = `
+        ${hasNebResultData ? `
+          <div class="kv-grid" style="margin-bottom:12px;">
+            <div class="kv-card"><strong>Barrier</strong><div>${edge.barrier == null ? "n/a" : escapeHtml(Number(edge.barrier).toFixed(3))}</div></div>
+            <div class="kv-card"><strong>NEB Chains</strong><div>${escapeHtml(Number(edge.chains || 0))}</div></div>
+            <div class="kv-card"><strong>Queue Status</strong><div>${escapeHtml(edge.queue_status || "not queued")}</div></div>
+          </div>
+          ${edge.viewer_href ? `<div style="margin-bottom:12px;"><strong>Viewer:</strong> <a href="${escapeHtml(edge.viewer_href)}" target="_blank" rel="noreferrer">Open completed NEB viewer</a></div>` : ""}
+          <pre style="margin-bottom:12px;">${escapeHtml(JSON.stringify(edge.data || {}, null, 2))}</pre>
+        ` : `<div class="muted" style="margin-bottom:12px;">No NEB-derived edge data is available yet for this edge.</div>`}
+        ${hasTemplateData
+          ? `<pre>${escapeHtml(JSON.stringify(template.data, null, 2))}</pre>`
+          : `<div class="muted">No reaction-template library data was available for this reaction.</div>`}
+      `;
       structures.innerHTML = `
         <div class="viewer-grid">
           <div>
@@ -1523,9 +2271,19 @@ def _drive_html() -> str:
           </div>
         </div>
       `;
+      renderNetworkToolbar();
     }
 
-    function selectTab(tabName) {
+    function selectToolTab(groupName, tabName) {
+      document.querySelectorAll(`[data-tool-tab="${groupName}"]`).forEach((button) => {
+        button.classList.toggle("active", button.getAttribute("data-tool-target") === tabName);
+      });
+      document.querySelectorAll(`[id^="tool-panel-${groupName}-"]`).forEach((panel) => {
+        panel.classList.toggle("active", panel.id === `tool-panel-${groupName}-${tabName}`);
+      });
+    }
+
+    function selectDetailTab(tabName) {
       document.querySelectorAll(".detail-tab").forEach((button) => {
         button.classList.toggle("active", button.getAttribute("data-tab") === tabName);
       });
@@ -1535,7 +2293,14 @@ def _drive_html() -> str:
     }
 
     document.querySelectorAll(".detail-tab").forEach((button) => {
-      button.addEventListener("click", () => selectTab(button.getAttribute("data-tab")));
+      button.addEventListener("click", () => selectDetailTab(button.getAttribute("data-tab")));
+    });
+
+    document.querySelectorAll(".tool-tab").forEach((button) => {
+      button.addEventListener("click", () => selectToolTab(
+        button.getAttribute("data-tool-tab"),
+        button.getAttribute("data-tool-target"),
+      ));
     });
 
     function renderNetwork(snapshot) {
@@ -1573,6 +2338,7 @@ def _drive_html() -> str:
         edgeElems.forEach((item) => item.line.classList.toggle("selected", selection?.kind === "edge" && item.edge === selection.edge));
         nodeElems.forEach((circle, nodeId) => {
           circle.classList.toggle("selected", selection?.kind === "node" && Number(selection.node.id) === Number(nodeId));
+          circle.classList.toggle("connect-source", Number(state.connectSourceNodeId) === Number(nodeId));
         });
         renderDetail(selection);
       }
@@ -1585,7 +2351,10 @@ def _drive_html() -> str:
         line.setAttribute("class", `network-edge-line${edge.neb_backed ? " neb-backed" : ""}`);
         group.appendChild(hitbox);
         group.appendChild(line);
-        group.addEventListener("click", () => setSelection({ kind: "edge", edge }));
+        group.addEventListener("click", () => {
+          state.connectSourceNodeId = null;
+          setSelection({ kind: "edge", edge });
+        });
         svg.appendChild(group);
         edgeElems.push({ edge, line, hitbox });
       });
@@ -1607,7 +2376,15 @@ def _drive_html() -> str:
         text.textContent = String(node.id);
         group.appendChild(circle);
         group.appendChild(text);
-        group.addEventListener("click", () => setSelection({ kind: "node", node }));
+        group.addEventListener("click", async () => {
+          const connectSource = state.connectSourceNodeId;
+          if (connectSource != null && Number(connectSource) !== Number(node.id)) {
+            setSelection({ kind: "node", node });
+            await completeConnectMode(Number(node.id));
+            return;
+          }
+          setSelection({ kind: "node", node });
+        });
         svg.appendChild(group);
         nodeElems.set(Number(node.id), circle);
         simById.get(Number(node.id)).group = group;
@@ -1675,10 +2452,14 @@ def _drive_html() -> str:
         setBanner(snapshot.last_message || (snapshot.busy ? `Running: ${activeLabel}` : "Idle."), Boolean(snapshot.last_error));
         if (snapshot.last_error) setBanner(snapshot.last_error, true);
         if (activeAction && activeAction.status === "running") {
-          if (activeAction.type === "minimize") {
+          if (activeAction.type === "initialize") {
+            setSubtext("The Retropaths network is being grown. The live growth widget shows existing nodes, edges, and the nodes currently being expanded.");
+          } else if (activeAction.type === "minimize") {
             setSubtext("Geometry optimization is running. Updated node structures are written back one-by-one and will appear here as polling refreshes.");
           } else if (activeAction.type === "neb") {
             setSubtext("Autosplitting NEB is running. The edge state and any discovered intermediates will appear after the backend writes them back.");
+          } else if (activeAction.type === "apply-reactions") {
+            setSubtext("Reaction templates are being applied to the selected node. Any newly grown products will be merged into the current graph after the job finishes.");
           } else {
             setSubtext("Background work is running. The network and counters will refresh automatically.");
           }
@@ -1687,8 +2468,10 @@ def _drive_html() -> str:
         }
         setButtonsDisabled(Boolean(snapshot.busy));
         renderWorkspaceSummary(snapshot);
+        renderInputsPanels(snapshot);
         renderStats(snapshot);
         renderLiveActivity(snapshot);
+        renderLogging(snapshot);
         const version = snapshot.drive?.version || "";
         if (version !== state.networkVersion) {
           state.networkVersion = version;
@@ -1707,6 +2490,9 @@ def _drive_html() -> str:
         await postJson("/api/initialize", {
           mode,
           run_name: document.getElementById("run-name").value,
+          inputs_path: document.getElementById("inputs-path").value,
+          reactions_fp: document.getElementById("reactions-path").value,
+          environment_smiles: document.getElementById("environment-smiles").value,
           reactant_smiles: document.getElementById("reactant-smiles").value,
           reactant_xyz: document.getElementById("reactant-xyz").value,
           product_smiles: document.getElementById("product-smiles").value,
@@ -1761,6 +2547,19 @@ def _drive_html() -> str:
       }
     }
 
+    async function queueMinimizePair(sourceNode, targetNode) {
+      try {
+        setBanner(`Submitting minimization for nodes ${sourceNode} and ${targetNode}...`);
+        setSubtext("Both endpoint geometries will be optimized and written back into the live network.");
+        await postJson("/api/minimize", { node_ids: [Number(sourceNode), Number(targetNode)] });
+        setBanner(`Minimization request accepted for nodes ${sourceNode} and ${targetNode}.`);
+        await refreshState();
+      } catch (error) {
+        setBanner(error.message || String(error), true);
+        setSubtext("The paired minimization request failed before it could start.");
+      }
+    }
+
     async function queueEdgeNeb(sourceNode, targetNode) {
       try {
         setBanner(`Submitting autosplitting NEB for edge ${sourceNode} -> ${targetNode}...`);
@@ -1774,13 +2573,95 @@ def _drive_html() -> str:
       }
     }
 
+    async function queueApplyReactions(nodeId) {
+      try {
+        setBanner(`Applying reactions to node ${nodeId}...`);
+        setSubtext("The selected node will be regrown with the Retropaths template library and any new products will be merged into the current graph.");
+        await postJson("/api/apply-reactions", { node_id: Number(nodeId) });
+        setBanner(`Reaction-application request accepted for node ${nodeId}.`);
+        await refreshState();
+      } catch (error) {
+        setBanner(error.message || String(error), true);
+        setSubtext("The reaction-application request failed before it could start.");
+      }
+    }
+
+    async function addManualEdge() {
+      const sourceRaw = document.getElementById("manual-edge-source").value;
+      const targetRaw = document.getElementById("manual-edge-target").value;
+      if (sourceRaw === "" || targetRaw === "") {
+        setBanner("Both manual edge endpoints are required.", true);
+        setSubtext("Fill in both node ids before attempting to add a manual edge.");
+        return;
+      }
+      const sourceNode = Number(sourceRaw);
+      const targetNode = Number(targetRaw);
+      try {
+        setBanner(`Attempting to add manual edge ${sourceNode} -> ${targetNode}...`);
+        setSubtext("The graph edge will be created if needed and prepared for a subsequent autosplitting NEB run.");
+        const result = await postJson("/api/add-edge", {
+          source_node: sourceNode,
+          target_node: targetNode,
+          reaction_label: document.getElementById("manual-edge-label").value,
+        });
+        setBanner(result.message || `Manual edge ${sourceNode} -> ${targetNode} updated.`);
+        await refreshState();
+      } catch (error) {
+        setBanner(error.message || String(error), true);
+        setSubtext("The manual edge could not be added.");
+      }
+    }
+
+    function beginConnectMode(nodeId) {
+      const nextId = Number(nodeId);
+      state.connectSourceNodeId = Number(state.connectSourceNodeId) === nextId ? null : nextId;
+      setManualEdgeEndpoint("source", nextId);
+      if (state.connectSourceNodeId == null) {
+        setSubtext("Connect mode cleared.");
+      } else {
+        setSubtext(`Connect mode active from node ${nextId}. Click a second node in the network to create an edge.`);
+      }
+      renderNetworkToolbar();
+      if (state.snapshot?.drive?.network) renderNetwork(state.snapshot);
+    }
+
+    async function completeConnectMode(targetNodeId) {
+      const sourceNodeId = Number(state.connectSourceNodeId);
+      const targetNode = Number(targetNodeId);
+      if (!Number.isFinite(sourceNodeId) || sourceNodeId < 0 || sourceNodeId === targetNode) {
+        return;
+      }
+      setManualEdgeEndpoint("source", sourceNodeId);
+      setManualEdgeEndpoint("target", targetNode);
+      state.connectSourceNodeId = null;
+      try {
+        setBanner(`Attempting to add manual edge ${sourceNodeId} -> ${targetNode}...`);
+        setSubtext("Creating an edge directly from the graph selection.");
+        const result = await postJson("/api/add-edge", {
+          source_node: sourceNodeId,
+          target_node: targetNode,
+          reaction_label: document.getElementById("manual-edge-label").value,
+        });
+        setBanner(result.message || `Manual edge ${sourceNodeId} -> ${targetNode} updated.`);
+        await refreshState();
+      } catch (error) {
+        setBanner(error.message || String(error), true);
+        setSubtext("The graph-directed manual edge could not be added.");
+      }
+    }
+
     window.queueMinimizeNode = queueMinimizeNode;
     window.queueMinimizeAll = queueMinimizeAll;
+    window.queueMinimizePair = queueMinimizePair;
     window.queueEdgeNeb = queueEdgeNeb;
+    window.queueApplyReactions = queueApplyReactions;
+    window.setManualEdgeEndpoint = setManualEdgeEndpoint;
+    window.beginConnectMode = beginConnectMode;
 
     document.getElementById("initialize").addEventListener("click", initializeDrive);
     document.getElementById("load-workspace").addEventListener("click", loadWorkspace);
     document.getElementById("minimize-all").addEventListener("click", queueMinimizeAll);
+    document.getElementById("add-manual-edge").addEventListener("click", addManualEdge);
 
     const d3Script = document.createElement("script");
     d3Script.src = "https://d3js.org/d3.v3.min.js";
@@ -1810,12 +2691,13 @@ class MepdDriveServer(ThreadingHTTPServer):
         server_address: tuple[str, int],
         *,
         base_directory: Path,
-        inputs_fp: Path,
+        inputs_fp: Path | None,
         reactions_fp: Path | None,
         timeout_seconds: int,
         max_nodes: int,
         max_depth: int,
         max_parallel_nebs: int,
+        initial_state: dict[str, Any] | None = None,
     ):
         self.base_directory = base_directory
         self.inputs_fp = inputs_fp
@@ -1826,12 +2708,89 @@ class MepdDriveServer(ThreadingHTTPServer):
         self.max_parallel_nebs = max_parallel_nebs
         self.state_lock = threading.Lock()
         self.runtime = _DriveRuntimeState()
+        self._drive_payload_cache_key: tuple[Any, ...] | None = None
+        self._drive_payload_cache_value: dict[str, Any] | None = None
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mepd-drive")
         self.process_executor = ProcessPoolExecutor(
             max_workers=1,
             mp_context=multiprocessing.get_context("spawn"),
         )
         super().__init__(server_address, _DriveHandler)
+        if initial_state is not None:
+            workspace_payload = dict(initial_state.get("workspace") or {})
+            if workspace_payload:
+                self.runtime.workspace = RetropathsWorkspace(**workspace_payload)
+            self.runtime.reactant = initial_state.get("reactant")
+            self.runtime.product = initial_state.get("product")
+            self.runtime.last_message = str(initial_state.get("message") or "Workspace loaded.")
+
+    def _resolve_inputs_fp(self, payload: dict[str, Any]) -> Path:
+        configured = getattr(self, "inputs_fp", None)
+        payload_value = str(payload.get("inputs_path") or "").strip()
+        if payload_value:
+            return Path(payload_value).expanduser().resolve()
+        if configured is not None:
+            return Path(configured).resolve()
+        raise ValueError("An inputs TOML path is required. Provide --inputs when launching drive or fill in Inputs TOML in the UI.")
+
+    def _resolve_reactions_fp(self, payload: dict[str, Any]) -> Path | None:
+        payload_value = str(payload.get("reactions_fp") or "").strip()
+        if payload_value:
+            return Path(payload_value).expanduser().resolve()
+        configured = getattr(self, "reactions_fp", None)
+        if configured is None:
+            return None
+        return Path(configured).resolve()
+
+    def _drive_payload_cache_lookup(
+        self,
+        *,
+        workspace: RetropathsWorkspace,
+        runtime: _DriveRuntimeState,
+    ) -> dict[str, Any]:
+        builder = _build_drive_payload
+        builder_name = "full"
+        if (
+            runtime.active_action is not None
+            and runtime.active_action.get("status") == "running"
+            and runtime.active_action.get("type") == "minimize"
+        ):
+            builder = _build_drive_payload_fast
+            builder_name = "fast-minimize"
+        elif (
+            runtime.active_action is not None
+            and runtime.active_action.get("status") == "running"
+            and runtime.active_action.get("type") == "neb"
+        ):
+            builder = _build_drive_payload_fast_neb
+            builder_name = "fast-neb"
+
+        product_smiles = str((runtime.product or {}).get("smiles") or "")
+        active_action = runtime.active_action or {}
+        cache_key = (
+            builder_name,
+            _drive_network_version(workspace),
+            product_smiles,
+            int(active_action.get("source_node", -1)) if builder_name == "fast-neb" else -1,
+            int(active_action.get("target_node", -1)) if builder_name == "fast-neb" else -1,
+        )
+
+        with self.state_lock:
+            cached_key = getattr(self, "_drive_payload_cache_key", None)
+            cached_value = getattr(self, "_drive_payload_cache_value", None)
+            if cached_key == cache_key and cached_value is not None:
+                return cached_value
+
+        payload = builder(
+            workspace,
+            product_smiles=product_smiles,
+            active_job_label=runtime.busy_label if runtime.future is not None and not runtime.future.done() else "",
+            active_action=runtime.active_action,
+        )
+        with self.state_lock:
+            self._drive_payload_cache_key = cache_key
+            self._drive_payload_cache_value = payload
+        return payload
 
     def _assert_idle(self) -> None:
         with self.state_lock:
@@ -1894,6 +2853,10 @@ class MepdDriveServer(ThreadingHTTPServer):
 
         run_name = str(payload.get("run_name") or "").strip() or f"mepd-drive-{int(time.time())}"
         workspace_dir = (self.base_directory / run_name).resolve()
+        progress_fp = str((workspace_dir / "drive_growth.progress.json").resolve())
+        inputs_fp = self._resolve_inputs_fp(payload)
+        reactions_fp = self._resolve_reactions_fp(payload)
+        environment_smiles = str(payload.get("environment_smiles") or "").strip()
 
         def _finish_initialize(future: Future) -> None:
             with self.state_lock:
@@ -1929,12 +2892,14 @@ class MepdDriveServer(ThreadingHTTPServer):
             product=product or None,
             run_name=run_name,
             workspace_dir=str(workspace_dir),
-            inputs_fp=str(self.inputs_fp),
-            reactions_fp=str(self.reactions_fp) if self.reactions_fp else None,
+            inputs_fp=str(inputs_fp),
+            reactions_fp=str(reactions_fp) if reactions_fp else None,
+            environment_smiles=environment_smiles,
             timeout_seconds=self.timeout_seconds,
             max_nodes=self.max_nodes,
             max_depth=self.max_depth,
             max_parallel_nebs=self.max_parallel_nebs,
+            progress_fp=progress_fp,
         )
         future.add_done_callback(_finish_initialize)
         self._set_busy("Building Retropaths network...", future)
@@ -1943,6 +2908,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "type": "initialize",
                 "status": "running",
                 "label": "Building Retropaths network...",
+                "progress_fp": progress_fp,
             }
 
     def submit_load_workspace(self, payload: dict[str, Any]) -> None:
@@ -2049,6 +3015,31 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "jobs": [{"node_id": int(node_id), "status": "pending"} for node_id in target_node_ids],
             }
 
+    def submit_apply_reactions(self, *, node_id: int) -> None:
+        self._assert_idle()
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize a workspace before applying reactions.")
+
+        progress_fp = str((workspace.directory / f"drive_apply_reactions_{int(node_id)}.progress.json").resolve())
+        future = self.process_executor.submit(
+            apply_reactions_to_node,
+            RetropathsWorkspace(**dict(workspace.__dict__)),
+            int(node_id),
+            progress_fp=progress_fp,
+        )
+        future.add_done_callback(self._finish_future)
+        self._set_busy(f"Applying reaction templates to node {node_id}...", future)
+        with self.state_lock:
+            self.runtime.active_action = {
+                "type": "apply-reactions",
+                "status": "running",
+                "label": f"Applying reaction templates to node {node_id}...",
+                "node_id": int(node_id),
+                "progress_fp": progress_fp,
+            }
+
     def submit_run_neb(self, *, source_node: int, target_node: int) -> None:
         self._assert_idle()
         with self.state_lock:
@@ -2106,6 +3097,23 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "chain_fp": chain_fp,
             }
 
+    def submit_add_edge(self, *, source_node: int, target_node: int, reaction_label: str = "") -> dict[str, Any]:
+        self._assert_idle()
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize a workspace before adding manual edges.")
+        result = add_manual_edge(
+            workspace,
+            source_node=int(source_node),
+            target_node=int(target_node),
+            reaction_label=str(reaction_label or ""),
+        )
+        with self.state_lock:
+            self.runtime.last_error = ""
+            self.runtime.last_message = str(result.get("message") or "Manual edge updated.")
+        return result
+
     def snapshot(self) -> dict[str, Any]:
         with self.state_lock:
             runtime = _DriveRuntimeState(
@@ -2136,26 +3144,13 @@ class MepdDriveServer(ThreadingHTTPServer):
                     snapshot["live_activity"] = _build_neb_live_payload(runtime.active_action, runtime.workspace)
                 elif runtime.active_action.get("type") == "minimize":
                     snapshot["live_activity"] = _build_minimize_live_payload(runtime.active_action)
+                elif runtime.active_action.get("type") in {"initialize", "apply-reactions"}:
+                    snapshot["live_activity"] = _build_growth_live_payload(runtime.active_action)
         if runtime.workspace is not None and runtime.workspace.queue_fp.exists():
             with contextlib.suppress(Exception):
-                builder = _build_drive_payload
-                if (
-                    runtime.active_action is not None
-                    and runtime.active_action.get("status") == "running"
-                    and runtime.active_action.get("type") == "minimize"
-                ):
-                    builder = _build_drive_payload_fast
-                elif (
-                    runtime.active_action is not None
-                    and runtime.active_action.get("status") == "running"
-                    and runtime.active_action.get("type") == "neb"
-                ):
-                    builder = _build_drive_payload_fast_neb
-                snapshot["drive"] = builder(
-                    runtime.workspace,
-                    product_smiles=str((runtime.product or {}).get("smiles") or ""),
-                    active_job_label=runtime.busy_label if runtime.future is not None and not runtime.future.done() else "",
-                    active_action=runtime.active_action,
+                snapshot["drive"] = self._drive_payload_cache_lookup(
+                    workspace=runtime.workspace,
+                    runtime=runtime,
                 )
         return snapshot
 
@@ -2227,12 +3222,26 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 self.server.submit_minimize([int(value) for value in payload.get("node_ids", [])])
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
+            if self.path == "/api/apply-reactions":
+                self.server.submit_apply_reactions(
+                    node_id=int(payload["node_id"]),
+                )
+                self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
+                return
             if self.path == "/api/run-neb":
                 self.server.submit_run_neb(
                     source_node=int(payload["source_node"]),
                     target_node=int(payload["target_node"]),
                 )
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
+                return
+            if self.path == "/api/add-edge":
+                result = self.server.submit_add_edge(
+                    source_node=int(payload["source_node"]),
+                    target_node=int(payload["target_node"]),
+                    reaction_label=str(payload.get("reaction_label") or ""),
+                )
+                self._write_json({"ok": True, **result}, HTTPStatus.ACCEPTED)
                 return
         except Exception as exc:
             with contextlib.suppress(Exception):
@@ -2248,8 +3257,12 @@ class _DriveHandler(BaseHTTPRequestHandler):
 def launch_mepd_drive(
     *,
     directory: str | None,
-    inputs_fp: str,
+    inputs_fp: str | None,
     reactions_fp: str | None = None,
+    workspace_path: str | None = None,
+    smiles: str | None = None,
+    environment_smiles: str = "",
+    run_name: str | None = None,
     host: str = "127.0.0.1",
     port: int = 0,
     timeout_seconds: int = 30,
@@ -2258,17 +3271,56 @@ def launch_mepd_drive(
     max_parallel_nebs: int = 1,
     open_browser: bool = True,
 ) -> MepdDriveServer:
-    base_directory = Path(directory).resolve() if directory else (Path.cwd() / "mepd-drive").resolve()
+    explicit_directory = Path(directory).resolve() if directory else None
+    startup_workspace_path = workspace_path
+    if startup_workspace_path is None and explicit_directory is not None and (explicit_directory / "workspace.json").exists():
+        startup_workspace_path = str(explicit_directory)
+
+    initial_state: dict[str, Any] | None = None
+    if startup_workspace_path:
+        workspace_dir = Path(startup_workspace_path).expanduser().resolve()
+        if workspace_dir.is_file() and workspace_dir.name == "workspace.json":
+            workspace_dir = workspace_dir.parent
+        base_directory = workspace_dir.parent
+        initial_state = _load_existing_workspace_job(str(workspace_dir))
+    elif smiles:
+        resolved_inputs = Path(str(inputs_fp)).expanduser().resolve() if inputs_fp else None
+        if resolved_inputs is None:
+            raise ValueError("An inputs TOML path is required to start drive from SMILES.")
+        resolved_run_name = str(run_name or "").strip() or f"mepd-drive-{int(time.time())}"
+        if explicit_directory is not None:
+            run_dir = explicit_directory
+            base_directory = run_dir.parent
+        else:
+            base_directory = (Path.cwd() / "mepd-drive").resolve()
+            run_dir = (base_directory / resolved_run_name).resolve()
+        initial_state = _initialize_workspace_job(
+            reactant={"smiles": str(smiles).strip()},
+            product=None,
+            run_name=resolved_run_name,
+            workspace_dir=str(run_dir),
+            inputs_fp=str(resolved_inputs),
+            reactions_fp=str(Path(reactions_fp).expanduser().resolve()) if reactions_fp else None,
+            environment_smiles=str(environment_smiles or ""),
+            timeout_seconds=timeout_seconds,
+            max_nodes=max_nodes,
+            max_depth=max_depth,
+            max_parallel_nebs=max_parallel_nebs,
+            progress_fp=None,
+        )
+    else:
+        base_directory = explicit_directory if explicit_directory is not None else (Path.cwd() / "mepd-drive").resolve()
     base_directory.mkdir(parents=True, exist_ok=True)
     server = MepdDriveServer(
         (host, int(port)),
         base_directory=base_directory,
-        inputs_fp=Path(inputs_fp).resolve(),
+        inputs_fp=Path(inputs_fp).expanduser().resolve() if inputs_fp else None,
         reactions_fp=Path(reactions_fp).resolve() if reactions_fp else None,
         timeout_seconds=timeout_seconds,
         max_nodes=max_nodes,
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
+        initial_state=initial_state,
     )
     if open_browser:
         webbrowser.open(f"http://{host}:{server.server_address[1]}/")

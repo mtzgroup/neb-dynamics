@@ -316,6 +316,107 @@ Notes:
 
 ---
 
+### drive
+
+Launch the interactive MEPD Drive web UI. `drive` can start in three modes:
+
+1. blank interactive mode, where you initialize from the browser
+2. SMILES-bootstrap mode, where the workspace is created from the command line before the browser opens
+3. resume mode, where an existing workspace is loaded immediately so you can inspect an in-progress or completed run
+
+**Examples:**
+
+```bash
+# Blank drive session; initialize from the browser UI
+uv run mepd drive --inputs examples/example_inputs.toml
+
+# Start drive from SMILES on the command line
+uv run mepd drive \
+  --smiles "C=CC(O)CC=C" \
+  --environment "O" \
+  --inputs examples/example_inputs.toml \
+  --name allylic_alcohol_drive
+
+# Re-open an existing workspace mid-run
+uv run mepd drive --workspace ./allylic_alcohol_drive
+
+# `--directory` also resumes automatically when it already contains workspace.json
+uv run mepd drive --directory ./allylic_alcohol_drive
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--inputs`, `-i` | Path minimization `RunInputs` TOML. Required for `--smiles`; optional when resuming an existing workspace |
+| `--smiles`, `-s` | Root reactant SMILES to bootstrap a new drive workspace before opening the UI |
+| `--environment`, `-e` | Optional environment SMILES for SMILES-based drive initialization |
+| `--name` | Run name / workspace name for SMILES-based drive initialization |
+| `--workspace` | Existing workspace directory or `workspace.json` to load on startup |
+| `--reactions-fp` | Path to the retropaths `reactions.p` library |
+| `--directory`, `-d` | Base directory for new drive workspaces, or an existing workspace directory to resume |
+| `--host` | Host interface for the local drive server |
+| `--port` | Port for the local drive server (`0` selects a free port) |
+| `--ssh-login` | SSH target used to print a ready-made tunnel command |
+| `--local-port` | Local laptop-side port for the printed SSH tunnel command |
+| `--timeout-seconds` | Retropaths growth timeout |
+| `--max-nodes` | Maximum retropaths pot size |
+| `--max-depth` | Maximum retropaths search depth |
+| `--max-parallel-nebs` | Number of autosplitting NEBs to run concurrently |
+| `--no-open` | Do not automatically open the browser |
+
+**Drive behavior notes:**
+
+- If you launch `drive` with no workspace flags, you can still initialize entirely from the browser.
+- The browser-side initializer now also accepts an inputs TOML path, reactions file, and environment SMILES.
+- When an autosplitting NEB finishes, drive now shows a barrier and viewer link even when the completed result is attached to the reverse edge or when the original attempted pair was split into intermediate edges.
+- Completed queue-pair viewers are cached after first materialization so state polling stays responsive after the first finished NEB.
+- When multiple node minimizations are submitted and the loaded inputs use a ChemCloud-backed engine, drive submits them as one ChemCloud batch instead of serial single-node jobs.
+
+**Running drive on a remote server over SSH:**
+
+Start the server on the remote machine and bind it to loopback:
+
+```bash
+uv run mepd drive \
+  --workspace ./allylic_alcohol_drive \
+  --host 127.0.0.1 \
+  --port 8123 \
+  --no-open
+```
+
+Then create an SSH tunnel from your laptop:
+
+```bash
+ssh -N -L 9000:127.0.0.1:8123 user@remote-host
+```
+
+Open the tunneled URL locally:
+
+```text
+http://127.0.0.1:9000/
+```
+
+You can also ask `drive` to print the tunnel command for you:
+
+```bash
+uv run mepd drive \
+  --workspace ./allylic_alcohol_drive \
+  --host 127.0.0.1 \
+  --port 8123 \
+  --ssh-login user@remote-host \
+  --local-port 9000 \
+  --no-open
+```
+
+Remote-use notes:
+
+- Keep `--host 127.0.0.1` unless you intentionally want the web server exposed on the remote network.
+- `--workspace` is the cleanest way to reconnect to a run that is already in progress.
+- If you are starting from SMILES on the remote host, use the same `drive --smiles ... --inputs ...` command there, then tunnel to the printed local URL.
+
+---
+
 ### status
 
 Regenerate the live status page for a `netgen-smiles` workspace.

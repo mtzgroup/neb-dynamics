@@ -2416,6 +2416,10 @@ def status_cmd(
 @app.command("drive")
 def drive(
     inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES to bootstrap a drive workspace before opening the UI")] = None,
+    environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES for SMILES-based drive initialization")] = "",
+    name: Annotated[str, typer.Option("--name", help="Run name / workspace name for SMILES-based drive initialization")] = None,
+    workspace: Annotated[str, typer.Option("--workspace", help="Existing workspace directory or workspace.json to load on startup")] = None,
     reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
     directory: Annotated[str, typer.Option("--directory", "-d", help="Directory where MEPD Drive workspaces should be created")] = None,
     host: Annotated[str, typer.Option("--host", help="Host interface for the local drive server")] = "127.0.0.1",
@@ -2429,12 +2433,23 @@ def drive(
     no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the browser")] = False,
 ):
     console.print(BANNER)
-    if inputs is None:
-        raise typer.BadParameter("--inputs/-i is required.")
+    workspace_path = str(workspace or "").strip() or None
+    requested_dir = Path(directory).resolve() if directory else None
+    if workspace_path is None and requested_dir is not None and (requested_dir / "workspace.json").exists():
+        workspace_path = str(requested_dir)
+
+    if smiles and workspace_path:
+        raise typer.BadParameter("Choose either --smiles/--inputs to bootstrap a new drive workspace or --workspace/--directory to load an existing one, not both.")
+    if smiles and inputs is None:
+        raise typer.BadParameter("--inputs/-i is required when using --smiles.")
 
     server = launch_mepd_drive(
         directory=directory,
         inputs_fp=inputs,
+        workspace_path=workspace_path,
+        smiles=smiles,
+        environment_smiles=environment,
+        run_name=name,
         reactions_fp=reactions_fp,
         host=host,
         port=port,
