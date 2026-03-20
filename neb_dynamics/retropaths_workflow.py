@@ -8,6 +8,7 @@ import re
 import sys
 import types
 from pathlib import Path
+from time import time
 from typing import Any, Callable
 
 from neb_dynamics.chain import Chain
@@ -20,16 +21,21 @@ from neb_dynamics.kmc import (
 )
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.nodes.nodehelpers import is_identical
+from neb_dynamics.molecule import Molecule
 from neb_dynamics.pot import Pot
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 from neb_dynamics.retropaths_compat import retropaths_pot_to_neb_pot
 from neb_dynamics.retropaths_queue import (
+    _global_environment_molecule,
     RetropathsNEBQueue,
     _trim_balanced_endpoint,
     annotate_pot_with_queue_results,
     build_retropaths_neb_queue,
+    ensure_queue_item_for_edge,
     load_completed_queue_chains,
     run_retropaths_neb_queue,
 )
+from neb_dynamics.retropaths_compat import structure_node_from_graph_like_molecule
 from neb_dynamics.TreeNode import TreeNode
 
 
@@ -207,6 +213,364 @@ def prepare_neb_workspace(workspace: RetropathsWorkspace) -> tuple[Pot, Retropat
 
     queue = build_retropaths_neb_queue(neb_pot, queue_fp=workspace.queue_fp)
     return neb_pot, queue
+
+
+def _write_growth_progress(
+    progress_fp: str | None,
+    *,
+    graph,
+    growing_nodes: list[int] | None = None,
+    title: str = "",
+    note: str = "",
+    phase: str = "",
+) -> None:
+    if not progress_fp:
+        return
+    growing = {int(node_id) for node_id in (growing_nodes or [])}
+    payload = {
+        "title": str(title or ""),
+        "note": str(note or ""),
+        "phase": str(phase or ""),
+        "network": {
+            "nodes": [
+                {
+                    "id": int(node_index),
+                    "label": str(node_index),
+                    "growing": int(node_index) in growing,
+                }
+                for node_index in sorted(graph.nodes)
+            ],
+            "edges": [
+                {
+                    "source": int(source_node),
+                    "target": int(target_node),
+                }
+                for source_node, target_node in sorted(graph.edges)
+            ],
+        },
+    }
+    progress_path = Path(progress_fp)
+    progress_path.parent.mkdir(parents=True, exist_ok=True)
+    progress_path.write_text(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def initialize_workspace_with_progress(
+    workspace: RetropathsWorkspace,
+    *,
+    progress_fp: str | None = None,
+) -> tuple[Pot, RetropathsNEBQueue]:
+    hf, MoleculeCls, RetropathsPot = _load_retropaths_classes()
+    prepare_retropaths_imports()
+    from retropaths.reactions.pot import TimeoutPot
+    from timeout_timer import timeout
+
+    library = hf.pload(workspace.reactions_path)
+    root = MoleculeCls.from_smiles(workspace.root_smiles)
+    environment = (
+        MoleculeCls.from_smiles(workspace.environment_smiles)
+        if workspace.environment_smiles
+        else MoleculeCls()
+    )
+    pot = RetropathsPot(root=root, environment=environment, rxn_name=workspace.run_name)
+    filtered_library = library.filter_compatible(pot.conditions)
+    started_at = time()
+
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=[0],
+        title="Growing Retropaths network",
+        note="Starting from the root node.",
+        phase="initializing",
+    )
+
+    try:
+        with timeout(workspace.timeout_seconds, exception=TimeoutPot):
+            layer_counter = 0
+            while pot.any_leaves_growable() and layer_counter < workspace.max_depth:
+                growable_nodes = [
+                    int(node_index)
+                    for node_index in pot.leaves
+                    if not pot.is_node_converged(node_index)
+                ]
+                _write_growth_progress(
+                    progress_fp,
+                    graph=pot.graph,
+                    growing_nodes=growable_nodes,
+                    title="Growing Retropaths network",
+                    note=f"Growing layer {layer_counter + 1} with {len(growable_nodes)} active node(s).",
+                    phase="growing",
+                )
+                for offset, leaf in enumerate(growable_nodes, start=1):
+                    _write_growth_progress(
+                        progress_fp,
+                        graph=pot.graph,
+                        growing_nodes=[leaf],
+                        title="Growing Retropaths network",
+                        note=f"Growing node {leaf} ({offset}/{len(growable_nodes)}) in layer {layer_counter + 1}.",
+                        phase="growing",
+                    )
+                    pot.grow_this_node(
+                        leaf,
+                        filtered_library,
+                        filter_minor_products=True,
+                        use_father_error=False,
+                    )
+                    pot.check_for_number_of_nodes(workspace.max_nodes, started_at)
+                layer_counter += 1
+    except TimeoutPot as exc:
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=[],
+            title="Growing Retropaths network",
+            note=f"Timed out after {workspace.timeout_seconds} seconds.",
+            phase="failed",
+        )
+        raise TimeoutError(
+            f"Retropaths growth timed out after {workspace.timeout_seconds} seconds."
+        ) from exc
+
+    pot.run_time = time() - started_at
+    pot.to_json(workspace.retropaths_pot_fp)
+    neb_pot = retropaths_pot_to_neb_pot(pot)
+    neb_pot.write_to_disk(workspace.neb_pot_fp)
+    queue = build_retropaths_neb_queue(neb_pot, queue_fp=workspace.queue_fp)
+    _write_growth_progress(
+        progress_fp,
+        graph=neb_pot.graph,
+        growing_nodes=[],
+        title="Growing Retropaths network",
+        note="Growth finished.",
+        phase="finished",
+    )
+    return neb_pot, queue
+
+
+def _merge_pot_overlay(base_pot: Pot, overlay_pot: Pot) -> Pot:
+    merged = base_pot
+    for node_index in overlay_pot.graph.nodes:
+        attrs = dict(overlay_pot.graph.nodes[node_index])
+        if node_index in merged.graph.nodes:
+            merged.graph.nodes[node_index].update(attrs)
+        else:
+            merged.graph.add_node(node_index, **attrs)
+    for source_node, target_node in overlay_pot.graph.edges:
+        attrs = dict(overlay_pot.graph.edges[(source_node, target_node)])
+        if merged.graph.has_edge(source_node, target_node):
+            merged.graph.edges[(source_node, target_node)].update(attrs)
+        else:
+            merged.graph.add_edge(source_node, target_node, **attrs)
+    return merged
+
+
+def materialize_drive_graph(workspace: RetropathsWorkspace) -> Pot:
+    base_pot = Pot.read_from_disk(workspace.neb_pot_fp) if workspace.neb_pot_fp.exists() else None
+    try:
+        overlay_pot = load_partial_annotated_pot(workspace)
+    except Exception:
+        if base_pot is None:
+            raise
+        pot = base_pot
+    else:
+        pot = _merge_pot_overlay(base_pot, overlay_pot) if base_pot is not None else overlay_pot
+    pot.write_to_disk(workspace.neb_pot_fp)
+    build_retropaths_neb_queue(pot=pot, queue_fp=workspace.queue_fp, overwrite=False)
+    return pot
+
+
+def _node_graph_like_molecule(node_attrs: dict[str, Any]) -> Molecule | None:
+    molecule = node_attrs.get("molecule")
+    if molecule is not None:
+        return molecule.copy()
+    td = node_attrs.get("td")
+    graph = getattr(td, "graph", None)
+    if graph is not None:
+        return graph.copy()
+    structure = getattr(td, "structure", None)
+    if structure is not None:
+        with contextlib.suppress(Exception):
+            return structure_to_molecule(structure)
+    return None
+
+
+def _molecule_key(molecule: Molecule | None) -> str:
+    if molecule is None:
+        return ""
+    with contextlib.suppress(Exception):
+        return str(molecule.smiles_from_multiple_molecules())
+    with contextlib.suppress(Exception):
+        return str(molecule.force_smiles())
+    return ""
+
+
+def _find_matching_node_by_molecule(pot: Pot, molecule: Molecule | None) -> int | None:
+    key = _molecule_key(molecule)
+    if not key:
+        return None
+    for node_index in pot.graph.nodes:
+        existing = _node_graph_like_molecule(pot.graph.nodes[node_index])
+        if _molecule_key(existing) == key:
+            return int(node_index)
+    return None
+
+def apply_reactions_to_node(
+    workspace: RetropathsWorkspace,
+    node_index: int,
+    *,
+    progress_fp: str | None = None,
+) -> dict[str, Any]:
+    pot = materialize_drive_graph(workspace)
+    if node_index not in pot.graph.nodes:
+        raise ValueError(f"Node {node_index} is not present in the current workspace.")
+
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=[int(node_index)],
+        title=f"Applying reaction templates to node {node_index}",
+        note=f"Growing node {node_index} with the Retropaths template library.",
+        phase="growing",
+    )
+
+    source_attrs = pot.graph.nodes[node_index]
+    source_molecule = _node_graph_like_molecule(source_attrs)
+    if source_molecule is None:
+        raise ValueError(f"Node {node_index} has no molecular graph, so reactions cannot be applied to it.")
+
+    charge = 0
+    multiplicity = 1
+    source_td = source_attrs.get("td")
+    if source_td is not None and getattr(source_td, "structure", None) is not None:
+        charge = int(source_td.structure.charge)
+        multiplicity = int(source_td.structure.multiplicity)
+
+    hf, _RetropathsMolecule, RetropathsPot = _load_retropaths_classes()
+    library = hf.pload(workspace.reactions_path)
+    temp_pot = RetropathsPot(
+        root=source_molecule.copy(),
+        environment=_global_environment_molecule(pot) or Molecule(),
+        rxn_name=f"{workspace.run_name}-node-{node_index}",
+    )
+    temp_pot.grow_this_node(0, library, filter_minor_products=True, use_father_error=False)
+
+    added_nodes = 0
+    added_edges = 0
+    merged_targets: list[int] = []
+
+    for result_index in sorted(temp_pot.graph.nodes):
+        if result_index == 0:
+            continue
+        result_attrs = temp_pot.graph.nodes[result_index]
+        result_molecule = result_attrs.get("molecule")
+        if result_molecule is None:
+            continue
+
+        target_index = _find_matching_node_by_molecule(pot, result_molecule)
+        if target_index is None:
+            target_index = (max(pot.graph.nodes) + 1) if pot.graph.nodes else 0
+            td = structure_node_from_graph_like_molecule(
+                result_molecule,
+                charge=charge,
+                spinmult=multiplicity,
+            )
+            pot.graph.add_node(
+                target_index,
+                molecule=result_molecule.copy(),
+                converged=bool(result_attrs.get("converged", False)),
+                td=td,
+                endpoint_optimized=False,
+                generated_by="retropaths_apply_reactions",
+            )
+            added_nodes += 1
+        else:
+            target_attrs = pot.graph.nodes[target_index]
+            target_attrs.setdefault("molecule", result_molecule.copy())
+            if target_attrs.get("td") is None:
+                target_attrs["td"] = structure_node_from_graph_like_molecule(
+                    result_molecule,
+                    charge=charge,
+                    spinmult=multiplicity,
+                )
+                target_attrs.setdefault("endpoint_optimized", False)
+
+        if not pot.graph.has_edge(target_index, node_index):
+            edge_attrs = dict(temp_pot.graph.edges[(result_index, 0)])
+            edge_attrs.setdefault("list_of_nebs", [])
+            edge_attrs.setdefault("generated_by", "retropaths_apply_reactions")
+            pot.graph.add_edge(target_index, node_index, **edge_attrs)
+            added_edges += 1
+        merged_targets.append(int(target_index))
+
+    pot.write_to_disk(workspace.neb_pot_fp)
+    build_retropaths_neb_queue(pot=pot, queue_fp=workspace.queue_fp, overwrite=False)
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=[],
+        title=f"Applying reaction templates to node {node_index}",
+        note=f"Merged {added_nodes} new node(s) and {added_edges} new edge(s).",
+        phase="finished",
+    )
+    return {
+        "message": (
+            f"Applied reactions to node {node_index}: merged {added_nodes} new nodes "
+            f"and {added_edges} new edges."
+        ),
+        "node_index": int(node_index),
+        "added_nodes": int(added_nodes),
+        "added_edges": int(added_edges),
+        "targets": merged_targets,
+    }
+
+
+def add_manual_edge(
+    workspace: RetropathsWorkspace,
+    *,
+    source_node: int,
+    target_node: int,
+    reaction_label: str = "",
+) -> dict[str, Any]:
+    if int(source_node) == int(target_node):
+        raise ValueError("Manual edges must connect two distinct nodes.")
+
+    if not workspace.neb_pot_fp.exists():
+        raise ValueError("The workspace has no NEB graph yet.")
+    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    for node_index in (source_node, target_node):
+        if int(node_index) not in pot.graph.nodes:
+            raise ValueError(f"Node {node_index} is not present in the current workspace.")
+
+    added = False
+    if not pot.graph.has_edge(source_node, target_node):
+        pot.graph.add_edge(
+            source_node,
+            target_node,
+            reaction=str(reaction_label).strip() or f"Manual edge {source_node}->{target_node}",
+            list_of_nebs=[],
+            generated_by="manual_drive_edge",
+        )
+        added = True
+
+    pot.write_to_disk(workspace.neb_pot_fp)
+    queue = ensure_queue_item_for_edge(
+        pot=pot,
+        source_node=int(source_node),
+        target_node=int(target_node),
+        queue_fp=workspace.queue_fp,
+        overwrite=False,
+    )
+    item = queue.find_item(source_node, target_node)
+    return {
+        "message": (
+            f"{'Added' if added else 'Refreshed'} manual edge {source_node} -> {target_node}."
+        ),
+        "source_node": int(source_node),
+        "target_node": int(target_node),
+        "added": bool(added),
+        "queue_status": item.status if item is not None else "",
+        "queue_error": item.error if item is not None else "",
+    }
 
 
 def _safe_read_pot(fp: Path) -> Pot | None:
