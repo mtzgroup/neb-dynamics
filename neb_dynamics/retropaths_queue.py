@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 import concurrent.futures
 import multiprocessing
@@ -80,6 +81,76 @@ def _counter_difference(larger: Counter, smaller: Counter) -> Counter | None:
         if delta > 0:
             diff[key] = delta
     return diff
+
+
+def _molecule_atom_count(molecule: Molecule | None) -> int:
+    if molecule is None:
+        return 0
+    with contextlib.suppress(Exception):
+        return len(molecule.list_of_elements())
+    return 0
+
+
+def _structure_node_from_graph_if_mismatch(
+    node: StructureNode,
+    graph: Molecule | None,
+    *,
+    charge: int,
+    spinmult: int,
+) -> StructureNode:
+    if graph is None:
+        return node
+    graph_atom_count = _molecule_atom_count(graph)
+    if graph_atom_count <= 0 or graph_atom_count == len(node.structure.symbols):
+        return node
+    rebuilt = structure_node_from_graph_like_molecule(
+        graph,
+        charge=charge,
+        spinmult=spinmult,
+    )
+    rebuilt._cached_energy = getattr(node, "_cached_energy", None)
+    rebuilt._cached_gradient = getattr(node, "_cached_gradient", None)
+    rebuilt._cached_result = getattr(node, "_cached_result", None)
+    rebuilt.converged = node.converged
+    return rebuilt
+
+
+def _piece_signature(piece: Molecule) -> str:
+    with contextlib.suppress(Exception):
+        return str(piece.force_smiles())
+    return ".".join(sorted(piece.list_of_elements()))
+
+
+def _piece_counter(pieces: list[Molecule]) -> Counter:
+    return Counter(_piece_signature(piece) for piece in pieces)
+
+
+def _missing_graph_pieces(
+    larger_graph: Molecule | None,
+    smaller_graph: Molecule | None,
+) -> list[Molecule] | None:
+    if larger_graph is None or smaller_graph is None:
+        return None
+
+    larger_pieces = list(larger_graph.separate_graph_in_pieces())
+    smaller_pieces = list(smaller_graph.separate_graph_in_pieces())
+    larger_counts = _piece_counter(larger_pieces)
+    smaller_counts = _piece_counter(smaller_pieces)
+    missing_counts = _counter_difference(larger_counts, smaller_counts)
+    if missing_counts is None:
+        return None
+
+    missing: list[Molecule] = []
+    remaining = Counter(missing_counts)
+    for piece in larger_pieces:
+        signature = _piece_signature(piece)
+        if remaining[signature] <= 0:
+            continue
+        missing.append(piece)
+        remaining[signature] -= 1
+    if any(value > 0 for value in remaining.values()):
+        return None
+    return missing
 
 
 def _graph_with_appended_fragment(base_graph: Molecule | None, fragment_graph: Molecule | None) -> Molecule | None:
@@ -198,12 +269,45 @@ def build_balanced_endpoints(
     source_td: StructureNode,
     target_td: StructureNode,
     environment: Molecule | None,
+    source_graph: Molecule | None = None,
+    target_graph: Molecule | None = None,
     charge: int = 0,
     spinmult: int = 1,
 ) -> tuple[StructureNode, StructureNode, str | None]:
+    source_td = _structure_node_from_graph_if_mismatch(
+        source_td,
+        source_graph,
+        charge=charge,
+        spinmult=spinmult,
+    )
+    target_td = _structure_node_from_graph_if_mismatch(
+        target_td,
+        target_graph,
+        charge=charge,
+        spinmult=spinmult,
+    )
+
     compatible, reason = pair_is_direct_neb_compatible(source_td, target_td)
     if compatible:
         return source_td, target_td, None
+
+    source_missing_graph_pieces = _missing_graph_pieces(target_graph, source_graph)
+    if source_missing_graph_pieces:
+        augmented_source = _augment_node_with_environment_fragments(
+            source_td, source_missing_graph_pieces, charge=charge, spinmult=spinmult
+        )
+        compatible, reason = pair_is_direct_neb_compatible(augmented_source, target_td)
+        if compatible:
+            return augmented_source, target_td, None
+
+    target_missing_graph_pieces = _missing_graph_pieces(source_graph, target_graph)
+    if target_missing_graph_pieces:
+        augmented_target = _augment_node_with_environment_fragments(
+            target_td, target_missing_graph_pieces, charge=charge, spinmult=spinmult
+        )
+        compatible, reason = pair_is_direct_neb_compatible(source_td, augmented_target)
+        if compatible:
+            return source_td, augmented_target, None
 
     if environment is None or environment.is_empty():
         return source_td, target_td, reason
@@ -349,6 +453,8 @@ def _queue_item_for_edge(
             source_td=source_td,
             target_td=target_td,
             environment=_global_environment_molecule(pot),
+            source_graph=pot.graph.nodes[source_node].get("molecule"),
+            target_graph=pot.graph.nodes[target_node].get("molecule"),
             charge=source_td.structure.charge,
             spinmult=source_td.structure.multiplicity,
         )
@@ -452,6 +558,44 @@ def build_retropaths_neb_queue(
     return queue
 
 
+def ensure_queue_item_for_edge(
+    pot: Pot,
+    *,
+    source_node: int,
+    target_node: int,
+    queue_fp: Path | None = None,
+    overwrite: bool = False,
+) -> RetropathsNEBQueue:
+    queue = RetropathsNEBQueue()
+    if queue_fp is not None:
+        queue_fp = Path(queue_fp)
+        if queue_fp.exists() and not overwrite:
+            queue = RetropathsNEBQueue.read_from_disk(queue_fp)
+
+    existing = queue.find_item(source_node, target_node)
+    if existing is not None and not _is_retryable_legacy_failure(existing):
+        return queue
+    if existing is not None and existing.attempt_key:
+        queue.attempted_pairs.pop(existing.attempt_key, None)
+
+    reaction = ""
+    if pot.graph.has_edge(source_node, target_node):
+        reaction = pot.graph.edges[(source_node, target_node)].get("reaction")
+
+    queue.replace_item(
+        _queue_item_for_edge(
+            pot=pot,
+            source_node=source_node,
+            target_node=target_node,
+            reaction=reaction,
+            attempted_pairs=queue.attempted_pairs,
+        )
+    )
+    if queue_fp is not None:
+        queue.write_to_disk(queue_fp)
+    return queue
+
+
 def _make_pair_chain(pot: Pot, item: NEBQueueItem, run_inputs: RunInputs) -> Chain:
     start = pot.graph.nodes[item.source_node]["td"].copy()
     end = pot.graph.nodes[item.target_node]["td"].copy()
@@ -459,6 +603,8 @@ def _make_pair_chain(pot: Pot, item: NEBQueueItem, run_inputs: RunInputs) -> Cha
         source_td=start,
         target_td=end,
         environment=_global_environment_molecule(pot),
+        source_graph=pot.graph.nodes[item.source_node].get("molecule"),
+        target_graph=pot.graph.nodes[item.target_node].get("molecule"),
         charge=start.structure.charge,
         spinmult=start.structure.multiplicity,
     )
@@ -602,6 +748,8 @@ def run_retropaths_neb_queue(
             source_td=source_td,
             target_td=target_td,
             environment=_global_environment_molecule(pot),
+            source_graph=pot.graph.nodes[item.source_node].get("molecule"),
+            target_graph=pot.graph.nodes[item.target_node].get("molecule"),
             charge=source_td.structure.charge,
             spinmult=source_td.structure.multiplicity,
         )
