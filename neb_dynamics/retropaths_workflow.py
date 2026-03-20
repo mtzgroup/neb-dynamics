@@ -330,6 +330,22 @@ def initialize_workspace_with_progress(
         raise TimeoutError(
             f"Retropaths growth timed out after {workspace.timeout_seconds} seconds."
         ) from exc
+    except Exception as exc:
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=[],
+            title="Growing Retropaths network",
+            note=f"Growth stopped after a partial network was built: {type(exc).__name__}: {exc}",
+            phase="failed",
+        )
+        with contextlib.suppress(Exception):
+            pot.run_time = time() - started_at
+            pot.to_json(workspace.retropaths_pot_fp)
+            neb_pot = retropaths_pot_to_neb_pot(pot)
+            neb_pot.write_to_disk(workspace.neb_pot_fp)
+            build_retropaths_neb_queue(neb_pot, queue_fp=workspace.queue_fp)
+        raise
 
     pot.run_time = time() - started_at
     pot.to_json(workspace.retropaths_pot_fp)

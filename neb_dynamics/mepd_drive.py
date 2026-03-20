@@ -1071,16 +1071,35 @@ def _initialize_workspace_job(
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
     )
-    if progress_fp:
-        initialize_workspace_with_progress(workspace, progress_fp=progress_fp)
-    else:
-        prepare_neb_workspace(workspace)
-    return _workspace_snapshot_payload(
+    init_error = ""
+    try:
+        if progress_fp:
+            initialize_workspace_with_progress(workspace, progress_fp=progress_fp)
+        else:
+            prepare_neb_workspace(workspace)
+    except Exception as exc:
+        init_error = f"{type(exc).__name__}: {exc}"
+        required_partial = [
+            workspace.workspace_fp,
+            workspace.neb_pot_fp,
+            workspace.queue_fp,
+            workspace.retropaths_pot_fp,
+        ]
+        if not all(fp.exists() for fp in required_partial):
+            raise
+    payload = _workspace_snapshot_payload(
         workspace,
         reactant=reactant,
         product=product,
-        message=f"Initialized workspace {workspace.run_name}.",
+        message=(
+            f"Initialized partial workspace {workspace.run_name}."
+            if init_error
+            else f"Initialized workspace {workspace.run_name}."
+        ),
     )
+    if init_error:
+        payload["error"] = init_error
+    return payload
 
 
 def _workspace_snapshot_payload(
@@ -1716,6 +1735,7 @@ def _drive_html() -> str:
       selected: null,
       networkVersion: "",
       connectSourceNodeId: null,
+      pendingLiveActivity: null,
     };
 
     function setManualEdgeEndpoint(which, nodeId) {
@@ -1805,6 +1825,41 @@ def _drive_html() -> str:
 
     function setSubtext(text) {
       document.getElementById("job-subtext").textContent = text;
+    }
+
+    function clearPendingLiveActivity() {
+      state.pendingLiveActivity = null;
+    }
+
+    function buildOptimisticGrowthActivity(nodeId, title, note) {
+      const network = state.snapshot?.drive?.network || {};
+      const nodes = Array.isArray(network.nodes) ? network.nodes : [];
+      const edges = Array.isArray(network.edges) ? network.edges : [];
+      const hydratedNodes = nodes.map((node) => ({
+        id: Number(node.id),
+        label: String(node.label || node.id),
+        growing: Number(node.id) === Number(nodeId),
+      }));
+      if (!hydratedNodes.length) {
+        hydratedNodes.push({
+          id: Number(nodeId),
+          label: String(nodeId),
+          growing: true,
+        });
+      }
+      return {
+        type: "growth",
+        title: title || "Growing Retropaths network",
+        note: note || `Growing node ${Number(nodeId)}.`,
+        phase: "growing",
+        network: {
+          nodes: hydratedNodes,
+          edges: edges.map((edge) => ({
+            source: Number(edge.source),
+            target: Number(edge.target),
+          })),
+        },
+      };
     }
 
     function setButtonsDisabled(disabled) {
@@ -2226,7 +2281,7 @@ def _drive_html() -> str:
     function renderLiveActivity(snapshot) {
       const panel = document.getElementById("live-activity-panel");
       const inline = document.getElementById("live-activity-inline");
-      const activity = snapshot?.live_activity || null;
+      const activity = snapshot?.live_activity || state.pendingLiveActivity || null;
       if (!panel || !inline) return;
       if (!activity) {
         panel.style.display = "none";
@@ -2517,6 +2572,9 @@ def _drive_html() -> str:
       try {
         const response = await fetch("/api/state");
         const snapshot = await response.json();
+        if (snapshot.active_action && snapshot.active_action.status === "running") {
+          clearPendingLiveActivity();
+        }
         state.snapshot = snapshot;
         const activeAction = snapshot.active_action || null;
         const activeLabel = activeAction && activeAction.status === "running"
@@ -2650,10 +2708,18 @@ def _drive_html() -> str:
       try {
         setBanner(`Applying reactions to node ${nodeId}...`);
         setSubtext("The selected node will be regrown with the Retropaths template library and any new products will be merged into the current graph.");
+        state.pendingLiveActivity = buildOptimisticGrowthActivity(
+          Number(nodeId),
+          `Applying reaction templates to node ${Number(nodeId)}...`,
+          `Growing node ${Number(nodeId)}.`
+        );
+        renderLiveActivity(state.snapshot);
         await postJson("/api/apply-reactions", { node_id: Number(nodeId) });
         setBanner(`Reaction-application request accepted for node ${nodeId}.`);
         await refreshState();
       } catch (error) {
+        clearPendingLiveActivity();
+        renderLiveActivity(state.snapshot);
         setBanner(error.message || String(error), true);
         setSubtext("The reaction-application request failed before it could start.");
       }
@@ -2840,10 +2906,38 @@ class MepdDriveServer(ThreadingHTTPServer):
 
         product_smiles = str((runtime.product or {}).get("smiles") or "")
         active_action = runtime.active_action or {}
+        version_key = _drive_network_version(workspace)
+        if builder_name in {"fast-minimize", "fast-neb"}:
+            version_key = f"{builder_name}-active"
+        action_progress_key: tuple[Any, ...] = ()
+        if builder_name == "fast-minimize":
+            jobs = active_action.get("jobs", []) or []
+            action_progress_key = (
+                str(active_action.get("status") or ""),
+                str(active_action.get("label") or ""),
+                tuple(
+                    (
+                        int(job.get("node_id", -1)),
+                        str(job.get("status") or ""),
+                        str(job.get("error") or ""),
+                    )
+                    for job in jobs
+                    if isinstance(job, dict)
+                ),
+            )
+        elif builder_name == "fast-neb":
+            action_progress_key = (
+                str(active_action.get("status") or ""),
+                str(active_action.get("label") or ""),
+            )
         cache_key = (
             builder_name,
-            _drive_network_version(workspace),
+            version_key,
             product_smiles,
+            action_progress_key,
+            tuple(int(node_id) for node_id in active_action.get("node_ids", []))
+            if builder_name == "fast-minimize"
+            else (),
             int(active_action.get("source_node", -1)) if builder_name == "fast-neb" else -1,
             int(active_action.get("target_node", -1)) if builder_name == "fast-neb" else -1,
         )
@@ -2878,6 +2972,22 @@ class MepdDriveServer(ThreadingHTTPServer):
             self.runtime.busy_label = label
             self.runtime.last_error = ""
             self.runtime.last_message = label
+
+    def _submit_process_action(
+        self,
+        fn: Callable[..., Any],
+        /,
+        *args: Any,
+        label: str,
+        **kwargs: Any,
+    ) -> Future:
+        def _job() -> Any:
+            process_future = self.process_executor.submit(fn, *args, **kwargs)
+            return process_future.result()
+
+        future = self.executor.submit(_job)
+        self._set_busy(label, future)
+        return future
 
     def _finish_future(self, future: Future) -> None:
         with self.state_lock:
@@ -2957,9 +3067,10 @@ class MepdDriveServer(ThreadingHTTPServer):
                 self.runtime.reactant = result["reactant"]
                 self.runtime.product = result["product"] or None
                 self.runtime.last_message = str(result.get("message") or "Action completed.")
+                self.runtime.last_error = str(result.get("error") or "")
                 self.runtime.active_action = None
 
-        future = self.process_executor.submit(
+        future = self._submit_process_action(
             _initialize_workspace_job,
             reactant=reactant,
             product=product or None,
@@ -2973,9 +3084,9 @@ class MepdDriveServer(ThreadingHTTPServer):
             max_depth=self.max_depth,
             max_parallel_nebs=self.max_parallel_nebs,
             progress_fp=progress_fp,
+            label="Building Retropaths network...",
         )
         future.add_done_callback(_finish_initialize)
-        self._set_busy("Building Retropaths network...", future)
         with self.state_lock:
             self.runtime.active_action = {
                 "type": "initialize",
@@ -3096,14 +3207,14 @@ class MepdDriveServer(ThreadingHTTPServer):
             raise ValueError("Initialize a workspace before applying reactions.")
 
         progress_fp = str((workspace.directory / f"drive_apply_reactions_{int(node_id)}.progress.json").resolve())
-        future = self.process_executor.submit(
+        future = self._submit_process_action(
             apply_reactions_to_node,
             RetropathsWorkspace(**dict(workspace.__dict__)),
             int(node_id),
             progress_fp=progress_fp,
+            label=f"Applying reaction templates to node {node_id}...",
         )
         future.add_done_callback(self._finish_future)
-        self._set_busy(f"Applying reaction templates to node {node_id}...", future)
         with self.state_lock:
             self.runtime.active_action = {
                 "type": "apply-reactions",
@@ -3147,7 +3258,7 @@ class MepdDriveServer(ThreadingHTTPServer):
         log_fp = str((workspace.directory / f"drive_neb_{source_node}_{target_node}.log").resolve())
         progress_fp = str((workspace.directory / f"drive_neb_{source_node}_{target_node}.progress.log").resolve())
         chain_fp = str((workspace.directory / f"drive_neb_{source_node}_{target_node}.chain.json").resolve())
-        future = self.process_executor.submit(
+        future = self._submit_process_action(
             _run_selected_edge_neb_logged,
             dict(workspace.__dict__),
             source_node=source_node,
@@ -3155,9 +3266,9 @@ class MepdDriveServer(ThreadingHTTPServer):
             log_fp=log_fp,
             progress_fp=progress_fp,
             chain_fp=chain_fp,
+            label=f"Running autosplitting NEB for {source_node} -> {target_node}...",
         )
         future.add_done_callback(self._finish_future)
-        self._set_busy(f"Running autosplitting NEB for {source_node} -> {target_node}...", future)
         with self.state_lock:
             self.runtime.active_action = {
                 "type": "neb",
@@ -3220,11 +3331,19 @@ class MepdDriveServer(ThreadingHTTPServer):
                 elif runtime.active_action.get("type") in {"initialize", "apply-reactions"}:
                     snapshot["live_activity"] = _build_growth_live_payload(runtime.active_action)
         if runtime.workspace is not None and runtime.workspace.queue_fp.exists():
-            with contextlib.suppress(Exception):
+            try:
                 snapshot["drive"] = self._drive_payload_cache_lookup(
                     workspace=runtime.workspace,
                     runtime=runtime,
                 )
+            except Exception:
+                with contextlib.suppress(Exception):
+                    snapshot["drive"] = _build_drive_payload_fast(
+                        runtime.workspace,
+                        product_smiles=str((runtime.product or {}).get("smiles") or ""),
+                        active_job_label=runtime.busy_label if runtime.future is not None and not runtime.future.done() else "",
+                        active_action=runtime.active_action,
+                    )
         return snapshot
 
     def server_close(self) -> None:

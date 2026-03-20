@@ -223,6 +223,58 @@ def test_initialize_workspace_job_clears_existing_workspace(monkeypatch, tmp_pat
     assert result["workspace"]["root_smiles"] == "C=C"
 
 
+def test_initialize_workspace_job_returns_partial_workspace_on_growth_error(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "drive-run"
+    workspace = SimpleNamespace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C=C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+        timeout_seconds=30,
+        max_nodes=40,
+        max_depth=4,
+        max_parallel_nebs=1,
+        workspace_fp=workspace_dir / "workspace.json",
+        neb_pot_fp=workspace_dir / "neb_pot.json",
+        queue_fp=workspace_dir / "neb_queue.json",
+        retropaths_pot_fp=workspace_dir / "retropaths_pot.json",
+    )
+
+    def _fake_create_workspace(**kwargs):
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+        workspace.workspace_fp.write_text("{}")
+        return workspace
+
+    def _fake_initialize(_workspace, progress_fp=None):
+        workspace.retropaths_pot_fp.write_text("{}")
+        workspace.neb_pot_fp.write_text("{}")
+        workspace.queue_fp.write_text('{"items": [], "attempted_pairs": {}, "version": 1}')
+        raise RuntimeError("Too many iterations")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.create_workspace", _fake_create_workspace)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.initialize_workspace_with_progress", _fake_initialize)
+
+    result = _initialize_workspace_job(
+        reactant={"smiles": "C=C"},
+        product=None,
+        run_name="drive-run",
+        workspace_dir=str(workspace_dir),
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp=None,
+        timeout_seconds=30,
+        max_nodes=40,
+        max_depth=4,
+        max_parallel_nebs=1,
+        progress_fp=str(workspace_dir / "growth.json"),
+    )
+
+    assert result["workspace"]["root_smiles"] == "C=C"
+    assert result["message"] == "Initialized partial workspace drive-run."
+    assert result["error"] == "RuntimeError: Too many iterations"
+
+
 def test_load_existing_workspace_job_reads_workspace(monkeypatch, tmp_path):
     workspace_dir = tmp_path / "drive-run"
     workspace_dir.mkdir()
@@ -326,6 +378,8 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="log-console"' in html
     assert 'id="network-toolbar"' in html
     assert "function renderLiveActivityContent(activity)" in html
+    assert "function buildOptimisticGrowthActivity(nodeId, title, note)" in html
+    assert "pendingLiveActivity" in html
     assert "function renderNetworkToolbar()" in html
     assert "function beginConnectMode(nodeId)" in html
     assert "No NEB-derived edge data is available yet for this edge." in html
@@ -945,6 +999,209 @@ def test_snapshot_reuses_cached_drive_payload_for_running_minimization(monkeypat
     assert first["busy"] is True
     assert second["busy"] is True
     assert calls["count"] == 1
+
+
+def test_snapshot_reuses_cached_drive_payload_for_running_minimization_when_version_changes(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server._drive_payload_cache_key = None
+    server._drive_payload_cache_value = None
+    workspace = SimpleNamespace(queue_fp=tmp_path / "neb_queue.json")
+    workspace.queue_fp.write_text("{}")
+
+    class _PendingFuture:
+        def done(self):
+            return False
+
+    versions = iter(["version-1", "version-2"])
+    calls = {"count": 0}
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._drive_network_version",
+        lambda _workspace: next(versions),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_drive_payload_fast",
+        lambda workspace, product_smiles="", active_job_label="", active_action=None: calls.update({"count": calls["count"] + 1}) or {"queue": {}, "workspace": {}, "network": {}},
+    )
+
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        reactant={"smiles": "C=C.O"},
+        product=None,
+        last_message="Optimizing geometry 1/2: node 0",
+        last_error="",
+        future=_PendingFuture(),
+        busy_label="Optimizing geometry 1/2: node 0",
+        active_action={
+            "type": "minimize",
+            "status": "running",
+            "label": "Optimizing geometry 1/2: node 0",
+            "node_ids": [0, 1],
+        },
+    )
+
+    first = server.snapshot()
+    second = server.snapshot()
+
+    assert first["busy"] is True
+    assert second["busy"] is True
+    assert calls["count"] == 1
+
+
+def test_snapshot_rebuilds_running_minimization_payload_when_job_progress_changes(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server._drive_payload_cache_key = None
+    server._drive_payload_cache_value = None
+    workspace = SimpleNamespace(queue_fp=tmp_path / "neb_queue.json")
+    workspace.queue_fp.write_text("{}")
+
+    class _PendingFuture:
+        def done(self):
+            return False
+
+    calls = {"count": 0}
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._drive_network_version",
+        lambda _workspace: "version-1",
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_drive_payload_fast",
+        lambda workspace, product_smiles="", active_job_label="", active_action=None: calls.update({"count": calls["count"] + 1}) or {"queue": {}, "workspace": {}, "network": {}},
+    )
+
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        reactant={"smiles": "C=C.O"},
+        product=None,
+        last_message="Optimizing geometry 1/2: node 0",
+        last_error="",
+        future=_PendingFuture(),
+        busy_label="Optimizing geometry 1/2: node 0",
+        active_action={
+            "type": "minimize",
+            "status": "running",
+            "label": "Optimizing geometry 1/2: node 0",
+            "node_ids": [0, 1],
+            "jobs": [
+                {"node_id": 0, "status": "running"},
+                {"node_id": 1, "status": "pending"},
+            ],
+        },
+    )
+
+    first = server.snapshot()
+    with server.state_lock:
+        server.runtime.active_action["label"] = "Finished geometry 1/2: node 0"
+        server.runtime.active_action["jobs"][0]["status"] = "completed"
+        server.runtime.active_action["jobs"][1]["status"] = "running"
+    second = server.snapshot()
+
+    assert first["busy"] is True
+    assert second["busy"] is True
+    assert calls["count"] == 2
+
+
+def test_snapshot_falls_back_to_fast_payload_when_full_payload_build_fails(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server._drive_payload_cache_key = None
+    server._drive_payload_cache_value = None
+    workspace = SimpleNamespace(queue_fp=tmp_path / "neb_queue.json")
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr(
+        MepdDriveServer,
+        "_drive_payload_cache_lookup",
+        lambda self, workspace, runtime: (_ for _ in ()).throw(RuntimeError("full payload failed")),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_drive_payload_fast",
+        lambda workspace, product_smiles="", active_job_label="", active_action=None: {"queue": {}, "workspace": {"network_nodes": 3}, "network": {"nodes": [{"id": 0}], "edges": []}},
+    )
+
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        reactant={"smiles": "C=C.O"},
+        product=None,
+        last_message="Initialized partial workspace.",
+        last_error="RuntimeError: Too many iterations",
+        future=None,
+        busy_label="",
+        active_action=None,
+    )
+
+    snapshot = server.snapshot()
+
+    assert snapshot["initialized"] is True
+    assert snapshot["drive"]["workspace"]["network_nodes"] == 3
+    assert snapshot["drive"]["network"]["nodes"][0]["id"] == 0
+
+
+def test_submit_initialize_defers_process_pool_submission_off_request_path(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server.runtime = SimpleNamespace(
+        workspace=None,
+        reactant=None,
+        product=None,
+        last_message="",
+        last_error="",
+        future=None,
+        busy_label="",
+        active_action=None,
+    )
+    server.base_directory = tmp_path
+    server.inputs_fp = tmp_path / "inputs.toml"
+    server.reactions_fp = None
+    server.timeout_seconds = 30
+    server.max_nodes = 40
+    server.max_depth = 4
+    server.max_parallel_nebs = 1
+    server._drive_payload_cache_key = None
+    server._drive_payload_cache_value = None
+
+    class _FakeDeferredFuture:
+        def add_done_callback(self, _callback):
+            return None
+
+        def done(self):
+            return False
+
+    thread_calls = {"count": 0}
+    process_calls = {"count": 0}
+
+    class _FakeThreadExecutor:
+        def submit(self, fn, *args, **kwargs):
+            thread_calls["count"] += 1
+            return _FakeDeferredFuture()
+
+    class _FakeProcessExecutor:
+        def submit(self, fn, *args, **kwargs):
+            process_calls["count"] += 1
+            return SimpleNamespace(result=lambda: None)
+
+    server.executor = _FakeThreadExecutor()
+    server.process_executor = _FakeProcessExecutor()
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._resolve_species_input",
+        lambda smiles="", xyz_text="": {"smiles": smiles} if smiles else None,
+    )
+
+    server.submit_initialize(
+        {
+            "reactant_smiles": "C=CCOCC=C",
+            "run_name": "claisen-2",
+        }
+    )
+
+    assert thread_calls["count"] == 1
+    assert process_calls["count"] == 0
+    assert server.runtime.busy_label == "Building Retropaths network..."
+    assert server.runtime.active_action["type"] == "initialize"
 
 
 def test_launch_mepd_drive_loads_existing_workspace_on_startup(monkeypatch, tmp_path):
