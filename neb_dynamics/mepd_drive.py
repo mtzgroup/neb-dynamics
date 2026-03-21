@@ -22,6 +22,7 @@ from qcio import Structure
 from neb_dynamics.chain import Chain
 from neb_dynamics.constants import ANGSTROM_TO_BOHR
 from neb_dynamics.inputs import ChainInputs, RunInputs
+from neb_dynamics.kmc import build_kmc_payload, simulate_kmc
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.pot import Pot
 from neb_dynamics.qcio_structure_helpers import molecule_to_structure, structure_to_molecule
@@ -643,6 +644,126 @@ def _resolve_display_edge_attrs(graph, source: int, target: int) -> tuple[dict[s
     return attrs, False
 
 
+def _parse_kmc_initial_conditions(raw: str | None) -> dict[int, float] | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    payload = json.loads(text)
+    if not isinstance(payload, dict):
+        raise ValueError("KMC initial conditions must be a JSON object mapping node ids to populations.")
+    normalized: dict[int, float] = {}
+    for key, value in payload.items():
+        normalized[int(key)] = float(value)
+    return normalized
+
+
+def _kmc_defaults_payload(pot: Pot) -> dict[str, Any]:
+    payload = build_kmc_payload(pot)
+    return {
+        "available": True,
+        "temperature_kelvin": float(payload["temperature_kelvin"]),
+        "default_end_time": float(payload["default_end_time"]),
+        "default_max_steps": 200,
+        "node_count": len(payload["nodes"]),
+        "edge_count": len(payload["edges"]),
+        "suppressed_edge_count": len(payload.get("suppressed_edges", [])),
+        "nodes": [
+            {
+                "id": int(node["id"]),
+                "label": str(node.get("label") or node["id"]),
+                "initial": float(node.get("initial", 0.0)),
+            }
+            for node in payload["nodes"]
+        ],
+    }
+
+
+def _run_kmc_payload(
+    workspace: RetropathsWorkspace,
+    *,
+    temperature_kelvin: float,
+    final_time: float | None,
+    max_steps: int,
+    initial_conditions: dict[int, float] | None,
+) -> dict[str, Any]:
+    pot = _merge_drive_pot(workspace)
+    payload = build_kmc_payload(
+        pot,
+        temperature_kelvin=float(temperature_kelvin),
+        initial_conditions=initial_conditions,
+    )
+    result = simulate_kmc(
+        pot,
+        temperature_kelvin=float(temperature_kelvin),
+        initial_conditions=initial_conditions,
+        max_steps=int(max_steps),
+        final_time=float(final_time) if final_time is not None else None,
+    )
+    labels = {
+        int(node["id"]): str(node.get("label") or node["id"])
+        for node in payload["nodes"]
+    }
+    history = list(result.get("history") or [])
+    time_points = [float(step.get("time", 0.0)) for step in history]
+    final_populations = {
+        int(node_index): float(value)
+        for node_index, value in dict(result.get("final_populations") or {}).items()
+    }
+    ranked_node_ids = [
+        node_id
+        for node_id, _value in sorted(
+            final_populations.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+    ]
+    top_node_ids = ranked_node_ids[: min(6, len(ranked_node_ids))]
+    series = [
+        {
+            "node_id": int(node_id),
+            "label": labels.get(int(node_id), str(node_id)),
+            "y": [
+                float(dict(step.get("populations") or {}).get(int(node_id), 0.0))
+                for step in history
+            ],
+        }
+        for node_id in top_node_ids
+    ]
+    summary = [
+        {
+            "node_id": int(node_id),
+            "label": labels.get(int(node_id), str(node_id)),
+            "population": float(population),
+        }
+        for node_id, population in sorted(
+            final_populations.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+    ]
+    dominant_node = summary[0] if summary else None
+    return {
+        "temperature_kelvin": float(result["temperature_kelvin"]),
+        "final_time": float(result["final_time"]),
+        "max_steps": int(result["max_steps"]),
+        "event_count": max(len(history) - 1, 0),
+        "dominant_node": dominant_node,
+        "plot": {
+            "title": "Population vs time",
+            "x_label": "Time (a.u.)",
+            "y_label": "Population",
+            "x": time_points,
+            "series": series,
+        },
+        "summary": summary,
+        "initial_conditions": {
+            str(node_index): float(value)
+            for node_index, value in dict(payload.get("initial_conditions") or {}).items()
+        },
+        "suppressed_edges": list(payload.get("suppressed_edges") or []),
+    }
+
+
 def _write_completed_queue_visualizations(
     workspace: RetropathsWorkspace,
     queue: RetropathsNEBQueue,
@@ -866,6 +987,7 @@ def _build_drive_payload(
             "neb_backed_edges": int(neb_backed_edges),
         },
         "inputs": _inputs_summary_payload(workspace),
+        "kmc": _kmc_defaults_payload(pot),
         "queue": drive_queue_counts,
         "version": _drive_network_version(workspace),
         "network": explorer,
@@ -947,6 +1069,13 @@ def _build_drive_payload_fast(
             "neb_backed_edges": 0,
         },
         "inputs": _inputs_summary_payload(workspace),
+        "kmc": {
+            "available": False,
+            "node_count": int(pot.graph.number_of_nodes()),
+            "edge_count": 0,
+            "suppressed_edge_count": 0,
+            "nodes": [],
+        },
         "queue": drive_queue_counts,
         "version": _drive_network_version(workspace),
         "network": explorer,
@@ -1035,6 +1164,13 @@ def _build_drive_payload_fast_neb(
             "neb_backed_edges": 0,
         },
         "inputs": _inputs_summary_payload(workspace),
+        "kmc": {
+            "available": False,
+            "node_count": int(pot.graph.number_of_nodes()),
+            "edge_count": 0,
+            "suppressed_edge_count": 0,
+            "nodes": [],
+        },
         "queue": drive_queue_counts,
         "version": _drive_network_version(workspace),
         "network": explorer,
@@ -1677,11 +1813,36 @@ def _drive_html() -> str:
         <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
         <button class="detail-tab" data-tab="template-data">Template Data</button>
         <button class="detail-tab" data-tab="structures">Structures</button>
+        <button class="detail-tab" data-tab="kinetics">Kinetics</button>
         <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
       </div>
       <div id="panel-targeted" class="detail-panel active"></div>
       <div id="panel-template-data" class="detail-panel"></div>
       <div id="panel-structures" class="detail-panel"></div>
+      <div id="panel-kinetics" class="detail-panel">
+        <div class="form-grid">
+          <div>
+            <label>KMC temperature (K)</label>
+            <input id="kmc-temperature" type="number" step="0.1" min="0" value="298.15" />
+          </div>
+          <div>
+            <label>KMC final time</label>
+            <input id="kmc-final-time" type="number" step="any" min="0" value="" />
+          </div>
+          <div>
+            <label>KMC max steps</label>
+            <input id="kmc-max-steps" type="number" step="1" min="1" value="200" />
+          </div>
+          <div>
+            <label>Initial conditions JSON</label>
+            <textarea id="kmc-initial-conditions" placeholder='{"0": 1.0, "4": 0.25}'></textarea>
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <button id="run-kmc" class="secondary">Run Kinetic Model</button>
+        </div>
+        <div id="kmc-panel" style="margin-top:12px;"></div>
+      </div>
       <div id="panel-manual-edge" class="detail-panel">
         <div class="form-grid">
           <div>
@@ -1736,6 +1897,10 @@ def _drive_html() -> str:
       networkVersion: "",
       connectSourceNodeId: null,
       pendingLiveActivity: null,
+      networkLayoutVersion: "",
+      networkNodePositions: {},
+      refreshTimer: null,
+      kmcResult: null,
     };
 
     function setManualEdgeEndpoint(which, nodeId) {
@@ -2017,6 +2182,58 @@ def _drive_html() -> str:
       }, null, 2);
     }
 
+    function renderKmcPanel(snapshot) {
+      const panel = document.getElementById("kmc-panel");
+      const temperatureInput = document.getElementById("kmc-temperature");
+      const finalTimeInput = document.getElementById("kmc-final-time");
+      const maxStepsInput = document.getElementById("kmc-max-steps");
+      const initialConditionsInput = document.getElementById("kmc-initial-conditions");
+      if (!panel || !temperatureInput || !finalTimeInput || !maxStepsInput || !initialConditionsInput) return;
+      if (!snapshot || !snapshot.initialized || !snapshot.drive) {
+        panel.innerHTML = `<div class="muted">Initialize or load a workspace before running kinetics.</div>`;
+        return;
+      }
+      const kmc = snapshot.drive.kmc || {};
+      if (kmc.available && !temperatureInput.dataset.synced) {
+        temperatureInput.value = String(Number(kmc.temperature_kelvin || 298.15));
+        finalTimeInput.value = kmc.default_end_time == null ? "" : String(kmc.default_end_time);
+        maxStepsInput.value = String(Number(kmc.default_max_steps || 200));
+        initialConditionsInput.value = JSON.stringify(
+          Object.fromEntries((kmc.nodes || []).filter((node) => Number(node.initial || 0) !== 0).map((node) => [String(node.id), Number(node.initial)])),
+          null,
+          2
+        );
+        temperatureInput.dataset.synced = "true";
+      }
+      const result = state.kmcResult;
+      const defaultsHtml = Array.isArray(kmc.nodes) && kmc.nodes.length
+        ? `<div class="code-block">${escapeHtml(JSON.stringify(kmc.nodes, null, 2))}</div>`
+        : `<div class="muted">No KMC-ready NEB barriers are available yet on this network.</div>`;
+      const resultHtml = result
+        ? `
+          <div class="kv-grid" style="margin-bottom:12px;">
+            <div class="kv-card"><strong>Events</strong><div>${escapeHtml(result.event_count)}</div></div>
+            <div class="kv-card"><strong>Final Time</strong><div>${escapeHtml(Number(result.final_time).toFixed(6))}</div></div>
+            <div class="kv-card"><strong>Dominant Node</strong><div>${escapeHtml(result.dominant_node?.label || "n/a")}</div></div>
+          </div>
+          ${drawKmcPlotSvg(result.plot)}
+          <div style="margin-top:12px;"><strong>Final Populations</strong></div>
+          <div class="code-block">${escapeHtml(JSON.stringify(result.summary, null, 2))}</div>
+        `
+        : `<div class="muted">Run the kinetic model to see time evolution over the current NEB-backed network.</div>`;
+      panel.innerHTML = `
+        <div class="kv-grid" style="margin-bottom:12px;">
+          <div class="kv-card"><strong>KMC Nodes</strong><div>${escapeHtml(Number(kmc.node_count || 0))}</div></div>
+          <div class="kv-card"><strong>KMC Edges</strong><div>${escapeHtml(Number(kmc.edge_count || 0))}</div></div>
+          <div class="kv-card"><strong>Suppressed Edges</strong><div>${escapeHtml(Number(kmc.suppressed_edge_count || 0))}</div></div>
+        </div>
+        <div style="margin-bottom:12px;"><strong>Default KMC State</strong></div>
+        ${defaultsHtml}
+        <div style="margin-top:12px;"><strong>KMC Result</strong></div>
+        ${resultHtml}
+      `;
+    }
+
     function renderNetworkToolbar() {
       const toolbar = document.getElementById("network-toolbar");
       if (!toolbar) return;
@@ -2095,6 +2312,46 @@ def _drive_html() -> str:
           <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#444">${escapeHtml(xLabel)}</text>
           <text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" font-size="12" fill="#444">${escapeHtml(yLabel)}</text>
         </svg>
+      `;
+    }
+
+    function drawKmcPlotSvg(plot) {
+      const xVals = Array.isArray(plot?.x) ? plot.x : [];
+      const series = Array.isArray(plot?.series) ? plot.series : [];
+      if (!xVals.length || !series.length) {
+        return `<div class="muted">Run the kinetic model to populate the trajectory plot.</div>`;
+      }
+      const yVals = series.flatMap((item) => Array.isArray(item.y) ? item.y : []);
+      if (!yVals.length) {
+        return `<div class="muted">Run the kinetic model to populate the trajectory plot.</div>`;
+      }
+      const width = 760;
+      const height = 280;
+      const margin = { top: 28, right: 18, bottom: 36, left: 64 };
+      const innerWidth = width - margin.left - margin.right;
+      const innerHeight = height - margin.top - margin.bottom;
+      const minX = Math.min(...xVals);
+      const maxX = Math.max(...xVals) === minX ? minX + 1 : Math.max(...xVals);
+      const minY = 0.0;
+      const maxY = Math.max(1.0, ...yVals);
+      const sx = (x) => margin.left + ((x - minX) / (maxX - minX)) * innerWidth;
+      const sy = (y) => margin.top + (1 - (y - minY) / (maxY - minY)) * innerHeight;
+      const colors = ["#1f6a57", "#b9652a", "#3e6fb6", "#8c4fa2", "#5a7d2b", "#b3465a"];
+      return `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Kinetic model population trajectories">
+          <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#555" />
+          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#555" />
+          ${series.map((item, index) => {
+            const pts = (item.y || []).map((y, i) => `${sx(xVals[i]).toFixed(2)},${sy(y).toFixed(2)}`).join(" ");
+            return `<polyline fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.4" points="${pts}" />`;
+          }).join("")}
+          <text x="${width / 2}" y="18" text-anchor="middle" font-size="14" fill="#222">${escapeHtml(plot?.title || "Population vs time")}</text>
+          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#444">${escapeHtml(plot?.x_label || "Time")}</text>
+          <text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" font-size="12" fill="#444">${escapeHtml(plot?.y_label || "Population")}</text>
+        </svg>
+        <div class="muted" style="margin-top:10px;">
+          ${series.map((item, index) => `<span class="badge" style="border-color:${colors[index % colors.length]}; color:${colors[index % colors.length]}; margin-right:6px;">${escapeHtml(item.label || item.node_id)}</span>`).join("")}
+        </div>
       `;
     }
 
@@ -2452,12 +2709,24 @@ def _drive_html() -> str:
       const make = (tag) => document.createElementNS(ns, tag);
       const nodeElems = new Map();
       const edgeElems = [];
+      const version = snapshot.drive?.version || "";
+      const cachedPositions = state.networkLayoutVersion === version
+        ? state.networkNodePositions
+        : {};
+      const hasCachedLayout = nodes.every((node) => {
+        const entry = cachedPositions[String(Number(node.id))];
+        return entry && Number.isFinite(entry.x) && Number.isFinite(entry.y);
+      });
 
       const simNodes = nodes.map((node, index) => ({
         id: Number(node.id),
         node,
-        x: width / 2 + ((index % 6) - 3) * 28,
-        y: height / 2 + (Math.floor(index / 6) - 3) * 28,
+        x: hasCachedLayout
+          ? Number(cachedPositions[String(Number(node.id))].x)
+          : width / 2 + ((index % 6) - 3) * 28,
+        y: hasCachedLayout
+          ? Number(cachedPositions[String(Number(node.id))].y)
+          : height / 2 + (Math.floor(index / 6) - 3) * 28,
       }));
       const simById = new Map(simNodes.map((node) => [node.id, node]));
 
@@ -2518,7 +2787,27 @@ def _drive_html() -> str:
         simById.get(Number(node.id)).group = group;
       });
 
-      if (window.d3 && typeof d3.layout?.force === "function") {
+      function applySimPositions() {
+        edgeElems.forEach((item) => {
+          const source = simById.get(Number(item.edge.source));
+          const target = simById.get(Number(item.edge.target));
+          item.line.setAttribute("x1", String(source.x));
+          item.line.setAttribute("y1", String(source.y));
+          item.line.setAttribute("x2", String(target.x));
+          item.line.setAttribute("y2", String(target.y));
+          item.hitbox.setAttribute("x1", String(source.x));
+          item.hitbox.setAttribute("y1", String(source.y));
+          item.hitbox.setAttribute("x2", String(target.x));
+          item.hitbox.setAttribute("y2", String(target.y));
+        });
+        simNodes.forEach((simNode) => {
+          simNode.x = Math.max(28, Math.min(width - 28, simNode.x));
+          simNode.y = Math.max(28, Math.min(height - 36, simNode.y));
+          if (simNode.group) simNode.group.setAttribute("transform", `translate(${simNode.x},${simNode.y})`);
+        });
+      }
+
+      if (!hasCachedLayout && window.d3 && typeof d3.layout?.force === "function") {
         const force = d3.layout.force()
           .size([width, height])
           .nodes(simNodes)
@@ -2530,29 +2819,16 @@ def _drive_html() -> str:
           .linkDistance(Math.max(100, Math.min(240, 120 + nodes.length * 1.3)))
           .gravity(0.05)
           .friction(0.84)
-          .on("tick", () => {
-            edgeElems.forEach((item) => {
-              const source = simById.get(Number(item.edge.source));
-              const target = simById.get(Number(item.edge.target));
-              item.line.setAttribute("x1", String(source.x));
-              item.line.setAttribute("y1", String(source.y));
-              item.line.setAttribute("x2", String(target.x));
-              item.line.setAttribute("y2", String(target.y));
-              item.hitbox.setAttribute("x1", String(source.x));
-              item.hitbox.setAttribute("y1", String(source.y));
-              item.hitbox.setAttribute("x2", String(target.x));
-              item.hitbox.setAttribute("y2", String(target.y));
-            });
-            simNodes.forEach((simNode) => {
-              simNode.x = Math.max(28, Math.min(width - 28, simNode.x));
-              simNode.y = Math.max(28, Math.min(height - 36, simNode.y));
-              if (simNode.group) simNode.group.setAttribute("transform", `translate(${simNode.x},${simNode.y})`);
-            });
-          });
+          .on("tick", applySimPositions);
         force.start();
-        for (let i = 0; i < Math.max(110, nodes.length * 7); i += 1) force.tick();
+        for (let i = 0; i < Math.max(28, Math.min(90, nodes.length * 2)); i += 1) force.tick();
         force.stop();
       }
+      applySimPositions();
+      state.networkLayoutVersion = version;
+      state.networkNodePositions = Object.fromEntries(
+        simNodes.map((simNode) => [String(Number(simNode.id)), { x: simNode.x, y: simNode.y }])
+      );
 
       const selected = state.selected;
       if (selected?.kind === "edge") {
@@ -2566,6 +2842,15 @@ def _drive_html() -> str:
       } else {
         setSelection({ kind: "node", node: nodes[0] });
       }
+    }
+
+    function scheduleRefreshLoop(snapshot) {
+      if (state.refreshTimer != null) {
+        clearTimeout(state.refreshTimer);
+        state.refreshTimer = null;
+      }
+      const delayMs = snapshot?.busy ? 2000 : 5000;
+      state.refreshTimer = setTimeout(refreshState, delayMs);
     }
 
     async function refreshState() {
@@ -2603,13 +2888,20 @@ def _drive_html() -> str:
         renderStats(snapshot);
         renderLiveActivity(snapshot);
         renderLogging(snapshot);
+        renderKmcPanel(snapshot);
         const version = snapshot.drive?.version || "";
         if (version !== state.networkVersion) {
+          state.kmcResult = null;
+          const kmcTemperatureInput = document.getElementById("kmc-temperature");
+          if (kmcTemperatureInput) delete kmcTemperatureInput.dataset.synced;
           state.networkVersion = version;
           renderNetwork(snapshot);
+          renderKmcPanel(snapshot);
         }
       } catch (error) {
         setBanner(error.message || String(error), true);
+      } finally {
+        scheduleRefreshLoop(state.snapshot);
       }
     }
 
@@ -2725,6 +3017,26 @@ def _drive_html() -> str:
       }
     }
 
+    async function runKmcModel() {
+      try {
+        setBanner("Running kinetic model...");
+        setSubtext("Simulating population flow across the current NEB-backed network.");
+        const result = await postJson("/api/run-kmc", {
+          temperature_kelvin: Number(document.getElementById("kmc-temperature").value || 298.15),
+          final_time: document.getElementById("kmc-final-time").value,
+          max_steps: Number(document.getElementById("kmc-max-steps").value || 200),
+          initial_conditions: document.getElementById("kmc-initial-conditions").value,
+        });
+        state.kmcResult = result;
+        renderKmcPanel(state.snapshot);
+        setBanner("Kinetic model finished.");
+        setSubtext("Population trajectories were updated from the current reaction network.");
+      } catch (error) {
+        setBanner(error.message || String(error), true);
+        setSubtext("The kinetic model could not be run.");
+      }
+    }
+
     async function addManualEdge() {
       const sourceRaw = document.getElementById("manual-edge-source").value;
       const targetRaw = document.getElementById("manual-edge-target").value;
@@ -2794,6 +3106,7 @@ def _drive_html() -> str:
     window.queueMinimizePair = queueMinimizePair;
     window.queueEdgeNeb = queueEdgeNeb;
     window.queueApplyReactions = queueApplyReactions;
+    window.runKmcModel = runKmcModel;
     window.setManualEdgeEndpoint = setManualEdgeEndpoint;
     window.beginConnectMode = beginConnectMode;
 
@@ -2801,12 +3114,12 @@ def _drive_html() -> str:
     document.getElementById("load-workspace").addEventListener("click", loadWorkspace);
     document.getElementById("minimize-all").addEventListener("click", queueMinimizeAll);
     document.getElementById("add-manual-edge").addEventListener("click", addManualEdge);
+    document.getElementById("run-kmc").addEventListener("click", runKmcModel);
 
     const d3Script = document.createElement("script");
     d3Script.src = "https://d3js.org/d3.v3.min.js";
     d3Script.onload = refreshState;
     document.head.appendChild(d3Script);
-    setInterval(refreshState, 3000);
   </script>
 </body>
 </html>"""
@@ -3298,6 +3611,30 @@ class MepdDriveServer(ThreadingHTTPServer):
             self.runtime.last_message = str(result.get("message") or "Manual edge updated.")
         return result
 
+    def submit_run_kmc(
+        self,
+        *,
+        temperature_kelvin: float,
+        final_time: float | None,
+        max_steps: int,
+        initial_conditions_text: str | None = None,
+    ) -> dict[str, Any]:
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize a workspace before running kinetics.")
+        result = _run_kmc_payload(
+            workspace,
+            temperature_kelvin=float(temperature_kelvin),
+            final_time=float(final_time) if final_time is not None else None,
+            max_steps=int(max_steps),
+            initial_conditions=_parse_kmc_initial_conditions(initial_conditions_text),
+        )
+        with self.state_lock:
+            self.runtime.last_error = ""
+            self.runtime.last_message = "Kinetic model updated."
+        return result
+
     def snapshot(self) -> dict[str, Any]:
         with self.state_lock:
             runtime = _DriveRuntimeState(
@@ -3434,6 +3771,15 @@ class _DriveHandler(BaseHTTPRequestHandler):
                     reaction_label=str(payload.get("reaction_label") or ""),
                 )
                 self._write_json({"ok": True, **result}, HTTPStatus.ACCEPTED)
+                return
+            if self.path == "/api/run-kmc":
+                result = self.server.submit_run_kmc(
+                    temperature_kelvin=float(payload.get("temperature_kelvin", 298.15)),
+                    final_time=(float(payload["final_time"]) if payload.get("final_time") not in {None, ""} else None),
+                    max_steps=int(payload.get("max_steps", 200)),
+                    initial_conditions_text=str(payload.get("initial_conditions") or ""),
+                )
+                self._write_json({"ok": True, **result}, HTTPStatus.OK)
                 return
         except Exception as exc:
             with contextlib.suppress(Exception):

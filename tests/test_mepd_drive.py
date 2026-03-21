@@ -7,6 +7,7 @@ from neb_dynamics.mepd_drive import (
     _build_growth_live_payload,
     _build_neb_live_payload,
     _build_drive_payload,
+    _run_kmc_payload,
     _drive_html,
     _initialize_workspace_job,
     _load_existing_workspace_job,
@@ -377,13 +378,64 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="pathmin-config-panel"' in html
     assert 'id="log-console"' in html
     assert 'id="network-toolbar"' in html
+    assert 'data-tab="kinetics"' in html
+    assert 'id="run-kmc"' in html
     assert "function renderLiveActivityContent(activity)" in html
     assert "function buildOptimisticGrowthActivity(nodeId, title, note)" in html
+    assert "function runKmcModel()" in html
     assert "pendingLiveActivity" in html
     assert "function renderNetworkToolbar()" in html
     assert "function beginConnectMode(nodeId)" in html
     assert "No NEB-derived edge data is available yet for this edge." in html
     assert "<strong>Viewer:</strong>" in html
+
+
+def test_run_kmc_payload_returns_population_plot(monkeypatch):
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0)
+    pot.graph.add_node(1)
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot", lambda workspace: pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.build_kmc_payload",
+        lambda pot, temperature_kelvin=298.15, initial_conditions=None: {
+            "temperature_kelvin": temperature_kelvin,
+            "nodes": [
+                {"id": 0, "label": "0: A", "initial": 1.0},
+                {"id": 1, "label": "1: B", "initial": 0.0},
+            ],
+            "edges": [{"source": 0, "target": 1, "barrier": 1.0, "rate_constant": 2.0, "reaction": "A->B"}],
+            "suppressed_edges": [],
+            "initial_conditions": {0: 1.0, 1: 0.0},
+            "default_end_time": 5.0,
+        },
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.simulate_kmc",
+        lambda pot, temperature_kelvin=298.15, initial_conditions=None, max_steps=200, final_time=None: {
+            "temperature_kelvin": temperature_kelvin,
+            "final_time": final_time if final_time is not None else 5.0,
+            "max_steps": max_steps,
+            "history": [
+                {"time": 0.0, "populations": {0: 1.0, 1: 0.0}},
+                {"time": 1.0, "populations": {0: 0.4, 1: 0.6}},
+            ],
+            "final_populations": {0: 0.4, 1: 0.6},
+        },
+    )
+
+    result = _run_kmc_payload(
+        SimpleNamespace(),
+        temperature_kelvin=350.0,
+        final_time=1.0,
+        max_steps=10,
+        initial_conditions={0: 1.0},
+    )
+
+    assert result["temperature_kelvin"] == 350.0
+    assert result["plot"]["x"] == [0.0, 1.0]
+    assert result["plot"]["series"][0]["label"] == "1: B"
+    assert result["dominant_node"]["label"] == "1: B"
 
 
 def test_build_drive_payload_hides_unstarted_queue_items(monkeypatch, tmp_path):
