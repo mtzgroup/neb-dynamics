@@ -2,6 +2,7 @@ from __future__ import annotations
 from IPython.display import display, HTML
 import base64
 import io
+import warnings
 
 from typing import List, Union
 
@@ -467,6 +468,42 @@ def gi_path_to_nodes(
     return new_nodes
 
 
+def _coords_reordered_to_reference_symbols(
+    reference_symbols: list,
+    symbols: list,
+    coords: np.ndarray,
+) -> np.ndarray:
+    if list(symbols) == list(reference_symbols):
+        return np.array(coords, copy=True)
+    if len(symbols) != len(reference_symbols):
+        raise ValueError(
+            f"Cannot reorder atom coordinates: symbol lengths differ ({len(symbols)} vs {len(reference_symbols)})."
+        )
+
+    warning_message = (
+        "WARNING: Input geometries were not provided with the same atomic symbol ordering. "
+        "NEB-Dynamics will TRY to reorder atoms to match the reference ordering before running the geodesic, "
+        "but you should double-check the input structures because this remediation may not always be correct."
+    )
+    print(warning_message)
+    warnings.warn(warning_message, RuntimeWarning, stacklevel=2)
+
+    index_positions_by_symbol: dict[str, list[int]] = {}
+    for index, symbol in enumerate(symbols):
+        index_positions_by_symbol.setdefault(str(symbol), []).append(index)
+
+    reordered_indices: list[int] = []
+    for symbol in reference_symbols:
+        matches = index_positions_by_symbol.get(str(symbol), [])
+        if not matches:
+            raise ValueError(
+                "Cannot reorder atom coordinates: endpoint symbols do not match the reference composition."
+            )
+        reordered_indices.append(matches.pop(0))
+
+    return np.array(coords, copy=False)[np.array(reordered_indices, dtype=int)]
+
+
 def sample_shortest_geodesic(chain: Union[Chain, List[StructureNode]],
                              nsamples: int = 5, **kwargs):
 
@@ -500,7 +537,15 @@ def run_geodesic(chain: Union[Chain, List[StructureNode]], chain_inputs=None, re
             {'nodes': chain, 'parameters': chain_inputs})
     elif isinstance(chain, Chain):
         chain_inputs = chain.parameters
-    coords = np.array([node.coords for node in chain])
+    reference_symbols = list(chain[0].symbols)
+    coords = np.array([
+        _coords_reordered_to_reference_symbols(
+            reference_symbols=reference_symbols,
+            symbols=list(node.symbols),
+            coords=node.coords,
+        )
+        for node in chain
+    ])
     smoother = run_geodesic_get_smoother((chain[0].symbols, coords), **kwargs)
     xyz_coords = smoother.path
     charge = chain[0].structure.charge
