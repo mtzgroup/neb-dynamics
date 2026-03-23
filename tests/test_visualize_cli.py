@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -26,12 +28,26 @@ def _node(x: float, e: float) -> StructureNode:
     return n
 
 
+def _chain_with_energies(xs: list[float], energies: list[float]) -> Chain:
+    nodes = [_node(x, e) for x, e in zip(xs, energies)]
+    return Chain.model_validate({"nodes": nodes, "parameters": ChainInputs()})
+
+
 def _chain() -> Chain:
     return Chain.model_validate(
         {
             "nodes": [_node(0.8, 0.0), _node(1.0, 0.01), _node(1.2, 0.0)],
             "parameters": ChainInputs(),
         }
+    )
+
+
+def _structure_at_x(x: float) -> Structure:
+    return Structure(
+        geometry=np.array([[0.0, 0.0, 0.0], [x, 0.0, 0.0]]),
+        symbols=["H", "H"],
+        charge=0,
+        multiplicity=1,
     )
 
 
@@ -89,6 +105,145 @@ def test_load_chain_for_visualization_detects_neb_file(monkeypatch, tmp_path):
     assert out.chain_trajectory == [older, expected]
 
 
+def test_load_chain_for_visualization_detects_network_json(monkeypatch, tmp_path):
+    json_fp = tmp_path / "network.json"
+    json_fp.write_text("{}")
+    expected = _chain()
+    fake_pot = SimpleNamespace(graph=SimpleNamespace(edges=[]))
+
+    monkeypatch.setattr(
+        main_cli.Pot,
+        "read_from_disk",
+        staticmethod(lambda path: fake_pot),
+    )
+    monkeypatch.setattr(main_cli, "_find_pot_root_node_index", lambda pot: 0)
+    monkeypatch.setattr(main_cli, "_find_pot_target_node_index", lambda pot, target_idx_hint=None: 1)
+    monkeypatch.setattr(main_cli.nx, "has_path", lambda *args, **kwargs: True)
+    monkeypatch.setattr(main_cli, "_best_path_by_apparent_barrier", lambda pot, root_idx, target_idx: ([0, 1], 1.0))
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: expected)
+
+    out = main_cli._load_visualization_data(json_fp)
+    assert out.chain is expected
+    assert out.network_pot is fake_pot
+
+
+def test_load_network_visualization_uses_sibling_manifest_endpoint_hints(monkeypatch, tmp_path):
+    json_fp = tmp_path / "rgs_network.json"
+    json_fp.write_text("{}")
+    (tmp_path / "rgs_request_manifest.json").write_text(
+        '{"requests":[{"request_id":0,"start_index":0,"end_index":1}]}'
+    )
+    expected = _chain()
+    fake_pot = SimpleNamespace(graph=SimpleNamespace(edges=[]))
+
+    monkeypatch.setattr(
+        main_cli.Pot,
+        "read_from_disk",
+        staticmethod(lambda path: fake_pot),
+    )
+    monkeypatch.setattr(main_cli, "_find_pot_root_node_index", lambda pot: 3)
+    monkeypatch.setattr(main_cli, "_find_pot_target_node_index", lambda pot, target_idx_hint=None: target_idx_hint)
+    monkeypatch.setattr(main_cli.nx, "has_path", lambda *args, **kwargs: True)
+
+    captured = {}
+
+    def _fake_best_path(pot, root_idx, target_idx):
+        captured["root_idx"] = root_idx
+        captured["target_idx"] = target_idx
+        return [root_idx, target_idx], 1.0
+
+    monkeypatch.setattr(main_cli, "_best_path_by_apparent_barrier", _fake_best_path)
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: expected)
+
+    out = main_cli._load_visualization_data(json_fp)
+    assert out.network_endpoint_hints == {
+        "root_index": 0,
+        "target_index": 1,
+        "manifest_path": str(tmp_path / "rgs_request_manifest.json"),
+    }
+    assert captured["root_idx"] == 0
+    assert captured["target_idx"] == 1
+
+
+def test_load_network_visualization_prefers_connectivity_matched_endpoints_over_manifest(monkeypatch, tmp_path):
+    json_fp = tmp_path / "rgs_network.json"
+    json_fp.write_text("{}")
+    (tmp_path / "rgs_request_manifest.json").write_text(
+        '{"requests":[{"request_id":0,"start_index":0,"end_index":1}]}'
+    )
+    (tmp_path / "start_rgs.xyz").write_text("dummy")
+    (tmp_path / "end_rgs.xyz").write_text("dummy")
+    expected = _chain()
+    fake_pot = SimpleNamespace(graph=SimpleNamespace(edges=[]))
+
+    monkeypatch.setattr(
+        main_cli.Pot,
+        "read_from_disk",
+        staticmethod(lambda path: fake_pot),
+    )
+    monkeypatch.setattr(main_cli, "read_multiple_structure_from_file", lambda fp, *args, **kwargs: [_structure_at_x(2.0)] if "start_" in str(fp) else [_structure_at_x(1.0)])
+    monkeypatch.setattr(main_cli, "_match_network_endpoint_indices_by_connectivity", lambda pot, start_node, end_node: {"root_index": 2, "target_index": 1})
+    monkeypatch.setattr(main_cli, "_find_pot_root_node_index", lambda pot: 9)
+    monkeypatch.setattr(main_cli, "_find_pot_target_node_index", lambda pot, target_idx_hint=None: target_idx_hint)
+    monkeypatch.setattr(main_cli.nx, "has_path", lambda *args, **kwargs: True)
+
+    captured = {}
+
+    def _fake_best_path(pot, root_idx, target_idx):
+        captured["root_idx"] = root_idx
+        captured["target_idx"] = target_idx
+        return [root_idx, target_idx], 1.0
+
+    monkeypatch.setattr(main_cli, "_best_path_by_apparent_barrier", _fake_best_path)
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: expected)
+
+    out = main_cli._load_visualization_data(json_fp)
+    assert out.network_endpoint_hints["root_index"] == 2
+    assert out.network_endpoint_hints["target_index"] == 1
+    assert captured["root_idx"] == 2
+    assert captured["target_idx"] == 1
+
+
+def test_load_network_endpoint_structures_uses_trailing_digit_stripped_name(monkeypatch, tmp_path):
+    network_dir = tmp_path / "rgs2_network_splits"
+    network_dir.mkdir()
+    json_fp = network_dir / "rgs2_network.json"
+    json_fp.write_text("{}")
+    (tmp_path / "start_rgs.xyz").write_text("dummy")
+    (tmp_path / "end_rgs.xyz").write_text("dummy")
+
+    monkeypatch.setattr(
+        main_cli,
+        "read_multiple_structure_from_file",
+        lambda fp, *args, **kwargs: [_structure_at_x(2.0)] if "start_" in str(fp) else [_structure_at_x(1.0)],
+    )
+
+    start_node, end_node = main_cli._load_network_endpoint_structures(json_fp)
+    assert np.isclose(start_node.coords[1][0], 2.0)
+    assert np.isclose(end_node.coords[1][0], 1.0)
+
+
+def test_load_network_endpoint_structures_searches_ancestor_directories(monkeypatch, tmp_path):
+    outer = tmp_path / "examples"
+    middle = outer / "charla_pr_data"
+    network_dir = middle / "wittig_ph_network_splits"
+    network_dir.mkdir(parents=True)
+    json_fp = network_dir / "wittig_ph_network.json"
+    json_fp.write_text("{}")
+    (outer / "start_wittig_ph.xyz").write_text("dummy")
+    (outer / "end_wittig_ph.xyz").write_text("dummy")
+
+    monkeypatch.setattr(
+        main_cli,
+        "read_multiple_structure_from_file",
+        lambda fp, *args, **kwargs: [_structure_at_x(2.0)] if "start_" in str(fp) else [_structure_at_x(1.0)],
+    )
+
+    start_node, end_node = main_cli._load_network_endpoint_structures(json_fp)
+    assert np.isclose(start_node.coords[1][0], 2.0)
+    assert np.isclose(end_node.coords[1][0], 1.0)
+
+
 def test_load_chain_for_visualization_falls_back_to_chain_xyz(monkeypatch, tmp_path):
     chain_fp = tmp_path / "plain_chain.xyz"
     chain_fp.write_text("dummy")
@@ -120,7 +275,7 @@ def test_visualize_command_writes_html_and_can_skip_open(monkeypatch, tmp_path):
     monkeypatch.setattr(
         main_cli,
         "_build_chain_visualizer_html",
-        lambda chain, chain_trajectory=None, tree_layers=None: "<html>ok</html>",
+        lambda chain, chain_trajectory=None, tree_layers=None, network_payload=None: "<html>ok</html>",
     )
 
     opened = {"called": False}
@@ -135,6 +290,67 @@ def test_visualize_command_writes_html_and_can_skip_open(monkeypatch, tmp_path):
 
     assert (tmp_path / "result_visualize.html").read_text() == "<html>ok</html>"
     assert opened["called"] is False
+
+
+def test_extract_best_path_writes_joined_chain_and_metadata(monkeypatch, tmp_path):
+    src = tmp_path / "demo_network.json"
+    src.write_text("{}")
+    expected = _chain()
+
+    monkeypatch.setattr(
+        main_cli,
+        "_load_visualization_data",
+        lambda **kwargs: main_cli._VisualizationData(
+            chain=expected,
+            network_pot=object(),
+            network_endpoint_hints={"root_index": 2, "target_index": 5},
+        ),
+    )
+    monkeypatch.setattr(
+        main_cli,
+        "_build_network_visualization_payload",
+        lambda pot, endpoint_hints=None, atom_indices=None: {
+            "root_index": 2,
+            "target_index": 5,
+            "highlighted_path": [2, 3, 5],
+        },
+    )
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: expected)
+
+    written = {}
+
+    def _fake_write_chain(chain, fp):
+        written["fp"] = Path(fp)
+        Path(fp).write_text("chain")
+        Path(fp).with_suffix(".energies").write_text("0")
+        Path(fp).with_suffix(".gradients").write_text("0")
+        Path(fp).with_name(Path(fp).stem + "_grad_shapes.txt").write_text("1 1 3")
+
+    monkeypatch.setattr(main_cli, "_write_chain_with_nan_fallback", _fake_write_chain)
+
+    main_cli.extract_best_path(str(src))
+
+    out_fp = tmp_path / "demo_best_path.xyz"
+    assert written["fp"] == out_fp
+    metadata = json.loads((tmp_path / "demo_best_path.json").read_text())
+    assert metadata["root_index"] == 2
+    assert metadata["target_index"] == 5
+    assert metadata["path"] == [2, 3, 5]
+
+
+def test_extract_best_path_rejects_non_network_input(monkeypatch, tmp_path):
+    src = tmp_path / "plain.xyz"
+    src.write_text("x")
+    expected = _chain()
+
+    monkeypatch.setattr(
+        main_cli,
+        "_load_visualization_data",
+        lambda **kwargs: main_cli._VisualizationData(chain=expected),
+    )
+
+    with pytest.raises(main_cli.typer.BadParameter):
+        main_cli.extract_best_path(str(src))
 
 
 def test_load_chain_for_visualization_raises_for_unknown_dir(tmp_path):
@@ -191,6 +407,195 @@ def test_build_chain_visualizer_html_tree_mode_has_layer_options(monkeypatch):
     assert 'id="treeSvg"' in html
     assert "treeNodeMap" in html
     assert "Node 3" in html
+
+
+def test_build_chain_visualizer_html_network_mode_has_edge_graph(monkeypatch):
+    c0 = _chain()
+
+    monkeypatch.setattr(
+        main_cli, "generate_structure_viewer_html", lambda *_args, **_kwargs: "<div>struct</div>"
+    )
+    monkeypatch.setattr(main_cli, "generate_neb_plot", lambda *_args, **_kwargs: "plotb64")
+    monkeypatch.setattr(main_cli, "_generate_opt_history_plot_b64", lambda *_args, **_kwargs: "histb64")
+
+    network_payload = {
+        "nodes": [
+            {"id": 0, "label": "Node 0", "x": 0.0, "y": 0.0, "is_root": True, "is_target": False},
+            {"id": 1, "label": "Node 1", "x": 1.0, "y": 1.0, "is_root": False, "is_target": True},
+        ],
+        "edges": [
+            {
+                "id": "0->1",
+                "source": 0,
+                "target": 1,
+                "barrier": 4.2,
+                "reverse_barrier": 3.8,
+                "pair_barrier_sum": 8.0,
+                "highlight": True,
+                "viz": {"chains": [{"index": 0, "frames": [{"xyz_b64": "WA=="}], "plot": {"x": [0.0], "y": [0.0]}}], "default_chain_index": 0},
+            }
+        ],
+        "root_index": 0,
+        "target_index": 1,
+        "highlighted_path": [0, 1],
+    }
+    html = main_cli._build_chain_visualizer_html(chain=c0, network_payload=network_payload)
+    assert 'id="networkSvg"' in html
+    assert "currentNetworkEdgeId" in html
+    assert "best overall path is highlighted in gold" in html
+    assert "0->1" in html
+
+
+def test_best_chain_for_directed_edge_orients_chain_to_source_target():
+    graph = main_cli.nx.DiGraph()
+    graph.add_node(0, td=_node(0.0, 0.0), root=True)
+    graph.add_node(1, td=_node(1.0, 0.0))
+    reversed_chain = _chain_with_energies([1.0, 0.5, 0.0], [0.0, 0.01, 0.0])
+    graph.add_edge(0, 1, list_of_nebs=[reversed_chain], barrier=1.0)
+    pot = SimpleNamespace(graph=graph, target=None)
+
+    directed = main_cli._best_chain_for_directed_edge(pot, 0, 1)
+    assert np.isclose(directed.nodes[0].coords[1][0], 0.0)
+    assert np.isclose(directed.nodes[-1].coords[1][0], 1.0)
+
+
+def test_network_visualization_uses_lowest_apparent_barrier_path():
+    graph = main_cli.nx.DiGraph()
+    graph.add_node(0, td=_node(0.0, 0.0), root=True)
+    graph.add_node(1, td=_node(1.0, 0.0))
+    graph.add_node(2, td=_node(2.0, 0.0))
+    graph.add_node(3, td=_node(3.0, 0.0))
+    graph.add_edge(
+        0,
+        1,
+        list_of_nebs=[_chain_with_energies([0.0, 0.4, 1.0], [0.0, 0.020, 0.001])],
+        barrier=1.0,
+    )
+    graph.add_edge(
+        1,
+        3,
+        list_of_nebs=[_chain_with_energies([1.0, 2.2, 3.0], [0.001, 0.018, 0.0])],
+        barrier=1.0,
+    )
+    graph.add_edge(
+        0,
+        2,
+        list_of_nebs=[_chain_with_energies([0.0, 1.4, 2.0], [0.0, 0.008, 0.001])],
+        barrier=2.0,
+    )
+    graph.add_edge(
+        2,
+        3,
+        list_of_nebs=[_chain_with_energies([2.0, 2.6, 3.0], [0.001, 0.007, 0.0])],
+        barrier=2.0,
+    )
+    pot = SimpleNamespace(graph=graph, target=None)
+
+    payload = main_cli._build_network_visualization_payload(pot)
+    assert payload["highlighted_path"] == [0, 2, 3]
+    assert payload["best_apparent_barrier"] is not None
+
+    path_chain = main_cli._path_chain_from_pot(pot, payload["highlighted_path"])
+    assert path_chain is not None
+    assert np.isclose(path_chain.nodes[0].coords[1][0], 0.0)
+    assert np.isclose(path_chain.nodes[-1].coords[1][0], 3.0)
+
+
+def test_network_visualization_collapses_reversible_pair_toward_product():
+    graph = main_cli.nx.DiGraph()
+    graph.add_node(0, td=_node(0.0, 0.0), root=True)
+    graph.add_node(1, td=_node(1.0, 0.0))
+    graph.add_node(3, td=_node(3.0, 0.0))
+    graph.add_edge(
+        0,
+        3,
+        list_of_nebs=[_chain_with_energies([0.0, 2.0, 3.0], [0.0, 0.010, 0.001])],
+        barrier=5.0,
+    )
+    graph.add_edge(
+        3,
+        0,
+        list_of_nebs=[_chain_with_energies([3.0, 2.0, 0.0], [0.0, 0.015, 0.001])],
+        barrier=7.0,
+    )
+    graph.add_edge(
+        3,
+        1,
+        list_of_nebs=[_chain_with_energies([3.0, 2.0, 1.0], [0.0, 0.006, 0.0])],
+        barrier=4.0,
+    )
+    graph.add_edge(
+        0,
+        1,
+        list_of_nebs=[_chain_with_energies([0.0, 0.5, 1.0], [0.0, 0.030, 0.0])],
+        barrier=20.0,
+    )
+    pot = SimpleNamespace(graph=graph, target=None)
+
+    payload = main_cli._build_network_visualization_payload(
+        pot, endpoint_hints={"root_index": 0, "target_index": 1}
+    )
+    ids = {edge["id"] for edge in payload["edges"]}
+    assert "0->3" in ids
+    assert "3->0" not in ids
+
+
+def test_network_visualization_highlights_target_path_across_reversed_edges():
+    graph = main_cli.nx.DiGraph()
+    for idx in range(5):
+        graph.add_node(idx, td=_node(float(idx), 0.0), root=(idx == 0))
+
+    graph.add_edge(
+        0,
+        1,
+        list_of_nebs=[_chain_with_energies([0.0, 0.5, 1.0], [0.0, 0.004, 0.0])],
+        barrier=1.0,
+    )
+    graph.add_edge(
+        2,
+        1,
+        list_of_nebs=[_chain_with_energies([2.0, 1.5, 1.0], [0.0, 0.005, 0.0])],
+        barrier=1.0,
+    )
+    graph.add_edge(
+        2,
+        3,
+        list_of_nebs=[_chain_with_energies([2.0, 2.5, 3.0], [0.0, 0.006, 0.0])],
+        barrier=1.0,
+    )
+    graph.add_edge(
+        4,
+        3,
+        list_of_nebs=[_chain_with_energies([4.0, 3.5, 3.0], [0.0, 0.007, 0.0])],
+        barrier=1.0,
+    )
+    pot = SimpleNamespace(graph=graph, target=None)
+
+    payload = main_cli._build_network_visualization_payload(
+        pot, endpoint_hints={"root_index": 0, "target_index": 4}
+    )
+
+    assert payload["highlighted_path"] == [0, 1, 2, 3, 4]
+    highlighted_ids = {edge["id"] for edge in payload["edges"] if edge["highlight"]}
+    assert highlighted_ids == {"0->1", "1->2", "2->3", "3->4"}
+
+
+def test_path_chain_from_pot_reverses_pair_chain_when_needed():
+    graph = main_cli.nx.DiGraph()
+    graph.add_node(1, td=_node(1.0, 0.0))
+    graph.add_node(2, td=_node(2.0, 0.0))
+    graph.add_edge(
+        2,
+        1,
+        list_of_nebs=[_chain_with_energies([2.0, 1.5, 1.0], [0.0, 0.005, 0.0])],
+        barrier=1.0,
+    )
+    pot = SimpleNamespace(graph=graph, target=None)
+
+    chain = main_cli._path_chain_from_pot(pot, [1, 2])
+    assert chain is not None
+    assert np.isclose(chain.nodes[0].coords[1][0], 1.0)
+    assert np.isclose(chain.nodes[-1].coords[1][0], 2.0)
 
 
 def test_parse_visualize_atom_indices_from_file(tmp_path):

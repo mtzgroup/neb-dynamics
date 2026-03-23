@@ -47,3 +47,26 @@ def test_write_neb_results_with_history_fallback_writes_history(tmp_path):
     assert out_fp.exists()
     assert (tmp_path / "neb_history" / "traj_0.xyz").exists()
     assert (tmp_path / "neb_history" / "traj_1.xyz").exists()
+
+
+def test_write_neb_results_with_history_fallback_writes_qcio_when_enabled(tmp_path):
+    class _SavedResult:
+        def save(self, path):
+            path.write_text("stub")
+
+    nodes0 = [StructureNode(structure=_structure_at_x(0.8)), StructureNode(structure=_structure_at_x(1.0))]
+    nodes1 = [StructureNode(structure=_structure_at_x(0.9)), StructureNode(structure=_structure_at_x(1.1))]
+    for node in nodes1:
+        node._cached_result = _SavedResult()
+    chain0 = Chain.model_validate({"nodes": nodes0, "parameters": ChainInputs()})
+    chain1 = Chain.model_validate({"nodes": nodes1, "parameters": ChainInputs()})
+    fake_neb = SimpleNamespace(chain_trajectory=[chain0, chain1], optimized=chain1)
+
+    out_fp = tmp_path / "neb.xyz"
+    wrote = main_cli._write_neb_results_with_history(fake_neb, out_fp, write_qcio=True)
+
+    assert wrote is True
+    assert (tmp_path / "neb_node_0.qcio").exists()
+    assert (tmp_path / "neb_node_1.qcio").exists()
+    assert (tmp_path / "neb_history" / "traj_1_node_0.qcio").exists()
+    assert (tmp_path / "neb_history" / "traj_1_node_1.qcio").exists()

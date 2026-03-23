@@ -54,6 +54,9 @@ args = ProgramArgs(
     keywords={"threads": 4}
 )
 eng = QCOPEngine(program_args=args, program="xtb")
+
+# Optional: also write cached ProgramOutput objects when saving results
+eng = QCOPEngine(write_qcio=True)
 ```
 
 ### Features
@@ -62,6 +65,10 @@ eng = QCOPEngine(program_args=args, program="xtb")
 - **Energy Calculation**: `eng.compute_energies(chain)`
 - **Gradient Calculation**: `eng.compute_gradients(chain)`
 - **Supports external programs**: XTB, ORCA, TeraChem, Psi4, etc.
+- **Optional `.qcio` output writing**: set `write_qcio=True` to emit cached `qcio.ProgramOutput` objects when chain/history results are written to disk
+
+When `write_qcio=True`, `QCOPEngine` emits a warning because writing every cached `ProgramOutput`
+can consume substantial disk space, especially for ChemCloud runs and saved optimization histories.
 
 ### Supported Programs
 
