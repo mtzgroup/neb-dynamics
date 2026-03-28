@@ -49,9 +49,20 @@ from pathlib import Path
 workspace_dir = Path(os.environ["RENDER_WORKSPACE_TARGET"]).resolve()
 workspace_fp = workspace_dir / "workspace.json"
 payload = json.loads(workspace_fp.read_text())
+old_workdir = str(payload.get("workdir") or "").rstrip("/")
 payload["workdir"] = str(workspace_dir)
 payload["inputs_fp"] = os.environ["RENDER_WORKSPACE_INPUTS"]
 workspace_fp.write_text(json.dumps(payload, indent=2, sort_keys=True))
+
+queue_fp = workspace_dir / "neb_queue.json"
+if queue_fp.exists() and old_workdir:
+    queue_payload = json.loads(queue_fp.read_text())
+    for item in queue_payload.get("items", []):
+        for key in ("result_dir", "output_chain_xyz"):
+            value = item.get(key)
+            if isinstance(value, str) and value.startswith(old_workdir):
+                item[key] = str(workspace_dir / Path(value).relative_to(old_workdir))
+    queue_fp.write_text(json.dumps(queue_payload, indent=2, sort_keys=True))
 PY
   exec uv run mepd drive \
     --host "$HOST_VALUE" \
