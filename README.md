@@ -106,13 +106,22 @@ Default behavior:
 - boots a workspace from `examples/charla_pr_data/example_inputs.toml`
 - initializes the app with `C=C.CCC=N` in environment `O`
 - writes workspace state to `/tmp/mepd-drive`
+- can hydrate `~/.chemcloud/credentials` from a Render secret at startup
 
 To deploy on Render:
 
 1. Push this repository to GitHub.
 2. In Render, create a new Blueprint and point it at this repo.
-3. Set `CHEMCLOUD_USERNAME` and `CHEMCLOUD_PASSWORD` in the Render dashboard.
+3. Set either `CHEMCLOUD_CREDENTIALS_B64` or `CHEMCLOUD_CREDENTIALS_TOML` in the Render dashboard.
 4. Deploy the Blueprint.
+
+To reuse an existing local ChemCloud login without storing your password in Render, base64-encode your local credentials file and paste the result into `CHEMCLOUD_CREDENTIALS_B64`:
+
+```bash
+base64 < ~/.chemcloud/credentials
+```
+
+That env var is written back to `~/.chemcloud/credentials` inside the Render instance before `mepd drive` starts.
 
 The default public URL will be `https://<service-name>.onrender.com`.
 

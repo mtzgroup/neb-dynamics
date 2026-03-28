@@ -22,7 +22,7 @@ services:
         value: O
       - key: MEPD_DRIVE_NAME
         value: render-drive
-      - key: CHEMCLOUD_USERNAME
+      - key: CHEMCLOUD_CREDENTIALS_B64
         sync: false
-      - key: CHEMCLOUD_PASSWORD
+      - key: CHEMCLOUD_CREDENTIALS_TOML
         sync: false
