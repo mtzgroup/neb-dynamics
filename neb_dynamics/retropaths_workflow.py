@@ -701,7 +701,7 @@ def run_nanoreactor_for_node(
             note=f"Merging optimized minimum {offset}/{len(optimized_nodes)} into the network.",
             phase="merging",
         )
-        if _nodes_identical(optimized_node, source_td, chain_inputs):
+        if _nodes_same_species(optimized_node, source_td):
             skipped_duplicates += 1
             continue
 
@@ -889,6 +889,22 @@ def _nodes_same_species(node1: StructureNode, node2: StructureNode) -> bool:
     return False
 
 
+def _structure_node_molecule_key(node: StructureNode | None) -> str:
+    if node is None:
+        return ""
+    graph = getattr(node, "graph", None)
+    if graph is None and getattr(node, "structure", None) is not None:
+        with contextlib.suppress(Exception):
+            graph = structure_to_molecule(node.structure)
+    return _molecule_key(graph)
+
+
+def _network_node_matches_species(node: StructureNode, node_attrs: dict[str, Any]) -> bool:
+    node_key = _structure_node_molecule_key(node)
+    existing_key = _molecule_key(_node_graph_like_molecule(node_attrs))
+    return bool(node_key) and node_key == existing_key
+
+
 def _normalize_history_endpoint(
     node: StructureNode,
     candidates: list[tuple[int, StructureNode | None, object | None]],
@@ -902,9 +918,7 @@ def _normalize_history_endpoint(
             graph = None
         normalized = _trim_balanced_endpoint(node, graph)
         normalized.has_molecular_graph = graph is not None
-        if _nodes_identical(normalized, reference_node, chain_inputs) or _nodes_same_species(
-            normalized, reference_node
-        ):
+        if _structure_node_molecule_key(normalized) and _structure_node_molecule_key(normalized) == _structure_node_molecule_key(reference_node):
             return normalized, node_index
 
     graph = getattr(node, "graph", None)
@@ -923,16 +937,7 @@ def _find_existing_network_node(
     collapse_ene_thre: float,
 ) -> int | None:
     for node_index in pot.graph.nodes:
-        existing = pot.graph.nodes[node_index].get("td")
-        if existing is None:
-            continue
-        if _history_nodes_identical(
-            node,
-            existing,
-            chain_inputs,
-            collapse_rms_thre,
-            collapse_ene_thre,
-        ):
+        if _network_node_matches_species(node, pot.graph.nodes[node_index]):
             return node_index
     return None
 
@@ -1413,10 +1418,8 @@ def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
         multiplier=source_pot.multiplier,
         rxn_name=source_pot.rxn_name,
     )
-    pot.graph.clear()
+    pot.graph = source_pot.graph.copy()
     pot.run_time = source_pot.run_time
-    if 0 in source_pot.graph.nodes:
-        pot.graph.add_node(0, **dict(source_pot.graph.nodes[0]))
 
     run_inputs = RunInputs.open(workspace.inputs_fp) if Path(workspace.inputs_fp).exists() else RunInputs()
     chain_inputs = run_inputs.chain_inputs
@@ -1428,8 +1431,12 @@ def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
         if item.status != "completed" or not item.result_dir:
             continue
 
+        result_dir = Path(item.result_dir)
+        if not result_dir.exists() or not (result_dir / "adj_matrix.txt").exists():
+            continue
+
         history = TreeNode.read_from_disk(
-            folder_name=item.result_dir,
+            folder_name=result_dir,
             charge=0,
             multiplicity=1,
         )
