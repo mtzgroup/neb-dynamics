@@ -322,17 +322,19 @@ class QCOPEngine(Engine):
             with concurrent.futures.ThreadPoolExecutor(max_workers=12) as executor:
                 non_frozen_results = list(executor.map(helper, iterables))
 
-        if self.compute_program == "chemcloud":
-            # Submit ChemCloud jobs one geometry at a time. Batched NEB-image submissions
-            # have been timing out on crest/xtb requests for this workflow.
-            non_frozen_results = [
-                self.compute_func(
-                    self.program,
-                    prog_inp,
-                    collect_files=self.collect_files,
-                )
-                for prog_inp in non_frozen_prog_inps
-            ]
+        elif self.compute_program == "chemcloud":
+            batch_or_single = (
+                non_frozen_prog_inps
+                if len(non_frozen_prog_inps) > 1
+                else non_frozen_prog_inps[0]
+            )
+            non_frozen_results = self.compute_func(
+                self.program,
+                batch_or_single,
+                collect_files=self.collect_files,
+            )
+            if len(non_frozen_prog_inps) == 1:
+                non_frozen_results = [non_frozen_results]
 
         else:
             non_frozen_results = [
@@ -649,7 +651,15 @@ class QCOPEngine(Engine):
                 for entry in trajectory:
                     struct = getattr(getattr(entry, "input_data", None), "structure", None)
                     if struct is not None:
-                        nodes.append(StructureNode(structure=struct, _cached_result=entry))
+                        node = StructureNode(structure=struct)
+                        results = getattr(entry, "results", None)
+                        with contextlib.suppress(Exception):
+                            node._cached_energy = results.energy
+                        with contextlib.suppress(Exception):
+                            node._cached_gradient = results.gradient
+                        if node._cached_energy is not None or node._cached_gradient is not None:
+                            node._cached_result = entry
+                        nodes.append(node)
                 if nodes:
                     return nodes
 

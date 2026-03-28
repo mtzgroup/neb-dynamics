@@ -97,8 +97,8 @@ threads = 1
 [program_kwds.files]
 
 [program_kwds.model]
-method = "uhf"
-basis = "3-21gs"
+method = "gfn2"
+basis = "gfn2"
 
 [program_kwds.model.extras]
 

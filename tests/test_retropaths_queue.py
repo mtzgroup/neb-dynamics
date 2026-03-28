@@ -110,6 +110,41 @@ def test_build_retropaths_neb_queue_refreshes_legacy_atom_mismatch_failures(tmp_
     assert "legacy" not in queue.attempted_pairs
 
 
+def test_build_retropaths_neb_queue_refreshes_stale_attempt_signature_after_endpoint_changes(tmp_path):
+    original_nodes = {0: _node_at_x(0.0), 1: _node_at_x(1.0)}
+    original_attempt_key = pair_attempt_key(original_nodes[1], original_nodes[0])
+    queue_fp = tmp_path / "queue.json"
+
+    RetropathsNEBQueue(
+        items=[
+            NEBQueueItem(
+                job_id="1->0",
+                source_node=1,
+                target_node=0,
+                attempt_key=original_attempt_key,
+                status="skipped_attempted",
+            )
+        ],
+        attempted_pairs={
+            original_attempt_key: {
+                "job_id": "prior",
+                "source_node": 1,
+                "target_node": 0,
+                "status": "completed",
+            }
+        },
+    ).write_to_disk(queue_fp)
+
+    optimized_nodes = {0: _node_at_x(0.25), 1: _node_at_x(1.5)}
+    pot = _test_pot(optimized_nodes, [(1, 0)])
+
+    queue = build_retropaths_neb_queue(pot=pot, queue_fp=queue_fp)
+
+    assert queue.items[0].attempt_key != original_attempt_key
+    assert queue.items[0].status == "pending"
+    assert original_attempt_key in queue.attempted_pairs
+
+
 def test_pair_is_direct_neb_compatible_rejects_atom_count_mismatch():
     compatible, reason = pair_is_direct_neb_compatible(_node_at_x(0.0), _energetic_like_three_atom_node())
 

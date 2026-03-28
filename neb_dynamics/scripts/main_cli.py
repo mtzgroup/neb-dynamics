@@ -488,6 +488,28 @@ def _dedupe_minima_nodes(nodes: list[StructureNode], chain_inputs: ChainInputs) 
     return unique_nodes
 
 
+def _load_best_path_chain_from_network_splits(
+    *,
+    network_fp: Path | None,
+    output_dir: Path,
+    base_name: str,
+) -> Chain | None:
+    if network_fp is None or not Path(network_fp).exists():
+        return None
+    best_path_fp = output_dir / f"{base_name}_best_path.json"
+    if not best_path_fp.exists():
+        return None
+    try:
+        payload = json.loads(best_path_fp.read_text(encoding="utf-8"))
+        path = [int(v) for v in payload.get("path") or []]
+        if len(path) < 2:
+            return None
+        pot = Pot.read_from_disk(network_fp)
+        return _path_chain_from_pot(pot, path)
+    except Exception:
+        return None
+
+
 def _dedupe_minima_and_sources(
     minima: list[StructureNode],
     sources: list[StructureNode],
@@ -734,15 +756,91 @@ def _queue_follow_on_recursive_requests(
     return queued, next_request_id
 
 
+def _mark_path_pairs_attempted(
+    path_nodes: list[StructureNode],
+    *,
+    chain_inputs: ChainInputs,
+    node_registry: list[StructureNode],
+    attempted_pairs: set[tuple[int, int]],
+) -> None:
+    if len(path_nodes) < 2:
+        return
+    path_indices = [
+        _register_recursive_split_node(
+            node=node, registry=node_registry, chain_inputs=chain_inputs
+        )
+        for node in path_nodes
+    ]
+    for start_index, end_index in zip(path_indices[:-1], path_indices[1:]):
+        attempted_pairs.add((start_index, end_index))
+
+
 def _write_recursive_split_request_artifacts(
     output_dir: Path,
     request_id: int,
     history: TreeNode,
     write_qcio: bool = False,
 ):
+    output_dir.mkdir(parents=True, exist_ok=True)
     history.output_chain.write_to_disk(
         output_dir / f"request_{request_id}.xyz", write_qcio=write_qcio)
     history.write_to_disk(output_dir / f"request_{request_id}_msmep", write_qcio=write_qcio)
+
+
+def _load_recursive_split_request_history(
+    output_dir: Path,
+    request_id: int,
+    *,
+    chain_inputs: ChainInputs,
+    engine,
+    charge: int,
+    multiplicity: int,
+) -> TreeNode | None:
+    request_dir = Path(output_dir) / f"request_{request_id}_msmep"
+    if not request_dir.is_dir():
+        return None
+    try:
+        return TreeNode.read_from_disk(
+            request_dir,
+            chain_parameters=chain_inputs,
+            engine=engine,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+    except Exception:
+        return None
+
+
+def _maybe_resume_recursive_history(
+    status_fp: Path,
+    *,
+    chain_inputs: ChainInputs,
+    engine,
+    charge: int,
+    multiplicity: int,
+) -> TreeNode | None:
+    if not Path(status_fp).exists():
+        return None
+    try:
+        snapshot = _load_status_snapshot(str(status_fp))
+        run_status = snapshot.get("run_status") or {}
+        if str(run_status.get("phase") or "") not in {"network_splits", "complete"}:
+            return None
+        tree_path = run_status.get("tree_path")
+        if not tree_path:
+            return None
+        tree_dir = Path(tree_path)
+        if not tree_dir.exists():
+            return None
+        return TreeNode.read_from_disk(
+            tree_dir,
+            chain_parameters=chain_inputs,
+            engine=engine,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+    except Exception:
+        return None
 
 
 def _build_recursive_split_network_summary(
@@ -855,15 +953,25 @@ def _run_recursive_network_splits(
     base_name: str,
     status_fp: Path | None = None,
 ) -> tuple[list[dict], Path | None, Path]:
-    if output_dir.exists():
+    manifest_fp = _recursive_split_manifest_path(output_dir=output_dir, base_name=base_name)
+    resume_mode = output_dir.exists() and (
+        manifest_fp.exists() or (output_dir / "request_0_msmep").is_dir()
+    )
+    if output_dir.exists() and not resume_mode:
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    if resume_mode:
+        console.print(
+            f"[bold cyan]Resuming network splits from {output_dir}[/bold cyan]"
+        )
 
     attempted_pairs: set[tuple[int, int]] = set()
     node_registry: list[StructureNode] = []
     request_records: list[dict] = []
     network_fp: Path | None = None
     write_qcio = bool(getattr(program_input, "write_qcio", False))
+    charge = int(initial_start.structure.charge)
+    multiplicity = int(initial_start.structure.multiplicity)
 
     start_index = _register_recursive_split_node(
         node=initial_start, registry=node_registry, chain_inputs=program_input.chain_inputs
@@ -873,14 +981,33 @@ def _run_recursive_network_splits(
     )
     attempted_pairs.add((start_index, end_index))
 
-    _write_recursive_split_request_artifacts(
-        output_dir=output_dir,
-        request_id=0,
-        history=history,
-        write_qcio=write_qcio,
-    )
+    initial_history = (
+        _load_recursive_split_request_history(
+            output_dir,
+            0,
+            chain_inputs=program_input.chain_inputs,
+            engine=program_input.engine,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+        if resume_mode
+        else None
+    ) or history
+    if not (output_dir / "request_0_msmep").is_dir():
+        _write_recursive_split_request_artifacts(
+            output_dir=output_dir,
+            request_id=0,
+            history=initial_history,
+            write_qcio=write_qcio,
+        )
     initial_path_nodes = _ordered_leaf_path_nodes(
-        history=history, chain_inputs=program_input.chain_inputs
+        history=initial_history, chain_inputs=program_input.chain_inputs
+    )
+    _mark_path_pairs_attempted(
+        initial_path_nodes,
+        chain_inputs=program_input.chain_inputs,
+        node_registry=node_registry,
+        attempted_pairs=attempted_pairs,
     )
     _upsert_request_record(
         request_records,
@@ -965,45 +1092,15 @@ def _run_recursive_network_splits(
     msmep_runner = MSMEP(inputs=program_input)
     while queue:
         request = queue.pop(0)
-        _upsert_request_record(
-            request_records,
-            _create_recursive_request_record(
-                request_id=request.request_id,
-                parent_request_id=request.parent_request_id,
-                start_index=request.start_index,
-                end_index=request.end_index,
-                status="running",
-                started_at=datetime.now().isoformat(),
-            ),
+        existing_history = _load_recursive_split_request_history(
+            output_dir,
+            request.request_id,
+            chain_inputs=program_input.chain_inputs,
+            engine=program_input.engine,
+            charge=charge,
+            multiplicity=multiplicity,
         )
-        manifest_fp = _write_recursive_split_manifest(
-            output_dir=output_dir,
-            base_name=base_name,
-            request_records=request_records,
-            run_state="running",
-            current_request_id=request.request_id,
-            network_fp=network_fp,
-        )
-        if status_fp is not None:
-            _write_run_status(
-                status_fp,
-                base_name=base_name,
-                run_state="running",
-                phase="network_splits",
-                network_splits_dir=output_dir,
-                manifest_fp=manifest_fp,
-                network_fp=network_fp,
-            )
-        request_chain = Chain.model_validate(
-            {
-                "nodes": [request.start_node.copy(), request.end_node.copy()],
-                "parameters": program_input.chain_inputs,
-            }
-        )
-        try:
-            request_history = msmep_runner.run_recursive_minimize(
-                request_chain)
-        except Exception:
+        if existing_history is None:
             _upsert_request_record(
                 request_records,
                 _create_recursive_request_record(
@@ -1011,9 +1108,8 @@ def _run_recursive_network_splits(
                     parent_request_id=request.parent_request_id,
                     start_index=request.start_index,
                     end_index=request.end_index,
-                    status="failed",
-                    completed_at=datetime.now().isoformat(),
-                    error=traceback.format_exc().strip(),
+                    status="running",
+                    started_at=datetime.now().isoformat(),
                 ),
             )
             manifest_fp = _write_recursive_split_manifest(
@@ -1021,10 +1117,53 @@ def _run_recursive_network_splits(
                 base_name=base_name,
                 request_records=request_records,
                 run_state="running",
-                current_request_id=None,
+                current_request_id=request.request_id,
                 network_fp=network_fp,
             )
-            continue
+            if status_fp is not None:
+                _write_run_status(
+                    status_fp,
+                    base_name=base_name,
+                    run_state="running",
+                    phase="network_splits",
+                    network_splits_dir=output_dir,
+                    manifest_fp=manifest_fp,
+                    network_fp=network_fp,
+                )
+        request_chain = Chain.model_validate(
+            {
+                "nodes": [request.start_node.copy(), request.end_node.copy()],
+                "parameters": program_input.chain_inputs,
+            }
+        )
+        if existing_history is None:
+            try:
+                request_history = msmep_runner.run_recursive_minimize(
+                    request_chain)
+            except Exception:
+                _upsert_request_record(
+                    request_records,
+                    _create_recursive_request_record(
+                        request_id=request.request_id,
+                        parent_request_id=request.parent_request_id,
+                        start_index=request.start_index,
+                        end_index=request.end_index,
+                        status="failed",
+                        completed_at=datetime.now().isoformat(),
+                        error=traceback.format_exc().strip(),
+                    ),
+                )
+                manifest_fp = _write_recursive_split_manifest(
+                    output_dir=output_dir,
+                    base_name=base_name,
+                    request_records=request_records,
+                    run_state="running",
+                    current_request_id=None,
+                    network_fp=network_fp,
+                )
+                continue
+        else:
+            request_history = existing_history
 
         if not request_history.data:
             _upsert_request_record(
@@ -1048,14 +1187,21 @@ def _run_recursive_network_splits(
             )
             continue
 
-        _write_recursive_split_request_artifacts(
-            output_dir=output_dir,
-            request_id=request.request_id,
-            history=request_history,
-            write_qcio=write_qcio,
-        )
+        if existing_history is None:
+            _write_recursive_split_request_artifacts(
+                output_dir=output_dir,
+                request_id=request.request_id,
+                history=request_history,
+                write_qcio=write_qcio,
+            )
         request_path_nodes = _ordered_leaf_path_nodes(
             history=request_history, chain_inputs=program_input.chain_inputs
+        )
+        _mark_path_pairs_attempted(
+            request_path_nodes,
+            chain_inputs=program_input.chain_inputs,
+            node_registry=node_registry,
+            attempted_pairs=attempted_pairs,
         )
         _upsert_request_record(
             request_records,
@@ -1464,20 +1610,36 @@ def run(
             program_input.path_min_inputs.do_elem_step_checks = True
         console.print(
             f"[bold magenta]▶ RUNNING AUTOSPLITTING {program_input.path_min_method}[/bold magenta]")
-        try:
-            history = m.run_recursive_minimize(chain)
-        except Exception:
-            _write_run_status(
+        history = (
+            _maybe_resume_recursive_history(
                 status_fp,
-                base_name=filename.stem,
-                run_state="failed",
-                phase="initial_recursive_request",
-                recursive=True,
-                network_splits=network_splits,
-                path_min_method=str(program_input.path_min_method),
-                error=traceback.format_exc().strip(),
+                chain_inputs=program_input.chain_inputs,
+                engine=program_input.engine,
+                charge=int(chain[0].structure.charge),
+                multiplicity=int(chain[0].structure.multiplicity),
             )
-            raise
+            if network_splits
+            else None
+        )
+        if history is not None:
+            console.print(
+                f"[bold cyan]Resuming saved recursive history from {foldername}[/bold cyan]"
+            )
+        else:
+            try:
+                history = m.run_recursive_minimize(chain)
+            except Exception:
+                _write_run_status(
+                    status_fp,
+                    base_name=filename.stem,
+                    run_state="failed",
+                    phase="initial_recursive_request",
+                    recursive=True,
+                    network_splits=network_splits,
+                    path_min_method=str(program_input.path_min_method),
+                    error=traceback.format_exc().strip(),
+                )
+                raise
 
         if not history.data:
             _write_run_status(
@@ -1742,6 +1904,10 @@ def run_refine(
             "--recycle-nodes",
             help="Reuse cheap-stage path nodes as initial guess for expensive pair refinement.",
         )] = False,
+        network_splits: Annotated[bool, typer.Option(
+            "--network-splits",
+            help="For recursive cheap discovery, run follow-on split requests and refine only the best path through the resulting network.",
+        )] = False,
         use_smiles: bool = False,
         recursive: bool = False,
         minimize_ends: bool = False,
@@ -1761,6 +1927,9 @@ def run_refine(
         )
         raise typer.Exit(1)
 
+    if network_splits and not recursive:
+        recursive = True
+
     start_time = time.time()
     table = Table(box=None, show_header=False)
     table.add_column(style="dim")
@@ -1770,6 +1939,8 @@ def run_refine(
                   f"[yellow]{use_smiles}[/yellow]")
     table.add_row("[bold cyan]Method:[/bold cyan]",
                   f"[yellow]{'recursive' if recursive else 'regular'}[/yellow]")
+    table.add_row("[bold cyan]Network splits:[/bold cyan]",
+                  f"[yellow]{network_splits}[/yellow]")
     table.add_row("[bold cyan]Cheap Inputs:[/bold cyan]",
                   f"[yellow]{cheap_inputs if cheap_inputs else inputs}[/yellow]")
     table.add_row("[bold cyan]Expensive Inputs:[/bold cyan]",
@@ -1907,6 +2078,36 @@ def run_refine(
     cheap_output_chain.write_to_disk(cheap_chain_fp)
     if cheap_history is not None:
         cheap_history.write_to_disk(cheap_tree_dir)
+
+    if recursive and network_splits and cheap_history is not None:
+        network_dir = data_dir / f"{base_name}_cheap_network_splits"
+        console.print(
+            "[bold magenta]▶ CHEAP DISCOVERY NETWORK SPLITS[/bold magenta]"
+        )
+        _request_records, network_fp, _manifest_fp = _run_recursive_network_splits(
+            history=cheap_history,
+            program_input=cheap_input,
+            initial_start=cheap_chain[0],
+            initial_end=cheap_chain[-1],
+            output_dir=network_dir,
+            base_name=f"{base_name}_cheap",
+            status_fp=None,
+        )
+        best_path_chain = _load_best_path_chain_from_network_splits(
+            network_fp=network_fp,
+            output_dir=network_dir,
+            base_name=f"{base_name}_cheap",
+        )
+        if best_path_chain is None:
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] Network splits did not produce a best path for refinement."
+            )
+            raise typer.Exit(1)
+        cheap_output_chain = best_path_chain
+        cheap_minima = [node.copy() for node in best_path_chain.nodes]
+        console.print(
+            f"[cyan]Using best network path with {len(cheap_minima)} nodes for expensive refinement.[/cyan]"
+        )
 
     cheap_minima = _dedupe_minima_nodes(cheap_minima, cheap_input.chain_inputs)
     console.print(

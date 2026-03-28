@@ -589,6 +589,24 @@ def _is_retryable_legacy_failure(item: NEBQueueItem) -> bool:
     return any(pattern in item.error for pattern in retryable_patterns)
 
 
+def _should_refresh_existing_item(
+    existing: NEBQueueItem,
+    candidate: NEBQueueItem,
+) -> bool:
+    if _is_retryable_legacy_failure(existing):
+        return True
+    if existing.reaction != candidate.reaction:
+        return True
+    if existing.attempt_key != candidate.attempt_key:
+        return True
+    if existing.status in {"pending", "skipped_attempted", "incompatible", "missing_td"}:
+        if existing.status != candidate.status:
+            return True
+        if (existing.error or "") != (candidate.error or ""):
+            return True
+    return False
+
+
 def _run_single_item_worker(
     pair: Chain,
     run_inputs: RunInputs,
@@ -626,19 +644,25 @@ def build_retropaths_neb_queue(
 
     for source_node, target_node, attrs in pot.graph.edges(data=True):
         existing = queue.find_item(source_node, target_node)
-        if existing is not None and not _is_retryable_legacy_failure(existing):
+        candidate = _queue_item_for_edge(
+            pot=pot,
+            source_node=source_node,
+            target_node=target_node,
+            reaction=attrs.get("reaction"),
+            attempted_pairs=queue.attempted_pairs,
+        )
+        if existing is not None and not _should_refresh_existing_item(existing, candidate):
             continue
-        if existing is not None and existing.attempt_key:
+        if existing is not None and _is_retryable_legacy_failure(existing) and existing.attempt_key:
             queue.attempted_pairs.pop(existing.attempt_key, None)
-        queue.replace_item(
-            _queue_item_for_edge(
+            candidate = _queue_item_for_edge(
                 pot=pot,
                 source_node=source_node,
                 target_node=target_node,
                 reaction=attrs.get("reaction"),
                 attempted_pairs=queue.attempted_pairs,
             )
-        )
+        queue.replace_item(candidate)
 
     if queue_fp is not None:
         queue.write_to_disk(queue_fp)
@@ -659,25 +683,31 @@ def ensure_queue_item_for_edge(
         if queue_fp.exists() and not overwrite:
             queue = RetropathsNEBQueue.read_from_disk(queue_fp)
 
-    existing = queue.find_item(source_node, target_node)
-    if existing is not None and not _is_retryable_legacy_failure(existing):
-        return queue
-    if existing is not None and existing.attempt_key:
-        queue.attempted_pairs.pop(existing.attempt_key, None)
-
     reaction = ""
     if pot.graph.has_edge(source_node, target_node):
         reaction = pot.graph.edges[(source_node, target_node)].get("reaction")
 
-    queue.replace_item(
-        _queue_item_for_edge(
+    existing = queue.find_item(source_node, target_node)
+    candidate = _queue_item_for_edge(
+        pot=pot,
+        source_node=source_node,
+        target_node=target_node,
+        reaction=reaction,
+        attempted_pairs=queue.attempted_pairs,
+    )
+    if existing is not None and not _should_refresh_existing_item(existing, candidate):
+        return queue
+    if existing is not None and _is_retryable_legacy_failure(existing) and existing.attempt_key:
+        queue.attempted_pairs.pop(existing.attempt_key, None)
+        candidate = _queue_item_for_edge(
             pot=pot,
             source_node=source_node,
             target_node=target_node,
             reaction=reaction,
             attempted_pairs=queue.attempted_pairs,
         )
-    )
+
+    queue.replace_item(candidate)
     if queue_fp is not None:
         queue.write_to_disk(queue_fp)
     return queue
