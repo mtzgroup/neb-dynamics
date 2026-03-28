@@ -1,0 +1,3 @@
+[submodule "retropaths"]
+	path = retropaths
+	url = git@github.com:mtzgroup/retropaths.git
