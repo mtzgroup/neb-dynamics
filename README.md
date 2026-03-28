@@ -107,6 +107,7 @@ Default behavior:
 - rewrites that workspace into `/tmp/mepd-drive` before startup
 - uses `examples/example_inputs.toml` for follow-on actions inside the deployed app
 - can hydrate `~/.chemcloud/credentials` from a Render secret at startup
+- clones `retropaths` into `/opt/render/project/retropaths` during the Render build and points `RETROPATHS_REPO` there
 
 To deploy on Render:
 

@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 import contextlib
 import io
 import json
+import os
 import re
 import sys
 import types
@@ -150,6 +151,9 @@ def create_workspace(
 
 
 def _retropaths_repo() -> Path:
+    explicit = os.environ.get("RETROPATHS_REPO")
+    if explicit:
+        return Path(explicit).expanduser().resolve()
     return Path(__file__).resolve().parents[3] / "retropaths"
 
 

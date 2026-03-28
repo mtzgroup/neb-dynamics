@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import sys
 import types
 from functools import lru_cache
@@ -18,6 +19,9 @@ from neb_dynamics.nodes.node import StructureNode
 
 
 def _retropaths_repo() -> Path:
+    explicit = os.environ.get("RETROPATHS_REPO")
+    if explicit:
+        return Path(explicit).expanduser().resolve()
     return Path(__file__).resolve().parents[3] / "retropaths"
 
 

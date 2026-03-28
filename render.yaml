@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     region: ohio
-    buildCommand: pip install uv && uv sync --frozen
+    buildCommand: pip install uv && uv sync --frozen && git clone --depth 1 https://github.com/mtzgroup/retropaths.git /opt/render/project/retropaths && uv pip install -e /opt/render/project/retropaths
     startCommand: bash ./scripts/start_render_drive.sh
     healthCheckPath: /api/state
     envVars:
@@ -12,6 +12,8 @@ services:
         value: 3.11.11
       - key: MEPD_DRIVE_HOST
         value: 0.0.0.0
+      - key: RETROPATHS_REPO
+        value: /opt/render/project/retropaths
       - key: MEPD_DRIVE_WORKDIR
         value: /tmp/mepd-drive
       - key: MEPD_DRIVE_WORKSPACE
