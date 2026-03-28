@@ -2544,13 +2544,30 @@ def _drive_html() -> str:
       });
     }
 
+    async function readJsonResponse(response) {
+      const rawText = await response.text();
+      if (!rawText) return {};
+      try {
+        return JSON.parse(rawText);
+      } catch (_error) {
+        const compact = rawText.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        throw new Error(compact || `Request failed: ${response.status}`);
+      }
+    }
+
     async function postJson(url, payload) {
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload || {}),
       });
-      const data = await response.json().catch(() => ({}));
+      let data = {};
+      try {
+        data = await readJsonResponse(response);
+      } catch (error) {
+        if (response.ok) throw error;
+        throw new Error(error.message || `Request failed: ${response.status}`);
+      }
       if (!response.ok) {
         throw new Error(data.error || `Request failed: ${response.status}`);
       }
@@ -3932,7 +3949,8 @@ def _drive_html() -> str:
     async function refreshState() {
       try {
         const response = await fetch("/api/state");
-        const snapshot = await response.json();
+        const snapshot = await readJsonResponse(response);
+        if (!response.ok) throw new Error(snapshot.error || `State refresh failed: ${response.status}`);
         if (snapshot.active_action && snapshot.active_action.status === "running") {
           clearPendingLiveActivity();
         }
