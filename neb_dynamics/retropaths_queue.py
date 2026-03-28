@@ -25,7 +25,11 @@ from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.retropaths_compat import annotate_pot_with_neb_results
 from neb_dynamics.retropaths_compat import structure_node_from_graph_like_molecule
-from neb_dynamics.retropaths_pseudoalign import pseudoalign_reaction_pair
+try:
+    from neb_dynamics.retropaths_pseudoalign import pseudoalign_reaction_pair
+except ModuleNotFoundError:
+    def pseudoalign_reaction_pair(start: StructureNode, end: StructureNode, _reaction: Any) -> tuple[StructureNode, StructureNode]:
+        return start, end
 
 
 def _utcnow_iso() -> str:
