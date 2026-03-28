@@ -16,16 +16,8 @@ services:
         value: /opt/render/project/src/retropaths
       - key: MEPD_DRIVE_WORKDIR
         value: /tmp/mepd-drive
-      - key: MEPD_DRIVE_WORKSPACE
-        value: examples/claisen
       - key: MEPD_DRIVE_INPUTS
         value: examples/example_inputs.toml
-      - key: MEPD_DRIVE_SMILES
-        value: C=C.CCC=N
-      - key: MEPD_DRIVE_ENVIRONMENT
-        value: O
-      - key: MEPD_DRIVE_NAME
-        value: render-drive
       - key: CHEMCLOUD_CREDENTIALS_B64
         sync: false
       - key: CHEMCLOUD_CREDENTIALS_TOML

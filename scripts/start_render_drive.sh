@@ -9,9 +9,9 @@ HOST_VALUE="${MEPD_DRIVE_HOST:-0.0.0.0}"
 WORKDIR_VALUE="${MEPD_DRIVE_WORKDIR:-/tmp/mepd-drive}"
 WORKSPACE_VALUE="${MEPD_DRIVE_WORKSPACE:-}"
 INPUTS_VALUE="${MEPD_DRIVE_INPUTS:-examples/charla_pr_data/example_inputs.toml}"
-SMILES_VALUE="${MEPD_DRIVE_SMILES:-C=C.CCC=N}"
-ENVIRONMENT_VALUE="${MEPD_DRIVE_ENVIRONMENT:-O}"
-NAME_VALUE="${MEPD_DRIVE_NAME:-render-drive}"
+SMILES_VALUE="${MEPD_DRIVE_SMILES:-}"
+ENVIRONMENT_VALUE="${MEPD_DRIVE_ENVIRONMENT:-}"
+NAME_VALUE="${MEPD_DRIVE_NAME:-}"
 CREDENTIALS_DIR_VALUE="${CHEMCLOUD_BASE_DIRECTORY:-$HOME/.chemcloud}"
 CREDENTIALS_FILE_VALUE="${CHEMCLOUD_CREDENTIALS_FILE:-credentials}"
 CHEMCLOUD_CREDENTIALS_TOML_VALUE="${CHEMCLOUD_CREDENTIALS_TOML:-}"
@@ -71,12 +71,23 @@ PY
     --no-open
 fi
 
-exec uv run mepd drive \
-    --host "$HOST_VALUE" \
-    --port "$PORT_VALUE" \
-    --directory "$WORKDIR_VALUE" \
-    --inputs "$INPUTS_VALUE" \
-    --smiles "$SMILES_VALUE" \
-    --environment "$ENVIRONMENT_VALUE" \
-    --name "$NAME_VALUE" \
-    --no-open
+cmd=(
+  uv run mepd drive
+  --host "$HOST_VALUE"
+  --port "$PORT_VALUE"
+  --directory "$WORKDIR_VALUE"
+  --inputs "$INPUTS_VALUE"
+  --no-open
+)
+
+if [[ -n "$SMILES_VALUE" ]]; then
+  cmd+=(--smiles "$SMILES_VALUE")
+  if [[ -n "$ENVIRONMENT_VALUE" ]]; then
+    cmd+=(--environment "$ENVIRONMENT_VALUE")
+  fi
+  if [[ -n "$NAME_VALUE" ]]; then
+    cmd+=(--name "$NAME_VALUE")
+  fi
+fi
+
+exec "${cmd[@]}"

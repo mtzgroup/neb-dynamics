@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
-from qcio import Structure
+from qcio import ProgramArgs, Structure
 
 from neb_dynamics.chain import Chain
 from neb_dynamics.constants import ANGSTROM_TO_BOHR
@@ -845,6 +845,100 @@ def _inputs_summary_payload(workspace: RetropathsWorkspace) -> dict[str, Any]:
         with contextlib.suppress(Exception):
             summary["program_kwds"] = _json_safe(program_kwds.model_dump())
     return summary
+
+
+def _deployment_program_defaults(program: str) -> tuple[str, str]:
+    program_name = str(program or "").strip().lower()
+    if program_name == "crest":
+        return "gfn2", "gfn2"
+    if program_name == "terachem":
+        return "ub3lyp", "3-21g"
+    raise ValueError("Program must be either 'crest' or 'terachem'.")
+
+
+def _extract_program_model_fields(program_kwds: Any) -> tuple[str, str]:
+    payload: dict[str, Any] = {}
+    if isinstance(program_kwds, dict):
+        payload = dict(program_kwds)
+    elif hasattr(program_kwds, "model_dump"):
+        with contextlib.suppress(Exception):
+            payload = dict(program_kwds.model_dump())
+    model = dict(payload.get("model") or {})
+    method = str(model.get("method") or "").strip()
+    basis = str(model.get("basis") or "").strip()
+    return method, basis
+
+
+def _drive_defaults_payload(inputs_fp: Path | None, reactions_fp: Path | None) -> dict[str, Any]:
+    defaults = {
+        "inputs_path": str(inputs_fp.resolve()) if inputs_fp else "",
+        "reactions_fp": str(reactions_fp.resolve()) if reactions_fp else "",
+        "engine_name": "chemcloud",
+        "allowed_programs": ["crest", "terachem"],
+        "program": "terachem",
+        "method": "ub3lyp",
+        "basis": "3-21g",
+    }
+    if inputs_fp is None or not inputs_fp.exists():
+        return defaults
+    try:
+        run_inputs = RunInputs.open(inputs_fp)
+    except Exception:
+        return defaults
+    defaults["engine_name"] = "chemcloud"
+    program = str(getattr(run_inputs, "program", "") or "").strip().lower()
+    if program in {"crest", "terachem"}:
+        defaults["program"] = program
+    program_default_method, program_default_basis = _deployment_program_defaults(defaults["program"])
+    defaults["method"] = program_default_method
+    defaults["basis"] = program_default_basis
+    return defaults
+
+
+def _materialize_deployment_inputs(
+    *,
+    template_fp: Path,
+    output_dir: Path,
+    run_name: str,
+    theory_program: str | None,
+    theory_method: str | None,
+    theory_basis: str | None,
+) -> Path:
+    run_inputs = RunInputs.open(template_fp)
+    selected_program = str(theory_program or getattr(run_inputs, "program", "") or "").strip().lower()
+    if selected_program not in {"crest", "terachem"}:
+        selected_program = "terachem"
+    default_method, default_basis = _deployment_program_defaults(selected_program)
+
+    existing_payload: dict[str, Any] = {}
+    existing_program_kwds = getattr(run_inputs, "program_kwds", None)
+    if isinstance(existing_program_kwds, dict):
+        existing_payload = dict(existing_program_kwds)
+    elif hasattr(existing_program_kwds, "model_dump"):
+        with contextlib.suppress(Exception):
+            existing_payload = dict(existing_program_kwds.model_dump())
+
+    model_payload = dict(existing_payload.get("model") or {})
+    method = str(theory_method or default_method).strip() or default_method
+    basis = str(theory_basis or default_basis).strip() or default_basis
+    model_payload["method"] = method
+    model_payload["basis"] = basis
+
+    run_inputs.engine_name = "chemcloud"
+    run_inputs.program = selected_program
+    run_inputs.program_kwds = ProgramArgs(
+        model=model_payload,
+        keywords=dict(existing_payload.get("keywords") or {}),
+        extras=dict(existing_payload.get("extras") or {}),
+        files=dict(existing_payload.get("files") or {}),
+        cmdline_args=list(existing_payload.get("cmdline_args") or []),
+    )
+
+    inputs_dir = output_dir / "_drive_inputs"
+    inputs_dir.mkdir(parents=True, exist_ok=True)
+    target_fp = inputs_dir / f"{run_name}.toml"
+    run_inputs.save(target_fp)
+    return target_fp.resolve()
 
 
 def _neb_backed_nodes(graph) -> set[int]:
@@ -2228,6 +2322,25 @@ def _drive_html() -> str:
                 <input id="inputs-path" type="text" placeholder="Path to RunInputs TOML (optional if drive was launched with --inputs)" />
               </div>
               <div>
+                <label>Engine</label>
+                <input id="theory-engine" type="text" value="chemcloud" readonly />
+              </div>
+              <div>
+                <label>Program</label>
+                <select id="theory-program">
+                  <option value="crest">crest</option>
+                  <option value="terachem">terachem</option>
+                </select>
+              </div>
+              <div>
+                <label>Method</label>
+                <input id="theory-method" type="text" placeholder="gfn2 or ub3lyp" />
+              </div>
+              <div>
+                <label>Basis</label>
+                <input id="theory-basis" type="text" placeholder="gfn2 or 3-21g" />
+              </div>
+              <div>
                 <label>Reactions File</label>
                 <input id="reactions-path" type="text" placeholder="Optional path to retropaths reactions.p" />
               </div>
@@ -2257,6 +2370,7 @@ def _drive_html() -> str:
               <button id="load-workspace" class="secondary">Load Existing Workspace</button>
               <button id="minimize-all" class="secondary">Queue Minimization For All Geometries</button>
             </div>
+            <div class="muted" style="margin-top:10px;">This deployment always uses the `chemcloud` engine. You can choose only the QC program and model.</div>
           </div>
           <div>
             <div id="workspace-summary" class="muted">No workspace initialized yet.</div>
@@ -2602,6 +2716,33 @@ def _drive_html() -> str:
     function renderWorkspaceSummary(snapshot) {
       const inputEl = document.getElementById("workspace-summary");
       const networkEl = document.getElementById("network-summary");
+      const defaults = snapshot?.defaults || {};
+      const inputsPathField = document.getElementById("inputs-path");
+      const reactionsPathField = document.getElementById("reactions-path");
+      const environmentField = document.getElementById("environment-smiles");
+      const runNameField = document.getElementById("run-name");
+      const theoryProgramField = document.getElementById("theory-program");
+      const theoryMethodField = document.getElementById("theory-method");
+      const theoryBasisField = document.getElementById("theory-basis");
+      const theoryEngineField = document.getElementById("theory-engine");
+      if (inputsPathField && !inputsPathField.value) {
+        inputsPathField.value = String(defaults.inputs_path || "");
+      }
+      if (reactionsPathField && !reactionsPathField.value) {
+        reactionsPathField.value = String(defaults.reactions_fp || "");
+      }
+      if (theoryProgramField && !theoryProgramField.value) {
+        theoryProgramField.value = String(defaults.program || "terachem");
+      }
+      if (theoryMethodField && !theoryMethodField.value) {
+        theoryMethodField.value = String(defaults.method || "");
+      }
+      if (theoryBasisField && !theoryBasisField.value) {
+        theoryBasisField.value = String(defaults.basis || "");
+      }
+      if (theoryEngineField) {
+        theoryEngineField.value = "chemcloud";
+      }
       if (!inputEl || !networkEl) return;
       if (!snapshot || !snapshot.initialized || !snapshot.drive) {
         inputEl.textContent = "No workspace initialized yet.";
@@ -2609,10 +2750,6 @@ def _drive_html() -> str:
         return;
       }
       const workspace = snapshot.drive.workspace;
-      const inputsPathField = document.getElementById("inputs-path");
-      const reactionsPathField = document.getElementById("reactions-path");
-      const environmentField = document.getElementById("environment-smiles");
-      const runNameField = document.getElementById("run-name");
       if (inputsPathField && !inputsPathField.value) {
         inputsPathField.value = String(snapshot.drive.inputs?.path || "");
       }
@@ -4012,6 +4149,9 @@ def _drive_html() -> str:
           mode,
           run_name: document.getElementById("run-name").value,
           inputs_path: document.getElementById("inputs-path").value,
+          theory_program: document.getElementById("theory-program").value,
+          theory_method: document.getElementById("theory-method").value,
+          theory_basis: document.getElementById("theory-basis").value,
           reactions_fp: document.getElementById("reactions-path").value,
           environment_smiles: document.getElementById("environment-smiles").value,
           reactant_smiles: document.getElementById("reactant-smiles").value,
@@ -4495,6 +4635,14 @@ class MepdDriveServer(ThreadingHTTPServer):
         workspace_dir = (self.base_directory / run_name).resolve()
         progress_fp = str((workspace_dir / "drive_growth.progress.json").resolve())
         inputs_fp = self._resolve_inputs_fp(payload)
+        inputs_fp = _materialize_deployment_inputs(
+            template_fp=inputs_fp,
+            output_dir=self.base_directory,
+            run_name=run_name,
+            theory_program=str(payload.get("theory_program") or "").strip().lower() or None,
+            theory_method=str(payload.get("theory_method") or "").strip() or None,
+            theory_basis=str(payload.get("theory_basis") or "").strip() or None,
+        )
         reactions_fp = self._resolve_reactions_fp(payload)
         environment_smiles = str(payload.get("environment_smiles") or "").strip()
 
@@ -4844,6 +4992,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             "active_action": runtime.active_action,
             "live_activity": None,
             "drive": None,
+            "defaults": _drive_defaults_payload(self.inputs_fp, self.reactions_fp),
         }
         if runtime.active_action is not None and runtime.active_action.get("status") == "running":
             with contextlib.suppress(Exception):
