@@ -1,6 +1,8 @@
 engine_name = "qmmm"
 program = "terachem"
 path_min_method = "neb"
+chemcloud_queue = 'ethan'
+
 
 [qmmm_inputs]
 qminds_fp = "./qmindices.dat"
@@ -34450,5 +34452,5 @@ basis = "6-31g**"
 [program_kwds.model.extras]
 
 [optimizer_kwds]
-name = "cg"
-timestep = 0.5
+name = "amg"
+# timestep = 0.5

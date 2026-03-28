@@ -58,7 +58,8 @@ class Engine(ABC):
             grad = np.array(last_node.gradient)
             if mass_weighted:
                 masses = [get_mass(s) for s in node.structure.symbols]
-                grad = np.array([atom*np.sqrt(mass) for atom, mass in zip(grad, masses)])
+                grad = np.array([atom*np.sqrt(mass)
+                                for atom, mass in zip(grad, masses)])
 
             grad_mag = np.linalg.norm(grad) / np.sqrt(natom)
             # print(f"Step {curr_step}: Gradient magnitude {grad_mag:.4e}")
@@ -71,7 +72,6 @@ class Engine(ABC):
                 grad = grad / np.linalg.norm(grad)
                 grad = grad / np.sqrt(natom)
                 grad = grad*ss
-
 
             new_coords = last_node.coords - ((1.0 * ss) * grad)
             node_new = last_node.update_coords(new_coords)

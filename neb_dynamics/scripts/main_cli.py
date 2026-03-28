@@ -2573,6 +2573,7 @@ def drive(
     max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
     max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
     max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of autosplitting NEBs to run concurrently")] = 1,
+    network_splits: Annotated[bool, typer.Option("--network-splits/--no-network-splits", help="Use recursive autosplit results to build the displayed network overlay")] = True,
     no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the browser")] = False,
 ):
     console.print(BANNER)
@@ -2600,6 +2601,7 @@ def drive(
         max_nodes=max_nodes,
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
+        network_splits=network_splits,
         open_browser=not no_open,
     )
     actual_host, actual_port = server.server_address[:2]

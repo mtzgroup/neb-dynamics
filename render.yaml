@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: mtzdrive
+    runtime: python
+    plan: free
+    region: ohio
+    buildCommand: pip install uv && uv sync --frozen
+    startCommand: bash ./scripts/start_render_drive.sh
+    healthCheckPath: /api/state
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: MEPD_DRIVE_HOST
+        value: 0.0.0.0
+      - key: MEPD_DRIVE_WORKDIR
+        value: /tmp/mepd-drive
+      - key: MEPD_DRIVE_INPUTS
+        value: examples/charla_pr_data/example_inputs.toml
+      - key: MEPD_DRIVE_SMILES
+        value: C=C.CCC=N
+      - key: MEPD_DRIVE_ENVIRONMENT
+        value: O
+      - key: MEPD_DRIVE_NAME
+        value: render-drive
+      - key: CHEMCLOUD_USERNAME
+        sync: false
+      - key: CHEMCLOUD_PASSWORD
+        sync: false

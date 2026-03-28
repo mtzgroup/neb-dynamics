@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import concurrent
 import inspect
+import contextlib
 from dataclasses import dataclass
 from typing import List, Union
 import os
+from pathlib import Path
+import tempfile
 import time
 import logging
 from numpy.typing import NDArray
@@ -13,8 +16,8 @@ from pydantic import ValidationError
 
 import qcop
 from qcop.exceptions import ExternalProgramError
-from qcio.models.inputs import DualProgramInput, ProgramInput, ProgramArgs
-from qcio import ProgramOutput
+from qcio.models.inputs import DualProgramInput, ProgramInput, ProgramArgs, FileInput
+from qcio import ProgramOutput, Structure
 import shutil
 
 from chemcloud import CCClient
@@ -32,6 +35,55 @@ from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 import copy
 
 AVAIL_PROGRAMS = ["qcop", "chemcloud"]
+
+
+TERACHEM_NANOREACTOR_PRESETS: dict[str, dict[str, object]] = {
+    "conservative": {
+        "description": (
+            "Baseline spherical-piston MD: nstep=2000, timestep=0.5, "
+            "langevin thermostat, md_r1/r2=6.0/4.0, md_k1/k2=3.0/5.0, "
+            "mdbc_t1/t2=750/250."
+        ),
+        "values": {},
+    },
+    "fast-oscillating": {
+        "description": (
+            "Shorter piston cycle without extending runtime: nstep=1600, "
+            "md_r1/r2=5.8/3.6, md_k1/k2=3.5/6.0, mdbc_t1/t2=300/100, "
+            "frame_stride=5."
+        ),
+        "values": {
+            "terachem_nstep": 1600,
+            "terachem_md_r1": 5.8,
+            "terachem_md_r2": 3.6,
+            "terachem_md_k1": 3.5,
+            "terachem_md_k2": 6.0,
+            "terachem_mdbc_t1": 300,
+            "terachem_mdbc_t2": 100,
+            "terachem_frame_stride": 5,
+        },
+    },
+    "hot-fast-oscillating": {
+        "description": (
+            "Shorter, hotter piston cycling: nstep=1500, tinit/t0=1600/1900, "
+            "lnvtime=120, md_r1/r2=5.6/3.4, md_k1/k2=4.0/7.0, mdbc_t1/t2=250/75, "
+            "frame_stride=5."
+        ),
+        "values": {
+            "terachem_nstep": 1500,
+            "terachem_tinit": 1600.0,
+            "terachem_t0": 1900.0,
+            "terachem_lnvtime": 120.0,
+            "terachem_md_r1": 5.6,
+            "terachem_md_r2": 3.4,
+            "terachem_md_k1": 4.0,
+            "terachem_md_k2": 7.0,
+            "terachem_mdbc_t1": 250,
+            "terachem_mdbc_t2": 75,
+            "terachem_frame_stride": 5,
+        },
+    },
+}
 
 
 def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
@@ -89,6 +141,19 @@ def _configure_chemcloud_client(queue: str) -> None:
         client_params.update(settings_kwargs)
 
     cc_configure_client(**client_params)
+
+
+def _resolve_nanoreactor_inputs(nanoreactor_inputs: dict[str, object] | None) -> dict[str, object]:
+    resolved = dict(nanoreactor_inputs or {})
+    preset_name = str(resolved.get("preset", "conservative") or "conservative").strip().lower()
+    preset = TERACHEM_NANOREACTOR_PRESETS.get(preset_name)
+    if preset is None:
+        supported = ", ".join(sorted(TERACHEM_NANOREACTOR_PRESETS))
+        raise ValueError(f"Unsupported nanoreactor preset `{preset_name}`. Available presets: {supported}.")
+    resolved = {**dict(preset.get("values", {})), **resolved}
+    resolved["preset"] = preset_name
+    resolved.setdefault("preset_description", str(preset.get("description", "")))
+    return resolved
 
 
 @dataclass
@@ -457,13 +522,16 @@ class QCOPEngine(Engine):
         a list of Node objects
         """
         output = self._compute_geom_opt_result(node=node, keywords=keywords)
-        all_outputs = output.results.trajectory
-        structures = [output.input_data.structure for output in all_outputs]
-        return [
-            StructureNode(structure=struct, _cached_result=result)
-            for struct, result in zip(structures, all_outputs)
-
-        ]
+        trajectory = self._extract_optimization_trajectory(
+            output,
+            reference_structure=node.structure,
+        )
+        if trajectory:
+            return trajectory
+        raise ElectronicStructureError(
+            msg="Geometry optimization completed but no optimization trajectory was found.",
+            obj=output,
+        )
 
     def compute_geometry_optimizations(
         self,
@@ -518,13 +586,297 @@ class QCOPEngine(Engine):
             outputs = [outputs]
 
         trajectories: list[list[StructureNode]] = []
-        for output in outputs:
-            all_outputs = output.results.trajectory
-            structures = [result.input_data.structure for result in all_outputs]
-            trajectories.append(
-                [
-                    StructureNode(structure=struct, _cached_result=result)
-                    for struct, result in zip(structures, all_outputs)
-                ]
+        for output, node in zip(outputs, nodes):
+            trajectory = self._extract_optimization_trajectory(
+                output,
+                reference_structure=node.structure,
             )
+            if not trajectory:
+                raise ElectronicStructureError(
+                    msg="Geometry optimization completed but no optimization trajectory was found.",
+                    obj=output,
+                )
+            trajectories.append(trajectory)
         return trajectories
+
+    @staticmethod
+    def _extract_output_files(output: ProgramOutput) -> dict[str, object]:
+        for files_obj in (
+            getattr(output, "files", None),
+            getattr(getattr(output, "results", None), "files", None),
+            getattr(getattr(output, "data", None), "files", None),
+        ):
+            if not files_obj:
+                continue
+            if isinstance(files_obj, dict):
+                return dict(files_obj)
+            if hasattr(files_obj, "items"):
+                return dict(files_obj.items())
+            if hasattr(files_obj, "model_dump"):
+                dumped = files_obj.model_dump()
+                if isinstance(dumped, dict):
+                    return dumped
+            with contextlib.suppress(Exception):
+                return dict(files_obj)
+        return {}
+
+    @classmethod
+    def _file_text_from_output(cls, output: ProgramOutput, suffixes: tuple[str, ...]) -> str | None:
+        files = cls._extract_output_files(output)
+        normalized_suffixes = tuple(str(suffix).lower() for suffix in suffixes)
+        for file_name, data in files.items():
+            if not str(file_name).lower().endswith(normalized_suffixes):
+                continue
+            if isinstance(data, bytes):
+                return data.decode("utf-8", errors="replace")
+            return str(data)
+        return None
+
+    @classmethod
+    def _extract_optimization_trajectory(
+        cls,
+        output: ProgramOutput,
+        *,
+        reference_structure: Structure,
+    ) -> list[StructureNode]:
+        for trajectory in (
+            getattr(getattr(output, "results", None), "trajectory", None),
+            getattr(getattr(output, "data", None), "trajectory", None),
+            getattr(output, "trajectory", None),
+        ):
+            if trajectory:
+                nodes: list[StructureNode] = []
+                for entry in trajectory:
+                    struct = getattr(getattr(entry, "input_data", None), "structure", None)
+                    if struct is not None:
+                        nodes.append(StructureNode(structure=struct, _cached_result=entry))
+                if nodes:
+                    return nodes
+
+        files = cls._extract_output_files(output)
+        for file_name, contents in files.items():
+            file_name = str(file_name)
+            if not (file_name.endswith("optim.xyz") or file_name == "optim.xyz"):
+                continue
+            with tempfile.TemporaryDirectory() as td:
+                xyz_fp = Path(td) / "optim.xyz"
+                if isinstance(contents, bytes):
+                    xyz_fp.write_bytes(contents)
+                else:
+                    xyz_fp.write_text(str(contents))
+                structures = Structure.open_multi(
+                    xyz_fp,
+                    charge=reference_structure.charge,
+                    multiplicity=reference_structure.multiplicity,
+                )
+            if structures:
+                return [
+                    StructureNode(structure=struct)
+                    for struct in structures
+                ]
+
+        return []
+
+    @staticmethod
+    def _trajectory_minimum_indices(energies: list[float], *, max_candidates: int, frame_stride: int) -> list[int]:
+        if len(energies) == 0:
+            return []
+        indices = [
+            idx
+            for idx in range(1, len(energies) - 1)
+            if energies[idx] <= energies[idx - 1] and energies[idx] <= energies[idx + 1]
+        ]
+        if frame_stride > 1:
+            indices = [idx for idx in indices if idx % frame_stride == 0]
+        if not indices:
+            indices = list(range(0, len(energies), max(frame_stride, 1)))
+        ranked = sorted(indices, key=lambda idx: energies[idx])
+        seen: set[int] = set()
+        ordered: list[int] = []
+        for idx in ranked:
+            if idx in seen:
+                continue
+            seen.add(idx)
+            ordered.append(int(idx))
+            if len(ordered) >= max_candidates:
+                break
+        return ordered
+
+    @staticmethod
+    def _structure_nodes_from_structures(structures: list[Structure]) -> list[StructureNode]:
+        nodes: list[StructureNode] = []
+        for structure in structures:
+            graph = None
+            try:
+                from neb_dynamics.qcio_structure_helpers import structure_to_molecule
+                graph = structure_to_molecule(structure)
+            except Exception:
+                graph = None
+            node = StructureNode(structure=structure, graph=graph)
+            node.has_molecular_graph = graph is not None
+            nodes.append(node)
+        return nodes
+
+    def _compute_crest_nanoreactor_candidates(
+        self,
+        node: StructureNode,
+        *,
+        nanoreactor_inputs: dict[str, object],
+    ) -> list[StructureNode]:
+        charge = int(node.structure.charge)
+        multiplicity = int(node.structure.multiplicity)
+        max_candidates = int(nanoreactor_inputs.get("max_candidates", 12))
+        cmdline_args = ["structure.xyz", "-msreact"]
+        msreact_input = str(nanoreactor_inputs.get("crest_msinput", "") or "").strip()
+        if msreact_input:
+            cmdline_args.extend(["--msinput", "msreact.inp"])
+        if nanoreactor_inputs.get("crest_msmolbar"):
+            cmdline_args.append("--msmolbar")
+        if nanoreactor_inputs.get("crest_msinchi"):
+            cmdline_args.append("--msinchi")
+        if nanoreactor_inputs.get("crest_msiso"):
+            cmdline_args.append("--msiso")
+        if nanoreactor_inputs.get("crest_msnoiso"):
+            cmdline_args.append("--msnoiso")
+        if "crest_msnbonds" in nanoreactor_inputs:
+            cmdline_args.extend(["--msnbonds", str(int(nanoreactor_inputs["crest_msnbonds"]))])
+        if "crest_msnshifts" in nanoreactor_inputs:
+            cmdline_args.extend(["--msnshifts", str(int(nanoreactor_inputs["crest_msnshifts"]))])
+        if charge:
+            cmdline_args.extend(["--chrg", str(charge)])
+        if multiplicity > 1:
+            cmdline_args.extend(["--uhf", str(max(multiplicity - 1, 0))])
+
+        files: dict[str, str] = {"structure.xyz": node.structure.to_xyz()}
+        if msreact_input:
+            files["msreact.inp"] = msreact_input + ("\n" if not msreact_input.endswith("\n") else "")
+
+        output = self.compute_func(
+            "crest",
+            FileInput(files=files, cmdline_args=cmdline_args),
+            collect_files=True,
+        )
+        products_xyz = self._file_text_from_output(output, ("crest_msreact_products.xyz",))
+        if not products_xyz:
+            raise ExternalProgramError(
+                program="crest",
+                message="CREST nanoreactor run completed but no `crest_msreact_products.xyz` output was returned.",
+            )
+        structures = Structure.from_xyz_multi(products_xyz, charge=charge, multiplicity=multiplicity)
+        return self._structure_nodes_from_structures(structures[:max_candidates])
+
+    def _compute_terachem_nanoreactor_candidates(
+        self,
+        node: StructureNode,
+        *,
+        nanoreactor_inputs: dict[str, object],
+    ) -> list[StructureNode]:
+        nanoreactor_inputs = _resolve_nanoreactor_inputs(nanoreactor_inputs)
+        model = dict(getattr(self.program_args, "model", {}) or {})
+        method = str(nanoreactor_inputs.get("terachem_method", model.get("method", "uhf")))
+        basis = str(nanoreactor_inputs.get("terachem_basis", model.get("basis", "3-21g")))
+        max_candidates = int(nanoreactor_inputs.get("max_candidates", 12))
+        frame_stride = int(nanoreactor_inputs.get("terachem_frame_stride", 10))
+        tcin_lines = [
+            f"{'coordinates':<20} geometry.xyz",
+            f"{'charge':<20} {int(node.structure.charge)}",
+            f"{'spinmult':<20} {int(node.structure.multiplicity)}",
+            f"{'basis':<20} {basis}",
+            f"{'method':<20} {method}",
+            f"{'run':<20} md",
+            f"{'nstep':<20} {int(nanoreactor_inputs.get('terachem_nstep', 2000))}",
+            f"{'timestep':<20} {float(nanoreactor_inputs.get('terachem_timestep', 0.5))}",
+            f"{'tinit':<20} {float(nanoreactor_inputs.get('terachem_tinit', 1200.0))}",
+            f"{'thermostat':<20} {str(nanoreactor_inputs.get('terachem_thermostat', 'langevin'))}",
+            f"{'t0':<20} {float(nanoreactor_inputs.get('terachem_t0', 1500.0))}",
+            f"{'lnvtime':<20} {float(nanoreactor_inputs.get('terachem_lnvtime', 200.0))}",
+            f"{'convthre':<20} {float(nanoreactor_inputs.get('terachem_convthre', 0.005))}",
+            f"{'levelshift':<20} {'yes' if bool(nanoreactor_inputs.get('terachem_levelshift', True)) else 'no'}",
+            f"{'levelshiftvala':<20} {float(nanoreactor_inputs.get('terachem_levelshiftvala', 0.3))}",
+            f"{'levelshiftvalb':<20} {float(nanoreactor_inputs.get('terachem_levelshiftvalb', 0.1))}",
+            f"{'scf':<20} {str(nanoreactor_inputs.get('terachem_scf', 'diis+a'))}",
+            f"{'maxit':<20} {int(nanoreactor_inputs.get('terachem_maxit', 300))}",
+            f"{'mdbc':<20} spherical",
+            f"{'md_r1':<20} {float(nanoreactor_inputs.get('terachem_md_r1', 6.0))}",
+            f"{'md_k1':<20} {float(nanoreactor_inputs.get('terachem_md_k1', 3.0))}",
+            f"{'md_r2':<20} {float(nanoreactor_inputs.get('terachem_md_r2', 4.0))}",
+            f"{'md_k2':<20} {float(nanoreactor_inputs.get('terachem_md_k2', 5.0))}",
+            f"{'mdbc_hydrogen':<20} {'yes' if bool(nanoreactor_inputs.get('terachem_mdbc_hydrogen', True)) else 'no'}",
+            f"{'mdbc_mass_scaled':<20} {'yes' if bool(nanoreactor_inputs.get('terachem_mdbc_mass_scaled', True)) else 'no'}",
+            f"{'mdbc_t1':<20} {int(nanoreactor_inputs.get('terachem_mdbc_t1', 750))}",
+            f"{'mdbc_t2':<20} {int(nanoreactor_inputs.get('terachem_mdbc_t2', 250))}",
+            "end",
+        ]
+        output = self.compute_func(
+            "terachem",
+            FileInput(
+                files={
+                    "tc.in": "\n".join(tcin_lines) + "\n",
+                    "geometry.xyz": node.structure.to_xyz(),
+                },
+                cmdline_args=["tc.in"],
+            ),
+            collect_files=True,
+        )
+        trajectory_xyz = self._file_text_from_output(output, ("scr/coors.xyz", "coors.xyz"))
+        if not trajectory_xyz:
+            raise ExternalProgramError(
+                program="terachem",
+                message="TeraChem nanoreactor run completed but no `scr/coors.xyz` trajectory was returned.",
+            )
+        log_text = self._file_text_from_output(output, ("scr/log.xls", "log.xls"))
+        frames = Structure.from_xyz_multi(
+            trajectory_xyz,
+            charge=int(node.structure.charge),
+            multiplicity=int(node.structure.multiplicity),
+        )
+        if not frames:
+            return []
+
+        energies: list[float] = []
+        if log_text:
+            for raw_line in str(log_text).splitlines():
+                parts = raw_line.strip().split()
+                if len(parts) < 2:
+                    continue
+                try:
+                    energies.append(float(parts[1]))
+                except ValueError:
+                    continue
+        frame_count = len(frames)
+        if energies:
+            usable = min(frame_count, len(energies))
+            frames = frames[:usable]
+            energies = energies[:usable]
+            selected_indices = self._trajectory_minimum_indices(
+                energies,
+                max_candidates=max_candidates,
+                frame_stride=frame_stride,
+            )
+            selected_frames = [frames[idx] for idx in selected_indices if 0 <= idx < len(frames)]
+        else:
+            selected_frames = frames[:: max(frame_stride, 1)][:max_candidates]
+        return self._structure_nodes_from_structures(selected_frames)
+
+    def compute_nanoreactor_candidates(
+        self,
+        node: StructureNode,
+        *,
+        nanoreactor_inputs: dict[str, object] | None = None,
+    ) -> list[StructureNode]:
+        nanoreactor_inputs = dict(nanoreactor_inputs or {})
+        program = str(self.program or "").strip().lower()
+        if "terachem" in program:
+            return self._compute_terachem_nanoreactor_candidates(
+                node,
+                nanoreactor_inputs=nanoreactor_inputs,
+            )
+        if "crest" in program:
+            return self._compute_crest_nanoreactor_candidates(
+                node,
+                nanoreactor_inputs=nanoreactor_inputs,
+            )
+        raise ValueError(
+            f"Nanoreactor sampling is not implemented for program `{self.program}`. "
+            "Use a CREST or TeraChem-backed engine."
+        )

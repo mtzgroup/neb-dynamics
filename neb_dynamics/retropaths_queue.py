@@ -25,6 +25,7 @@ from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.retropaths_compat import annotate_pot_with_neb_results
 from neb_dynamics.retropaths_compat import structure_node_from_graph_like_molecule
+from neb_dynamics.retropaths_pseudoalign import pseudoalign_reaction_pair
 
 
 def _utcnow_iso() -> str:
@@ -407,22 +408,104 @@ class RetropathsNEBQueue:
                 return
         self.items.append(new_item)
 
-    def recover_stale_running_items(self) -> bool:
+    def recover_stale_running_items(
+        self,
+        *,
+        output_dir: Path | None = None,
+        charge: int = 0,
+        multiplicity: int = 1,
+    ) -> bool:
         changed = False
         for item in self.items:
             if item.status != "running":
                 continue
+            attempt = self.attempted_pairs.get(item.attempt_key)
+
+            recovered = _recover_interrupted_queue_item_outputs(
+                item,
+                output_dir=output_dir,
+                charge=charge,
+                multiplicity=multiplicity,
+            )
+            if recovered:
+                if attempt is not None:
+                    attempt["status"] = "completed"
+                    attempt["finished_at"] = item.finished_at
+                    attempt["result_dir"] = item.result_dir
+                    attempt["output_chain_xyz"] = item.output_chain_xyz
+                    attempt.pop("error", None)
+                changed = True
+                continue
+
             item.status = "failed"
             item.finished_at = _utcnow_iso()
             if item.error is None:
-                item.error = "Recovered stale running queue item before restart."
-            attempt = self.attempted_pairs.get(item.attempt_key)
+                if output_dir is None:
+                    item.error = "Recovered stale running queue item before restart."
+                else:
+                    item.error = (
+                        "Recovered stale running queue item before restart. "
+                        "No recoverable NEB result artifacts were written."
+                    )
             if attempt is not None:
                 attempt["status"] = "failed"
                 attempt["finished_at"] = item.finished_at
                 attempt["error"] = item.error
             changed = True
         return changed
+
+
+def _recover_interrupted_queue_item_outputs(
+    item: NEBQueueItem,
+    *,
+    output_dir: Path | None,
+    charge: int,
+    multiplicity: int,
+) -> bool:
+    candidate_result_dirs: list[Path] = []
+    if item.result_dir:
+        candidate_result_dirs.append(Path(item.result_dir))
+    if output_dir is not None:
+        candidate_result_dirs.append(output_dir / f"pair_{item.source_node}_{item.target_node}_msmep")
+
+    result_dir_path: Path | None = None
+    for candidate in candidate_result_dirs:
+        if not candidate.exists() or not candidate.is_dir():
+            continue
+        try:
+            history = TreeNode.read_from_disk(
+                folder_name=candidate,
+                charge=charge,
+                multiplicity=multiplicity,
+            )
+        except Exception:
+            continue
+        if getattr(history, "output_chain", None) is None:
+            continue
+        result_dir_path = candidate.resolve()
+        break
+
+    if result_dir_path is None:
+        return False
+
+    candidate_chain_fps: list[Path] = []
+    if item.output_chain_xyz:
+        candidate_chain_fps.append(Path(item.output_chain_xyz))
+    if output_dir is not None:
+        candidate_chain_fps.append(output_dir / f"pair_{item.source_node}_{item.target_node}.xyz")
+
+    output_chain_fp: str | None = None
+    for candidate in candidate_chain_fps:
+        if candidate.exists() and candidate.is_file():
+            output_chain_fp = str(candidate.resolve())
+            break
+
+    item.status = "completed"
+    item.finished_at = _utcnow_iso()
+    item.result_dir = str(result_dir_path)
+    item.output_chain_xyz = output_chain_fp
+    item.error = None
+    return True
 
 
 def _queue_item_for_edge(
@@ -608,6 +691,7 @@ def _make_pair_chain(pot: Pot, item: NEBQueueItem, run_inputs: RunInputs) -> Cha
         charge=start.structure.charge,
         spinmult=start.structure.multiplicity,
     )
+    start, end = pseudoalign_reaction_pair(start, end, item.reaction)
     compatible, reason = pair_is_direct_neb_compatible(start, end)
     if not compatible:
         raise ValueError(balance_reason or reason or "Endpoints are not direct-NEB-compatible.")
@@ -731,7 +815,11 @@ def run_retropaths_neb_queue(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     queue = build_retropaths_neb_queue(pot=pot, queue_fp=queue_fp, overwrite=False)
-    if queue.recover_stale_running_items():
+    if queue.recover_stale_running_items(
+        output_dir=output_dir,
+        charge=0,
+        multiplicity=1,
+    ):
         queue.write_to_disk(queue_fp)
     run_inputs.path_min_inputs.do_elem_step_checks = True
     max_parallel_nebs = max(1, int(max_parallel_nebs))

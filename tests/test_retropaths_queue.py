@@ -135,6 +135,26 @@ def test_build_balanced_endpoints_adds_environment_fragment_to_smaller_side():
     assert balanced_target.structure.extras["retropaths_original_atom_count"] == len(target.structure.symbols)
 
 
+def test_build_balanced_endpoints_rebuilds_missing_geometry_from_graph():
+    source_graph = Molecule.from_smiles("C=C.O")
+    target_graph = Molecule.from_smiles("C=C.O")
+    source = structure_node_from_graph_like_molecule(Molecule.from_smiles("C=C"))
+    target = structure_node_from_graph_like_molecule(target_graph)
+
+    balanced_source, balanced_target, reason = build_balanced_endpoints(
+        source_td=source,
+        target_td=target,
+        environment=Molecule(),
+        source_graph=source_graph,
+        target_graph=target_graph,
+    )
+
+    compatible, _ = pair_is_direct_neb_compatible(balanced_source, balanced_target)
+    assert compatible is True
+    assert reason is None
+    assert len(balanced_source.structure.symbols) == len(balanced_target.structure.symbols)
+
+
 class _FakeHistory:
     def __init__(self, output_chain: Chain):
         self.output_chain = output_chain
@@ -317,6 +337,39 @@ def test_recover_stale_running_items_marks_interrupted_jobs_failed():
     assert queue.items[0].status == "failed"
     assert queue.items[0].error is not None
     assert queue.attempted_pairs["abc"]["status"] == "failed"
+
+
+def test_recover_stale_running_items_promotes_saved_result_tree(tmp_path, monkeypatch):
+    result_dir = tmp_path / "queue_runs" / "pair_1_0_msmep"
+    result_dir.mkdir(parents=True)
+    output_chain = tmp_path / "queue_runs" / "pair_1_0.xyz"
+    output_chain.write_text("2\n\nH 0 0 0\nH 1 0 0\n")
+
+    item = NEBQueueItem(
+        job_id="1->0",
+        source_node=1,
+        target_node=0,
+        attempt_key="abc",
+        status="running",
+        started_at="2026-03-11T00:00:00+00:00",
+    )
+    queue = RetropathsNEBQueue(
+        attempted_pairs={"abc": {"status": "running"}},
+        items=[item],
+    )
+
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_queue.TreeNode.read_from_disk",
+        lambda folder_name, charge, multiplicity: SimpleNamespace(output_chain=object()),
+    )
+
+    changed = queue.recover_stale_running_items(output_dir=tmp_path / "queue_runs")
+
+    assert changed is True
+    assert queue.items[0].status == "completed"
+    assert queue.items[0].result_dir == str(result_dir.resolve())
+    assert queue.items[0].output_chain_xyz == str(output_chain.resolve())
+    assert queue.attempted_pairs["abc"]["status"] == "completed"
 
 
 def test_run_retropaths_neb_queue_supports_parallel_workers(

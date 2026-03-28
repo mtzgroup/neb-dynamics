@@ -1357,7 +1357,12 @@ def run_geodesic_get_smoother(
 ):
     from neb_dynamics.geodesic_interpolation2.interpolation import redistribute
     if len(ignore_atoms) > 0:
-        print("GI: Ignoring atoms:", ignore_atoms)
+        if len(ignore_atoms) > 20:
+            head = ", ".join(str(v) for v in ignore_atoms[:8])
+            tail = ", ".join(str(v) for v in ignore_atoms[-3:])
+            print(f"GI: Ignoring atoms [{head}, ..., {tail}] (n={len(ignore_atoms)})")
+        else:
+            print("GI: Ignoring atoms:", ignore_atoms)
 
     # Read the initial geometries.
     symbols, X = input_object

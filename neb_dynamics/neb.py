@@ -20,6 +20,7 @@ from neb_dynamics.engines import Engine
 from neb_dynamics.engines.ase import ASEEngine
 from neb_dynamics.errors import ElectronicStructureError, NoneConvergedException
 # from neb_dynamics.gsm_helper import minimal_wrapper_de_gsm, gsm_to_ase_atoms
+from neb_dynamics.dynamics.chainbiaser import ChainBiaser
 from neb_dynamics.inputs import ChainInputs, GIInputs, NEBInputs
 from neb_dynamics.nodes.node import StructureNode, Node
 from neb_dynamics.optimizers.optimizer import Optimizer
@@ -123,6 +124,7 @@ class NEB(PathMinimizer):
     optimizer: Optimizer
     parameters: NEBInputs
     engine: Engine
+    biaser: ChainBiaser = None
 
     optimized: Chain = None
     chain_trajectory: list[Chain] = field(default_factory=list)
@@ -403,7 +405,8 @@ class NEB(PathMinimizer):
                     ]
                 warning_text = _endpoint_energy_inversion_warning_text(
                     energies=np.array(new_chain.energies, dtype=float),
-                    is_qmmm_engine="qmmm" in type(self.engine).__name__.lower(),
+                    is_qmmm_engine="qmmm" in type(
+                        self.engine).__name__.lower(),
                     frozen_atom_indices=frozen_atom_indices,
                 )
                 if warning_text:
@@ -557,8 +560,16 @@ class NEB(PathMinimizer):
         self._update_cache(chain, grads, enes)
 
         try:
+            additional_gradients = None
+            if self.biaser:
+                additional_gradients = np.zeros_like(grads)
+                additional_gradients[1:-
+                                     1] = self.biaser.gradient_chain_bias(chain)
             grad_step = ch.compute_NEB_gradient(
-                chain, geodesic_tangent=self.parameters.use_geodesic_tangent)
+                chain,
+                geodesic_tangent=self.parameters.use_geodesic_tangent,
+                additional_gradients=additional_gradients,
+            )
         except IndexError as exc:
             raise ElectronicStructureError(
                 msg="Failed to compute NEB gradient (empty or malformed chain gradients).",

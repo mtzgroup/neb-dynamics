@@ -2,6 +2,7 @@ import numpy as np
 from neb_dynamics.nodes.node import Node, XYNode
 from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
 from neb_dynamics.geodesic_interpolation2.coord_utils import align_geom
+from neb_dynamics.errors import EnergiesNotComputedError
 # from neb_dynamics.molecule import Molecule
 # from neb_dynamics.qcio_structure_helpers import molecule_to_structure
 import traceback
@@ -467,12 +468,17 @@ def _is_conformer_identical(
     else:
         per_frag_dists.append(global_dist)
 
-    en_delta = np.abs((self.energy - other.energy) * 627.5)
+    energy_missing = False
+    try:
+        en_delta = np.abs((self.energy - other.energy) * 627.5)
+    except EnergiesNotComputedError:
+        energy_missing = True
+        en_delta = 0.0
 
     global_rmsd_identical = global_dist <= global_rmsd_cutoff
     fragment_rmsd_identical = max(per_frag_dists) <= fragment_rmsd_cutoff
     rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
-    energies_identical = en_delta < kcal_mol_cutoff
+    energies_identical = energy_missing or en_delta < kcal_mol_cutoff
 
     if verbose:
         if _rich_available:
@@ -490,13 +496,16 @@ def _is_conformer_identical(
             frag_rmsd_status = "[green]✓[/green]" if fragment_rmsd_identical else "[red]✗[/red]"
             results_table.add_row("Fragment RMSD", frag_rmsd_val, frag_rmsd_status)
 
-            en_val = f"ΔE: {en_delta:.4f} kcal/mol (cutoff: {kcal_mol_cutoff})"
+            en_val = "ΔE unavailable; using geometry-only comparison" if energy_missing else f"ΔE: {en_delta:.4f} kcal/mol (cutoff: {kcal_mol_cutoff})"
             en_status = "[green]✓[/green]" if energies_identical else "[red]✗[/red]"
             results_table.add_row("Energy", en_val, en_status)
 
             _console.print(results_table)
         else:
-            print(f"\t\t{rmsd_identical=} {energies_identical=} {en_delta=}")
+            if energy_missing:
+                print(f"\t\t{rmsd_identical=} energy unavailable; using geometry-only comparison")
+            else:
+                print(f"\t\t{rmsd_identical=} {energies_identical=} {en_delta=}")
     if rmsd_identical and energies_identical:
         return True
     else:

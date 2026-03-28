@@ -62,4 +62,3 @@ def test_filter_new_structures_does_not_collect_comparisons(monkeypatch):
     out = _filter_new_structures(nodes=nodes, reactant=reactant, product=product, chain=chain)
     assert out == nodes
     assert calls == [False, False]
-

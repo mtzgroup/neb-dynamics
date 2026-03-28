@@ -310,6 +310,14 @@ If `tcin_fp`/`tcin_text` is not provided, `RunInputs` generates `tc.in` from TOM
 Configure frozen atoms in `[chain_inputs]` using `frozen_atom_indices`.
 Keep endpoint and NEB frozen regions consistent to avoid interior images becoming artificially lower than endpoints.
 
+If you already have a TeraChem `.in` file (for example `s0min_3A_reactant.in`), you can generate a matching QMMM TOML with:
+
+```bash
+mepd toml-from-tcin s0min_3A_reactant.in --output qmmm_inputs_s0min_frozen.toml
+```
+
+This helper parses `$constraints` `atom N` lines and stores them as 0-based `frozen_atom_indices`.
+
 ## Minimal Examples
 
 ### ChemCloud xTB run

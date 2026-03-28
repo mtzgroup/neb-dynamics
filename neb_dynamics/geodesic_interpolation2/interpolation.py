@@ -390,7 +390,6 @@ class _MidpointFinder:
                 unrefined_midpoint_flat = self._least_squares_minimize(initial_guess_nudged_flat)
                 unrefined_midpoint_geom = unrefined_midpoint_flat.reshape(self.num_atoms, 3)
                 if len(self.ignore_atoms) > 0:
-                    print("freezing ignored atoms positions in midpoint: ", self.ignore_atoms)
                     unrefined_midpoint_geom[self.ignore_atoms, :] = initial_guess_cartesian[self.ignore_atoms, :]
 
                 # --- Check for "Extra" Internal Coordinates ---
@@ -657,4 +656,3 @@ def redistribute(atoms: List[str],
         geoms_list = [g.astype(float, copy=False) for g in list(re_aligned_np)]
 
     return geoms_list
-

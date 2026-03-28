@@ -96,6 +96,28 @@ mepd ts ts_guess.xyz --inputs inputs.toml
 mepd make-default-inputs --name inputs.toml
 ```
 
+## Render Deploy
+
+This repository includes a Render Blueprint in `render.yaml` and a startup wrapper in `scripts/start_render_drive.sh` for deploying `mepd drive` as a Render Web Service.
+
+Default behavior:
+
+- binds Drive to `0.0.0.0:$PORT`
+- boots a workspace from `examples/charla_pr_data/example_inputs.toml`
+- initializes the app with `C=C.CCC=N` in environment `O`
+- writes workspace state to `/tmp/mepd-drive`
+
+To deploy on Render:
+
+1. Push this repository to GitHub.
+2. In Render, create a new Blueprint and point it at this repo.
+3. Set `CHEMCLOUD_USERNAME` and `CHEMCLOUD_PASSWORD` in the Render dashboard.
+4. Deploy the Blueprint.
+
+The default public URL will be `https://<service-name>.onrender.com`.
+
+Note: the included Blueprint uses the free plan, which has an ephemeral filesystem. The Drive workspace under `/tmp/mepd-drive` will not survive service restarts or redeploys.
+
 ## Maintainers
 
 For questions, contact:

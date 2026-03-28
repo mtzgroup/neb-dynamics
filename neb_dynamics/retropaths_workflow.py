@@ -11,6 +11,8 @@ from pathlib import Path
 from time import time
 from typing import Any, Callable
 
+import numpy as np
+
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.inputs import RunInputs
@@ -20,13 +22,16 @@ from neb_dynamics.kmc import (
     simulate_kmc,
 )
 from neb_dynamics.nodes.node import StructureNode
-from neb_dynamics.nodes.nodehelpers import is_identical
+from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, is_identical
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.pot import Pot
 from neb_dynamics.qcio_structure_helpers import structure_to_molecule
-from neb_dynamics.retropaths_compat import retropaths_pot_to_neb_pot
+from neb_dynamics.retropaths_compat import copy_graph_like_molecule, retropaths_pot_to_neb_pot
 from neb_dynamics.retropaths_queue import (
+    _make_pair_chain,
+    build_balanced_endpoints,
     _global_environment_molecule,
+    NEBQueueItem,
     RetropathsNEBQueue,
     _trim_balanced_endpoint,
     annotate_pot_with_queue_results,
@@ -430,6 +435,44 @@ def _find_matching_node_by_molecule(pot: Pot, molecule: Molecule | None) -> int 
             return int(node_index)
     return None
 
+
+def _coerce_retropaths_molecule(molecule: Any, MoleculeCls: Any) -> Any | None:
+    if molecule is None:
+        return None
+    if isinstance(molecule, MoleculeCls):
+        return molecule.copy()
+    smiles = _molecule_key(molecule)
+    if smiles:
+        with contextlib.suppress(Exception):
+            return MoleculeCls.from_smiles(smiles)
+    return None
+
+
+def _dense_retropaths_molecule(molecule: Any, MoleculeCls: Any) -> Any | None:
+    if molecule is None:
+        return None
+    dense = MoleculeCls()
+    old_to_new = {
+        old_index: new_index for new_index, old_index in enumerate(sorted(molecule.nodes))
+    }
+    for old_index in sorted(molecule.nodes):
+        dense.add_node(old_to_new[old_index], **dict(molecule.nodes[old_index]))
+    for atom1, atom2, attrs in molecule.edges(data=True):
+        dense.add_edge(old_to_new[atom1], old_to_new[atom2], **dict(attrs))
+    if hasattr(dense, "set_neighbors"):
+        dense.set_neighbors()
+    return dense
+
+
+def _nanoreactor_support_status(run_inputs: RunInputs) -> tuple[bool, str]:
+    engine_name = str(getattr(run_inputs, "engine_name", "") or "").strip().lower()
+    program = str(getattr(run_inputs, "program", "") or "").strip().lower()
+    if engine_name not in {"chemcloud", "qcop"}:
+        return False, "Nanoreactor sampling currently requires a QCOP/ChemCloud-backed inputs file."
+    if "terachem" in program or "crest" in program:
+        return True, ""
+    return False, "Nanoreactor sampling currently requires a CREST or TeraChem-backed inputs file."
+
 def apply_reactions_to_node(
     workspace: RetropathsWorkspace,
     node_index: int,
@@ -461,11 +504,20 @@ def apply_reactions_to_node(
         charge = int(source_td.structure.charge)
         multiplicity = int(source_td.structure.multiplicity)
 
-    hf, _RetropathsMolecule, RetropathsPot = _load_retropaths_classes()
+    hf, RetropathsMolecule, RetropathsPot = _load_retropaths_classes()
     library = hf.pload(workspace.reactions_path)
+    source_retropaths_molecule = _coerce_retropaths_molecule(source_molecule, RetropathsMolecule)
+    environment_retropaths_molecule = _coerce_retropaths_molecule(
+        _global_environment_molecule(pot),
+        RetropathsMolecule,
+    )
+    if source_retropaths_molecule is None:
+        raise ValueError(
+            f"Node {node_index} could not be converted into a Retropaths-compatible molecular graph."
+        )
     temp_pot = RetropathsPot(
-        root=source_molecule.copy(),
-        environment=_global_environment_molecule(pot) or Molecule(),
+        root=source_retropaths_molecule,
+        environment=environment_retropaths_molecule or RetropathsMolecule(),
         rxn_name=f"{workspace.run_name}-node-{node_index}",
     )
     temp_pot.grow_this_node(0, library, filter_minor_products=True, use_father_error=False)
@@ -492,7 +544,7 @@ def apply_reactions_to_node(
             )
             pot.graph.add_node(
                 target_index,
-                molecule=result_molecule.copy(),
+                molecule=copy_graph_like_molecule(result_molecule),
                 converged=bool(result_attrs.get("converged", False)),
                 td=td,
                 endpoint_optimized=False,
@@ -501,7 +553,7 @@ def apply_reactions_to_node(
             added_nodes += 1
         else:
             target_attrs = pot.graph.nodes[target_index]
-            target_attrs.setdefault("molecule", result_molecule.copy())
+            target_attrs.setdefault("molecule", copy_graph_like_molecule(result_molecule))
             if target_attrs.get("td") is None:
                 target_attrs["td"] = structure_node_from_graph_like_molecule(
                     result_molecule,
@@ -531,6 +583,192 @@ def apply_reactions_to_node(
     return {
         "message": (
             f"Applied reactions to node {node_index}: merged {added_nodes} new nodes "
+            f"and {added_edges} new edges."
+        ),
+        "node_index": int(node_index),
+        "added_nodes": int(added_nodes),
+        "added_edges": int(added_edges),
+        "targets": merged_targets,
+    }
+
+
+def run_nanoreactor_for_node(
+    workspace: RetropathsWorkspace,
+    node_index: int,
+    *,
+    progress_fp: str | None = None,
+) -> dict[str, Any]:
+    pot = materialize_drive_graph(workspace)
+    if node_index not in pot.graph.nodes:
+        raise ValueError(f"Node {node_index} is not present in the current workspace.")
+
+    source_attrs = pot.graph.nodes[node_index]
+    source_td = source_attrs.get("td")
+    if source_td is None or getattr(source_td, "structure", None) is None:
+        raise ValueError(f"Node {node_index} has no 3D structure, so nanoreactor sampling cannot be started.")
+
+    run_inputs = RunInputs.open(workspace.inputs_fp)
+    supported, support_note = _nanoreactor_support_status(run_inputs)
+    if not supported:
+        raise ValueError(support_note)
+
+    program_name = str(getattr(run_inputs, "program", "") or "").strip().lower()
+    backend_label = "TeraChem MD nanoreactor" if "terachem" in program_name else "CREST MSREACT nanoreactor"
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=[int(node_index)],
+        title=f"Running {backend_label} from node {node_index}",
+        note=f"Submitting {backend_label} sampling and collecting candidate structures.",
+        phase="growing",
+    )
+
+    candidate_nodes = list(
+        getattr(run_inputs.engine, "compute_nanoreactor_candidates")(
+            source_td,
+            nanoreactor_inputs=dict(getattr(run_inputs, "nanoreactor_inputs", {}) or {}),
+        )
+        or []
+    )
+    if not candidate_nodes:
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=[],
+            title=f"Running {backend_label} from node {node_index}",
+            note="The nanoreactor run completed but returned no candidate structures.",
+            phase="finished",
+        )
+        return {
+            "message": f"Nanoreactor sampling from node {node_index} returned no candidate minima.",
+            "node_index": int(node_index),
+            "added_nodes": 0,
+            "added_edges": 0,
+            "targets": [],
+        }
+
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=[int(node_index)],
+        title=f"Running {backend_label} from node {node_index}",
+        note=f"Optimizing {len(candidate_nodes)} candidate structure(s) into minima.",
+        phase="optimizing",
+    )
+
+    try:
+        optimized_histories = run_inputs.engine.compute_geometry_optimizations(candidate_nodes)
+    except Exception:
+        optimized_histories = []
+        compute_single = getattr(run_inputs.engine, "compute_geometry_optimization")
+        for candidate_node in candidate_nodes:
+            with contextlib.suppress(Exception):
+                optimized_histories.append(compute_single(candidate_node))
+    optimized_nodes: list[StructureNode] = []
+    for candidate_node, history in zip(candidate_nodes, optimized_histories):
+        if not history:
+            continue
+        optimized_node = history[-1]
+        graph_like = getattr(optimized_node, "graph", None) or getattr(candidate_node, "graph", None)
+        if graph_like is None and getattr(optimized_node, "structure", None) is not None:
+            with contextlib.suppress(Exception):
+                graph_like = structure_to_molecule(optimized_node.structure)
+        if graph_like is not None:
+            optimized_node.graph = graph_like
+            optimized_node.has_molecular_graph = True
+        optimized_nodes.append(optimized_node)
+    chain_inputs = getattr(run_inputs, "chain_inputs", ChainInputs())
+    network_inputs = getattr(run_inputs, "network_inputs", None)
+    collapse_rms_thre = float(getattr(network_inputs, "collapse_node_rms_thre", chain_inputs.node_rms_thre))
+    collapse_ene_thre = float(getattr(network_inputs, "collapse_node_ene_thre", chain_inputs.node_ene_thre))
+    added_nodes = 0
+    added_edges = 0
+    skipped_duplicates = 0
+    merged_targets: list[int] = []
+    nanoreactor_reaction_index = 1
+
+    for offset, optimized_node in enumerate(optimized_nodes, start=1):
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=[int(node_index)],
+            title=f"Running {backend_label} from node {node_index}",
+            note=f"Merging optimized minimum {offset}/{len(optimized_nodes)} into the network.",
+            phase="merging",
+        )
+        if _nodes_identical(optimized_node, source_td, chain_inputs):
+            skipped_duplicates += 1
+            continue
+
+        target_index = _find_existing_network_node(
+            pot,
+            optimized_node,
+            chain_inputs,
+            collapse_rms_thre,
+            collapse_ene_thre,
+        )
+        if target_index is None:
+            target_index = (max(pot.graph.nodes) + 1) if pot.graph.nodes else 0
+            graph_like = getattr(optimized_node, "graph", None)
+            if graph_like is None and getattr(optimized_node, "structure", None) is not None:
+                with contextlib.suppress(Exception):
+                    graph_like = structure_to_molecule(optimized_node.structure)
+                    optimized_node.graph = graph_like
+            pot.graph.add_node(
+                target_index,
+                molecule=copy_graph_like_molecule(graph_like) if graph_like is not None else None,
+                converged=True,
+                td=optimized_node,
+                endpoint_optimized=True,
+                generated_by="nanoreactor_sampling",
+            )
+            added_nodes += 1
+        else:
+            target_attrs = pot.graph.nodes[target_index]
+            graph_like = getattr(optimized_node, "graph", None)
+            if graph_like is not None:
+                target_attrs["molecule"] = copy_graph_like_molecule(graph_like)
+            target_attrs["td"] = optimized_node
+            target_attrs["endpoint_optimized"] = True
+
+        if int(target_index) == int(node_index):
+            skipped_duplicates += 1
+            continue
+        if not pot.graph.has_edge(node_index, target_index):
+            pot.graph.add_edge(
+                node_index,
+                target_index,
+                reaction=f"Nanoreactor reaction {nanoreactor_reaction_index}",
+                list_of_nebs=[],
+                generated_by="nanoreactor_sampling",
+            )
+            added_edges += 1
+            nanoreactor_reaction_index += 1
+        ensure_queue_item_for_edge(
+            pot=pot,
+            source_node=int(node_index),
+            target_node=int(target_index),
+            queue_fp=workspace.queue_fp,
+            overwrite=False,
+        )
+        merged_targets.append(int(target_index))
+
+    pot.write_to_disk(workspace.neb_pot_fp)
+    build_retropaths_neb_queue(pot=pot, queue_fp=workspace.queue_fp, overwrite=False)
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=[],
+        title=f"Running {backend_label} from node {node_index}",
+        note=(
+            f"Merged {added_nodes} new minima node(s), created {added_edges} new edge(s), "
+            f"and skipped {skipped_duplicates} duplicate minima."
+        ),
+        phase="finished",
+    )
+    return {
+        "message": (
+            f"Nanoreactor sampling from node {node_index} merged {added_nodes} new minima "
             f"and {added_edges} new edges."
         ),
         "node_index": int(node_index),
@@ -610,6 +848,40 @@ def _nodes_identical(node1: StructureNode, node2: StructureNode, chain_inputs: C
         return False
 
 
+def _history_nodes_identical(
+    node1: StructureNode,
+    node2: StructureNode,
+    chain_inputs: ChainInputs,
+    collapse_rms_thre: float,
+    collapse_ene_thre: float,
+) -> bool:
+    try:
+        return is_identical(
+            node1,
+            node2,
+            fragment_rmsd_cutoff=collapse_rms_thre,
+            kcal_mol_cutoff=collapse_ene_thre,
+            verbose=False,
+            collect_comparison=False,
+        )
+    except Exception:
+        return False
+
+
+def _nodes_same_species(node1: StructureNode, node2: StructureNode) -> bool:
+    if getattr(node1, "has_molecular_graph", False) and getattr(node2, "has_molecular_graph", False):
+        try:
+            return _is_connectivity_identical(
+                node1,
+                node2,
+                verbose=False,
+                collect_comparison=False,
+            )
+        except Exception:
+            return False
+    return False
+
+
 def _normalize_history_endpoint(
     node: StructureNode,
     candidates: list[tuple[int, StructureNode | None, object | None]],
@@ -623,7 +895,9 @@ def _normalize_history_endpoint(
             graph = None
         normalized = _trim_balanced_endpoint(node, graph)
         normalized.has_molecular_graph = graph is not None
-        if _nodes_identical(normalized, reference_node, chain_inputs):
+        if _nodes_identical(normalized, reference_node, chain_inputs) or _nodes_same_species(
+            normalized, reference_node
+        ):
             return normalized, node_index
 
     graph = getattr(node, "graph", None)
@@ -638,12 +912,20 @@ def _find_existing_network_node(
     pot: Pot,
     node: StructureNode,
     chain_inputs: ChainInputs,
+    collapse_rms_thre: float,
+    collapse_ene_thre: float,
 ) -> int | None:
     for node_index in pot.graph.nodes:
         existing = pot.graph.nodes[node_index].get("td")
         if existing is None:
             continue
-        if _nodes_identical(node, existing, chain_inputs):
+        if _history_nodes_identical(
+            node,
+            existing,
+            chain_inputs,
+            collapse_rms_thre,
+            collapse_ene_thre,
+        ):
             return node_index
     return None
 
@@ -653,14 +935,25 @@ def _register_network_node(
     source_pot: Pot,
     node: StructureNode,
     chain_inputs: ChainInputs,
+    collapse_rms_thre: float,
+    collapse_ene_thre: float,
     preferred_index: int | None = None,
 ) -> int:
     if preferred_index is not None and preferred_index in source_pot.graph.nodes:
         if preferred_index not in pot.graph.nodes:
             pot.graph.add_node(preferred_index, **dict(source_pot.graph.nodes[preferred_index]))
+        pot.graph.nodes[preferred_index]["td"] = node
+        if getattr(node, "graph", None) is not None:
+            pot.graph.nodes[preferred_index]["molecule"] = node.graph.copy()
         return preferred_index
 
-    existing_index = _find_existing_network_node(pot, node, chain_inputs)
+    existing_index = _find_existing_network_node(
+        pot,
+        node,
+        chain_inputs,
+        collapse_rms_thre,
+        collapse_ene_thre,
+    )
     if existing_index is not None:
         return existing_index
 
@@ -700,16 +993,35 @@ def _write_edge_visualizations(workspace: RetropathsWorkspace, pot: Pot) -> list
     rows: list[dict[str, str]] = []
     out_dir = workspace.edge_visualizations_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    for stale_fp in out_dir.glob("edge_*.html"):
+        stale_fp.unlink(missing_ok=True)
+    display_run_inputs: RunInputs | None = None
 
     for source_node, target_node in sorted(pot.graph.edges):
         edge_attrs = pot.graph.edges[(source_node, target_node)]
         chains = edge_attrs.get("list_of_nebs") or []
-        if not chains:
+        chain = chains[-1] if chains else None
+        if chain is None:
+            with contextlib.suppress(Exception):
+                if display_run_inputs is None:
+                    display_run_inputs = RunInputs.open(workspace.inputs_fp)
+                preview_item = NEBQueueItem(
+                    job_id=f"{int(source_node)}->{int(target_node)}",
+                    source_node=int(source_node),
+                    target_node=int(target_node),
+                    reaction=str(edge_attrs.get("reaction") or ""),
+                    attempt_key="preview",
+                )
+                chain = _make_pair_chain(
+                    pot=pot,
+                    item=preview_item,
+                    run_inputs=display_run_inputs,
+                )
+        if chain is None:
             continue
 
         filename = f"edge_{source_node}_{target_node}.html"
         out_fp = out_dir / filename
-        chain = chains[-1]
         start_smiles = ""
         end_smiles = ""
         if len(chain.nodes) > 0 and getattr(chain[0], "graph", None) is not None:
@@ -727,7 +1039,7 @@ def _write_edge_visualizations(workspace: RetropathsWorkspace, pot: Pot) -> list
             f"</div>"
         )
         html = _build_chain_visualizer_html(
-            chain=chains[-1],
+            chain=chain,
             chain_trajectory=list(chains) if len(chains) > 1 else None,
         )
         html = html.replace("<body>", f"<body>\n  {title_html}", 1)
@@ -1089,7 +1401,10 @@ def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
     if 0 in source_pot.graph.nodes:
         pot.graph.add_node(0, **dict(source_pot.graph.nodes[0]))
 
-    chain_inputs = ChainInputs()
+    run_inputs = RunInputs.open(workspace.inputs_fp) if Path(workspace.inputs_fp).exists() else RunInputs()
+    chain_inputs = run_inputs.chain_inputs
+    collapse_rms_thre = float(run_inputs.network_inputs.collapse_node_rms_thre)
+    collapse_ene_thre = float(run_inputs.network_inputs.collapse_node_ene_thre)
     chains_by_edge: dict[tuple[int, int], list[Chain]] = {}
 
     for item in queue.items:
@@ -1129,6 +1444,8 @@ def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
                 source_pot=source_pot,
                 node=start_node,
                 chain_inputs=chain_inputs,
+                collapse_rms_thre=collapse_rms_thre,
+                collapse_ene_thre=collapse_ene_thre,
                 preferred_index=start_index_hint,
             )
             end_index = _register_network_node(
@@ -1136,6 +1453,8 @@ def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
                 source_pot=source_pot,
                 node=end_node,
                 chain_inputs=chain_inputs,
+                collapse_rms_thre=collapse_rms_thre,
+                collapse_ene_thre=collapse_ene_thre,
                 preferred_index=end_index_hint,
             )
 

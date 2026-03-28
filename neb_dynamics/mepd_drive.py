@@ -33,11 +33,13 @@ from neb_dynamics.retropaths_queue import (
     _ensure_pair_endpoints_optimized,
     _make_pair_chain,
     _run_single_item_worker,
+    NEBQueueItem,
     RetropathsNEBQueue,
     build_retropaths_neb_queue,
 )
 from neb_dynamics.retropaths_workflow import (
     _build_network_explorer_payload,
+    _history_leaf_chains,
     _json_safe,
     _load_template_payloads,
     _persist_endpoint_optimization_result,
@@ -52,8 +54,51 @@ from neb_dynamics.retropaths_workflow import (
     load_partial_annotated_pot,
     load_retropaths_pot,
     prepare_neb_workspace,
+    run_nanoreactor_for_node,
     summarize_queue,
 )
+
+
+def _merge_drive_pot_compat(workspace: RetropathsWorkspace, *, network_splits: bool) -> Pot:
+    try:
+        return _merge_drive_pot(workspace, network_splits=network_splits)
+    except TypeError:
+        return _merge_drive_pot(workspace)
+
+
+def _load_existing_workspace_job_compat(workspace_path: str, *, network_splits: bool) -> dict[str, Any]:
+    try:
+        return _load_existing_workspace_job(workspace_path, network_splits=network_splits)
+    except TypeError:
+        return _load_existing_workspace_job(workspace_path)
+
+
+def _call_drive_payload_builder(
+    builder: Callable[..., dict[str, Any]],
+    workspace: RetropathsWorkspace,
+    *,
+    product_smiles: str,
+    active_job_label: str,
+    active_action: dict[str, Any] | None,
+    network_splits: bool,
+) -> dict[str, Any]:
+    try:
+        return builder(
+            workspace,
+            product_smiles=product_smiles,
+            active_job_label=active_job_label,
+            active_action=active_action,
+            network_splits=network_splits,
+        )
+    except TypeError:
+        return builder(
+            workspace,
+            product_smiles=product_smiles,
+            active_job_label=active_job_label,
+            active_action=active_action,
+        )
+
+
 def _energy_value(node: Any) -> float | None:
     with contextlib.suppress(Exception):
         return float(node.energy)
@@ -201,6 +246,28 @@ def _node_apply_reaction_status(node_index: int, node_attrs: dict[str, Any]) -> 
     return True, ""
 
 
+def _node_nanoreactor_status(
+    node_index: int,
+    node_attrs: dict[str, Any],
+    inputs_summary: dict[str, Any],
+) -> tuple[bool, str]:
+    td = node_attrs.get("td")
+    structure = getattr(td, "structure", None)
+    if structure is None:
+        return False, f"Node {node_index} has no 3D structure attached, so nanoreactor sampling cannot be started."
+    if str(inputs_summary.get("error") or "").strip():
+        return False, "The inputs file could not be loaded, so nanoreactor availability is unknown."
+    engine_name = str(inputs_summary.get("engine_name") or "").strip().lower()
+    program = str(inputs_summary.get("program") or "").strip().lower()
+    if engine_name not in {"chemcloud", "qcop"}:
+        return False, "Nanoreactor sampling currently requires a QCOP or ChemCloud-backed inputs file."
+    if "terachem" in program:
+        return True, "Run a TeraChem MD nanoreactor trajectory and merge distinct minimized products."
+    if "crest" in program:
+        return True, "Run a CREST MSREACT nanoreactor search and merge distinct minimized products."
+    return False, "Nanoreactor sampling currently requires a CREST or TeraChem-backed inputs file."
+
+
 def _edge_neb_status(edge: dict[str, Any]) -> tuple[bool, str]:
     status = str(edge.get("queue_status") or "").strip()
     queue_error = str(edge.get("queue_error") or "").strip()
@@ -290,7 +357,7 @@ def _build_neb_live_payload(
 
 
 def _build_growth_live_payload(active_action: dict[str, Any] | None) -> dict[str, Any] | None:
-    if active_action is None or active_action.get("type") not in {"initialize", "apply-reactions"}:
+    if active_action is None or active_action.get("type") not in {"initialize", "apply-reactions", "nanoreactor"}:
         return None
     progress = _read_growth_progress(active_action.get("progress_fp")) or {}
     return {
@@ -339,7 +406,7 @@ def _drive_network_version(workspace: RetropathsWorkspace) -> str:
         (
             getattr(workspace, "neb_pot_fp", None),
             getattr(workspace, "queue_fp", None),
-            getattr(workspace, "annotated_neb_pot_fp", None),
+            getattr(workspace, "retropaths_pot_fp", None),
         ),
     ):
         if fp.exists():
@@ -348,10 +415,27 @@ def _drive_network_version(workspace: RetropathsWorkspace) -> str:
         else:
             fingerprints.append(f"{fp.name}:missing")
     return "|".join(fingerprints)
-    try:
-        return json.loads(Path(str(chain_fp)).read_text())
-    except Exception:
-        return None
+
+
+def _format_user_facing_error(exc: Exception) -> str:
+    message = f"{type(exc).__name__}: {exc}"
+    raw = str(exc)
+    if "Exec format error" in raw or "No such file or directory" in raw:
+        program_name = ""
+        if "'" in raw:
+            with contextlib.suppress(Exception):
+                program_name = raw.split("'")[-2]
+        if program_name:
+            return (
+                f"Could not execute `{program_name}`. "
+                "Check that the configured external program is installed on this machine, "
+                "is executable, and matches the current platform."
+            )
+        return (
+            "Could not execute the configured external program. "
+            "Check that it is installed on this machine and is executable."
+        )
+    return message
 
 
 def _parse_xyz_text_to_structure(
@@ -533,7 +617,26 @@ def _load_completed_queue_chain(item: Any) -> Chain | Any | None:
     return getattr(history, "output_chain", None)
 
 
-def _completed_queue_endpoint_payloads(item: Any) -> dict[str, Any] | None:
+def _completed_queue_result_payload(item: Any) -> dict[str, Any] | None:
+    leaf_count = 0
+    result_dir = str(getattr(item, "result_dir", "") or "").strip()
+    if result_dir:
+        try:
+            history = TreeNode.read_from_disk(
+                folder_name=result_dir,
+                charge=0,
+                multiplicity=1,
+            )
+        except Exception:
+            history = None
+        if history is not None:
+            with contextlib.suppress(Exception):
+                leaf_count = len(_history_leaf_chains(history))
+    if leaf_count > 1:
+        return {
+            "is_elementary_result": False,
+            "leaf_count": int(leaf_count),
+        }
     chain = _load_completed_queue_chain(item)
     if chain is None or len(chain) < 2:
         return None
@@ -552,11 +655,15 @@ def _completed_queue_endpoint_payloads(item: Any) -> dict[str, Any] | None:
         ),
         "barrier": float(chain.get_eA_chain()) if hasattr(chain, "get_eA_chain") else None,
         "chain": chain,
+        "is_elementary_result": leaf_count <= 1,
+        "leaf_count": int(leaf_count),
     }
 
 
-def _merge_drive_pot(workspace: RetropathsWorkspace) -> Pot:
+def _merge_drive_pot(workspace: RetropathsWorkspace, *, network_splits: bool = True) -> Pot:
     base_pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    if not network_splits:
+        return base_pot
     try:
         annotated = load_partial_annotated_pot(workspace)
     except Exception:
@@ -596,6 +703,7 @@ def _inputs_summary_payload(workspace: RetropathsWorkspace) -> dict[str, Any]:
         "path_min_method": "",
         "path_min_inputs": {},
         "chain_inputs": {},
+        "network_inputs": {},
         "gi_inputs": {},
         "optimizer_kwds": {},
         "program_kwds": {},
@@ -612,6 +720,7 @@ def _inputs_summary_payload(workspace: RetropathsWorkspace) -> dict[str, Any]:
     summary["path_min_method"] = str(getattr(run_inputs, "path_min_method", "") or "")
     summary["path_min_inputs"] = _namespace_payload(getattr(run_inputs, "path_min_inputs", None))
     summary["chain_inputs"] = _namespace_payload(getattr(run_inputs, "chain_inputs", None))
+    summary["network_inputs"] = _namespace_payload(getattr(run_inputs, "network_inputs", None))
     summary["gi_inputs"] = _namespace_payload(getattr(run_inputs, "gi_inputs", None))
     summary["optimizer_kwds"] = _namespace_payload(getattr(run_inputs, "optimizer_kwds", None))
     program_kwds = getattr(run_inputs, "program_kwds", None)
@@ -685,8 +794,9 @@ def _run_kmc_payload(
     final_time: float | None,
     max_steps: int,
     initial_conditions: dict[int, float] | None,
+    network_splits: bool = True,
 ) -> dict[str, Any]:
-    pot = _merge_drive_pot(workspace)
+    pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
     payload = build_kmc_payload(
         pot,
         temperature_kelvin=float(temperature_kelvin),
@@ -790,6 +900,7 @@ def _write_completed_queue_visualizations(
                 if (
                     meta.get("result_dir") == cache_key["result_dir"]
                     and meta.get("finished_at") == cache_key["finished_at"]
+                    and meta.get("is_elementary_result") is True
                     and "source_structure" in meta
                     and "target_structure" in meta
                 ):
@@ -805,8 +916,10 @@ def _write_completed_queue_visualizations(
                         }
                     )
                     continue
-        queue_payload = _completed_queue_endpoint_payloads(item)
+        queue_payload = _completed_queue_result_payload(item)
         if queue_payload is None:
+            continue
+        if not queue_payload.get("is_elementary_result", True):
             continue
         chain = queue_payload["chain"]
 
@@ -832,6 +945,7 @@ def _write_completed_queue_visualizations(
                         "source_structure": queue_payload["source_structure"],
                         "target_structure": queue_payload["target_structure"],
                         "barrier": barrier,
+                        "is_elementary_result": True,
                     },
                     indent=2,
                     sort_keys=True,
@@ -859,10 +973,13 @@ def _build_drive_payload(
     product_smiles: str = "",
     active_job_label: str = "",
     active_action: dict[str, Any] | None = None,
+    network_splits: bool = True,
 ) -> dict[str, Any]:
     retropaths_pot = load_retropaths_pot(workspace)
     queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
-    pot = _merge_drive_pot(workspace)
+    pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+    inputs_summary = _inputs_summary_payload(workspace)
+    display_run_inputs = RunInputs.open(workspace.inputs_fp)
     edge_visualizations = _write_edge_visualizations(workspace=workspace, pot=pot)
     completed_queue_visualizations = _write_completed_queue_visualizations(workspace=workspace, queue=queue)
     viewer_by_edge = {
@@ -905,6 +1022,7 @@ def _build_drive_payload(
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
         node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
+        node["can_nanoreactor"], node["nanoreactor_note"] = _node_nanoreactor_status(node_index, attrs, inputs_summary)
         node["neb_backed"] = node_index in backed_nodes
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
@@ -945,6 +1063,23 @@ def _build_drive_payload(
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
         edge["source_structure"] = _node_structure_payload(pot.graph.nodes[source])
         edge["target_structure"] = _node_structure_payload(pot.graph.nodes[target])
+        with contextlib.suppress(Exception):
+            pair_item = queue_item or NEBQueueItem(
+                job_id=f"{source}->{target}",
+                source_node=source,
+                target_node=target,
+                reaction=str(attrs.get("reaction") or ""),
+                attempt_key="preview",
+            )
+            display_pair = _make_pair_chain(pot=pot, item=pair_item, run_inputs=display_run_inputs)
+            edge["source_structure"] = _structure_payload_from_structure(
+                display_pair.nodes[0].structure,
+                molecule_like=getattr(display_pair.nodes[0], "graph", None),
+            )
+            edge["target_structure"] = _structure_payload_from_structure(
+                display_pair.nodes[-1].structure,
+                molecule_like=getattr(display_pair.nodes[-1], "graph", None),
+            )
         if queue_result is not None:
             queue_source = int(queue_result.get("source_node", source))
             queue_target = int(queue_result.get("target_node", target))
@@ -986,7 +1121,7 @@ def _build_drive_payload(
             "optimized_endpoints": int(optimized_endpoints),
             "neb_backed_edges": int(neb_backed_edges),
         },
-        "inputs": _inputs_summary_payload(workspace),
+        "inputs": inputs_summary,
         "kmc": _kmc_defaults_payload(pot),
         "queue": drive_queue_counts,
         "version": _drive_network_version(workspace),
@@ -1000,9 +1135,11 @@ def _build_drive_payload_fast(
     product_smiles: str = "",
     active_job_label: str = "",
     active_action: dict[str, Any] | None = None,
+    network_splits: bool = True,
 ) -> dict[str, Any]:
     queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
-    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+    inputs_summary = _inputs_summary_payload(workspace)
     normalized_product = product_smiles.strip()
     explorer = _build_network_explorer_payload(pot.graph)
 
@@ -1018,6 +1155,7 @@ def _build_drive_payload_fast(
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
         node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
+        node["can_nanoreactor"], node["nanoreactor_note"] = _node_nanoreactor_status(node_index, attrs, inputs_summary)
         node["neb_backed"] = False
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
@@ -1068,7 +1206,7 @@ def _build_drive_payload_fast(
             "optimized_endpoints": int(optimized_endpoints),
             "neb_backed_edges": 0,
         },
-        "inputs": _inputs_summary_payload(workspace),
+        "inputs": inputs_summary,
         "kmc": {
             "available": False,
             "node_count": int(pot.graph.number_of_nodes()),
@@ -1088,9 +1226,11 @@ def _build_drive_payload_fast_neb(
     product_smiles: str = "",
     active_job_label: str = "",
     active_action: dict[str, Any] | None = None,
+    network_splits: bool = True,
 ) -> dict[str, Any]:
     queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
-    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+    inputs_summary = _inputs_summary_payload(workspace)
     normalized_product = product_smiles.strip()
     explorer = _build_network_explorer_payload(pot.graph)
 
@@ -1113,6 +1253,7 @@ def _build_drive_payload_fast_neb(
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
         node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
+        node["can_nanoreactor"], node["nanoreactor_note"] = _node_nanoreactor_status(node_index, attrs, inputs_summary)
         node["neb_backed"] = False
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
@@ -1163,7 +1304,7 @@ def _build_drive_payload_fast_neb(
             "optimized_endpoints": int(optimized_endpoints),
             "neb_backed_edges": 0,
         },
-        "inputs": _inputs_summary_payload(workspace),
+        "inputs": inputs_summary,
         "kmc": {
             "available": False,
             "node_count": int(pot.graph.number_of_nodes()),
@@ -1190,6 +1331,7 @@ def _initialize_workspace_job(
     max_nodes: int,
     max_depth: int,
     max_parallel_nebs: int,
+    network_splits: bool = True,
     progress_fp: str | None = None,
 ) -> dict[str, Any]:
     workspace_path = Path(workspace_dir).resolve()
@@ -1233,6 +1375,7 @@ def _initialize_workspace_job(
             else f"Initialized workspace {workspace.run_name}."
         ),
     )
+    payload["network_splits"] = bool(network_splits)
     if init_error:
         payload["error"] = init_error
     return payload
@@ -1436,6 +1579,7 @@ def _run_selected_edge_neb(
     *,
     source_node: int,
     target_node: int,
+    network_splits: bool = True,
 ) -> dict[str, Any]:
     pot = Pot.read_from_disk(workspace.neb_pot_fp)
     run_inputs = RunInputs.open(workspace.inputs_fp)
@@ -1520,7 +1664,8 @@ def _run_selected_edge_neb(
         }
     )
     queue.write_to_disk(workspace.queue_fp)
-    load_partial_annotated_pot(workspace)
+    if network_splits:
+        load_partial_annotated_pot(workspace)
     return {"message": f"Autosplitting NEB completed for edge {source_node} -> {target_node}."}
 
 
@@ -1529,6 +1674,7 @@ def _run_selected_edge_neb_logged(
     *,
     source_node: int,
     target_node: int,
+    network_splits: bool = True,
     log_fp: str,
     progress_fp: str,
     chain_fp: str,
@@ -1549,6 +1695,7 @@ def _run_selected_edge_neb_logged(
                     workspace,
                     source_node=source_node,
                     target_node=target_node,
+                    network_splits=network_splits,
                 )
         finally:
             if old_log is None:
@@ -1561,7 +1708,7 @@ def _run_selected_edge_neb_logged(
                 os.environ["MEPD_DRIVE_CHAIN_JSON"] = old_chain
 
 
-def _load_existing_workspace_job(workspace_path: str) -> dict[str, Any]:
+def _load_existing_workspace_job(workspace_path: str, *, network_splits: bool = True) -> dict[str, Any]:
     path = Path(workspace_path).expanduser().resolve()
     workspace_dir = path.parent if path.is_file() and path.name == "workspace.json" else path
     workspace = RetropathsWorkspace.read(workspace_dir)
@@ -1574,9 +1721,18 @@ def _load_existing_workspace_job(workspace_path: str) -> dict[str, Any]:
     missing = [str(fp) for fp in required if not fp.exists()]
     if missing:
         raise ValueError(f"Workspace is missing required files: {', '.join(missing)}")
+    with contextlib.suppress(Exception):
+        queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
+        if queue.recover_stale_running_items(
+            output_dir=workspace.queue_output_dir,
+            charge=0,
+            multiplicity=1,
+        ):
+            queue.write_to_disk(workspace.queue_fp)
     # Rebuild the annotated overlay immediately so completed NEB results
     # are visible as soon as the workspace is opened in drive.
-    load_partial_annotated_pot(workspace)
+    if network_splits:
+        load_partial_annotated_pot(workspace)
     return _workspace_snapshot_payload(
         workspace,
         message=f"Loaded existing workspace {workspace.run_name}.",
@@ -1592,8 +1748,8 @@ def _drive_html() -> str:
   <title>MEPD Drive</title>
   <style>
     :root {
-      --bg: #f2ede5;
-      --panel: #fffdf8;
+      --bg: #ffffff;
+      --panel: #ffffff;
       --line: #d7c8b2;
       --ink: #241d18;
       --muted: #6f6558;
@@ -1602,10 +1758,10 @@ def _drive_html() -> str:
       --backed: #2f7b61;
       --warn: #b03a2e;
     }
-    body { margin: 0; font-family: Georgia, serif; background: radial-gradient(circle at top, #fbf7f1, var(--bg)); color: var(--ink); }
+    body { margin: 0; font-family: Georgia, serif; background: var(--bg); color: var(--ink); }
     .shell { padding: 20px; display: grid; gap: 16px; }
     .panel { background: var(--panel); border: 1px solid var(--line); padding: 16px; }
-    .page-title { padding: 20px; background: linear-gradient(135deg, #fff8ee, #f3e7d3); }
+    .page-title { padding: 20px; background: #ffffff; }
     .section-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
     .section-head h2 { margin: 0; }
     .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
@@ -1635,7 +1791,7 @@ def _drive_html() -> str:
       min-width: 220px;
       padding: 12px;
       border: 1px solid var(--line);
-      background: rgba(255, 253, 248, 0.96);
+      background: rgba(255, 255, 255, 0.96);
       box-shadow: 0 10px 24px rgba(36, 29, 24, 0.12);
     }
     .network-toolbar-title { font-weight: 600; margin-bottom: 6px; }
@@ -1649,7 +1805,7 @@ def _drive_html() -> str:
       line-height: 1;
     }
     .network-tool-button.active { background: var(--accent-2); color: #fff; border-color: #165546; }
-    .explorer-svg { width: 100%; min-height: 620px; border: 1px solid var(--line); background: linear-gradient(180deg, #fffdf8, #f8f0e0); }
+    .explorer-svg { width: 100%; min-height: 620px; border: 1px solid var(--line); background: #ffffff; }
     .network-edge-line { stroke: #8f8271; stroke-width: 2.2; fill: none; }
     .network-edge-line.neb-backed { stroke: var(--backed); stroke-width: 3.4; }
     .network-edge-line.selected { stroke: var(--accent); stroke-width: 4.5; }
@@ -1805,7 +1961,7 @@ def _drive_html() -> str:
     <div class="panel">
       <div class="section-head">
         <h2>Exploration</h2>
-        <div class="muted">Queue NEBs, minimizations, reaction-template application, and inspect the selected graph item.</div>
+        <div class="muted">Queue NEBs, minimizations, reaction-template application, nanoreactor sampling, and inspect the selected graph item.</div>
       </div>
       <div id="detail-title" style="font-size:22px; margin-bottom:6px;">Select a node or edge</div>
       <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
@@ -2106,6 +2262,192 @@ def _drive_html() -> str:
       return `<div class="code-block">${escapeHtml(text)}</div>`;
     }
 
+    function isMeaningfulTemplateValue(value) {
+      if (value == null) return false;
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === "object") return Object.keys(value).length > 0;
+      if (typeof value === "boolean") return value;
+      const text = String(value).trim();
+      return text !== "" && text !== "{}" && text !== "[]" && text !== "null" && text !== "None";
+    }
+
+    function cleanTemplateText(value) {
+      const text = String(value ?? "").trim();
+      if ((text.startsWith("'") && text.endsWith("'")) || (text.startsWith('"') && text.endsWith('"'))) {
+        return text.slice(1, -1);
+      }
+      return text;
+    }
+
+    function formatTemplatePrimitive(value) {
+      if (!isMeaningfulTemplateValue(value)) return "";
+      if (typeof value === "boolean") return value ? "yes" : "no";
+      return cleanTemplateText(value);
+    }
+
+    function renderTemplateList(values) {
+      const items = Array.isArray(values) ? values.filter(isMeaningfulTemplateValue) : [];
+      if (!items.length) return "";
+      return `<ul style="margin:6px 0 0 18px;">${items.map((item) => `<li>${escapeHtml(formatTemplatePrimitive(item))}</li>`).join("")}</ul>`;
+    }
+
+    function renderTemplateKvGrid(entries) {
+      const usable = entries.filter((entry) => isMeaningfulTemplateValue(entry[1]));
+      if (!usable.length) return "";
+      return `
+        <div class="kv-grid" style="margin-bottom:12px;">
+          ${usable.map(([label, value]) => `
+            <div class="kv-card">
+              <div class="muted">${escapeHtml(label)}</div>
+              <div>${escapeHtml(formatTemplatePrimitive(value))}</div>
+            </div>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderTemplateConditions(conditions) {
+      if (!conditions || typeof conditions !== "object") return "";
+      const summary = renderTemplateKvGrid([
+        ["Catalyst", conditions.catalyst],
+        ["Stoichiometry", conditions.stechio],
+        ["Label", conditions.label],
+        ["Light required", conditions.light],
+        ["Remove forward", conditions.remove_forward],
+      ]);
+      const contextual = renderTemplateKvGrid([
+        ["Temperature", conditions.temperature],
+        ["pH", conditions.pH],
+        ["Solvent", conditions.solvent],
+      ]);
+      const doiList = Array.isArray(conditions.doi) ? conditions.doi : [];
+      return `
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600; margin-bottom:6px;">Conditions</div>
+          ${summary || contextual ? `${summary}${contextual}` : `<div class="muted">No explicit conditions were attached to this template.</div>`}
+          ${doiList.length ? `
+            <div style="margin-top:8px;"><strong>References</strong></div>
+            ${renderTemplateList(doiList.map(cleanTemplateText))}
+          ` : ""}
+        </div>
+      `;
+    }
+
+    function renderTemplateRules(rules) {
+      if (!rules || typeof rules !== "object" || !Object.keys(rules).length) return "";
+      const sections = [
+        ["Avoid", rules.avoid],
+        ["Enforce", rules.enforce],
+        ["Avoid Formation", rules.avoid_formation],
+        ["At Least One", rules.at_least_one],
+      ].filter(([, value]) => isMeaningfulTemplateValue(value));
+      if (!sections.length) return "";
+      return `
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600; margin-bottom:6px;">Rules</div>
+          ${sections.map(([label, value]) => `
+            <details style="margin-bottom:8px;">
+              <summary>${escapeHtml(label)}</summary>
+              ${formatJsonBlock(value)}
+            </details>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderTemplateChangeSet(title, changes) {
+      const rows = Array.isArray(changes) ? changes : [];
+      if (!rows.length) return "";
+      return `
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600; margin-bottom:6px;">${escapeHtml(title)}</div>
+          <div style="display:grid; gap:8px;">
+            ${rows.map((change, index) => {
+              const entries = [
+                ["Delete", change?.delete],
+                ["Single", change?.single],
+                ["Double", change?.double],
+                ["Triple", change?.triple],
+                ["Aromatic", change?.aromatic],
+                ["Charges", change?.charges],
+              ].filter(([, value]) => isMeaningfulTemplateValue(value));
+              return `
+                <div class="kv-card">
+                  <div style="font-weight:600; margin-bottom:6px;">Pattern ${index + 1}</div>
+                  ${entries.length
+                    ? entries.map(([label, value]) => `<div style="margin-bottom:4px;"><strong>${escapeHtml(label)}:</strong> ${escapeHtml(formatTemplatePrimitive(value))}</div>`).join("")
+                    : `<div class="muted">No explicit bond-change data recorded.</div>`}
+                </div>
+              `;
+            }).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderTemplateHtml(templatePayload) {
+      const templateData = templatePayload?.data || {};
+      const visualizationHtml = String(templatePayload?.visualization_html || "").trim();
+      if ((!templateData || typeof templateData !== "object" || !Object.keys(templateData).length) && !visualizationHtml) {
+        return `<div class="muted">No reaction-template library data was available for this reaction.</div>`;
+      }
+      const summary = renderTemplateKvGrid([
+        ["Name", templateData.name],
+        ["Reactants", templateData.reactants],
+        ["Products", templateData.products],
+        ["Major Reactants", templateData.major_reactants],
+        ["Major Products", templateData.major_products],
+        ["Minor Reactants", templateData.minor_reactants],
+        ["Minor Products", templateData.minor_products],
+        ["Spectators", templateData.spectators],
+        ["Side Reaction", templateData.side_reaction],
+        ["Reacts With Itself", templateData.react_with_itself],
+        ["Template File", templateData.folder],
+      ]);
+      const unknownFields = Object.fromEntries(
+        Object.entries(templateData).filter(([key]) => ![
+          "name",
+          "reactants",
+          "products",
+          "major_reactants",
+          "major_products",
+          "minor_reactants",
+          "minor_products",
+          "spectators",
+          "side_reaction",
+          "react_with_itself",
+          "folder",
+          "conditions",
+          "rules",
+          "changes_react_to_prod",
+          "changes_prod_to_react",
+          "MG",
+        ].includes(key))
+      );
+      return `
+        ${visualizationHtml ? `
+          <div style="margin-bottom:16px;">
+            <div style="font-weight:600; margin-bottom:6px;">Template Render</div>
+            <div class="mol-card">${visualizationHtml}</div>
+          </div>
+        ` : ""}
+        <div style="margin-bottom:14px;">
+          <div style="font-weight:600; margin-bottom:6px;">Template Summary</div>
+          ${summary || `<div class="muted">No high-level summary fields were attached to this template.</div>`}
+        </div>
+        ${renderTemplateConditions(templateData.conditions)}
+        ${renderTemplateRules(templateData.rules)}
+        ${renderTemplateChangeSet("Reactant → Product Changes", templateData.changes_react_to_prod)}
+        ${renderTemplateChangeSet("Product → Reactant Changes", templateData.changes_prod_to_react)}
+        ${Object.keys(unknownFields).length ? `
+          <details>
+            <summary>Additional Template Data</summary>
+            ${formatJsonBlock(unknownFields)}
+          </details>
+        ` : ""}
+      `;
+    }
+
     function renderInputsPanels(snapshot) {
       const summary = document.getElementById("inputs-summary");
       const pathmin = document.getElementById("pathmin-config-panel");
@@ -2254,6 +2596,7 @@ def _drive_html() -> str:
           <div class="network-toolbar-actions">
             <button class="network-tool-button" data-drive-action="toolbar-minimize-node" title="Minimize geometry" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>↓</button>
             <button class="network-tool-button" data-drive-action="toolbar-apply-node" title="Apply reaction templates" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>+</button>
+            <button class="network-tool-button" data-drive-action="toolbar-nanoreactor-node" title="Run nanoreactor sampling" onclick="queueNanoreactor(${Number(node.id)})" ${node.can_nanoreactor ? "" : "disabled"}>⊕</button>
             <button class="network-tool-button ${connectActive ? "active" : ""}" data-drive-action="toolbar-connect-node" title="Connect to new node" onclick="beginConnectMode(${Number(node.id)})">→</button>
           </div>
         `;
@@ -2580,19 +2923,23 @@ def _drive_html() -> str:
           ${node.endpoint_optimization_error ? `<div><strong>Last optimization error:</strong> <span style="color:#b03a2e;">${escapeHtml(node.endpoint_optimization_error)}</span></div>` : ""}
           <div><strong>Can queue minimization:</strong> ${node.minimizable ? "yes" : "no"}</div>
           <div><strong>Can apply reactions:</strong> ${node.can_apply_reactions ? "yes" : "no"}</div>
+          <div><strong>Can run nanoreactor:</strong> ${node.can_nanoreactor ? "yes" : "no"}</div>
           ${node.minimize_note ? `<div><strong>Minimization note:</strong> ${escapeHtml(node.minimize_note)}</div>` : ""}
           ${node.apply_reactions_note ? `<div><strong>Reaction note:</strong> ${escapeHtml(node.apply_reactions_note)}</div>` : ""}
+          ${node.nanoreactor_note ? `<div><strong>Nanoreactor note:</strong> ${escapeHtml(node.nanoreactor_note)}</div>` : ""}
           <div><strong>NEB-backed:</strong> ${node.neb_backed ? "yes" : "no"}</div>
         `;
         targeted.innerHTML = `
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="minimize-node" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>Queue Minimization For This Geometry</button></div>
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="apply-reactions" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>Apply Reactions To This Node</button></div>
+          <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="nanoreactor" onclick="queueNanoreactor(${Number(node.id)})" ${node.can_nanoreactor ? "" : "disabled"}>Run Nanoreactor Sampling From This Geometry</button></div>
           <div style="margin-bottom:10px; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;">
             <button class="secondary" onclick="setManualEdgeEndpoint('source', ${Number(node.id)})">Use As Manual Edge Source</button>
             <button class="secondary" onclick="setManualEdgeEndpoint('target', ${Number(node.id)})">Use As Manual Edge Target</button>
           </div>
           ${node.minimize_note ? `<div style="margin-bottom:10px; color:${node.minimizable ? "#6f6558" : "#b03a2e"};">${escapeHtml(node.minimize_note)}</div>` : ""}
           ${node.apply_reactions_note ? `<div style="margin-bottom:10px; color:${node.can_apply_reactions ? "#6f6558" : "#b03a2e"};">${escapeHtml(node.apply_reactions_note)}</div>` : ""}
+          ${node.nanoreactor_note ? `<div style="margin-bottom:10px; color:${node.can_nanoreactor ? "#6f6558" : "#b03a2e"};">${escapeHtml(node.nanoreactor_note)}</div>` : ""}
           <pre>${escapeHtml(JSON.stringify(node.data || {}, null, 2))}</pre>
         `;
         templateData.innerHTML = `<pre>${escapeHtml(JSON.stringify(node.data || {}, null, 2))}</pre>`;
@@ -2641,7 +2988,7 @@ def _drive_html() -> str:
           <pre style="margin-bottom:12px;">${escapeHtml(JSON.stringify(edge.data || {}, null, 2))}</pre>
         ` : `<div class="muted" style="margin-bottom:12px;">No NEB-derived edge data is available yet for this edge.</div>`}
         ${hasTemplateData
-          ? `<pre>${escapeHtml(JSON.stringify(template.data, null, 2))}</pre>`
+          ? renderTemplateHtml(template)
           : `<div class="muted">No reaction-template library data was available for this reaction.</div>`}
       `;
       structures.innerHTML = `
@@ -2704,29 +3051,117 @@ def _drive_html() -> str:
         return;
       }
 
-      const width = 1180;
-      const height = 680;
+      function computeTreeNetworkLayout(nodes, edges) {
+        const parentsByNode = new Map();
+        const childrenByNode = new Map();
+        const nodeIds = nodes.map((node) => Number(node.id));
+        edges.forEach((edge) => {
+          const source = Number(edge.source);
+          const target = Number(edge.target);
+          const parents = parentsByNode.get(source) || [];
+          parents.push(target);
+          parentsByNode.set(source, parents);
+          const children = childrenByNode.get(target) || [];
+          children.push(source);
+          childrenByNode.set(target, children);
+        });
+
+        const depthByNode = new Map();
+        const rootId = nodeIds.includes(0) ? 0 : (nodeIds[0] ?? 0);
+        const queue = [rootId];
+        depthByNode.set(rootId, 0);
+        while (queue.length) {
+          const parentId = queue.shift();
+          const parentDepth = Number(depthByNode.get(parentId) || 0);
+          const children = (childrenByNode.get(parentId) || []).slice().sort((a, b) => a - b);
+          children.forEach((childId) => {
+            const nextDepth = parentDepth + 1;
+            const current = depthByNode.get(childId);
+            if (current == null || nextDepth < current) {
+              depthByNode.set(childId, nextDepth);
+              queue.push(childId);
+            }
+          });
+        }
+
+        const pending = nodeIds.filter((nodeId) => !depthByNode.has(nodeId)).sort((a, b) => a - b);
+        pending.forEach((nodeId) => {
+          const parents = (parentsByNode.get(nodeId) || []).filter((parentId) => depthByNode.has(parentId));
+          if (parents.length) {
+            depthByNode.set(nodeId, 1 + Math.min(...parents.map((parentId) => Number(depthByNode.get(parentId) || 0))));
+            return;
+          }
+          depthByNode.set(nodeId, 1 + Math.max(...Array.from(depthByNode.values(), (value) => Number(value || 0))));
+        });
+
+        const levelMap = new Map();
+        nodes.forEach((node) => {
+          const depth = Number(depthByNode.get(Number(node.id)) || 0);
+          const row = levelMap.get(depth) || [];
+          row.push(node);
+          levelMap.set(depth, row);
+        });
+
+        const levelDepths = Array.from(levelMap.keys()).sort((a, b) => a - b);
+        const orderByNode = new Map();
+        levelDepths.forEach((depth) => {
+          const levelNodes = levelMap.get(depth) || [];
+          if (depth === 0) {
+            levelNodes.sort((a, b) => Number(a.id) - Number(b.id));
+          } else {
+            levelNodes.sort((a, b) => {
+              const aParents = (parentsByNode.get(Number(a.id)) || []).filter((parentId) => orderByNode.has(parentId));
+              const bParents = (parentsByNode.get(Number(b.id)) || []).filter((parentId) => orderByNode.has(parentId));
+              const aCenter = aParents.length
+                ? aParents.reduce((sum, parentId) => sum + Number(orderByNode.get(parentId) || 0), 0) / aParents.length
+                : Number(a.id);
+              const bCenter = bParents.length
+                ? bParents.reduce((sum, parentId) => sum + Number(orderByNode.get(parentId) || 0), 0) / bParents.length
+                : Number(b.id);
+              if (aCenter !== bCenter) return aCenter - bCenter;
+              return Number(a.id) - Number(b.id);
+            });
+          }
+          levelNodes.forEach((node, index) => orderByNode.set(Number(node.id), index));
+        });
+
+        const maxDepth = Math.max(0, ...levelDepths);
+        const maxLevelCount = Math.max(1, ...Array.from(levelMap.values(), (row) => row.length));
+        const width = Math.max(1180, 260 + maxDepth * 230);
+        const height = Math.max(680, 180 + maxLevelCount * 94);
+        const xForDepth = (depth) => 86 + (maxDepth === 0 ? 0 : (depth / maxDepth) * (width - 172));
+        const positions = new Map();
+
+        levelDepths.forEach((depth) => {
+          const levelNodes = (levelMap.get(depth) || []).slice();
+          const count = levelNodes.length;
+          const usableHeight = Math.max(1, height - 120);
+          const gap = count <= 1 ? 0 : Math.min(110, usableHeight / Math.max(count - 1, 1));
+          const blockHeight = gap * Math.max(count - 1, 0);
+          const startY = (height - blockHeight) / 2;
+          levelNodes.forEach((node, index) => {
+            positions.set(Number(node.id), {
+              x: xForDepth(depth),
+              y: count === 1 ? height / 2 : startY + index * gap,
+            });
+          });
+        });
+
+        return { width, height, positions };
+      }
+
+      const layout = computeTreeNetworkLayout(nodes, edges);
+      const width = layout.width;
+      const height = layout.height;
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       const make = (tag) => document.createElementNS(ns, tag);
       const nodeElems = new Map();
       const edgeElems = [];
-      const version = snapshot.drive?.version || "";
-      const cachedPositions = state.networkLayoutVersion === version
-        ? state.networkNodePositions
-        : {};
-      const hasCachedLayout = nodes.every((node) => {
-        const entry = cachedPositions[String(Number(node.id))];
-        return entry && Number.isFinite(entry.x) && Number.isFinite(entry.y);
-      });
-
-      const simNodes = nodes.map((node, index) => ({
+      const simNodes = nodes.map((node) => ({
         id: Number(node.id),
         node,
-        x: hasCachedLayout
-          ? Number(cachedPositions[String(Number(node.id))].x)
-          : width / 2 + ((index % 6) - 3) * 28,
-        y: hasCachedLayout
-          ? Number(cachedPositions[String(Number(node.id))].y)
-          : height / 2 + (Math.floor(index / 6) - 3) * 28,
+        x: Number(layout.positions.get(Number(node.id))?.x || width / 2),
+        y: Number(layout.positions.get(Number(node.id))?.y || height / 2),
       }));
       const simById = new Map(simNodes.map((node) => [node.id, node]));
 
@@ -2801,34 +3236,10 @@ def _drive_html() -> str:
           item.hitbox.setAttribute("y2", String(target.y));
         });
         simNodes.forEach((simNode) => {
-          simNode.x = Math.max(28, Math.min(width - 28, simNode.x));
-          simNode.y = Math.max(28, Math.min(height - 36, simNode.y));
           if (simNode.group) simNode.group.setAttribute("transform", `translate(${simNode.x},${simNode.y})`);
         });
       }
-
-      if (!hasCachedLayout && window.d3 && typeof d3.layout?.force === "function") {
-        const force = d3.layout.force()
-          .size([width, height])
-          .nodes(simNodes)
-          .links(edges.map((edge) => ({
-            source: simById.get(Number(edge.source)),
-            target: simById.get(Number(edge.target)),
-          })))
-          .charge(Math.max(-1200, -170 - nodes.length * 14))
-          .linkDistance(Math.max(100, Math.min(240, 120 + nodes.length * 1.3)))
-          .gravity(0.05)
-          .friction(0.84)
-          .on("tick", applySimPositions);
-        force.start();
-        for (let i = 0; i < Math.max(28, Math.min(90, nodes.length * 2)); i += 1) force.tick();
-        force.stop();
-      }
       applySimPositions();
-      state.networkLayoutVersion = version;
-      state.networkNodePositions = Object.fromEntries(
-        simNodes.map((simNode) => [String(Number(simNode.id)), { x: simNode.x, y: simNode.y }])
-      );
 
       const selected = state.selected;
       if (selected?.kind === "edge") {
@@ -2876,6 +3287,8 @@ def _drive_html() -> str:
             setSubtext("Autosplitting NEB is running. The edge state and any discovered intermediates will appear after the backend writes them back.");
           } else if (activeAction.type === "apply-reactions") {
             setSubtext("Reaction templates are being applied to the selected node. Any newly grown products will be merged into the current graph after the job finishes.");
+          } else if (activeAction.type === "nanoreactor") {
+            setSubtext("Nanoreactor sampling is running from the selected node. Distinct minimized products will be merged into the graph after the backend finishes.");
           } else {
             setSubtext("Background work is running. The network and counters will refresh automatically.");
           }
@@ -2922,7 +3335,7 @@ def _drive_html() -> str:
           product_xyz: document.getElementById("product-xyz").value,
         });
         setBanner("Initialization request accepted.");
-        await refreshState();
+        void refreshState();
       } catch (error) {
         setBanner(error.message || String(error), true);
         setSubtext("The request failed before it could start.");
@@ -2937,7 +3350,7 @@ def _drive_html() -> str:
           workspace_path: document.getElementById("workspace-path").value,
         });
         setBanner("Workspace load request accepted.");
-        await refreshState();
+        void refreshState();
       } catch (error) {
         setBanner(error.message || String(error), true);
         setSubtext("The workspace could not be loaded.");
@@ -2950,7 +3363,7 @@ def _drive_html() -> str:
         setSubtext("The selected geometry will be optimized and then written back into the live network.");
         await postJson("/api/minimize", { node_ids: [Number(nodeId)] });
         setBanner(`Minimization request accepted for node ${nodeId}.`);
-        await refreshState();
+        void refreshState();
       } catch (error) {
         setBanner(error.message || String(error), true);
         setSubtext("The minimization request failed before it could start.");
@@ -2963,7 +3376,7 @@ def _drive_html() -> str:
         setSubtext("Every available endpoint geometry will be optimized.");
         await postJson("/api/minimize", { node_ids: [] });
         setBanner("Minimization request accepted for all geometries.");
-        await refreshState();
+        void refreshState();
       } catch (error) {
         setBanner(error.message || String(error), true);
         setSubtext("The minimization request failed before it could start.");
@@ -2976,7 +3389,7 @@ def _drive_html() -> str:
         setSubtext("Both endpoint geometries will be optimized and written back into the live network.");
         await postJson("/api/minimize", { node_ids: [Number(sourceNode), Number(targetNode)] });
         setBanner(`Minimization request accepted for nodes ${sourceNode} and ${targetNode}.`);
-        await refreshState();
+        void refreshState();
       } catch (error) {
         setBanner(error.message || String(error), true);
         setSubtext("The paired minimization request failed before it could start.");
@@ -2989,7 +3402,7 @@ def _drive_html() -> str:
         setSubtext("The edge endpoints will be prepared, the NEB will run in the background, and any discovered intermediates will be folded back into this network.");
         await postJson("/api/run-neb", { source_node: Number(sourceNode), target_node: Number(targetNode) });
         setBanner(`Autosplitting NEB request accepted for edge ${sourceNode} -> ${targetNode}.`);
-        await refreshState();
+        void refreshState();
       } catch (error) {
         setBanner(error.message || String(error), true);
         setSubtext("The NEB request failed before it could start.");
@@ -3008,12 +3421,33 @@ def _drive_html() -> str:
         renderLiveActivity(state.snapshot);
         await postJson("/api/apply-reactions", { node_id: Number(nodeId) });
         setBanner(`Reaction-application request accepted for node ${nodeId}.`);
-        await refreshState();
+        void refreshState();
       } catch (error) {
         clearPendingLiveActivity();
         renderLiveActivity(state.snapshot);
         setBanner(error.message || String(error), true);
         setSubtext("The reaction-application request failed before it could start.");
+      }
+    }
+
+    async function queueNanoreactor(nodeId) {
+      try {
+        setBanner(`Running nanoreactor sampling from node ${nodeId}...`);
+        setSubtext("The selected geometry will be sent to the configured nanoreactor backend and distinct minimized products will be merged into the graph.");
+        state.pendingLiveActivity = buildOptimisticGrowthActivity(
+          Number(nodeId),
+          `Running nanoreactor sampling from node ${Number(nodeId)}...`,
+          `Sampling products from node ${Number(nodeId)}.`
+        );
+        renderLiveActivity(state.snapshot);
+        await postJson("/api/nanoreactor", { node_id: Number(nodeId) });
+        setBanner(`Nanoreactor request accepted for node ${nodeId}.`);
+        void refreshState();
+      } catch (error) {
+        clearPendingLiveActivity();
+        renderLiveActivity(state.snapshot);
+        setBanner(error.message || String(error), true);
+        setSubtext("The nanoreactor request failed before it could start.");
       }
     }
 
@@ -3106,6 +3540,7 @@ def _drive_html() -> str:
     window.queueMinimizePair = queueMinimizePair;
     window.queueEdgeNeb = queueEdgeNeb;
     window.queueApplyReactions = queueApplyReactions;
+    window.queueNanoreactor = queueNanoreactor;
     window.runKmcModel = runKmcModel;
     window.setManualEdgeEndpoint = setManualEdgeEndpoint;
     window.beginConnectMode = beginConnectMode;
@@ -3149,6 +3584,7 @@ class MepdDriveServer(ThreadingHTTPServer):
         max_nodes: int,
         max_depth: int,
         max_parallel_nebs: int,
+        network_splits: bool = True,
         initial_state: dict[str, Any] | None = None,
     ):
         self.base_directory = base_directory
@@ -3158,6 +3594,7 @@ class MepdDriveServer(ThreadingHTTPServer):
         self.max_nodes = max_nodes
         self.max_depth = max_depth
         self.max_parallel_nebs = max_parallel_nebs
+        self.network_splits = bool(network_splits)
         self.state_lock = threading.Lock()
         self.runtime = _DriveRuntimeState()
         self._drive_payload_cache_key: tuple[Any, ...] | None = None
@@ -3175,6 +3612,22 @@ class MepdDriveServer(ThreadingHTTPServer):
             self.runtime.reactant = initial_state.get("reactant")
             self.runtime.product = initial_state.get("product")
             self.runtime.last_message = str(initial_state.get("message") or "Workspace loaded.")
+            if self.runtime.workspace is not None and self.runtime.workspace.queue_fp.exists():
+                with contextlib.suppress(Exception):
+                    runtime = _DriveRuntimeState(
+                        workspace=self.runtime.workspace,
+                        reactant=self.runtime.reactant,
+                        product=self.runtime.product,
+                        last_message=self.runtime.last_message,
+                        last_error=self.runtime.last_error,
+                        future=None,
+                        busy_label="",
+                        active_action=None,
+                    )
+                    self._drive_payload_cache_lookup(
+                        workspace=self.runtime.workspace,
+                        runtime=runtime,
+                    )
 
     def _resolve_inputs_fp(self, payload: dict[str, Any]) -> Path:
         configured = getattr(self, "inputs_fp", None)
@@ -3200,15 +3653,16 @@ class MepdDriveServer(ThreadingHTTPServer):
         workspace: RetropathsWorkspace,
         runtime: _DriveRuntimeState,
     ) -> dict[str, Any]:
+        network_splits = getattr(self, "network_splits", True)
         builder = _build_drive_payload
         builder_name = "full"
         if (
             runtime.active_action is not None
             and runtime.active_action.get("status") == "running"
-            and runtime.active_action.get("type") == "minimize"
+            and runtime.active_action.get("type") in {"minimize", "initialize", "apply-reactions", "nanoreactor", "load-workspace"}
         ):
             builder = _build_drive_payload_fast
-            builder_name = "fast-minimize"
+            builder_name = f"fast-{runtime.active_action.get('type')}"
         elif (
             runtime.active_action is not None
             and runtime.active_action.get("status") == "running"
@@ -3220,12 +3674,13 @@ class MepdDriveServer(ThreadingHTTPServer):
         product_smiles = str((runtime.product or {}).get("smiles") or "")
         active_action = runtime.active_action or {}
         version_key = _drive_network_version(workspace)
-        if builder_name in {"fast-minimize", "fast-neb"}:
+        if builder_name.startswith("fast-"):
             version_key = f"{builder_name}-active"
         action_progress_key: tuple[Any, ...] = ()
-        if builder_name == "fast-minimize":
+        if builder_name.startswith("fast-") and builder_name != "fast-neb":
             jobs = active_action.get("jobs", []) or []
             action_progress_key = (
+                str(active_action.get("type") or ""),
                 str(active_action.get("status") or ""),
                 str(active_action.get("label") or ""),
                 tuple(
@@ -3249,7 +3704,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             product_smiles,
             action_progress_key,
             tuple(int(node_id) for node_id in active_action.get("node_ids", []))
-            if builder_name == "fast-minimize"
+            if builder_name.startswith("fast-") and builder_name != "fast-neb"
             else (),
             int(active_action.get("source_node", -1)) if builder_name == "fast-neb" else -1,
             int(active_action.get("target_node", -1)) if builder_name == "fast-neb" else -1,
@@ -3261,8 +3716,10 @@ class MepdDriveServer(ThreadingHTTPServer):
             if cached_key == cache_key and cached_value is not None:
                 return cached_value
 
-        payload = builder(
+        payload = _call_drive_payload_builder(
+            builder,
             workspace,
+            network_splits=getattr(self, "network_splits", True),
             product_smiles=product_smiles,
             active_job_label=runtime.busy_label if runtime.future is not None and not runtime.future.done() else "",
             active_action=runtime.active_action,
@@ -3314,11 +3771,11 @@ class MepdDriveServer(ThreadingHTTPServer):
             result = future.result()
         except Exception as exc:
             with self.state_lock:
-                self.runtime.last_error = f"{type(exc).__name__}: {exc}"
+                self.runtime.last_error = _format_user_facing_error(exc)
                 self.runtime.last_message = "Last action failed."
                 if self.runtime.active_action is not None:
                     self.runtime.active_action["status"] = "failed"
-                    self.runtime.active_action["error"] = f"{type(exc).__name__}: {exc}"
+                    self.runtime.active_action["error"] = _format_user_facing_error(exc)
             return
         message = result.get("message") if isinstance(result, dict) else result
         with self.state_lock:
@@ -3368,11 +3825,11 @@ class MepdDriveServer(ThreadingHTTPServer):
                 result = future.result()
             except Exception as exc:
                 with self.state_lock:
-                    self.runtime.last_error = f"{type(exc).__name__}: {exc}"
+                    self.runtime.last_error = _format_user_facing_error(exc)
                     self.runtime.last_message = "Last action failed."
                     if self.runtime.active_action is not None:
                         self.runtime.active_action["status"] = "failed"
-                        self.runtime.active_action["error"] = f"{type(exc).__name__}: {exc}"
+                        self.runtime.active_action["error"] = _format_user_facing_error(exc)
                 return
             workspace = RetropathsWorkspace(**result["workspace"])
             with self.state_lock:
@@ -3396,6 +3853,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             max_nodes=self.max_nodes,
             max_depth=self.max_depth,
             max_parallel_nebs=self.max_parallel_nebs,
+            network_splits=getattr(self, "network_splits", True),
             progress_fp=progress_fp,
             label="Building Retropaths network...",
         )
@@ -3428,11 +3886,11 @@ class MepdDriveServer(ThreadingHTTPServer):
                 result = future.result()
             except Exception as exc:
                 with self.state_lock:
-                    self.runtime.last_error = f"{type(exc).__name__}: {exc}"
+                    self.runtime.last_error = _format_user_facing_error(exc)
                     self.runtime.last_message = "Last action failed."
                     if self.runtime.active_action is not None:
                         self.runtime.active_action["status"] = "failed"
-                        self.runtime.active_action["error"] = f"{type(exc).__name__}: {exc}"
+                        self.runtime.active_action["error"] = _format_user_facing_error(exc)
                 return
             workspace = RetropathsWorkspace(**result["workspace"])
             with self.state_lock:
@@ -3442,7 +3900,11 @@ class MepdDriveServer(ThreadingHTTPServer):
                 self.runtime.last_message = str(result.get("message") or "Workspace loaded.")
                 self.runtime.active_action = None
 
-        future = self.executor.submit(_load_existing_workspace_job, workspace_path)
+        future = self.executor.submit(
+            _load_existing_workspace_job,
+            workspace_path,
+            network_splits=getattr(self, "network_splits", True),
+        )
         future.add_done_callback(_finish_load)
         self._set_busy("Loading existing workspace...", future)
         with self.state_lock:
@@ -3537,6 +3999,35 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "progress_fp": progress_fp,
             }
 
+    def submit_nanoreactor(self, *, node_id: int) -> None:
+        self._assert_idle()
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize a workspace before running nanoreactor sampling.")
+
+        progress_fp = str((workspace.directory / f"drive_nanoreactor_{int(node_id)}.progress.json").resolve())
+        workspace_copy = RetropathsWorkspace(**dict(workspace.__dict__))
+
+        def _job() -> dict[str, Any]:
+            return run_nanoreactor_for_node(
+                workspace_copy,
+                int(node_id),
+                progress_fp=progress_fp,
+            )
+
+        future = self.executor.submit(_job)
+        future.add_done_callback(self._finish_future)
+        self._set_busy(f"Running nanoreactor sampling from node {node_id}...", future)
+        with self.state_lock:
+            self.runtime.active_action = {
+                "type": "nanoreactor",
+                "status": "running",
+                "label": f"Running nanoreactor sampling from node {node_id}...",
+                "node_id": int(node_id),
+                "progress_fp": progress_fp,
+            }
+
     def submit_run_neb(self, *, source_node: int, target_node: int) -> None:
         self._assert_idle()
         with self.state_lock:
@@ -3550,8 +4041,14 @@ class MepdDriveServer(ThreadingHTTPServer):
             overwrite=False,
         )
         with contextlib.suppress(Exception):
-            if queue.recover_stale_running_items():
+            if queue.recover_stale_running_items(
+                output_dir=workspace.queue_output_dir,
+                charge=0,
+                multiplicity=1,
+            ):
                 queue.write_to_disk(workspace.queue_fp)
+                if getattr(self, "network_splits", True):
+                    load_partial_annotated_pot(workspace)
                 queue = build_retropaths_neb_queue(
                     pot=pot,
                     queue_fp=workspace.queue_fp,
@@ -3576,6 +4073,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             dict(workspace.__dict__),
             source_node=source_node,
             target_node=target_node,
+            network_splits=getattr(self, "network_splits", True),
             log_fp=log_fp,
             progress_fp=progress_fp,
             chain_fp=chain_fp,
@@ -3625,6 +4123,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             raise ValueError("Initialize a workspace before running kinetics.")
         result = _run_kmc_payload(
             workspace,
+            network_splits=getattr(self, "network_splits", True),
             temperature_kelvin=float(temperature_kelvin),
             final_time=float(final_time) if final_time is not None else None,
             max_steps=int(max_steps),
@@ -3665,7 +4164,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                     snapshot["live_activity"] = _build_neb_live_payload(runtime.active_action, runtime.workspace)
                 elif runtime.active_action.get("type") == "minimize":
                     snapshot["live_activity"] = _build_minimize_live_payload(runtime.active_action)
-                elif runtime.active_action.get("type") in {"initialize", "apply-reactions"}:
+                elif runtime.active_action.get("type") in {"initialize", "apply-reactions", "nanoreactor"}:
                     snapshot["live_activity"] = _build_growth_live_payload(runtime.active_action)
         if runtime.workspace is not None and runtime.workspace.queue_fp.exists():
             try:
@@ -3675,11 +4174,13 @@ class MepdDriveServer(ThreadingHTTPServer):
                 )
             except Exception:
                 with contextlib.suppress(Exception):
-                    snapshot["drive"] = _build_drive_payload_fast(
+                    snapshot["drive"] = _call_drive_payload_builder(
+                        _build_drive_payload_fast,
                         runtime.workspace,
                         product_smiles=str((runtime.product or {}).get("smiles") or ""),
                         active_job_label=runtime.busy_label if runtime.future is not None and not runtime.future.done() else "",
                         active_action=runtime.active_action,
+                        network_splits=getattr(self, "network_splits", True),
                     )
         return snapshot
 
@@ -3757,6 +4258,12 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 )
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
+            if self.path == "/api/nanoreactor":
+                self.server.submit_nanoreactor(
+                    node_id=int(payload["node_id"]),
+                )
+                self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
+                return
             if self.path == "/api/run-neb":
                 self.server.submit_run_neb(
                     source_node=int(payload["source_node"]),
@@ -3782,9 +4289,10 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 self._write_json({"ok": True, **result}, HTTPStatus.OK)
                 return
         except Exception as exc:
+            error_message = _format_user_facing_error(exc)
             with contextlib.suppress(Exception):
-                self.server._record_request_error(f"{type(exc).__name__}: {exc}")
-            self._write_json({"error": f"{type(exc).__name__}: {exc}"}, HTTPStatus.BAD_REQUEST)
+                self.server._record_request_error(error_message)
+            self._write_json({"error": error_message}, HTTPStatus.BAD_REQUEST)
             return
         self.send_error(404)
 
@@ -3807,6 +4315,7 @@ def launch_mepd_drive(
     max_nodes: int = 40,
     max_depth: int = 4,
     max_parallel_nebs: int = 1,
+    network_splits: bool = True,
     open_browser: bool = True,
 ) -> MepdDriveServer:
     explicit_directory = Path(directory).resolve() if directory else None
@@ -3820,7 +4329,7 @@ def launch_mepd_drive(
         if workspace_dir.is_file() and workspace_dir.name == "workspace.json":
             workspace_dir = workspace_dir.parent
         base_directory = workspace_dir.parent
-        initial_state = _load_existing_workspace_job(str(workspace_dir))
+        initial_state = _load_existing_workspace_job_compat(str(workspace_dir), network_splits=network_splits)
     elif smiles:
         resolved_inputs = Path(str(inputs_fp)).expanduser().resolve() if inputs_fp else None
         if resolved_inputs is None:
@@ -3844,6 +4353,7 @@ def launch_mepd_drive(
             max_nodes=max_nodes,
             max_depth=max_depth,
             max_parallel_nebs=max_parallel_nebs,
+            network_splits=network_splits,
             progress_fp=None,
         )
     else:
@@ -3858,6 +4368,7 @@ def launch_mepd_drive(
         max_nodes=max_nodes,
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
+        network_splits=network_splits,
         initial_state=initial_state,
     )
     if open_browser:

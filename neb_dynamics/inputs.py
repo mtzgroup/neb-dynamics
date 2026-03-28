@@ -309,6 +309,7 @@ class RunInputs:
     chemcloud_queue: str = None
     write_qcio: bool = False
     qmmm_inputs: dict = None
+    nanoreactor_inputs: dict = None
 
     path_min_method: str = 'NEB'
     path_min_inputs: dict = None
@@ -321,6 +322,7 @@ class RunInputs:
     optimizer_kwds: dict = None
 
     def __post_init__(self):
+        default_kwds = {}
 
         if self.path_min_method.upper() == "NEB":
             default_kwds = NEBInputs().__dict__
@@ -404,6 +406,11 @@ class RunInputs:
         for key, val in self.qmmm_inputs.items():
             if key in _QMMM_PATH_KEYS and val is not None:
                 self.qmmm_inputs[key] = Path(val)
+
+        if self.nanoreactor_inputs is None:
+            self.nanoreactor_inputs = {}
+        else:
+            self.nanoreactor_inputs = dict(self.nanoreactor_inputs)
 
         if self.chain_inputs is None:
             self.chain_inputs = ChainInputs()
@@ -512,6 +519,22 @@ class RunInputs:
         return obj
 
     def save(self, fp):
+        def _toml_safe(value):
+            if value is None:
+                return None
+            if isinstance(value, Path):
+                return str(value)
+            if isinstance(value, dict):
+                cleaned = {}
+                for sub_key, sub_val in value.items():
+                    normalized = _toml_safe(sub_val)
+                    if normalized is not None:
+                        cleaned[sub_key] = normalized
+                return cleaned
+            if isinstance(value, (list, tuple)):
+                return [_toml_safe(item) for item in value]
+            return value
+
         json_dict = self.__dict__.copy()
         del json_dict['engine']
         del json_dict['optimizer']
