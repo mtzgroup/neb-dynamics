@@ -414,6 +414,7 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="live-activity-panel"' in html
     assert 'id="live-activity-inline"' in html
     assert 'class="network-canvas-shell"' in html
+    assert 'class="path-browser"' in html
     assert ">Inputs</h2>" in html
     assert ">Reaction Network</h2>" in html
     assert ">Exploration</h2>" in html
@@ -424,9 +425,14 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="pathmin-config-panel"' in html
     assert 'id="log-console"' in html
     assert 'id="network-toolbar"' in html
+    assert 'id="path-source-node"' in html
+    assert 'id="product-path-list"' in html
+    assert 'id="clear-product-path"' in html
     assert 'data-tab="kinetics"' in html
     assert 'id="run-kmc"' in html
     assert "function renderLiveActivityContent(activity)" in html
+    assert "function renderProductPathPanel(snapshot)" in html
+    assert "function computePathHighlight(snapshot, sourceNodeId, productLabel)" in html
     assert "function buildOptimisticGrowthActivity(nodeId, title, note)" in html
     assert "function computeTreeNetworkLayout(nodes, edges)" in html
     assert "function runKmcModel()" in html
@@ -434,6 +440,7 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "function renderNetworkToolbar()" in html
     assert "queueNanoreactor" in html
     assert "Run Nanoreactor Sampling From This Geometry" in html
+    assert "Use As Path Source A" in html
     assert "toolbar-nanoreactor-node" in html
     assert "function renderTemplateHtml(templatePayload)" in html
     assert "Template Render" in html
@@ -2023,6 +2030,10 @@ def test_run_nanoreactor_for_node_preserves_graph_for_follow_on_runs(monkeypatch
 
     run_nanoreactor_for_node(workspace, 1, progress_fp=str(tmp_path / "nanoreactor_2.progress.json"))
     assert engine_calls == ["source", "candidate-1"]
+    assert fake_pot.graph.has_edge(0, 2)
+    assert not fake_pot.graph.has_edge(1, 2)
+    assert fake_pot.graph.nodes[1]["nanoreactor_provenance_node"] == 0
+    assert fake_pot.graph.nodes[2]["nanoreactor_provenance_node"] == 0
 
 
 def test_run_nanoreactor_for_node_falls_back_to_single_optimizations(monkeypatch, tmp_path):

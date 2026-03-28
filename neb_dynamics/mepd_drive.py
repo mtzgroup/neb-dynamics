@@ -1748,121 +1748,332 @@ def _drive_html() -> str:
   <title>MEPD Drive</title>
   <style>
     :root {
-      --bg: #ffffff;
-      --panel: #ffffff;
-      --line: #d7c8b2;
-      --ink: #241d18;
-      --muted: #6f6558;
-      --accent: #b9652a;
-      --accent-2: #1f6a57;
-      --backed: #2f7b61;
-      --warn: #b03a2e;
+      --bg: #08111f;
+      --bg-elevated: #0d1a2c;
+      --panel: rgba(13, 24, 41, 0.9);
+      --panel-strong: rgba(16, 31, 53, 0.96);
+      --panel-soft: rgba(12, 23, 39, 0.76);
+      --line: rgba(114, 146, 197, 0.2);
+      --line-strong: rgba(120, 170, 233, 0.38);
+      --ink: #eef4ff;
+      --ink-soft: #c9d8f0;
+      --muted: #8ea3c2;
+      --accent: #63d5ff;
+      --accent-strong: #1ca4dd;
+      --accent-2: #7ef0c7;
+      --backed: #59d8b6;
+      --target: #ff8eb0;
+      --warn: #ff7a8f;
+      --shadow: 0 18px 44px rgba(2, 8, 18, 0.45);
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
     }
-    body { margin: 0; font-family: Georgia, serif; background: var(--bg); color: var(--ink); }
-    .shell { padding: 20px; display: grid; gap: 16px; }
-    .panel { background: var(--panel); border: 1px solid var(--line); padding: 16px; }
-    .page-title { padding: 20px; background: #ffffff; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 500 14px/1.5 "IBM Plex Sans", "Aptos", "Segoe UI Variable", "Avenir Next", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(93, 213, 255, 0.14), transparent 28%),
+        radial-gradient(circle at top right, rgba(126, 240, 199, 0.08), transparent 24%),
+        linear-gradient(180deg, #0a1425 0%, #08111f 100%);
+      color: var(--ink);
+    }
+    .shell { max-width: 1680px; margin: 0 auto; padding: 22px; display: grid; gap: 18px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }
+    .page-title { padding: 24px; background: linear-gradient(180deg, rgba(17, 32, 54, 0.94), rgba(11, 22, 38, 0.9)); }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(99, 213, 255, 0.08);
+      color: var(--ink-soft);
+      font-size: 11px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    .page-title h1 { margin: 0 0 8px; font-size: 30px; line-height: 1.1; letter-spacing: -0.03em; }
     .section-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
-    .section-head h2 { margin: 0; }
-    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
-    .stat { border: 1px solid var(--line); padding: 10px; background: #fbf7ef; }
+    .section-head h2 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
+    .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 12px 13px;
+      background: linear-gradient(180deg, rgba(17, 30, 49, 0.92), rgba(10, 21, 36, 0.84));
+    }
     .muted { color: var(--muted); }
     textarea, input, select, button { font: inherit; }
-    textarea, input[type="text"], input[type="number"] { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid var(--line); background: #fffdfa; }
-    textarea { min-height: 96px; resize: vertical; }
-    button { padding: 10px 14px; border: 1px solid #ad875d; background: #f5e8d3; cursor: pointer; }
-    button.primary { background: var(--accent); color: #fff9f3; border-color: #8f4b1c; }
-    button.secondary { background: #e5f0eb; border-color: #8ab0a3; }
+    label {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--ink-soft);
+      font-size: 12px;
+      letter-spacing: 0.02em;
+    }
+    textarea, input[type="text"], input[type="number"], select {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(8, 16, 28, 0.74);
+      color: var(--ink);
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    }
+    textarea::placeholder, input::placeholder { color: rgba(142, 163, 194, 0.7); }
+    textarea:focus, input:focus, select:focus, button:focus {
+      outline: none;
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 3px rgba(99, 213, 255, 0.12);
+    }
+    textarea { min-height: 110px; resize: vertical; }
+    button {
+      min-height: 40px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--ink);
+      cursor: pointer;
+      transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+    }
+    button:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--line-strong); background: rgba(99, 213, 255, 0.08); }
+    button.primary {
+      background: linear-gradient(180deg, rgba(99, 213, 255, 0.22), rgba(28, 164, 221, 0.16));
+      color: var(--ink);
+      border-color: rgba(99, 213, 255, 0.38);
+    }
+    button.secondary { background: rgba(126, 240, 199, 0.06); border-color: rgba(126, 240, 199, 0.22); }
     button:disabled { opacity: 0.55; cursor: default; }
     .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-    .summary-strip { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(0, 1.6fr); gap: 16px; align-items: start; margin-bottom: 14px; }
+    .summary-strip { display: grid; grid-template-columns: minmax(300px, 0.78fr) minmax(0, 1.92fr); gap: 16px; align-items: start; margin-bottom: 14px; }
     .tool-tabs, .detail-tabs { display: flex; gap: 8px; margin: 10px 0 14px; flex-wrap: wrap; }
-    .tool-tab, .detail-tab { padding: 7px 10px; border: 1px solid var(--line); background: #f4ecdf; cursor: pointer; }
-    .tool-tab.active, .detail-tab.active { background: var(--accent); color: white; border-color: #8f4b1c; }
+    .tool-tab, .detail-tab {
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .tool-tab.active, .detail-tab.active {
+      background: rgba(99, 213, 255, 0.12);
+      color: var(--ink);
+      border-color: rgba(99, 213, 255, 0.34);
+    }
     .tool-panel, .detail-panel { display: none; }
     .tool-panel.active, .detail-panel.active { display: block; }
-    .inputs-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr); gap: 16px; }
+    .inputs-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.86fr); gap: 16px; }
+    .network-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(300px, 0.85fr); gap: 16px; align-items: start; }
     .network-canvas-shell { position: relative; }
+    .path-browser {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+    .path-browser-head { display: flex; align-items: start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+    .path-browser-head h3 { margin: 0; font-size: 17px; }
+    .path-browser-controls { display: grid; gap: 10px; margin-bottom: 12px; }
+    .product-list { display: grid; gap: 8px; max-height: 540px; overflow: auto; padding-right: 2px; }
+    .product-row {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.03);
+      padding: 10px 12px;
+      text-align: left;
+    }
+    .product-row.active {
+      border-color: rgba(99, 213, 255, 0.34);
+      background: rgba(99, 213, 255, 0.1);
+    }
+    .product-row.unreachable { opacity: 0.6; }
+    .product-row-title { display: block; font-weight: 600; color: var(--ink); word-break: break-word; }
+    .product-row-meta { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
     .network-toolbar {
       position: absolute;
       top: 16px;
       left: 16px;
       z-index: 3;
-      min-width: 220px;
+      min-width: 272px;
+      max-width: min(300px, calc(100% - 32px));
       padding: 12px;
       border: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.96);
-      box-shadow: 0 10px 24px rgba(36, 29, 24, 0.12);
+      border-radius: var(--radius-md);
+      background: rgba(7, 15, 27, 0.82);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
     }
     .network-toolbar-title { font-weight: 600; margin-bottom: 6px; }
     .network-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
     .network-tool-button {
       min-width: 44px;
+      min-height: 44px;
       padding: 8px 10px;
       border: 1px solid var(--line);
-      background: #f7efe2;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.04);
       font-size: 20px;
       line-height: 1;
     }
-    .network-tool-button.active { background: var(--accent-2); color: #fff; border-color: #165546; }
-    .explorer-svg { width: 100%; min-height: 620px; border: 1px solid var(--line); background: #ffffff; }
-    .network-edge-line { stroke: #8f8271; stroke-width: 2.2; fill: none; }
+    .network-tool-button.active { background: rgba(126, 240, 199, 0.12); color: var(--ink); border-color: rgba(126, 240, 199, 0.34); }
+    .explorer-svg {
+      width: 100%;
+      min-height: 700px;
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius-lg) - 4px);
+      background:
+        radial-gradient(circle at 20% 18%, rgba(99, 213, 255, 0.11), transparent 20%),
+        radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%),
+        linear-gradient(180deg, #0d1728 0%, #08111f 100%);
+    }
+    .network-edge-line { stroke: rgba(128, 154, 194, 0.42); stroke-width: 2.1; fill: none; }
     .network-edge-line.neb-backed { stroke: var(--backed); stroke-width: 3.4; }
-    .network-edge-line.selected { stroke: var(--accent); stroke-width: 4.5; }
+    .network-edge-line.path-highlight { stroke: #ffd166; stroke-width: 4.6; }
+    .network-edge-line.selected { stroke: var(--accent); stroke-width: 4.4; }
     .network-edge-hitbox { stroke: transparent; stroke-width: 18; fill: none; cursor: pointer; }
-    .network-node { fill: #7b6a57; stroke: #fdf8ef; stroke-width: 2; cursor: pointer; }
-    .network-node.root { fill: #8e4d1c; }
+    .network-node {
+      fill: #7d94bb;
+      stroke: rgba(238, 244, 255, 0.85);
+      stroke-width: 1.8;
+      cursor: pointer;
+      filter: drop-shadow(0 8px 14px rgba(4, 9, 18, 0.3));
+    }
+    .network-node.root { fill: var(--accent); }
     .network-node.neb-backed { fill: var(--backed); }
-    .network-node.target { fill: #81467b; }
-    .network-node.selected { fill: #d79e35; stroke: #5f3706; stroke-width: 3; }
-    .network-node.connect-source { fill: #1f6a57; stroke: #fdf8ef; stroke-width: 3.2; }
-    .network-label { font-size: 11px; fill: #2d241c; pointer-events: none; }
+    .network-node.target { fill: var(--target); }
+    .network-node.path-highlight { stroke: #fff7de; stroke-width: 3.2; }
+    .network-node.path-source { fill: var(--accent-2); }
+    .network-node.path-target { fill: #ffd166; stroke: #fff7de; stroke-width: 3.2; }
+    .network-node.selected { fill: #ffd166; stroke: #fff7de; stroke-width: 3; }
+    .network-node.connect-source { fill: var(--accent-2); stroke: rgba(238, 244, 255, 0.92); stroke-width: 3.2; }
+    .network-label { font-size: 11px; fill: rgba(233, 241, 255, 0.94); pointer-events: none; }
     .viewer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-    iframe.structure { width: 100%; height: 320px; border: 1px solid var(--line); background: white; }
-    .mol-card { width: 100%; min-height: 320px; border: 1px solid var(--line); background: white; display: grid; align-content: start; }
+    iframe.structure {
+      width: 100%;
+      height: 320px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, #101b2b 0%, #0a1321 100%);
+    }
+    .mol-card {
+      width: 100%;
+      min-height: 320px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.98), rgba(10, 20, 33, 0.94));
+      display: grid;
+      align-content: start;
+      overflow: hidden;
+    }
     .mol-card svg { width: 100%; height: auto; display: block; }
     .mol-empty { padding: 18px 14px; color: var(--muted); }
     .mol-meta { padding: 10px 12px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); word-break: break-word; }
-    pre { margin: 0; white-space: pre-wrap; word-break: break-word; background: #f7f1e9; border: 1px solid #e4d7c5; padding: 12px; }
-    .badge { display: inline-block; padding: 2px 8px; border: 1px solid var(--line); background: #faf2e5; margin-right: 6px; }
-    .message { padding: 10px 12px; border: 1px solid var(--line); background: #faf5eb; }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(4, 10, 18, 0.72);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      color: var(--ink-soft);
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(99, 213, 255, 0.08);
+      margin-right: 6px;
+      margin-bottom: 6px;
+    }
+    .message {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(14, 26, 44, 0.95), rgba(10, 20, 34, 0.9));
+    }
     .kv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
-    .kv-card { border: 1px solid var(--line); background: #fbf7ef; padding: 10px; }
-    .code-block { background: #f7f1e9; border: 1px solid #e4d7c5; padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
-    .live-activity { margin-top: 12px; border: 1px solid var(--line); background: #fbf7ef; padding: 12px; }
-    .live-activity svg { width: 100%; height: auto; border: 1px solid var(--line); background: white; }
+    .kv-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      padding: 10px;
+    }
+    .code-block {
+      background: rgba(4, 10, 18, 0.72);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+      font-size: 12px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--ink-soft);
+    }
+    .live-activity {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      padding: 12px;
+    }
+    .live-activity svg { width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius-md); background: linear-gradient(180deg, #101b2b 0%, #0a1321 100%); }
     .live-activity pre { margin-top: 10px; font-size: 12px; max-height: 220px; overflow: auto; }
     .live-activity-inline {
       position: absolute;
       top: 16px;
       right: 16px;
       z-index: 2;
-      width: min(460px, calc(100% - 32px));
+      width: min(440px, calc(100% - 32px));
       max-height: calc(100% - 32px);
       margin-top: 0;
       overflow: auto;
-      box-shadow: 0 14px 28px rgba(36, 29, 24, 0.14);
-      backdrop-filter: blur(1px);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
     }
     .live-neb-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr) 190px; gap: 12px; align-items: start; }
     .live-neb-layout .mol-card { min-height: 210px; }
     .job-list { display: grid; gap: 8px; margin-top: 12px; }
-    .job-row { border: 1px solid var(--line); background: #fffdf8; padding: 8px 10px; }
-    .job-row.running { border-color: #1f6a57; }
-    .job-row.completed { border-color: #8ab0a3; }
-    .job-row.failed { border-color: #b03a2e; }
+    .job-row { border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, 0.03); padding: 8px 10px; }
+    .job-row.running { border-color: rgba(126, 240, 199, 0.38); }
+    .job-row.completed { border-color: rgba(89, 216, 182, 0.3); }
+    .job-row.failed { border-color: rgba(255, 122, 143, 0.42); }
     .log-grid { display: grid; gap: 12px; }
     @media (max-width: 1080px) {
-      .summary-strip, .inputs-grid, .form-grid, .viewer-grid { grid-template-columns: 1fr; }
-      .explorer-svg { min-height: 480px; }
+      .summary-strip, .inputs-grid, .form-grid, .viewer-grid, .network-workspace-grid { grid-template-columns: 1fr; }
+      .explorer-svg { min-height: 520px; }
       .live-neb-layout { grid-template-columns: 1fr; }
+      .network-toolbar, .live-activity-inline {
+        position: static;
+        width: auto;
+        max-height: none;
+        margin-bottom: 12px;
+      }
     }
   </style>
 </head>
 <body>
   <div class="shell">
     <div class="panel page-title">
-      <h1 style="margin:0 0 6px;">MEPD Drive</h1>
+      <div class="eyebrow">Reaction Discovery Workspace</div>
+      <h1>MEPD Drive</h1>
       <div class="muted" style="margin-bottom:12px;">Set inputs, grow the reaction network, interact directly with the graph, then queue exploration work and inspect logs from a single workspace.</div>
       <div id="job-banner" class="message">Idle.</div>
       <div id="job-subtext" class="muted" style="margin-top:8px;">No action submitted yet.</div>
@@ -1951,10 +2162,31 @@ def _drive_html() -> str:
         <div id="network-summary" class="muted">No workspace initialized yet.</div>
         <div id="stats" class="stats"></div>
       </div>
-      <div class="network-canvas-shell">
-        <div id="network-toolbar" class="network-toolbar"></div>
-        <svg id="network-svg" class="explorer-svg" viewBox="0 0 1180 680" role="img" aria-label="MEPD Drive network graph"></svg>
-        <div id="live-activity-inline" class="live-activity live-activity-inline" style="display:none;"></div>
+      <div class="network-workspace-grid">
+        <div class="network-canvas-shell">
+          <div id="network-toolbar" class="network-toolbar"></div>
+          <svg id="network-svg" class="explorer-svg" viewBox="0 0 1180 680" role="img" aria-label="MEPD Drive network graph"></svg>
+          <div id="live-activity-inline" class="live-activity live-activity-inline" style="display:none;"></div>
+        </div>
+        <div class="path-browser">
+          <div class="path-browser-head">
+            <div>
+              <h3>Products & Paths</h3>
+              <div class="muted">Select structure A, then highlight the shortest route(s) to a created product.</div>
+            </div>
+          </div>
+          <div class="path-browser-controls">
+            <div>
+              <label for="path-source-node">Structure A</label>
+              <select id="path-source-node"></select>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+              <button id="clear-product-path" class="secondary" type="button">Clear Highlight</button>
+            </div>
+          </div>
+          <div id="product-path-summary" class="muted">Initialize or load a workspace to browse created products.</div>
+          <div id="product-path-list" class="product-list" style="margin-top:12px;"></div>
+        </div>
       </div>
     </div>
 
@@ -2052,6 +2284,9 @@ def _drive_html() -> str:
       selected: null,
       networkVersion: "",
       connectSourceNodeId: null,
+      pathSourceNodeId: 0,
+      selectedProductLabel: "",
+      pathHighlight: null,
       pendingLiveActivity: null,
       networkLayoutVersion: "",
       networkNodePositions: {},
@@ -2095,15 +2330,15 @@ def _drive_html() -> str:
 
     function makeStructureSrcdoc(xyzB64) {
       if (!xyzB64) {
-        return "<html><body style='font-family:Georgia,serif;padding:12px;color:#665;'>No 3D structure available.</body></html>";
+        return "<html><body style='margin:0;padding:16px;background:#0b1423;color:#8ea3c2;font:500 14px/1.5 IBM Plex Sans,Aptos,Segoe UI Variable,sans-serif;'>No 3D structure available.</body></html>";
       }
       return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <style>
-    html, body, #viewer { margin: 0; width: 100%; height: 100%; background: white; overflow: hidden; }
-    #status { padding: 12px; color: #666; font-family: Georgia, serif; }
+    html, body, #viewer { margin: 0; width: 100%; height: 100%; background: linear-gradient(180deg, #101b2b 0%, #0a1321 100%); overflow: hidden; }
+    #status { padding: 12px; color: #8ea3c2; font: 500 14px/1.5 IBM Plex Sans,Aptos,Segoe UI Variable,sans-serif; }
   </style>
 </head>
 <body>
@@ -2115,9 +2350,9 @@ def _drive_html() -> str:
       const host = document.getElementById("viewer");
       const status = document.getElementById("status");
       status.remove();
-      const viewer = $3Dmol.createViewer(host, { backgroundColor: "white" });
+      const viewer = $3Dmol.createViewer(host, { backgroundColor: "#0d1728" });
       viewer.addModel(xyz, "xyz");
-      viewer.setStyle({}, { stick: {}, sphere: { scale: 0.32 } });
+      viewer.setStyle({}, { stick: { radius: 0.18 }, sphere: { scale: 0.28 } });
       viewer.zoomTo();
       viewer.render();
     }
@@ -2255,6 +2490,287 @@ def _drive_html() -> str:
         ${snapshot.product?.smiles ? `<div class="muted">Target: ${escapeHtml(snapshot.product.smiles)}</div>` : ""}
         <div class="muted">Workspace: ${escapeHtml(workspace.directory)}</div>
       `;
+    }
+
+    function canonicalEdgePairKey(a, b) {
+      const first = Number(a);
+      const second = Number(b);
+      return first <= second ? `${first}|${second}` : `${second}|${first}`;
+    }
+
+    function getDriveNetwork(snapshot) {
+      return snapshot?.drive?.network || null;
+    }
+
+    function ensurePathSourceNode(snapshot) {
+      const nodes = Array.isArray(getDriveNetwork(snapshot)?.nodes) ? getDriveNetwork(snapshot).nodes : [];
+      const nodeIds = new Set(nodes.map((node) => Number(node.id)));
+      if (!nodeIds.size) {
+        state.pathSourceNodeId = 0;
+        return null;
+      }
+      const current = Number(state.pathSourceNodeId);
+      if (Number.isFinite(current) && nodeIds.has(current)) {
+        return current;
+      }
+      state.pathSourceNodeId = nodeIds.has(0) ? 0 : Number(nodes[0].id);
+      return state.pathSourceNodeId;
+    }
+
+    function buildShortestPathSearch(nodes, edges, sourceNodeId, directed) {
+      const adjacency = new Map();
+      nodes.forEach((node) => adjacency.set(Number(node.id), []));
+      edges.forEach((edge) => {
+        const source = Number(edge.source);
+        const target = Number(edge.target);
+        if (!adjacency.has(source)) adjacency.set(source, []);
+        if (!adjacency.has(target)) adjacency.set(target, []);
+        adjacency.get(source).push(target);
+        if (!directed) adjacency.get(target).push(source);
+      });
+      const source = Number(sourceNodeId);
+      const queue = [source];
+      const distances = new Map([[source, 0]]);
+      const parents = new Map([[source, []]]);
+      while (queue.length) {
+        const current = Number(queue.shift());
+        const currentDistance = Number(distances.get(current) || 0);
+        (adjacency.get(current) || []).forEach((neighbor) => {
+          const next = Number(neighbor);
+          if (!distances.has(next)) {
+            distances.set(next, currentDistance + 1);
+            parents.set(next, [current]);
+            queue.push(next);
+            return;
+          }
+          if (Number(distances.get(next)) === currentDistance + 1) {
+            const branchParents = parents.get(next) || [];
+            if (!branchParents.includes(current)) branchParents.push(current);
+            parents.set(next, branchParents);
+          }
+        });
+      }
+      return { distances, parents, mode: directed ? "directed" : "undirected" };
+    }
+
+    function enumerateShortestPaths(parents, sourceNodeId, targetNodeId, limit = 32) {
+      const source = Number(sourceNodeId);
+      const target = Number(targetNodeId);
+      const paths = [];
+      const seen = new Set();
+      function walk(nodeId, suffix) {
+        if (paths.length >= limit) return;
+        const nextSuffix = [Number(nodeId), ...suffix];
+        if (Number(nodeId) === source) {
+          const key = nextSuffix.join("->");
+          if (!seen.has(key)) {
+            seen.add(key);
+            paths.push(nextSuffix);
+          }
+          return;
+        }
+        const branchParents = parents.get(Number(nodeId)) || [];
+        branchParents.forEach((parentId) => {
+          walk(Number(parentId), nextSuffix);
+        });
+      }
+      walk(target, []);
+      return paths;
+    }
+
+    function buildProductRecords(snapshot, sourceNodeId) {
+      const network = getDriveNetwork(snapshot);
+      const nodes = Array.isArray(network?.nodes) ? network.nodes : [];
+      const edges = Array.isArray(network?.edges) ? network.edges : [];
+      const source = Number(sourceNodeId);
+      const directedSearch = buildShortestPathSearch(nodes, edges, source, true);
+      const undirectedSearch = buildShortestPathSearch(nodes, edges, source, false);
+      const groups = new Map();
+      nodes.forEach((node) => {
+        const nodeId = Number(node.id);
+        if (nodeId === source) return;
+        const label = String(node.label || node.id);
+        const existing = groups.get(label) || { label, nodeIds: [], labels: [], nearestDistance: null, mode: "", reachable: false };
+        existing.nodeIds.push(nodeId);
+        existing.labels.push(String(node.label || node.id));
+        const directedDistance = directedSearch.distances.get(nodeId);
+        const undirectedDistance = undirectedSearch.distances.get(nodeId);
+        const distance = directedDistance != null ? Number(directedDistance) : (undirectedDistance != null ? Number(undirectedDistance) : null);
+        const mode = directedDistance != null ? "directed" : (undirectedDistance != null ? "undirected" : "");
+        if (distance != null && (existing.nearestDistance == null || distance < existing.nearestDistance)) {
+          existing.nearestDistance = distance;
+          existing.mode = mode;
+          existing.reachable = true;
+        }
+        groups.set(label, existing);
+      });
+      return Array.from(groups.values()).sort((a, b) => {
+        const aReachable = a.reachable ? 0 : 1;
+        const bReachable = b.reachable ? 0 : 1;
+        if (aReachable !== bReachable) return aReachable - bReachable;
+        if ((a.nearestDistance ?? Infinity) !== (b.nearestDistance ?? Infinity)) {
+          return (a.nearestDistance ?? Infinity) - (b.nearestDistance ?? Infinity);
+        }
+        if (a.nodeIds.length !== b.nodeIds.length) return b.nodeIds.length - a.nodeIds.length;
+        return String(a.label).localeCompare(String(b.label));
+      });
+    }
+
+    function computePathHighlight(snapshot, sourceNodeId, productLabel) {
+      const network = getDriveNetwork(snapshot);
+      const nodes = Array.isArray(network?.nodes) ? network.nodes : [];
+      const edges = Array.isArray(network?.edges) ? network.edges : [];
+      const source = Number(sourceNodeId);
+      const label = String(productLabel || "").trim();
+      if (!nodes.length || !label) return null;
+      const matchingTargetIds = nodes
+        .filter((node) => Number(node.id) !== source && String(node.label || node.id) === label)
+        .map((node) => Number(node.id));
+      if (!matchingTargetIds.length) return null;
+
+      let search = buildShortestPathSearch(nodes, edges, source, true);
+      let reachableTargets = matchingTargetIds.filter((nodeId) => search.distances.has(nodeId));
+      if (!reachableTargets.length) {
+        search = buildShortestPathSearch(nodes, edges, source, false);
+        reachableTargets = matchingTargetIds.filter((nodeId) => search.distances.has(nodeId));
+      }
+      if (!reachableTargets.length) {
+        return {
+          productLabel: label,
+          sourceNodeId: source,
+          targetNodeIds: [],
+          pathNodeIds: [],
+          edgePairs: [],
+          paths: [],
+          mode: "none",
+        };
+      }
+
+      const minDistance = Math.min(...reachableTargets.map((nodeId) => Number(search.distances.get(nodeId) || Infinity)));
+      const nearestTargets = reachableTargets.filter((nodeId) => Number(search.distances.get(nodeId)) === minDistance);
+      const paths = [];
+      nearestTargets.forEach((targetNodeId) => {
+        enumerateShortestPaths(search.parents, source, targetNodeId, 24).forEach((path) => {
+          if (!paths.some((candidate) => candidate.join("->") === path.join("->"))) {
+            paths.push(path);
+          }
+        });
+      });
+      const pathNodeIds = Array.from(new Set(paths.flatMap((path) => path.map((nodeId) => Number(nodeId)))));
+      const edgePairs = Array.from(new Set(paths.flatMap((path) => (
+        path.slice(1).map((nodeId, index) => canonicalEdgePairKey(path[index], nodeId))
+      ))));
+      return {
+        productLabel: label,
+        sourceNodeId: source,
+        targetNodeIds: nearestTargets,
+        pathNodeIds,
+        edgePairs,
+        paths,
+        mode: search.mode,
+      };
+    }
+
+    function setPathSourceNode(nodeId) {
+      state.pathSourceNodeId = Number(nodeId);
+      const snapshot = state.snapshot;
+      const records = buildProductRecords(snapshot, state.pathSourceNodeId);
+      if (state.selectedProductLabel && !records.some((record) => record.label === state.selectedProductLabel)) {
+        state.selectedProductLabel = "";
+      }
+      state.pathHighlight = state.selectedProductLabel
+        ? computePathHighlight(snapshot, state.pathSourceNodeId, state.selectedProductLabel)
+        : null;
+      renderProductPathPanel(snapshot);
+      if (snapshot?.drive?.network) renderNetwork(snapshot);
+    }
+
+    function clearProductPathHighlight() {
+      state.selectedProductLabel = "";
+      state.pathHighlight = null;
+      renderProductPathPanel(state.snapshot);
+      if (state.snapshot?.drive?.network) renderNetwork(state.snapshot);
+    }
+
+    function selectProductPath(label) {
+      state.selectedProductLabel = String(label || "");
+      state.pathHighlight = computePathHighlight(state.snapshot, state.pathSourceNodeId, state.selectedProductLabel);
+      renderProductPathPanel(state.snapshot);
+      if (state.snapshot?.drive?.network) renderNetwork(state.snapshot);
+    }
+
+    function renderProductPathPanel(snapshot) {
+      const sourceSelect = document.getElementById("path-source-node");
+      const summaryEl = document.getElementById("product-path-summary");
+      const listEl = document.getElementById("product-path-list");
+      if (!sourceSelect || !summaryEl || !listEl) return;
+      const network = getDriveNetwork(snapshot);
+      const nodes = Array.isArray(network?.nodes) ? network.nodes : [];
+      if (!snapshot || !snapshot.initialized || !nodes.length) {
+        sourceSelect.innerHTML = "";
+        summaryEl.textContent = "Initialize or load a workspace to browse created products.";
+        listEl.innerHTML = "";
+        state.pathHighlight = null;
+        return;
+      }
+
+      const sourceNodeId = ensurePathSourceNode(snapshot);
+      const records = buildProductRecords(snapshot, sourceNodeId);
+      const sourceNode = nodes.find((node) => Number(node.id) === Number(sourceNodeId)) || nodes[0];
+      sourceSelect.innerHTML = nodes.map((node) => `
+        <option value="${Number(node.id)}" ${Number(node.id) === Number(sourceNodeId) ? "selected" : ""}>
+          ${escapeHtml(`${Number(node.id)} • ${String(node.label || node.id)}`)}
+        </option>
+      `).join("");
+
+      if (state.selectedProductLabel && !records.some((record) => record.label === state.selectedProductLabel)) {
+        state.selectedProductLabel = "";
+      }
+      state.pathHighlight = state.selectedProductLabel
+        ? computePathHighlight(snapshot, sourceNodeId, state.selectedProductLabel)
+        : null;
+
+      if (!records.length) {
+        summaryEl.innerHTML = `No created products are available beyond structure A (<strong>${escapeHtml(sourceNode?.label || sourceNodeId)}</strong>).`;
+        listEl.innerHTML = "";
+      } else if (state.pathHighlight && state.selectedProductLabel) {
+        const overlay = state.pathHighlight;
+        const pathCount = Array.isArray(overlay.paths) ? overlay.paths.length : 0;
+        const targetCount = Array.isArray(overlay.targetNodeIds) ? overlay.targetNodeIds.length : 0;
+        const modeNote = overlay.mode === "undirected"
+          ? "No directed route was found; highlighting the nearest topology path instead."
+          : "Highlighting shortest directed route(s).";
+        summaryEl.innerHTML = `
+          <div><strong>A:</strong> ${escapeHtml(sourceNode?.label || sourceNodeId)} (node ${escapeHtml(sourceNodeId)})</div>
+          <div><strong>Product:</strong> ${escapeHtml(state.selectedProductLabel)}</div>
+          <div><strong>Matches:</strong> ${escapeHtml(targetCount)} nearest node(s), ${escapeHtml(pathCount)} shortest path(s).</div>
+          <div class="muted" style="margin-top:6px;">${escapeHtml(modeNote)}</div>
+        `;
+      } else {
+        summaryEl.innerHTML = `
+          <div><strong>A:</strong> ${escapeHtml(sourceNode?.label || sourceNodeId)} (node ${escapeHtml(sourceNodeId)})</div>
+          <div class="muted" style="margin-top:6px;">${escapeHtml(records.length)} unique product label(s) are currently reachable or present in the graph. Select one to highlight path(s) on the network.</div>
+        `;
+      }
+
+      listEl.innerHTML = records.map((record) => `
+        <button
+          class="product-row ${record.label === state.selectedProductLabel ? "active" : ""} ${record.reachable ? "" : "unreachable"}"
+          type="button"
+          data-product-label="${escapeHtml(record.label)}"
+        >
+          <span class="product-row-title">${escapeHtml(record.label)}</span>
+          <span class="product-row-meta">
+            ${escapeHtml(record.nodeIds.length)} node(s)
+            ${record.reachable ? ` • nearest in ${escapeHtml(record.nearestDistance)} step(s)` : " • no route from current A"}
+          </span>
+        </button>
+      `).join("");
+
+      sourceSelect.onchange = (event) => setPathSourceNode(event.target.value);
+      listEl.querySelectorAll("[data-product-label]").forEach((button) => {
+        button.addEventListener("click", () => selectProductPath(button.getAttribute("data-product-label") || ""));
+      });
     }
 
     function formatJsonBlock(value) {
@@ -2642,18 +3158,18 @@ def _drive_html() -> str:
         <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(ariaLabel || title || "Trajectory plot")}">
           ${yTicks.map((tick) => `
             <g>
-              <line x1="${margin.left}" y1="${sy(tick)}" x2="${width - margin.right}" y2="${sy(tick)}" stroke="#e1ddd6" stroke-dasharray="3 3" />
-              <line x1="${margin.left - 6}" y1="${sy(tick)}" x2="${margin.left}" y2="${sy(tick)}" stroke="#555" />
-              <text x="${margin.left - 10}" y="${sy(tick) + 4}" text-anchor="end" font-size="11" fill="#555">${escapeHtml(Number(tick).toFixed(2))}</text>
+              <line x1="${margin.left}" y1="${sy(tick)}" x2="${width - margin.right}" y2="${sy(tick)}" stroke="rgba(142,163,194,0.18)" stroke-dasharray="3 3" />
+              <line x1="${margin.left - 6}" y1="${sy(tick)}" x2="${margin.left}" y2="${sy(tick)}" stroke="rgba(201,216,240,0.78)" />
+              <text x="${margin.left - 10}" y="${sy(tick) + 4}" text-anchor="end" font-size="11" fill="#9eb4d6">${escapeHtml(Number(tick).toFixed(2))}</text>
             </g>
           `).join("")}
-          <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#555" />
-          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#555" />
-          <polyline fill="none" stroke="#1f6a57" stroke-width="2.5" points="${points}" />
-          ${xVals.map((x, i) => `<circle cx="${sx(x)}" cy="${sy(yVals[i])}" r="3.5" fill="#b9652a" />`).join("")}
-          <text x="${width / 2}" y="18" text-anchor="middle" font-size="14" fill="#222">${escapeHtml(title || "Trajectory plot")}</text>
-          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#444">${escapeHtml(xLabel)}</text>
-          <text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" font-size="12" fill="#444">${escapeHtml(yLabel)}</text>
+          <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(201,216,240,0.78)" />
+          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="rgba(201,216,240,0.78)" />
+          <polyline fill="none" stroke="#7ef0c7" stroke-width="2.5" points="${points}" />
+          ${xVals.map((x, i) => `<circle cx="${sx(x)}" cy="${sy(yVals[i])}" r="3.5" fill="#63d5ff" />`).join("")}
+          <text x="${width / 2}" y="18" text-anchor="middle" font-size="14" fill="#eef4ff">${escapeHtml(title || "Trajectory plot")}</text>
+          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#9eb4d6">${escapeHtml(xLabel)}</text>
+          <text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" font-size="12" fill="#9eb4d6">${escapeHtml(yLabel)}</text>
         </svg>
       `;
     }
@@ -2679,18 +3195,18 @@ def _drive_html() -> str:
       const maxY = Math.max(1.0, ...yVals);
       const sx = (x) => margin.left + ((x - minX) / (maxX - minX)) * innerWidth;
       const sy = (y) => margin.top + (1 - (y - minY) / (maxY - minY)) * innerHeight;
-      const colors = ["#1f6a57", "#b9652a", "#3e6fb6", "#8c4fa2", "#5a7d2b", "#b3465a"];
+      const colors = ["#7ef0c7", "#63d5ff", "#9cafff", "#ff8eb0", "#ffd166", "#59d8b6"];
       return `
         <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Kinetic model population trajectories">
-          <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#555" />
-          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#555" />
+          <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(201,216,240,0.78)" />
+          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="rgba(201,216,240,0.78)" />
           ${series.map((item, index) => {
             const pts = (item.y || []).map((y, i) => `${sx(xVals[i]).toFixed(2)},${sy(y).toFixed(2)}`).join(" ");
             return `<polyline fill="none" stroke="${colors[index % colors.length]}" stroke-width="2.4" points="${pts}" />`;
           }).join("")}
-          <text x="${width / 2}" y="18" text-anchor="middle" font-size="14" fill="#222">${escapeHtml(plot?.title || "Population vs time")}</text>
-          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#444">${escapeHtml(plot?.x_label || "Time")}</text>
-          <text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" font-size="12" fill="#444">${escapeHtml(plot?.y_label || "Population")}</text>
+          <text x="${width / 2}" y="18" text-anchor="middle" font-size="14" fill="#eef4ff">${escapeHtml(plot?.title || "Population vs time")}</text>
+          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#9eb4d6">${escapeHtml(plot?.x_label || "Time")}</text>
+          <text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" font-size="12" fill="#9eb4d6">${escapeHtml(plot?.y_label || "Population")}</text>
         </svg>
         <div class="muted" style="margin-top:10px;">
           ${series.map((item, index) => `<span class="badge" style="border-color:${colors[index % colors.length]}; color:${colors[index % colors.length]}; margin-right:6px;">${escapeHtml(item.label || item.node_id)}</span>`).join("")}
@@ -2730,22 +3246,22 @@ def _drive_html() -> str:
         <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Live NEB optimization history">
           ${yTicks.map((tick) => `
             <g>
-              <line x1="${margin.left}" y1="${sy(tick)}" x2="${width - margin.right}" y2="${sy(tick)}" stroke="#e1ddd6" stroke-dasharray="3 3" />
-              <line x1="${margin.left - 6}" y1="${sy(tick)}" x2="${margin.left}" y2="${sy(tick)}" stroke="#555" />
-              <text x="${margin.left - 10}" y="${sy(tick) + 4}" text-anchor="end" font-size="11" fill="#555">${escapeHtml(Number(tick).toFixed(2))}</text>
+              <line x1="${margin.left}" y1="${sy(tick)}" x2="${width - margin.right}" y2="${sy(tick)}" stroke="rgba(142,163,194,0.18)" stroke-dasharray="3 3" />
+              <line x1="${margin.left - 6}" y1="${sy(tick)}" x2="${margin.left}" y2="${sy(tick)}" stroke="rgba(201,216,240,0.78)" />
+              <text x="${margin.left - 10}" y="${sy(tick) + 4}" text-anchor="end" font-size="11" fill="#9eb4d6">${escapeHtml(Number(tick).toFixed(2))}</text>
             </g>
           `).join("")}
-          <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#555" />
-          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#555" />
+          <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="rgba(201,216,240,0.78)" />
+          <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="rgba(201,216,240,0.78)" />
           ${backgroundCurves.map((curve) => {
             const pts = (curve.x || []).map((x, i) => `${sx(x).toFixed(2)},${sy(curve.y[i]).toFixed(2)}`).join(" ");
-            return `<polyline fill="none" stroke="#8f8271" stroke-width="1.4" opacity="0.22" points="${pts}" />`;
+            return `<polyline fill="none" stroke="rgba(142,163,194,0.28)" stroke-width="1.4" opacity="0.4" points="${pts}" />`;
           }).join("")}
-          ${foreground ? `<polyline fill="none" stroke="#1f6a57" stroke-width="2.8" points="${(foreground.x || []).map((x, i) => `${sx(x).toFixed(2)},${sy(foreground.y[i]).toFixed(2)}`).join(" ")}" />` : ""}
-          ${foreground ? (foreground.x || []).map((x, i) => `<circle cx="${sx(x)}" cy="${sy(foreground.y[i])}" r="3.2" fill="#b9652a" />`).join("") : ""}
-          <text x="${width / 2}" y="18" text-anchor="middle" font-size="14" fill="#222">${escapeHtml(activity?.title || "Live NEB optimization history")}</text>
-          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#444">Integrated path length</text>
-          <text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" font-size="12" fill="#444">Energy</text>
+          ${foreground ? `<polyline fill="none" stroke="#7ef0c7" stroke-width="2.8" points="${(foreground.x || []).map((x, i) => `${sx(x).toFixed(2)},${sy(foreground.y[i]).toFixed(2)}`).join(" ")}" />` : ""}
+          ${foreground ? (foreground.x || []).map((x, i) => `<circle cx="${sx(x)}" cy="${sy(foreground.y[i])}" r="3.2" fill="#63d5ff" />`).join("") : ""}
+          <text x="${width / 2}" y="18" text-anchor="middle" font-size="14" fill="#eef4ff">${escapeHtml(activity?.title || "Live NEB optimization history")}</text>
+          <text x="${width / 2}" y="${height - 8}" text-anchor="middle" font-size="12" fill="#9eb4d6">Integrated path length</text>
+          <text x="16" y="${height / 2}" transform="rotate(-90 16 ${height / 2})" text-anchor="middle" font-size="12" fill="#9eb4d6">Energy</text>
         </svg>
       `;
     }
@@ -2765,9 +3281,9 @@ def _drive_html() -> str:
       edges.forEach((edge) => {
         const source = Number(edge.source);
         const target = Number(edge.target);
-        const parents = parentsByNode.get(source) || [];
-        parents.push(target);
-        parentsByNode.set(source, parents);
+        const parents = parentsByNode.get(target) || [];
+        parents.push(source);
+        parentsByNode.set(target, parents);
       });
 
       const depthMemo = new Map();
@@ -2811,20 +3327,20 @@ def _drive_html() -> str:
             const source = positions.get(Number(edge.source));
             const target = positions.get(Number(edge.target));
             if (!source || !target) return "";
-            return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="#8f8271" stroke-width="2" />`;
+            return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="rgba(142,163,194,0.38)" stroke-width="2" />`;
           }).join("")}
           ${nodes.map((node) => {
             const pos = positions.get(Number(node.id));
             if (!pos) return "";
             return `
               <g transform="translate(${pos.x},${pos.y})">
-                <circle r="18" fill="${node.growing ? "#d79e35" : (Number(node.id) === 0 ? "#8e4d1c" : "#7b6a57")}" stroke="#fffaf2" stroke-width="2.5"></circle>
+                <circle r="18" fill="${node.growing ? "#ffd166" : (Number(node.id) === 0 ? "#63d5ff" : "#7d94bb")}" stroke="#eef4ff" stroke-width="2.5"></circle>
                 ${node.growing ? `
-                  <circle r="24" fill="none" stroke="#1f6a57" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round">
+                  <circle r="24" fill="none" stroke="#7ef0c7" stroke-width="3" stroke-dasharray="8 6" stroke-linecap="round">
                     <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0" to="360" dur="1.2s" repeatCount="indefinite"/>
                   </circle>
                 ` : ""}
-                <text y="4" text-anchor="middle" font-size="12" fill="#ffffff">${escapeHtml(node.label || node.id)}</text>
+                <text y="4" text-anchor="middle" font-size="12" fill="#08111f">${escapeHtml(node.label || node.id)}</text>
               </g>
             `;
           }).join("")}
@@ -2853,7 +3369,7 @@ def _drive_html() -> str:
             ${jobs.map((job) => `
               <div class="job-row ${escapeHtml(job.status || "pending")}">
                 <div><strong>Node ${escapeHtml(job.node_id)}</strong> <span class="badge">${escapeHtml(job.status || "pending")}</span></div>
-                ${job.error ? `<div style="color:#b03a2e; margin-top:4px;">${escapeHtml(job.error)}</div>` : ""}
+                ${job.error ? `<div style="color:var(--warn); margin-top:4px;">${escapeHtml(job.error)}</div>` : ""}
               </div>
             `).join("")}
           </div>
@@ -2920,7 +3436,7 @@ def _drive_html() -> str:
         summary.innerHTML = `
           <div><strong>Label:</strong> ${escapeHtml(node.label || node.id)}</div>
           <div><strong>Endpoint optimized:</strong> ${node.endpoint_optimized ? "yes" : "no"}</div>
-          ${node.endpoint_optimization_error ? `<div><strong>Last optimization error:</strong> <span style="color:#b03a2e;">${escapeHtml(node.endpoint_optimization_error)}</span></div>` : ""}
+          ${node.endpoint_optimization_error ? `<div><strong>Last optimization error:</strong> <span style="color:var(--warn);">${escapeHtml(node.endpoint_optimization_error)}</span></div>` : ""}
           <div><strong>Can queue minimization:</strong> ${node.minimizable ? "yes" : "no"}</div>
           <div><strong>Can apply reactions:</strong> ${node.can_apply_reactions ? "yes" : "no"}</div>
           <div><strong>Can run nanoreactor:</strong> ${node.can_nanoreactor ? "yes" : "no"}</div>
@@ -2933,13 +3449,14 @@ def _drive_html() -> str:
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="minimize-node" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>Queue Minimization For This Geometry</button></div>
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="apply-reactions" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>Apply Reactions To This Node</button></div>
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="nanoreactor" onclick="queueNanoreactor(${Number(node.id)})" ${node.can_nanoreactor ? "" : "disabled"}>Run Nanoreactor Sampling From This Geometry</button></div>
+          <div style="margin-bottom:10px;"><button class="secondary" type="button" onclick="setPathSourceNode(${Number(node.id)})">Use As Path Source A</button></div>
           <div style="margin-bottom:10px; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;">
             <button class="secondary" onclick="setManualEdgeEndpoint('source', ${Number(node.id)})">Use As Manual Edge Source</button>
             <button class="secondary" onclick="setManualEdgeEndpoint('target', ${Number(node.id)})">Use As Manual Edge Target</button>
           </div>
-          ${node.minimize_note ? `<div style="margin-bottom:10px; color:${node.minimizable ? "#6f6558" : "#b03a2e"};">${escapeHtml(node.minimize_note)}</div>` : ""}
-          ${node.apply_reactions_note ? `<div style="margin-bottom:10px; color:${node.can_apply_reactions ? "#6f6558" : "#b03a2e"};">${escapeHtml(node.apply_reactions_note)}</div>` : ""}
-          ${node.nanoreactor_note ? `<div style="margin-bottom:10px; color:${node.can_nanoreactor ? "#6f6558" : "#b03a2e"};">${escapeHtml(node.nanoreactor_note)}</div>` : ""}
+          ${node.minimize_note ? `<div style="margin-bottom:10px; color:${node.minimizable ? "var(--muted)" : "var(--warn)"};">${escapeHtml(node.minimize_note)}</div>` : ""}
+          ${node.apply_reactions_note ? `<div style="margin-bottom:10px; color:${node.can_apply_reactions ? "var(--muted)" : "var(--warn)"};">${escapeHtml(node.apply_reactions_note)}</div>` : ""}
+          ${node.nanoreactor_note ? `<div style="margin-bottom:10px; color:${node.can_nanoreactor ? "var(--muted)" : "var(--warn)"};">${escapeHtml(node.nanoreactor_note)}</div>` : ""}
           <pre>${escapeHtml(JSON.stringify(node.data || {}, null, 2))}</pre>
         `;
         templateData.innerHTML = `<pre>${escapeHtml(JSON.stringify(node.data || {}, null, 2))}</pre>`;
@@ -2973,7 +3490,7 @@ def _drive_html() -> str:
         </div>
         ${edge.result_from_reverse_edge ? `<div style="margin-bottom:10px;" class="muted">Showing completed NEB data reconstructed from the reverse-directed edge because this directed edge does not carry the chain payload directly.</div>` : ""}
         ${edge.result_from_completed_queue ? `<div style="margin-bottom:10px;" class="muted">Showing NEB data from the completed attempted pair because autosplitting did not leave a direct annotated edge for this exact selection.</div>` : ""}
-        ${edge.queue_note ? `<div style="margin-bottom:10px; color: ${edge.can_queue_neb ? "#6f6558" : "#b03a2e"};"><strong>${edge.can_queue_neb ? "Queue note" : "Edge cannot run as-is"}:</strong> ${escapeHtml(edge.queue_note)}</div>` : ""}
+        ${edge.queue_note ? `<div style="margin-bottom:10px; color: ${edge.can_queue_neb ? "var(--muted)" : "var(--warn)"};"><strong>${edge.can_queue_neb ? "Queue note" : "Edge cannot run as-is"}:</strong> ${escapeHtml(edge.queue_note)}</div>` : ""}
         ${edge.viewer_href ? `<div style="margin-bottom:10px;"><a href="${escapeHtml(edge.viewer_href)}" target="_blank" rel="noreferrer">Open completed NEB viewer</a></div>` : ""}
         <pre>${escapeHtml(JSON.stringify(edge.data || {}, null, 2))}</pre>
       `;
@@ -3058,12 +3575,12 @@ def _drive_html() -> str:
         edges.forEach((edge) => {
           const source = Number(edge.source);
           const target = Number(edge.target);
-          const parents = parentsByNode.get(source) || [];
-          parents.push(target);
-          parentsByNode.set(source, parents);
-          const children = childrenByNode.get(target) || [];
-          children.push(source);
-          childrenByNode.set(target, children);
+          const parents = parentsByNode.get(target) || [];
+          parents.push(source);
+          parentsByNode.set(target, parents);
+          const children = childrenByNode.get(source) || [];
+          children.push(target);
+          childrenByNode.set(source, children);
         });
 
         const depthByNode = new Map();
@@ -3165,13 +3682,28 @@ def _drive_html() -> str:
       }));
       const simById = new Map(simNodes.map((node) => [node.id, node]));
 
+      function applyNetworkDecorations(selection) {
+        const overlay = state.pathHighlight || null;
+        const highlightedNodeIds = new Set(Array.isArray(overlay?.pathNodeIds) ? overlay.pathNodeIds.map((value) => Number(value)) : []);
+        const targetNodeIds = new Set(Array.isArray(overlay?.targetNodeIds) ? overlay.targetNodeIds.map((value) => Number(value)) : []);
+        const edgePairs = new Set(Array.isArray(overlay?.edgePairs) ? overlay.edgePairs : []);
+        edgeElems.forEach((item) => {
+          item.line.classList.toggle("selected", selection?.kind === "edge" && item.edge === selection.edge);
+          item.line.classList.toggle("path-highlight", edgePairs.has(canonicalEdgePairKey(item.edge.source, item.edge.target)));
+        });
+        nodeElems.forEach((circle, nodeId) => {
+          const currentNodeId = Number(nodeId);
+          circle.classList.toggle("selected", selection?.kind === "node" && Number(selection.node.id) === currentNodeId);
+          circle.classList.toggle("connect-source", Number(state.connectSourceNodeId) === currentNodeId);
+          circle.classList.toggle("path-highlight", highlightedNodeIds.has(currentNodeId));
+          circle.classList.toggle("path-source", overlay != null && Number(overlay.sourceNodeId) === currentNodeId);
+          circle.classList.toggle("path-target", targetNodeIds.has(currentNodeId));
+        });
+      }
+
       function setSelection(selection) {
         state.selected = selection;
-        edgeElems.forEach((item) => item.line.classList.toggle("selected", selection?.kind === "edge" && item.edge === selection.edge));
-        nodeElems.forEach((circle, nodeId) => {
-          circle.classList.toggle("selected", selection?.kind === "node" && Number(selection.node.id) === Number(nodeId));
-          circle.classList.toggle("connect-source", Number(state.connectSourceNodeId) === Number(nodeId));
-        });
+        applyNetworkDecorations(selection);
         renderDetail(selection);
       }
 
@@ -3240,6 +3772,7 @@ def _drive_html() -> str:
         });
       }
       applySimPositions();
+      applyNetworkDecorations(state.selected);
 
       const selected = state.selected;
       if (selected?.kind === "edge") {
@@ -3299,6 +3832,7 @@ def _drive_html() -> str:
         renderWorkspaceSummary(snapshot);
         renderInputsPanels(snapshot);
         renderStats(snapshot);
+        renderProductPathPanel(snapshot);
         renderLiveActivity(snapshot);
         renderLogging(snapshot);
         renderKmcPanel(snapshot);
@@ -3308,6 +3842,7 @@ def _drive_html() -> str:
           const kmcTemperatureInput = document.getElementById("kmc-temperature");
           if (kmcTemperatureInput) delete kmcTemperatureInput.dataset.synced;
           state.networkVersion = version;
+          renderProductPathPanel(snapshot);
           renderNetwork(snapshot);
           renderKmcPanel(snapshot);
         }
@@ -3544,12 +4079,14 @@ def _drive_html() -> str:
     window.runKmcModel = runKmcModel;
     window.setManualEdgeEndpoint = setManualEdgeEndpoint;
     window.beginConnectMode = beginConnectMode;
+    window.setPathSourceNode = setPathSourceNode;
 
     document.getElementById("initialize").addEventListener("click", initializeDrive);
     document.getElementById("load-workspace").addEventListener("click", loadWorkspace);
     document.getElementById("minimize-all").addEventListener("click", queueMinimizeAll);
     document.getElementById("add-manual-edge").addEventListener("click", addManualEdge);
     document.getElementById("run-kmc").addEventListener("click", runKmcModel);
+    document.getElementById("clear-product-path").addEventListener("click", clearProductPathHighlight);
 
     const d3Script = document.createElement("script");
     d3Script.src = "https://d3js.org/d3.v3.min.js";

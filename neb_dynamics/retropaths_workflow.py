@@ -606,6 +606,7 @@ def run_nanoreactor_for_node(
     source_td = source_attrs.get("td")
     if source_td is None or getattr(source_td, "structure", None) is None:
         raise ValueError(f"Node {node_index} has no 3D structure, so nanoreactor sampling cannot be started.")
+    provenance_node_index = _nanoreactor_provenance_node_index(pot, node_index)
 
     run_inputs = RunInputs.open(workspace.inputs_fp)
     supported, support_note = _nanoreactor_support_status(run_inputs)
@@ -721,6 +722,7 @@ def run_nanoreactor_for_node(
                 td=optimized_node,
                 endpoint_optimized=True,
                 generated_by="nanoreactor_sampling",
+                nanoreactor_provenance_node=int(provenance_node_index),
             )
             added_nodes += 1
         else:
@@ -730,13 +732,14 @@ def run_nanoreactor_for_node(
                 target_attrs["molecule"] = copy_graph_like_molecule(graph_like)
             target_attrs["td"] = optimized_node
             target_attrs["endpoint_optimized"] = True
+            target_attrs.setdefault("nanoreactor_provenance_node", int(provenance_node_index))
 
-        if int(target_index) == int(node_index):
+        if int(target_index) == int(provenance_node_index):
             skipped_duplicates += 1
             continue
-        if not pot.graph.has_edge(node_index, target_index):
+        if not pot.graph.has_edge(provenance_node_index, target_index):
             pot.graph.add_edge(
-                node_index,
+                provenance_node_index,
                 target_index,
                 reaction=f"Nanoreactor reaction {nanoreactor_reaction_index}",
                 list_of_nebs=[],
@@ -746,7 +749,7 @@ def run_nanoreactor_for_node(
             nanoreactor_reaction_index += 1
         ensure_queue_item_for_edge(
             pot=pot,
-            source_node=int(node_index),
+            source_node=int(provenance_node_index),
             target_node=int(target_index),
             queue_fp=workspace.queue_fp,
             overwrite=False,
@@ -928,6 +931,16 @@ def _find_existing_network_node(
         ):
             return node_index
     return None
+
+
+def _nanoreactor_provenance_node_index(pot: Pot, node_index: int) -> int:
+    attrs = pot.graph.nodes.get(node_index, {})
+    provenance = attrs.get("nanoreactor_provenance_node")
+    with contextlib.suppress(Exception):
+        provenance_index = int(provenance)
+        if provenance_index in pot.graph.nodes:
+            return provenance_index
+    return int(node_index)
 
 
 def _register_network_node(
@@ -1621,39 +1634,163 @@ def build_status_html(
   <title>{workspace.run_name} Status</title>
   <script src="https://d3js.org/d3.v3.min.js"></script>
   <style>
-    body {{ font-family: Georgia, serif; margin: 24px; background: #f4f0e8; color: #1f1b16; }}
-    .hero {{ padding: 20px 24px; border: 1px solid #b9a98f; background: linear-gradient(135deg, #efe6d5, #f8f5ef); margin-bottom: 18px; }}
+    :root {{
+      --bg: #08111f;
+      --panel: rgba(13, 24, 41, 0.9);
+      --panel-soft: rgba(12, 23, 39, 0.78);
+      --line: rgba(114, 146, 197, 0.2);
+      --line-strong: rgba(120, 170, 233, 0.38);
+      --ink: #eef4ff;
+      --ink-soft: #c9d8f0;
+      --muted: #8ea3c2;
+      --accent: #63d5ff;
+      --accent-2: #7ef0c7;
+      --backed: #59d8b6;
+      --target: #ff8eb0;
+      --warn: #ff7a8f;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --shadow: 0 18px 44px rgba(2, 8, 18, 0.45);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      padding: 24px;
+      font: 500 14px/1.5 "IBM Plex Sans", "Aptos", "Segoe UI Variable", "Avenir Next", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(93, 213, 255, 0.14), transparent 28%),
+        radial-gradient(circle at top right, rgba(126, 240, 199, 0.08), transparent 24%),
+        linear-gradient(180deg, #0a1425 0%, #08111f 100%);
+      color: var(--ink);
+    }}
+    a {{ color: var(--accent); }}
+    .hero {{
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(17, 32, 54, 0.94), rgba(11, 22, 38, 0.9));
+      margin-bottom: 18px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
+    }}
     .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 18px; }}
-    .card {{ border: 1px solid #c8b99f; background: #fffdf8; padding: 14px; }}
-    table {{ width: 100%; border-collapse: collapse; background: #fffdf8; }}
-    th, td {{ border: 1px solid #d8ccb9; padding: 8px; vertical-align: top; text-align: left; }}
-    th {{ background: #efe2c8; }}
-    h1, h2 {{ margin: 0 0 10px 0; }}
+    .card {{
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }}
+    table {{
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+    }}
+    th, td {{ border-bottom: 1px solid var(--line); padding: 8px 10px; vertical-align: top; text-align: left; }}
+    td + td, th + th {{ border-left: 1px solid var(--line); }}
+    tr:last-child td {{ border-bottom: none; }}
+    th {{ background: rgba(99, 213, 255, 0.08); color: var(--ink-soft); }}
+    h1, h2 {{ margin: 0 0 10px 0; letter-spacing: -0.02em; }}
+    h3 {{ letter-spacing: -0.01em; }}
     .section {{ margin-top: 24px; }}
-    code {{ background: #f0e7da; padding: 2px 4px; }}
+    code {{
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 2px 6px;
+      color: var(--ink-soft);
+    }}
+    input, button {{ font: inherit; }}
+    input {{
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: rgba(8, 16, 28, 0.74);
+      color: var(--ink);
+    }}
+    button {{
+      min-height: 38px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--ink);
+      cursor: pointer;
+    }}
     .tab-row {{ display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }}
-    .tab-button {{ border: 1px solid #b9a98f; background: #f8f5ef; color: #3b3026; padding: 8px 12px; cursor: pointer; }}
-    .tab-button.active {{ background: #d8a13b; color: #23170b; border-color: #b07f29; }}
+    .tab-button {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--muted);
+      padding: 8px 12px;
+      cursor: pointer;
+    }}
+    .tab-button.active {{ background: rgba(99, 213, 255, 0.12); color: var(--ink); border-color: rgba(99, 213, 255, 0.34); }}
     .tab-panel {{ display: none; }}
     .tab-panel.active {{ display: block; }}
-    .explorer-layout {{ display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr); gap: 16px; }}
-    .explorer-card {{ border: 1px solid #c8b99f; background: #fffdf8; padding: 14px; }}
-    .explorer-svg {{ width: 100%; height: auto; min-height: 360px; border: 1px solid #d8ccb9; background: linear-gradient(180deg, #fffdf8, #f6efe2); }}
+    .explorer-layout {{ display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(340px, 0.95fr); gap: 16px; }}
+    .explorer-card {{
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }}
+    .explorer-svg {{
+      width: 100%;
+      height: auto;
+      min-height: 420px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background:
+        radial-gradient(circle at 20% 18%, rgba(99, 213, 255, 0.11), transparent 20%),
+        radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%),
+        linear-gradient(180deg, #0d1728 0%, #08111f 100%);
+    }}
     .info-tabs {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }}
-    .info-tab-button {{ border: 1px solid #c8b99f; background: #f8f0e2; padding: 6px 10px; cursor: pointer; }}
-    .info-tab-button.active {{ background: #d8a13b; border-color: #b07f29; }}
+    .info-tab-button {{
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--muted);
+      padding: 6px 10px;
+      cursor: pointer;
+    }}
+    .info-tab-button.active {{ background: rgba(99, 213, 255, 0.12); color: var(--ink); border-color: rgba(99, 213, 255, 0.34); }}
     .info-tab-panel {{ display: none; }}
     .info-tab-panel.active {{ display: block; }}
-    .placeholder {{ color: #6b6157; font-style: italic; }}
-    .network-node {{ fill: #7b6b58; stroke: #fdf7ee; stroke-width: 2; cursor: pointer; }}
-    .network-node.root {{ fill: #b35c1e; }}
-    .network-node.selected {{ fill: #d8a13b; stroke: #6b3f07; stroke-width: 3; }}
+    .placeholder {{ color: var(--muted); font-style: italic; }}
+    .network-node {{
+      fill: #7d94bb;
+      stroke: rgba(238, 244, 255, 0.85);
+      stroke-width: 1.8;
+      cursor: pointer;
+      filter: drop-shadow(0 8px 14px rgba(4, 9, 18, 0.3));
+    }}
+    .network-node.root {{ fill: var(--accent); }}
+    .network-node.selected {{ fill: #ffd166; stroke: #fff7de; stroke-width: 3; }}
     .network-edge-hitbox {{ stroke: transparent; stroke-width: 16; cursor: pointer; fill: none; }}
-    .network-edge-line {{ stroke: #8e7f6d; stroke-width: 2.5; fill: none; }}
-    .network-edge-line.selected {{ stroke: #d8a13b; stroke-width: 4; }}
-    .network-label {{ font-size: 12px; fill: #2d241c; pointer-events: none; }}
+    .network-edge-line {{ stroke: rgba(128, 154, 194, 0.42); stroke-width: 2.5; fill: none; }}
+    .network-edge-line.selected {{ stroke: var(--accent); stroke-width: 4; }}
+    .network-label {{ font-size: 12px; fill: rgba(233, 241, 255, 0.94); pointer-events: none; }}
     .template-visualization svg {{ max-width: 100%; height: auto; }}
-    pre.json-block {{ margin: 0; white-space: pre-wrap; word-break: break-word; background: #f6f0e7; border: 1px solid #e0d4c3; padding: 12px; }}
+    pre.json-block {{
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(4, 10, 18, 0.72);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 12px;
+      color: var(--ink-soft);
+    }}
     @media (max-width: 960px) {{
       .explorer-layout {{ grid-template-columns: 1fr; }}
     }}
@@ -1816,7 +1953,7 @@ def build_status_html(
     </div>
     <div class="card" style="margin-top: 12px;">
       <h3 style="margin-top: 0;">Trajectories</h3>
-      <svg id="kmc-plot" width="960" height="360" viewBox="0 0 960 360" style="width: 100%; height: auto; border: 1px solid #d8ccb9; background: #fff;"></svg>
+      <svg id="kmc-plot" width="960" height="360" viewBox="0 0 960 360" style="width: 100%; height: auto; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(180deg, #101b2b 0%, #0a1321 100%);"></svg>
     </div>
     <div class="card" style="margin-top: 12px;">
       <h3 style="margin-top: 0;">Suppressed KMC Edges</h3>
@@ -2298,7 +2435,7 @@ def build_status_html(
           return innerHeight - (value / maxPopulation) * innerHeight;
         }}
 
-        const axisColor = "#5f5447";
+        const axisColor = "rgba(201,216,240,0.78)";
         const xAxis = document.createElementNS(ns, "line");
         xAxis.setAttribute("x1", "0");
         xAxis.setAttribute("y1", String(innerHeight));
@@ -2315,7 +2452,7 @@ def build_status_html(
         yAxis.setAttribute("stroke", axisColor);
         g.appendChild(yAxis);
 
-        const palette = ["#8b5e3c", "#326b5b", "#8e3b46", "#3a5683", "#b06c3b", "#5b4b8a", "#56733d", "#a4486f"];
+        const palette = ["#7ef0c7", "#63d5ff", "#9cafff", "#ff8eb0", "#ffd166", "#59d8b6", "#b89cff", "#ff9d6c"];
         nodeIds.forEach((nodeId, idx) => {{
           const color = palette[idx % palette.length];
           const points = history.map(step => `${{sx(Number(step.time || 0)).toFixed(2)}},${{sy(Number((step.populations || {{}})[nodeId] || 0)).toFixed(2)}}`).join(" ");
@@ -2339,12 +2476,14 @@ def build_status_html(
         xLabel.setAttribute("x", String(innerWidth / 2));
         xLabel.setAttribute("y", String(innerHeight + 32));
         xLabel.setAttribute("text-anchor", "middle");
+        xLabel.setAttribute("fill", "#9eb4d6");
         xLabel.textContent = "Simulation time (a.u.)";
         g.appendChild(xLabel);
 
         const yLabel = document.createElementNS(ns, "text");
         yLabel.setAttribute("transform", `translate(-40,${{innerHeight / 2}}) rotate(-90)`);
         yLabel.setAttribute("text-anchor", "middle");
+        yLabel.setAttribute("fill", "#9eb4d6");
         yLabel.textContent = "Population / concentration (M)";
         g.appendChild(yLabel);
       }}
