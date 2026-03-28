@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     region: ohio
-    buildCommand: pip install uv && uv sync --frozen && uv pip install -e ./retropaths
+    buildCommand: git submodule update --init --recursive && pip install uv && uv sync --frozen && uv pip install -e ./retropaths
     startCommand: bash ./scripts/start_render_drive.sh
     healthCheckPath: /api/state
     envVars:
