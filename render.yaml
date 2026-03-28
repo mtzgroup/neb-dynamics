@@ -14,8 +14,10 @@ services:
         value: 0.0.0.0
       - key: MEPD_DRIVE_WORKDIR
         value: /tmp/mepd-drive
+      - key: MEPD_DRIVE_WORKSPACE
+        value: examples/claisen
       - key: MEPD_DRIVE_INPUTS
-        value: examples/charla_pr_data/example_inputs.toml
+        value: examples/example_inputs.toml
       - key: MEPD_DRIVE_SMILES
         value: C=C.CCC=N
       - key: MEPD_DRIVE_ENVIRONMENT

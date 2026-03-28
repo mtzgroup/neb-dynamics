@@ -103,9 +103,9 @@ This repository includes a Render Blueprint in `render.yaml` and a startup wrapp
 Default behavior:
 
 - binds Drive to `0.0.0.0:$PORT`
-- boots a workspace from `examples/charla_pr_data/example_inputs.toml`
-- initializes the app with `C=C.CCC=N` in environment `O`
-- writes workspace state to `/tmp/mepd-drive`
+- loads a bundled demo workspace from `examples/claisen`
+- rewrites that workspace into `/tmp/mepd-drive` before startup
+- uses `examples/example_inputs.toml` for follow-on actions inside the deployed app
 - can hydrate `~/.chemcloud/credentials` from a Render secret at startup
 
 To deploy on Render:

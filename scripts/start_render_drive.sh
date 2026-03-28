@@ -7,6 +7,7 @@ cd "$ROOT_DIR"
 PORT_VALUE="${PORT:-10000}"
 HOST_VALUE="${MEPD_DRIVE_HOST:-0.0.0.0}"
 WORKDIR_VALUE="${MEPD_DRIVE_WORKDIR:-/tmp/mepd-drive}"
+WORKSPACE_VALUE="${MEPD_DRIVE_WORKSPACE:-}"
 INPUTS_VALUE="${MEPD_DRIVE_INPUTS:-examples/charla_pr_data/example_inputs.toml}"
 SMILES_VALUE="${MEPD_DRIVE_SMILES:-C=C.CCC=N}"
 ENVIRONMENT_VALUE="${MEPD_DRIVE_ENVIRONMENT:-O}"
@@ -28,12 +29,43 @@ if [[ -n "$CHEMCLOUD_CREDENTIALS_B64_VALUE" || -n "$CHEMCLOUD_CREDENTIALS_TOML_V
   fi
 fi
 
+if [[ -n "$WORKSPACE_VALUE" ]]; then
+  SOURCE_WORKSPACE="$WORKSPACE_VALUE"
+  if [[ "$SOURCE_WORKSPACE" != /* ]]; then
+    SOURCE_WORKSPACE="$ROOT_DIR/$SOURCE_WORKSPACE"
+  fi
+  SOURCE_WORKSPACE="$(cd "$(dirname "$SOURCE_WORKSPACE")" && pwd)/$(basename "$SOURCE_WORKSPACE")"
+  TARGET_WORKSPACE="$WORKDIR_VALUE"
+  rm -rf "$TARGET_WORKSPACE"
+  mkdir -p "$(dirname "$TARGET_WORKSPACE")"
+  cp -R "$SOURCE_WORKSPACE" "$TARGET_WORKSPACE"
+  export RENDER_WORKSPACE_TARGET="$TARGET_WORKSPACE"
+  export RENDER_WORKSPACE_INPUTS="$ROOT_DIR/$INPUTS_VALUE"
+  uv run python - <<'PY'
+import json
+import os
+from pathlib import Path
+
+workspace_dir = Path(os.environ["RENDER_WORKSPACE_TARGET"]).resolve()
+workspace_fp = workspace_dir / "workspace.json"
+payload = json.loads(workspace_fp.read_text())
+payload["workdir"] = str(workspace_dir)
+payload["inputs_fp"] = os.environ["RENDER_WORKSPACE_INPUTS"]
+workspace_fp.write_text(json.dumps(payload, indent=2, sort_keys=True))
+PY
+  exec uv run mepd drive \
+    --host "$HOST_VALUE" \
+    --port "$PORT_VALUE" \
+    --workspace "$TARGET_WORKSPACE" \
+    --no-open
+fi
+
 exec uv run mepd drive \
-  --host "$HOST_VALUE" \
-  --port "$PORT_VALUE" \
-  --directory "$WORKDIR_VALUE" \
-  --inputs "$INPUTS_VALUE" \
-  --smiles "$SMILES_VALUE" \
-  --environment "$ENVIRONMENT_VALUE" \
-  --name "$NAME_VALUE" \
-  --no-open
+    --host "$HOST_VALUE" \
+    --port "$PORT_VALUE" \
+    --directory "$WORKDIR_VALUE" \
+    --inputs "$INPUTS_VALUE" \
+    --smiles "$SMILES_VALUE" \
+    --environment "$ENVIRONMENT_VALUE" \
+    --name "$NAME_VALUE" \
+    --no-open
