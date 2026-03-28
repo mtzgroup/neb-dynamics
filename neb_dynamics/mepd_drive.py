@@ -36,9 +36,12 @@ from neb_dynamics.retropaths_queue import (
     NEBQueueItem,
     RetropathsNEBQueue,
     build_retropaths_neb_queue,
+    ensure_queue_item_for_edge,
 )
+from neb_dynamics.retropaths_compat import structure_node_from_graph_like_molecule
 from neb_dynamics.retropaths_workflow import (
     _build_network_explorer_payload,
+    _find_matching_node_by_molecule,
     _history_leaf_chains,
     _json_safe,
     _load_template_payloads,
@@ -524,6 +527,8 @@ def _species_payload(
         "smiles": smiles,
         "xyz_b64": xyz_b64,
         "symbols": list(structure.symbols) if structure is not None else [],
+        "charge": int(getattr(structure, "charge", 0) if structure is not None else 0),
+        "multiplicity": int(getattr(structure, "multiplicity", 1) if structure is not None else 1),
     }
 
 
@@ -562,6 +567,116 @@ def _resolve_species_input(
         )
 
     return _species_payload(smiles=smiles, structure=structure)
+
+
+def _try_map_product_to_reactant_indices(
+    reactant_graph: Molecule | None,
+    product_graph: Molecule,
+) -> Molecule:
+    if reactant_graph is None:
+        return product_graph
+    try:
+        reactant_no_h = reactant_graph.remove_Hs()
+        product_no_h = product_graph.remove_Hs()
+        if len(reactant_no_h.nodes) != len(product_no_h.nodes):
+            return product_graph
+        isomorphisms = reactant_no_h.get_subgraph_isomorphisms_of(product_no_h)
+        if not isomorphisms:
+            return product_graph
+        mapping = dict(isomorphisms[0].reverse_mapping)
+        if len(mapping) != len(product_no_h.nodes):
+            return product_graph
+        mapped_product = product_no_h.renumber_indexes(mapping)
+        mapped_product = mapped_product.add_Hs()
+        mapped_product.set_neighbors()
+        return mapped_product
+    except Exception:
+        return product_graph
+
+
+def _bootstrap_product_endpoint(
+    workspace: RetropathsWorkspace,
+    product: dict[str, Any] | None,
+) -> None:
+    if not product:
+        return
+    product_smiles = str(product.get("smiles") or "").strip()
+    if not product_smiles or not workspace.neb_pot_fp.exists():
+        return
+    product_charge = int(product.get("charge", 0) or 0)
+    product_multiplicity = int(product.get("multiplicity", 1) or 1)
+
+    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    if 0 not in pot.graph.nodes:
+        return
+    root_attrs = pot.graph.nodes[0]
+    root_td = root_attrs.get("td")
+    if root_td is None or getattr(root_td, "structure", None) is None:
+        return
+
+    product_graph = _try_map_product_to_reactant_indices(
+        root_attrs.get("molecule") or getattr(root_td, "graph", None),
+        Molecule.from_smiles(product_smiles),
+    )
+    target_index = _find_matching_node_by_molecule(pot, product_graph)
+    if target_index is None:
+        target_index = (max(pot.graph.nodes) + 1) if pot.graph.nodes else 0
+        pot.graph.add_node(
+            target_index,
+            molecule=product_graph.copy(),
+            converged=False,
+            td=structure_node_from_graph_like_molecule(
+                product_graph,
+                charge=product_charge,
+                spinmult=product_multiplicity,
+            ),
+            endpoint_optimized=False,
+            generated_by="drive_product_smiles",
+        )
+
+    if int(target_index) == 0:
+        pot.write_to_disk(workspace.neb_pot_fp)
+        build_retropaths_neb_queue(pot=pot, queue_fp=workspace.queue_fp, overwrite=False)
+        return
+
+    if not pot.graph.has_edge(0, target_index):
+        pot.graph.add_edge(
+            0,
+            target_index,
+            reaction="Product target",
+            list_of_nebs=[],
+            generated_by="drive_product_smiles",
+        )
+    pot.write_to_disk(workspace.neb_pot_fp)
+    ensure_queue_item_for_edge(
+        pot=pot,
+        source_node=0,
+        target_node=int(target_index),
+        queue_fp=workspace.queue_fp,
+        overwrite=False,
+    )
+    build_retropaths_neb_queue(pot=pot, queue_fp=workspace.queue_fp, overwrite=False)
+
+
+def _apply_bootstrap_species_overrides(
+    workspace: RetropathsWorkspace,
+    *,
+    reactant: dict[str, Any],
+    product: dict[str, Any] | None,
+) -> None:
+    if not workspace.neb_pot_fp.exists():
+        return
+    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    if 0 in pot.graph.nodes:
+        reactant_graph = pot.graph.nodes[0].get("molecule") or Molecule.from_smiles(str(reactant["smiles"]))
+        pot.graph.nodes[0]["td"] = structure_node_from_graph_like_molecule(
+            reactant_graph,
+            charge=int(reactant.get("charge", 0) or 0),
+            spinmult=int(reactant.get("multiplicity", 1) or 1),
+        )
+        pot.graph.nodes[0]["endpoint_optimized"] = False
+    pot.write_to_disk(workspace.neb_pot_fp)
+    _bootstrap_product_endpoint(workspace, product)
 
 
 def _node_structure_payload(node_attrs: dict[str, Any]) -> dict[str, Any] | None:
@@ -1355,6 +1470,7 @@ def _initialize_workspace_job(
             initialize_workspace_with_progress(workspace, progress_fp=progress_fp)
         else:
             prepare_neb_workspace(workspace)
+        _apply_bootstrap_species_overrides(workspace, reactant=reactant, product=product)
     except Exception as exc:
         init_error = f"{type(exc).__name__}: {exc}"
         required_partial = [
@@ -2476,6 +2592,22 @@ def _drive_html() -> str:
         return;
       }
       const workspace = snapshot.drive.workspace;
+      const inputsPathField = document.getElementById("inputs-path");
+      const reactionsPathField = document.getElementById("reactions-path");
+      const environmentField = document.getElementById("environment-smiles");
+      const runNameField = document.getElementById("run-name");
+      if (inputsPathField && !inputsPathField.value) {
+        inputsPathField.value = String(snapshot.drive.inputs?.path || "");
+      }
+      if (reactionsPathField && !reactionsPathField.value) {
+        reactionsPathField.value = String(workspace.reactions_fp || "");
+      }
+      if (environmentField && !environmentField.value) {
+        environmentField.value = String(workspace.environment_smiles || "");
+      }
+      if (runNameField && !runNameField.value) {
+        runNameField.value = String(workspace.run_name || "");
+      }
       const html = `
         <span class="badge">${escapeHtml(workspace.run_name)}</span>
         <span class="badge">${escapeHtml(workspace.root_smiles)}</span>
@@ -4844,7 +4976,10 @@ def launch_mepd_drive(
     reactions_fp: str | None = None,
     workspace_path: str | None = None,
     smiles: str | None = None,
+    product_smiles: str | None = None,
     environment_smiles: str = "",
+    charge: int = 0,
+    multiplicity: int = 1,
     run_name: str | None = None,
     host: str = "127.0.0.1",
     port: int = 0,
@@ -4879,8 +5014,16 @@ def launch_mepd_drive(
             base_directory = (Path.cwd() / "mepd-drive").resolve()
             run_dir = (base_directory / resolved_run_name).resolve()
         initial_state = _initialize_workspace_job(
-            reactant={"smiles": str(smiles).strip()},
-            product=None,
+            reactant={
+                "smiles": str(smiles).strip(),
+                "charge": int(charge),
+                "multiplicity": int(multiplicity),
+            },
+            product={
+                "smiles": str(product_smiles).strip(),
+                "charge": int(charge),
+                "multiplicity": int(multiplicity),
+            } if str(product_smiles or "").strip() else None,
             run_name=resolved_run_name,
             workspace_dir=str(run_dir),
             inputs_fp=str(resolved_inputs),
