@@ -230,8 +230,7 @@ class Chain(BaseModel):
 
     @property
     def _energies_already_computed(self) -> bool:
-        all_ens = [node.energy for node in self.nodes]
-        return all([val is not None for val in all_ens])
+        return all(node._cached_energy is not None for node in self.nodes)
 
     @property
     def energies(self) -> np.array:
@@ -252,8 +251,7 @@ class Chain(BaseModel):
 
     @property
     def _grads_already_computed(self) -> bool:
-        all_grads = [node.gradient for node in self.nodes]
-        return np.all([g is not None for g in all_grads])
+        return all(node._cached_gradient is not None for node in self.nodes)
 
     @property
     def gradients(self) -> np.array:

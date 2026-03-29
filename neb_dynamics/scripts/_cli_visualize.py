@@ -1077,7 +1077,7 @@ def _build_chain_visualizer_html(
     </div>
     <div id="networkPanel" style="{network_panel_style} margin-bottom: 12px;">
       <div style="font-weight: 600; margin-bottom: 6px;">Reaction Network</div>
-      <svg id="networkSvg" width="100%" height="320" viewBox="0 0 900 320" style="border: 1px solid #e6e6e6; border-radius: 8px; background: #fafafa;"></svg>
+      <svg id="networkSvg" width="100%" height="320" viewBox="0 0 900 320" style="border: 1px solid #1f304b; border-radius: 8px; background: radial-gradient(circle at 20% 18%, rgba(99, 213, 255, 0.11), transparent 20%), radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%), linear-gradient(180deg, #0d1728 0%, #08111f 100%);"></svg>
       <div id="networkInfo" style="font-size: 12px; color: #666; margin-top: 6px;">Click an edge to load the corresponding best NEB pair. The best overall path is highlighted in gold.</div>
     </div>
     <label for="chainSelect">Chain: </label>
@@ -1102,6 +1102,20 @@ def _build_chain_visualizer_html(
   </div>
   <script>
     const layers = {payload};
+    const DRIVE_VIZ_COLORS = {{
+      edge: "rgba(128, 154, 194, 0.42)",
+      edgeSelected: "#63d5ff",
+      edgeHighlight: "#ffd166",
+      node: "#7d94bb",
+      nodeRoot: "#63d5ff",
+      nodeTarget: "#ff8eb0",
+      nodeSelected: "#ffd166",
+      nodeStroke: "rgba(238, 244, 255, 0.85)",
+      nodeHighlightStroke: "#fff7de",
+      label: "rgba(233, 241, 255, 0.94)",
+      labelMuted: "rgba(214, 226, 245, 0.82)",
+      nodeTextDark: "#08111f",
+    }};
     function decodeB64UTF8(b64) {{
       return decodeURIComponent(escape(window.atob(b64)));
     }}
@@ -1394,7 +1408,7 @@ def _build_chain_visualizer_html(
         line.setAttribute("y1", String(src.y));
         line.setAttribute("x2", String(dst.x));
         line.setAttribute("y2", String(dst.y));
-        line.setAttribute("stroke", edge.highlight ? "#f59e0b" : "#94a3b8");
+        line.setAttribute("stroke", edge.highlight ? DRIVE_VIZ_COLORS.edgeHighlight : DRIVE_VIZ_COLORS.edge);
         line.setAttribute("stroke-width", edge.highlight ? "4" : "2.25");
         line.setAttribute("opacity", edge.highlight ? "0.95" : "0.85");
         group.appendChild(line);
@@ -1415,7 +1429,7 @@ def _build_chain_visualizer_html(
         label.setAttribute("y", String(midY - 8));
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("font-size", "11");
-        label.setAttribute("fill", "#334155");
+        label.setAttribute("fill", DRIVE_VIZ_COLORS.labelMuted);
         label.textContent = `${{edge.source}}→${{edge.target}}`;
         group.appendChild(label);
 
@@ -1438,16 +1452,16 @@ def _build_chain_visualizer_html(
         circle.setAttribute("cx", String(data.x));
         circle.setAttribute("cy", String(data.y));
         circle.setAttribute("r", data.is_root || data.is_target ? "13" : "11");
-        circle.setAttribute("fill", data.is_root ? "#2563eb" : (data.is_target ? "#059669" : "#ffffff"));
-        circle.setAttribute("stroke", "#1f2937");
-        circle.setAttribute("stroke-width", "1.5");
+        circle.setAttribute("fill", data.is_root ? DRIVE_VIZ_COLORS.nodeRoot : (data.is_target ? DRIVE_VIZ_COLORS.nodeTarget : DRIVE_VIZ_COLORS.node));
+        circle.setAttribute("stroke", DRIVE_VIZ_COLORS.nodeStroke);
+        circle.setAttribute("stroke-width", "1.8");
         group.appendChild(circle);
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", String(data.x));
         text.setAttribute("y", String(data.y + 4));
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("font-size", "11");
-        text.setAttribute("fill", data.is_root || data.is_target ? "#ffffff" : "#111827");
+        text.setAttribute("fill", DRIVE_VIZ_COLORS.nodeTextDark);
         text.textContent = String(node.id);
         group.appendChild(text);
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1455,7 +1469,7 @@ def _build_chain_visualizer_html(
         label.setAttribute("y", String(data.y + 24));
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("font-size", "11");
-        label.setAttribute("fill", "#334155");
+        label.setAttribute("fill", DRIVE_VIZ_COLORS.label);
         label.textContent = data.label;
         group.appendChild(label);
         svg.appendChild(group);
@@ -1472,7 +1486,7 @@ def _build_chain_visualizer_html(
         const line = elem.querySelector("line");
         if (!line || !edge) return;
         const selectedEdge = selected && selected.id === edge.id;
-        line.setAttribute("stroke", selectedEdge ? "#dc2626" : (edge.highlight ? "#f59e0b" : "#94a3b8"));
+        line.setAttribute("stroke", selectedEdge ? DRIVE_VIZ_COLORS.edgeSelected : (edge.highlight ? DRIVE_VIZ_COLORS.edgeHighlight : DRIVE_VIZ_COLORS.edge));
         line.setAttribute("stroke-width", selectedEdge ? "5" : (edge.highlight ? "4" : "2.25"));
       }});
       if (!info) return;

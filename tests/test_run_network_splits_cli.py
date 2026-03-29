@@ -195,6 +195,28 @@ def test_run_recursive_network_splits_enqueues_intermediate_targets(monkeypatch,
     assert (tmp_path / "rgs_network_splits" / "rgs_best_path.energies").exists()
 
 
+def test_write_recursive_split_request_artifacts_tolerates_missing_cached_results(tmp_path):
+    params = ChainInputs()
+    unevaluated_chain = Chain.model_validate(
+        {"nodes": [StructureNode(structure=_structure_at_x(0.0)), StructureNode(structure=_structure_at_x(0.0))], "parameters": params}
+    )
+    history = TreeNode(data=_FakeNEB(unevaluated_chain), children=[], index=0)
+    output_dir = tmp_path / "splits"
+    output_dir.mkdir()
+
+    main_cli._write_recursive_split_request_artifacts(
+        output_dir=output_dir,
+        request_id=7,
+        history=history,
+        write_qcio=False,
+    )
+
+    assert (output_dir / "request_7.xyz").exists()
+    assert not (output_dir / "request_7.energies").exists()
+    assert not (output_dir / "request_7.gradients").exists()
+    assert (output_dir / "request_7_msmep").is_dir()
+
+
 def test_run_network_splits_forces_recursive_mode(monkeypatch, tmp_path):
     params = ChainInputs()
     program_inputs = SimpleNamespace(

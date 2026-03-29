@@ -293,9 +293,14 @@ class NetworkBuilder:
         return is_identical(a, b, fragment_rmsd_cutoff=self.chain_inputs.node_rms_thre, verbose=False,
                             kcal_mol_cutoff=self.chain_inputs.node_ene_thre)
 
+    def _graph_equivalent(self, a: StructureNode, b: StructureNode) -> bool:
+        if getattr(a, "graph", None) is None or getattr(b, "graph", None) is None:
+            return self._equality_function(a, b)
+        return a.graph.is_isomorphic_to(b.graph)
+
     def _get_ind_td(self, ref_list, td):
         inds = np.where(
-            [self._equality_function(a, b) for a, b in list(
+            [self._graph_equivalent(a, b) for a, b in list(
                 itertools.product([td], ref_list))]
         )[0]
         assert len(inds) >= 1, "No matches found. Network cannot be constructed."
@@ -397,9 +402,9 @@ class NetworkBuilder:
                     elementary_step = n_minima == 0
                 if elementary_step:
                     print("len(structures)", len(structures))
-                    reactant_comparison = all([not self._equality_function(
+                    reactant_comparison = all([not self._graph_equivalent(
                         reactant, reference) for reference in structures])
-                    product_comparison = all([not self._equality_function(
+                    product_comparison = all([not self._graph_equivalent(
                         product, reference) for reference in structures])
 
                     print("reactant_comparison", reactant_comparison,
@@ -458,19 +463,8 @@ class NetworkBuilder:
 
         return pot
 
-    def _get_lowest_barrier_height_pair(self, edges: dict, edgelabel: str):
-        all_barriers_fwd = edges[edgelabel]
-        label = edgelabel
-        vals = label.split("-")
-        label_rev = f"{vals[1]}-{vals[0]}"
-        all_barriers_rev = edges[label_rev]
-        assert len(all_barriers_fwd) == len(all_barriers_rev), f"Inconsistency in number of barriers.\
-              {len(all_barriers_fwd)=} {len(all_barriers_rev)=}"
-
-        sum_barrier_fwd_and_back = [
-            fwd+rev for fwd, rev in zip(all_barriers_fwd, all_barriers_rev)]
-        lowest_barrier_ind = np.argmin(sum_barrier_fwd_and_back)
-        return all_barriers_fwd[lowest_barrier_ind], all_barriers_rev[lowest_barrier_ind]
+    def _get_lowest_barrier_height(self, edges: dict, edgelabel: str):
+        return float(np.min(edges[edgelabel]))
 
     def _add_all_edges(self, pot: Pot, structures: list, edges: dict):
         for i, _ in enumerate(structures):
@@ -480,9 +474,12 @@ class NetworkBuilder:
                 label = edgelabel
                 vals = label.split("-")
                 label_rev = f"{vals[1]}-{vals[0]}"
-                lowest_barrier_height_fwd, \
-                    lowest_barrier_height_rev = self._get_lowest_barrier_height_pair(
-                        edges, edgelabel)
+                lowest_barrier_height_fwd = self._get_lowest_barrier_height(
+                    edges, edgelabel
+                )
+                lowest_barrier_height_rev = self._get_lowest_barrier_height(
+                    edges, label_rev
+                )
 
                 if int(vals[1]) == node_ind:  # skipping to avoid self loops
                     continue
@@ -493,8 +490,7 @@ class NetworkBuilder:
                         node_ind,
                         int(vals[1]),
                         reaction=f"eA ({edgelabel}): {np.min(edges[edgelabel])}",
-                        list_of_nebs=self.leaf_objects[label],
-                        # barrier=np.min(edges[edgelabel]),
+                        list_of_nebs=[self.get_lowest_barrier_chain(label)],
                         barrier=lowest_barrier_height_fwd,
                         exp_neg_barrier=np.exp(-np.min(edges[edgelabel])),
                     )
@@ -505,8 +501,7 @@ class NetworkBuilder:
                         int(vals[1]),
                         node_ind,
                         reaction=f"eA ({label_rev}):{np.min(edges[label_rev])}",
-                        list_of_nebs=self.leaf_objects[label_rev],
-                        # barrier=np.min(edges[label_rev]),
+                        list_of_nebs=[self.get_lowest_barrier_chain(label_rev)],
                         barrier=lowest_barrier_height_rev,
                         exp_neg_barrier=np.exp(-np.min(edges[label_rev])),
                     )

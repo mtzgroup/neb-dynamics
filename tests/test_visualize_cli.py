@@ -444,6 +444,10 @@ def test_build_chain_visualizer_html_network_mode_has_edge_graph(monkeypatch):
     assert "currentNetworkEdgeId" in html
     assert "best overall path is highlighted in gold" in html
     assert "0->1" in html
+    assert "#63d5ff" in html
+    assert "#ff8eb0" in html
+    assert "#ffd166" in html
+    assert "linear-gradient(180deg, #0d1728 0%, #08111f 100%)" in html
 
 
 def test_best_chain_for_directed_edge_orients_chain_to_source_target():
