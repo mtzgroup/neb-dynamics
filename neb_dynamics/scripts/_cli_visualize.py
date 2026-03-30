@@ -741,13 +741,40 @@ def _load_visualization_data(
                 )
             if not endpoint_hints:
                 endpoint_hints = None
-            root_idx, _target_idx, path, _highlighted_edges, _apparent_barrier = (
-                _resolve_network_highlight(
-                    pot,
-                    deps,
-                    endpoint_hints=endpoint_hints,
-                )
+            find_root = deps.find_pot_root_node_index or _find_pot_root_node_index
+            find_target = (
+                deps.find_pot_target_node_index
+                or (lambda pot, target_idx_hint=None: _find_pot_target_node_index(pot, deps, target_idx_hint))
             )
+            best_path = (
+                deps.best_path_by_apparent_barrier
+                or (lambda pot, root_idx, target_idx: _best_path_by_apparent_barrier(pot, root_idx, target_idx, deps))
+            )
+            root_idx = (
+                int(endpoint_hints["root_index"])
+                if endpoint_hints and endpoint_hints.get("root_index") is not None
+                else find_root(pot)
+            )
+            target_idx = find_target(
+                pot,
+                target_idx_hint=(
+                    int(endpoint_hints["target_index"])
+                    if endpoint_hints and endpoint_hints.get("target_index") is not None
+                    else None
+                ),
+            )
+            path = []
+            if (
+                root_idx is not None
+                and target_idx is not None
+                and deps.nx.has_path(pot.graph, root_idx, target_idx)
+            ):
+                best_path_nodes, _ = best_path(
+                    pot,
+                    root_idx=root_idx,
+                    target_idx=target_idx,
+                )
+                path = [int(v) for v in best_path_nodes] if best_path_nodes else []
             default_chain = path_chain_from_pot(pot, path)
             if default_chain is None:
                 first_edge = next(iter(pot.graph.edges), None)

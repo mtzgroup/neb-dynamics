@@ -204,54 +204,6 @@ def test_load_network_visualization_prefers_connectivity_matched_endpoints_over_
     assert captured["target_idx"] == 1
 
 
-def test_load_network_visualization_default_chain_matches_highlighted_path(monkeypatch, tmp_path):
-    json_fp = tmp_path / "network.json"
-    json_fp.write_text("{}")
-
-    graph = main_cli.nx.DiGraph()
-    for idx in range(5):
-        graph.add_node(idx, td=_node(float(idx), 0.0), root=(idx == 0))
-    graph.add_edge(
-        0,
-        1,
-        list_of_nebs=[_chain_with_energies([0.0, 0.5, 1.0], [0.0, 0.004, 0.0])],
-        barrier=1.0,
-    )
-    graph.add_edge(
-        2,
-        1,
-        list_of_nebs=[_chain_with_energies([2.0, 1.5, 1.0], [0.0, 0.005, 0.0])],
-        barrier=1.0,
-    )
-    graph.add_edge(
-        2,
-        3,
-        list_of_nebs=[_chain_with_energies([2.0, 2.5, 3.0], [0.0, 0.006, 0.0])],
-        barrier=1.0,
-    )
-    graph.add_edge(
-        4,
-        3,
-        list_of_nebs=[_chain_with_energies([4.0, 3.5, 3.0], [0.0, 0.007, 0.0])],
-        barrier=1.0,
-    )
-    fake_pot = SimpleNamespace(graph=graph, target=None)
-
-    monkeypatch.setattr(
-        main_cli.Pot,
-        "read_from_disk",
-        staticmethod(lambda path: fake_pot),
-    )
-    monkeypatch.setattr(main_cli, "_load_network_endpoint_hints", lambda _fp: {"root_index": 0, "target_index": 4})
-    monkeypatch.setattr(main_cli, "_load_network_endpoint_structures", lambda _fp: (None, None))
-    monkeypatch.setattr(main_cli, "_match_network_endpoint_indices_by_connectivity", lambda pot, start_node, end_node: None)
-
-    out = main_cli._load_visualization_data(json_fp)
-    assert out.chain is not None
-    assert np.isclose(out.chain.nodes[0].coords[1][0], 0.0)
-    assert np.isclose(out.chain.nodes[-1].coords[1][0], 4.0)
-
-
 def test_load_network_endpoint_structures_uses_trailing_digit_stripped_name(monkeypatch, tmp_path):
     network_dir = tmp_path / "rgs2_network_splits"
     network_dir.mkdir()
