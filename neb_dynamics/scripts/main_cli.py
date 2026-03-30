@@ -2250,6 +2250,10 @@ def extract_best_path(
     network_json: Annotated[str, typer.Argument(help="Path to a network .json file")],
     output_xyz: Annotated[str, typer.Option(
         "--output", "-o", help="Output XYZ file path for the joined best path")] = None,
+    start_node: Annotated[int, typer.Option(
+        "--start-node", help="Explicit network node index to use as the path start")] = None,
+    end_node: Annotated[int, typer.Option(
+        "--end-node", help="Explicit network node index to use as the path end")] = None,
     charge: Annotated[int, typer.Option(
         help="Charge used when reading serialized geometries")] = 0,
     multiplicity: Annotated[int, typer.Option(
@@ -2267,11 +2271,18 @@ def extract_best_path(
         raise typer.BadParameter(
             "extract-best-path requires a network .json input."
         )
+    endpoint_hints = dict(viz_data.network_endpoint_hints or {})
+    if start_node is not None:
+        endpoint_hints["root_index"] = int(start_node)
+    if end_node is not None:
+        endpoint_hints["target_index"] = int(end_node)
+    if not endpoint_hints:
+        endpoint_hints = None
 
     with console.status("[bold cyan]Finding best path...[/bold cyan]"):
         payload = _build_network_visualization_payload(
             viz_data.network_pot,
-            endpoint_hints=viz_data.network_endpoint_hints,
+            endpoint_hints=endpoint_hints,
         )
         path_nodes = payload.get("highlighted_path") or []
         if not path_nodes:
