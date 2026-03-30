@@ -699,15 +699,6 @@ def _load_visualization_data(
         deps.match_network_endpoint_indices_by_connectivity
         or (lambda pot, start_node, end_node: _match_network_endpoint_indices_by_connectivity(pot, start_node, end_node, deps))
     )
-    find_root = deps.find_pot_root_node_index or _find_pot_root_node_index
-    find_target = (
-        deps.find_pot_target_node_index
-        or (lambda pot, target_idx_hint=None: _find_pot_target_node_index(pot, deps, target_idx_hint))
-    )
-    best_path = (
-        deps.best_path_by_apparent_barrier
-        or (lambda pot, root_idx, target_idx: _best_path_by_apparent_barrier(pot, root_idx, target_idx, deps))
-    )
     path_chain_from_pot = (
         deps.path_chain_from_pot
         or (lambda pot, path: _path_chain_from_pot(pot, path, deps))
@@ -750,31 +741,13 @@ def _load_visualization_data(
                 )
             if not endpoint_hints:
                 endpoint_hints = None
-            root_idx = (
-                int(endpoint_hints["root_index"])
-                if endpoint_hints and endpoint_hints.get("root_index") is not None
-                else find_root(pot)
-            )
-            target_idx = find_target(
-                pot,
-                target_idx_hint=(
-                    int(endpoint_hints["target_index"])
-                    if endpoint_hints and endpoint_hints.get("target_index") is not None
-                    else None
-                ),
-            )
-            path = []
-            if (
-                root_idx is not None
-                and target_idx is not None
-                and deps.nx.has_path(pot.graph, root_idx, target_idx)
-            ):
-                best_path_nodes, _ = best_path(
+            root_idx, _target_idx, path, _highlighted_edges, _apparent_barrier = (
+                _resolve_network_highlight(
                     pot,
-                    root_idx=root_idx,
-                    target_idx=target_idx,
+                    deps,
+                    endpoint_hints=endpoint_hints,
                 )
-                path = [int(v) for v in best_path_nodes] if best_path_nodes else []
+            )
             default_chain = path_chain_from_pot(pot, path)
             if default_chain is None:
                 first_edge = next(iter(pot.graph.edges), None)
@@ -854,14 +827,11 @@ def _load_chain_for_visualization(
     ).chain
 
 
-def _build_network_visualization_payload(
+def _resolve_network_highlight(
     pot,
     deps: VisualizationDeps,
-    atom_indices: list[int] | None = None,
     endpoint_hints: dict | None = None,
-) -> dict:
-    graph_for_layout = pot.graph.to_undirected()
-    layout = deps.nx.spring_layout(graph_for_layout, seed=7)
+) -> tuple[int | None, int | None, list[int], set[tuple[int, int]], float | None]:
     find_root = deps.find_pot_root_node_index or _find_pot_root_node_index
     find_target = (
         deps.find_pot_target_node_index
@@ -870,10 +840,6 @@ def _build_network_visualization_payload(
     best_path = (
         deps.best_path_by_apparent_barrier
         or (lambda pot, root_idx, target_idx: _best_path_by_apparent_barrier(pot, root_idx, target_idx, deps))
-    )
-    best_chain_for_directed_edge = (
-        deps.best_chain_for_directed_edge
-        or (lambda pot, source, target: _best_chain_for_directed_edge(pot, source, target, deps))
     )
 
     root_idx = (
@@ -890,7 +856,7 @@ def _build_network_visualization_payload(
         ),
     )
 
-    highlighted_path = []
+    highlighted_path: list[int] = []
     highlighted_edges: set[tuple[int, int]] = set()
     apparent_barrier = None
     if root_idx is not None and target_idx is not None and deps.nx.has_path(
@@ -910,6 +876,30 @@ def _build_network_visualization_payload(
                 apparent_barrier = float((best_path_peak - root_energy) * 627.5)
         except Exception:
             apparent_barrier = None
+
+    return root_idx, target_idx, highlighted_path, highlighted_edges, apparent_barrier
+
+
+def _build_network_visualization_payload(
+    pot,
+    deps: VisualizationDeps,
+    atom_indices: list[int] | None = None,
+    endpoint_hints: dict | None = None,
+) -> dict:
+    graph_for_layout = pot.graph.to_undirected()
+    layout = deps.nx.spring_layout(graph_for_layout, seed=7)
+    best_chain_for_directed_edge = (
+        deps.best_chain_for_directed_edge
+        or (lambda pot, source, target: _best_chain_for_directed_edge(pot, source, target, deps))
+    )
+
+    root_idx, target_idx, highlighted_path, highlighted_edges, apparent_barrier = (
+        _resolve_network_highlight(
+            pot,
+            deps,
+            endpoint_hints=endpoint_hints,
+        )
+    )
 
     def _cost_to_target(node_idx: int) -> float:
         if target_idx is None:
