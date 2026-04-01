@@ -343,7 +343,9 @@ class QCOPEngine(Engine):
                 keywords={},
             )
             fres = cc_compute("bigchem", dpi)
-            output = fres.get()
+            # ChemCloud client return type can be future-like (with .get()) or a
+            # direct ProgramOutput, depending on installed client/version.
+            output = fres.get() if hasattr(fres, "get") else fres
         else:
             proginp = ProgramInput(
                 structure=node.structure,
