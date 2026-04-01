@@ -410,7 +410,9 @@ class QCOPEngine(Engine):
                 keywords={},
             )
             fres = cc_compute("bigchem", dpi)
-            output = fres.get()
+            # ChemCloud client return type can be future-like (with .get()) or a
+            # direct ProgramOutput, depending on installed client/version.
+            output = fres.get() if hasattr(fres, "get") else fres
         else:
             proginp = ProgramInput(
                 structure=node.structure,
@@ -544,6 +546,10 @@ class QCOPEngine(Engine):
         Batch geometry optimizations when the backend can accept a list of inputs.
         ChemCloud supports list submission, so use that path there; otherwise fall
         back to sequential single-node optimizations.
+
+        For ChemCloud batch calls, individual optimization failures are represented
+        as empty trajectories so successful optimizations can still be consumed by
+        callers in a single batch submission.
         """
         if len(nodes) == 0:
             return []
@@ -594,6 +600,13 @@ class QCOPEngine(Engine):
                 reference_structure=node.structure,
             )
             if not trajectory:
+                if self.compute_program == "chemcloud":
+                    logging.warning(
+                        "ChemCloud batch optimization returned no trajectory for one candidate; "
+                        "keeping an empty trajectory placeholder and continuing."
+                    )
+                    trajectories.append([])
+                    continue
                 raise ElectronicStructureError(
                     msg="Geometry optimization completed but no optimization trajectory was found.",
                     obj=output,
