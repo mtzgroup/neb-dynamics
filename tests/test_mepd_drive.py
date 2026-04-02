@@ -1614,6 +1614,10 @@ def test_submit_initialize_defers_process_pool_submission_off_request_path(monke
         "neb_dynamics.mepd_drive._resolve_species_input",
         lambda smiles="", xyz_text="": {"smiles": smiles} if smiles else None,
     )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._materialize_deployment_inputs",
+        lambda template_fp, output_dir, run_name, theory_program=None, theory_method=None, theory_basis=None: Path(template_fp),
+    )
 
     server.submit_initialize(
         {
