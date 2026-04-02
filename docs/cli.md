@@ -318,11 +318,27 @@ Notes:
 
 ### drive
 
-Launch the interactive MEPD Drive web UI. `drive` can start in three modes:
+Launch the interactive MEPD Drive web UI.
 
-1. blank interactive mode, where you initialize from the browser
-2. SMILES-bootstrap mode, where the workspace is created from the command line before the browser opens
-3. resume mode, where an existing workspace is loaded immediately so you can inspect an in-progress or completed run
+`drive` can start in three modes:
+
+1. blank interactive mode (initialize from the browser)
+2. SMILES-bootstrap mode (create workspace before the browser opens)
+3. resume mode (load an existing workspace immediately)
+
+**Requirements (local):**
+
+1. Install project dependencies (from source checkout):
+   ```bash
+   uv sync
+   ```
+2. Have a usable RunInputs TOML (for example `examples/example_inputs.toml`).
+3. Configure your electronic-structure backend:
+   - ChemCloud-backed runs: valid credentials (for example `~/.chemcloud/credentials`)
+   - Local QCOP runs: required backend program binaries (such as `xtb`, `crest`, or `terachem`) on `PATH`
+4. Optional but recommended for reaction-template features:
+   - a `retropaths` checkout at `~/retropaths` (default lookup) or
+   - set `RETROPATHS_REPO` to your `retropaths` checkout path
 
 **Examples:**
 
@@ -333,7 +349,10 @@ uv run mepd drive --inputs examples/example_inputs.toml
 # Start drive from SMILES on the command line
 uv run mepd drive \
   --smiles "C=CC(O)CC=C" \
+  --product-smiles "C=CC(=O)CC=C" \
   --environment "O" \
+  --charge 0 \
+  --multiplicity 1 \
   --inputs examples/example_inputs.toml \
   --name allylic_alcohol_drive
 
@@ -342,6 +361,9 @@ uv run mepd drive --workspace ./allylic_alcohol_drive
 
 # `--directory` also resumes automatically when it already contains workspace.json
 uv run mepd drive --directory ./allylic_alcohol_drive
+
+# Disable network-split overlay if you only want base pot/queue visualization
+uv run mepd drive --workspace ./allylic_alcohol_drive --no-network-splits
 ```
 
 **Options:**
@@ -350,9 +372,12 @@ uv run mepd drive --directory ./allylic_alcohol_drive
 |--------|-------------|
 | `--inputs`, `-i` | Path minimization `RunInputs` TOML. Required for `--smiles`; optional when resuming an existing workspace |
 | `--smiles`, `-s` | Root reactant SMILES to bootstrap a new drive workspace before opening the UI |
+| `--product-smiles`, `--end` | Optional product/end SMILES used to add a target endpoint and queue the initial edge |
 | `--environment`, `-e` | Optional environment SMILES for SMILES-based drive initialization |
+| `--charge` | Total charge for SMILES-bootstrapped endpoint structures |
+| `--multiplicity` | Spin multiplicity for SMILES-bootstrapped endpoint structures |
 | `--name` | Run name / workspace name for SMILES-based drive initialization |
-| `--workspace` | Existing workspace directory or `workspace.json` to load on startup |
+| `--workspace` | Existing workspace directory, `workspace.json`, `*_network.json`, or `*_request_manifest.json` to load on startup |
 | `--reactions-fp` | Path to the retropaths `reactions.p` library |
 | `--directory`, `-d` | Base directory for new drive workspaces, or an existing workspace directory to resume |
 | `--host` | Host interface for the local drive server |
@@ -363,12 +388,15 @@ uv run mepd drive --directory ./allylic_alcohol_drive
 | `--max-nodes` | Maximum retropaths pot size |
 | `--max-depth` | Maximum retropaths search depth |
 | `--max-parallel-nebs` | Number of autosplitting NEBs to run concurrently |
+| `--network-splits/--no-network-splits` | Enable/disable the recursive autosplit overlay in Drive |
 | `--no-open` | Do not automatically open the browser |
 
 **Drive behavior notes:**
 
 - If you launch `drive` with no workspace flags, you can still initialize entirely from the browser.
-- The browser-side initializer now also accepts an inputs TOML path, reactions file, and environment SMILES.
+- The browser-side initializer accepts an inputs TOML path, reactions file, environment SMILES, and mode (`reactant-only` or `reactant-product`).
+- If you did not pass `--inputs` at launch, you must provide an inputs TOML path in the initializer UI before initialization.
+- `netgen-smiles` and the Drive reaction-template `+` action require the optional `retropaths` repository. If unavailable, Drive now returns a clear error describing how to set `RETROPATHS_REPO`.
 - When an autosplitting NEB finishes, drive now shows a barrier and viewer link even when the completed result is attached to the reverse edge or when the original attempted pair was split into intermediate edges.
 - Completed queue-pair viewers are cached after first materialization so state polling stays responsive after the first finished NEB.
 - When multiple node minimizations are submitted and the loaded inputs use a ChemCloud-backed engine, drive submits them as one ChemCloud batch instead of serial single-node jobs.

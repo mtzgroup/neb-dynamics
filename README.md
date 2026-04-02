@@ -96,6 +96,44 @@ mepd ts ts_guess.xyz --inputs inputs.toml
 mepd make-default-inputs --name inputs.toml
 ```
 
+## MEPD Drive Quickstart
+
+Local run from this repository:
+
+```bash
+# Install repo dependencies
+uv sync
+
+# Launch blank Drive session using an existing RunInputs TOML
+uv run mepd drive --inputs examples/example_inputs.toml
+```
+
+SMILES bootstrap mode:
+
+```bash
+uv run mepd drive \
+  --smiles "C=CC(O)CC=C" \
+  --product-smiles "C=CC(=O)CC=C" \
+  --environment "O" \
+  --charge 0 \
+  --multiplicity 1 \
+  --inputs examples/example_inputs.toml \
+  --name allylic_alcohol_drive
+```
+
+Resume an existing workspace:
+
+```bash
+uv run mepd drive --workspace ./allylic_alcohol_drive
+```
+
+Notes:
+
+- You need a valid electronic-structure backend setup (for example ChemCloud credentials in `~/.chemcloud/credentials`, or local QC binaries if using local engines).
+- If you do not pass `--inputs` at startup, provide an inputs TOML path in the Drive initializer UI before running initialization.
+- The reaction-template `+` action in Drive and `mepd netgen-smiles` require the optional `retropaths` repository. Set `RETROPATHS_REPO=/path/to/retropaths` (or place it at `~/retropaths`).
+- Detailed Drive options and remote SSH tunnel usage are documented in `docs/cli.md` under `drive`.
+
 ## Render Deploy
 
 This repository includes a Render Blueprint in `render.yaml` and a startup wrapper in `scripts/start_render_drive.sh` for deploying `mepd drive` as a Render Web Service.
