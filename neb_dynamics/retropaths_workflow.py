@@ -2444,10 +2444,48 @@ def build_status_html(
       min-height: 420px;
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
+      cursor: grab;
+      touch-action: none;
       background:
         radial-gradient(circle at 20% 18%, rgba(99, 213, 255, 0.11), transparent 20%),
         radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%),
         linear-gradient(180deg, #0d1728 0%, #08111f 100%);
+    }}
+    .explorer-svg.is-panning {{ cursor: grabbing; }}
+    .network-hint {{
+      margin-top: 8px;
+      color: rgba(178, 198, 226, 0.82);
+      font-size: 12px;
+    }}
+    .network-tool-menu {{
+      position: absolute;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 170px;
+      max-width: 190px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: rgba(7, 15, 27, 0.97);
+      box-shadow: 0 10px 28px rgba(2, 7, 14, 0.58);
+      z-index: 5;
+    }}
+    .network-tool-menu.visible {{ display: flex; }}
+    .network-tool-menu button {{
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--ink-soft);
+      padding: 6px 8px;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }}
+    .network-tool-menu button:hover {{
+      background: rgba(99, 213, 255, 0.14);
+      color: var(--ink);
+      border-color: rgba(99, 213, 255, 0.34);
     }}
     .info-tabs {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }}
     .info-tab-button {{
@@ -2548,6 +2586,7 @@ def build_status_html(
         <div class="explorer-card">
           <h3 style="margin-top: 0;">Retropaths Reaction Network</h3>
           <svg id="retropaths-network-svg" class="explorer-svg" viewBox="0 0 960 560" role="img" aria-label="Retropaths network graph"></svg>
+          <div class="network-hint">Right-click inside the graph for tools. Scroll to zoom and drag empty space to pan.</div>
         </div>
         <div class="explorer-card">
           <h3 id="retropaths-network-title" style="margin-top: 0;">Select an edge or node</h3>
@@ -2569,6 +2608,7 @@ def build_status_html(
         <div class="explorer-card">
           <h3 style="margin-top: 0;">NEB Reaction Network</h3>
           <svg id="neb-network-svg" class="explorer-svg" viewBox="0 0 960 560" role="img" aria-label="NEB network graph"></svg>
+          <div class="network-hint">Right-click inside the graph for tools. Scroll to zoom and drag empty space to pan.</div>
         </div>
         <div class="explorer-card">
           <h3 id="neb-network-title" style="margin-top: 0;">Select an edge or node</h3>
@@ -2746,12 +2786,195 @@ def build_status_html(
         while (svg.firstChild) svg.removeChild(svg.firstChild);
         const width = 960;
         const height = 560;
+        const toolHost = svg.parentElement;
+        if (toolHost) {{
+          toolHost.style.position = "relative";
+          const existingMenu = toolHost.querySelector(".network-tool-menu");
+          if (existingMenu) {{
+            existingMenu.remove();
+          }}
+        }}
         const nodeElems = new Map();
         const edgeElems = [];
+        const viewState = {{ x: 0, y: 0, scale: 1 }};
+        const minScale = 0.35;
+        const maxScale = 4.5;
+        let panning = false;
+        let suppressClickUntil = 0;
+        let panOrigin = null;
 
         function makeSvg(tag) {{
           return document.createElementNS("http://www.w3.org/2000/svg", tag);
         }}
+
+        const viewport = makeSvg("g");
+        svg.appendChild(viewport);
+
+        function applyViewportTransform() {{
+          viewport.setAttribute(
+            "transform",
+            `translate(${{viewState.x.toFixed(3)}},${{viewState.y.toFixed(3)}}) scale(${{viewState.scale.toFixed(4)}})`
+          );
+        }}
+
+        function toSvgCoords(event) {{
+          const bounds = svg.getBoundingClientRect();
+          if (!bounds.width || !bounds.height) {{
+            return {{ x: width / 2, y: height / 2 }};
+          }}
+          return {{
+            x: ((event.clientX - bounds.left) / bounds.width) * width,
+            y: ((event.clientY - bounds.top) / bounds.height) * height,
+          }};
+        }}
+
+        function zoomAt(factor, centerX = width / 2, centerY = height / 2) {{
+          const previousScale = viewState.scale;
+          const nextScale = Math.max(minScale, Math.min(maxScale, previousScale * factor));
+          if (!Number.isFinite(nextScale) || nextScale === previousScale) {{
+            return;
+          }}
+          const ratio = nextScale / previousScale;
+          viewState.x = centerX - ratio * (centerX - viewState.x);
+          viewState.y = centerY - ratio * (centerY - viewState.y);
+          viewState.scale = nextScale;
+          applyViewportTransform();
+        }}
+
+        function resetView() {{
+          viewState.x = 0;
+          viewState.y = 0;
+          viewState.scale = 1;
+          applyViewportTransform();
+        }}
+
+        const toolMenu = document.createElement("div");
+        toolMenu.className = "network-tool-menu";
+        toolMenu.innerHTML = `
+          <button type="button" data-network-tool="zoom-in">Zoom In</button>
+          <button type="button" data-network-tool="zoom-out">Zoom Out</button>
+          <button type="button" data-network-tool="reset-view">Reset View</button>
+        `;
+
+        function hideToolMenu() {{
+          toolMenu.classList.remove("visible");
+        }}
+
+        function showToolMenu(event) {{
+          if (!toolHost) {{
+            return;
+          }}
+          const bounds = toolHost.getBoundingClientRect();
+          const maxLeft = Math.max(8, bounds.width - 190);
+          const maxTop = Math.max(8, bounds.height - 130);
+          const left = Math.max(8, Math.min(maxLeft, event.clientX - bounds.left));
+          const top = Math.max(8, Math.min(maxTop, event.clientY - bounds.top));
+          toolMenu.style.left = `${{left}}px`;
+          toolMenu.style.top = `${{top}}px`;
+          toolMenu.classList.add("visible");
+        }}
+
+        if (toolHost) {{
+          toolHost.appendChild(toolMenu);
+        }}
+
+        toolMenu.addEventListener("click", (event) => {{
+          const button = event.target instanceof Element ? event.target.closest("button[data-network-tool]") : null;
+          if (!button) {{
+            return;
+          }}
+          const tool = button.getAttribute("data-network-tool");
+          if (tool === "zoom-in") {{
+            zoomAt(1.2);
+          }} else if (tool === "zoom-out") {{
+            zoomAt(1 / 1.2);
+          }} else if (tool === "reset-view") {{
+            resetView();
+          }}
+          hideToolMenu();
+        }});
+
+        svg.addEventListener("contextmenu", (event) => {{
+          event.preventDefault();
+          showToolMenu(event);
+        }});
+
+        svg.addEventListener("wheel", (event) => {{
+          event.preventDefault();
+          hideToolMenu();
+          const coords = toSvgCoords(event);
+          zoomAt(event.deltaY < 0 ? 1.12 : 1 / 1.12, coords.x, coords.y);
+        }}, {{ passive: false }});
+
+        svg.addEventListener("mousedown", (event) => {{
+          if (event.button !== 0) {{
+            return;
+          }}
+          const target = event.target;
+          if (!(target instanceof Element)) {{
+            return;
+          }}
+          if (
+            target.closest(".network-node")
+            || target.closest(".network-edge-hitbox")
+            || target.closest(".network-edge-line")
+            || target.closest(".network-label")
+          ) {{
+            return;
+          }}
+          panning = true;
+          hideToolMenu();
+          panOrigin = {{
+            mouseX: event.clientX,
+            mouseY: event.clientY,
+            viewX: viewState.x,
+            viewY: viewState.y,
+          }};
+          svg.classList.add("is-panning");
+          event.preventDefault();
+        }});
+
+        window.addEventListener("mousemove", (event) => {{
+          if (!panning || !panOrigin) {{
+            return;
+          }}
+          const bounds = svg.getBoundingClientRect();
+          if (!bounds.width || !bounds.height) {{
+            return;
+          }}
+          const dx = ((event.clientX - panOrigin.mouseX) / bounds.width) * width;
+          const dy = ((event.clientY - panOrigin.mouseY) / bounds.height) * height;
+          if (Math.abs(dx) + Math.abs(dy) > 1.5) {{
+            suppressClickUntil = Date.now() + 150;
+          }}
+          viewState.x = panOrigin.viewX + dx;
+          viewState.y = panOrigin.viewY + dy;
+          applyViewportTransform();
+        }});
+
+        window.addEventListener("mouseup", (event) => {{
+          if (event.button !== 0 || !panning) {{
+            return;
+          }}
+          panning = false;
+          panOrigin = null;
+          svg.classList.remove("is-panning");
+        }});
+
+        document.addEventListener("click", (event) => {{
+          if (toolMenu.contains(event.target)) {{
+            return;
+          }}
+          hideToolMenu();
+        }});
+
+        document.addEventListener("keydown", (event) => {{
+          if (event.key === "Escape") {{
+            hideToolMenu();
+          }}
+        }});
+
+        applyViewportTransform();
 
         function setInfo(selection) {{
           edgeElems.forEach((item) => item.line.classList.toggle("selected", item.edge === selection.edge));
@@ -2806,8 +3029,13 @@ def build_status_html(
           line.setAttribute("class", "network-edge-line");
           group.appendChild(hitbox);
           group.appendChild(line);
-          group.addEventListener("click", () => setInfo({{ edge }}));
-          svg.appendChild(group);
+          group.addEventListener("click", () => {{
+            if (Date.now() < suppressClickUntil) {{
+              return;
+            }}
+            setInfo({{ edge }});
+          }});
+          viewport.appendChild(group);
           edgeElems.push({{ edge, line, hitbox }});
         }});
 
@@ -2835,8 +3063,13 @@ def build_status_html(
           text.textContent = String(node.id);
           group.appendChild(circle);
           group.appendChild(text);
-          group.addEventListener("click", () => setInfo({{ node }}));
-          svg.appendChild(group);
+          group.addEventListener("click", () => {{
+            if (Date.now() < suppressClickUntil) {{
+              return;
+            }}
+            setInfo({{ node }});
+          }});
+          viewport.appendChild(group);
           nodeElems.set(Number(node.id), circle);
           simNode.group = group;
         }});

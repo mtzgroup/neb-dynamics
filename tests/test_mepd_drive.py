@@ -9,6 +9,7 @@ from neb_dynamics.mepd_drive import (
     _build_neb_live_payload,
     _bootstrap_product_endpoint,
     _build_drive_payload,
+    _deployment_program_defaults,
     _drive_network_version,
     _run_kmc_payload,
     _drive_html,
@@ -40,6 +41,11 @@ H 0.0 0.0 0.74
 
     assert list(structure.symbols) == ["H", "H"]
     assert len(structure.geometry) == 2
+
+
+def test_deployment_program_defaults_are_program_consistent():
+    assert _deployment_program_defaults("crest") == ("gfn2", "gfn2")
+    assert _deployment_program_defaults("terachem") == ("ub3lyp", "sto-3g")
 
 
 def test_merge_drive_pot_overlays_annotated_edges(monkeypatch, tmp_path):
@@ -324,6 +330,64 @@ def test_initialize_workspace_job_returns_partial_workspace_on_growth_error(monk
     assert result["error"] == "RuntimeError: Too many iterations"
 
 
+def test_initialize_workspace_job_bootstraps_minimal_network_when_retropaths_missing(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "drive-run"
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C=C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+        timeout_seconds=30,
+        max_nodes=40,
+        max_depth=4,
+        max_parallel_nebs=1,
+    )
+
+    def _fake_create_workspace(**kwargs):
+        workspace.directory.mkdir(parents=True, exist_ok=True)
+        workspace.write()
+        return workspace
+
+    def _fail_prepare(_workspace):
+        raise RuntimeError(
+            "Retropaths workflows requires the optional `retropaths` repository."
+        )
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.create_workspace", _fake_create_workspace)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.prepare_neb_workspace", _fail_prepare)
+
+    result = _initialize_workspace_job(
+        reactant={"smiles": "C=C", "charge": 0, "multiplicity": 1},
+        product={"smiles": "CC", "charge": 0, "multiplicity": 1},
+        run_name="drive-run",
+        workspace_dir=str(workspace_dir),
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp=None,
+        timeout_seconds=30,
+        max_nodes=40,
+        max_depth=4,
+        max_parallel_nebs=1,
+    )
+
+    assert result["message"] == "Initialized partial workspace drive-run."
+    assert "optional `retropaths` repository" in result["error"]
+
+    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    assert sorted(int(node_id) for node_id in pot.graph.nodes) == [0, 1]
+    assert pot.graph.has_edge(0, 1)
+    assert pot.graph.edges[(0, 1)]["reaction"] == "Product target"
+    assert workspace.queue_fp.exists()
+    assert workspace.retropaths_pot_fp.exists()
+
+    queue_payload = __import__("json").loads(workspace.queue_fp.read_text())
+    assert any(
+        int(item.get("source_node", -1)) == 0 and int(item.get("target_node", -1)) == 1
+        for item in queue_payload.get("items", [])
+    )
+
+
 def test_bootstrap_product_endpoint_adds_target_node_and_queue(tmp_path):
     workspace_dir = tmp_path / "drive-run"
     workspace_dir.mkdir()
@@ -578,6 +642,7 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="pathmin-config-panel"' in html
     assert 'id="log-console"' in html
     assert 'id="network-toolbar"' in html
+    assert 'id="network-context-menu"' in html
     assert 'id="path-source-node"' in html
     assert 'id="product-path-list"' in html
     assert 'id="clear-product-path"' in html
@@ -590,6 +655,14 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "pendingEdgeAddition" in html
     assert "function setPendingEdgeAddition(sourceNodeId, targetNodeId)" in html
     assert "manualEdgeRequestInFlight" in html
+    assert "networkView" in html
+    assert "function renderNetworkContextMenu(event, selectionOverride = null)" in html
+    assert "function bindNetworkInteractionHandlers(svg)" in html
+    assert 'addEventListener("contextmenu"' in html
+    assert 'addEventListener("wheel"' in html
+    assert "function deploymentProgramDefaults(program)" in html
+    assert "function syncTheoryModelFieldsToProgram(program, { force = false } = {})" in html
+    assert "gfn2 or sto-3g" in html
     assert "function setManualEdgeRequestInFlight(inFlight)" in html
     assert "A manual edge request is already in progress." in html
     assert "network-edge-line pending-add" in html
@@ -1630,6 +1703,62 @@ def test_submit_initialize_defers_process_pool_submission_off_request_path(monke
     assert process_calls["count"] == 0
     assert server.runtime.busy_label == "Building Retropaths network..."
     assert server.runtime.active_action["type"] == "initialize"
+
+
+def test_submit_initialize_defaults_to_seed_only_when_product_is_supplied(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server.runtime = SimpleNamespace(
+        workspace=None,
+        reactant=None,
+        product=None,
+        last_message="",
+        last_error="",
+        future=None,
+        busy_label="",
+        active_action=None,
+    )
+    server.base_directory = tmp_path
+    server.inputs_fp = tmp_path / "inputs.toml"
+    server.reactions_fp = None
+    server.timeout_seconds = 30
+    server.max_nodes = 40
+    server.max_depth = 4
+    server.max_parallel_nebs = 1
+    server._drive_payload_cache_key = None
+    server._drive_payload_cache_value = None
+
+    class _FakeDeferredFuture:
+        def add_done_callback(self, _callback):
+            return None
+
+        def done(self):
+            return False
+
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._resolve_species_input",
+        lambda smiles="", xyz_text="": {"smiles": smiles} if smiles else {},
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._materialize_deployment_inputs",
+        lambda template_fp, output_dir, run_name, theory_program=None, theory_method=None, theory_basis=None: Path(template_fp),
+    )
+    server._submit_process_action = lambda fn, *args, **kwargs: captured.update(kwargs) or _FakeDeferredFuture()
+
+    server.submit_initialize(
+        {
+            "reactant_smiles": "C=C",
+            "product_smiles": "CC",
+            "run_name": "seed-only-demo",
+        }
+    )
+
+    assert captured["seed_only"] is True
+    assert captured["progress_fp"] is None
+    assert captured["label"] == "Seeding workspace network..."
+    assert server.runtime.active_action["label"] == "Seeding workspace network..."
 
 
 def test_drive_network_version_ignores_annotated_overlay_file(tmp_path):

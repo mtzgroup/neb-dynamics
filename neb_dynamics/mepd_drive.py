@@ -625,6 +625,63 @@ def _resolve_species_input(
     return _species_payload(smiles=smiles, structure=structure)
 
 
+def _species_structure_from_payload(species: dict[str, Any] | None) -> Structure | None:
+    if not species:
+        return None
+    xyz_b64 = str(species.get("xyz_b64") or "").strip()
+    if not xyz_b64:
+        return None
+    charge = int(species.get("charge", 0) or 0)
+    multiplicity = int(species.get("multiplicity", 1) or 1)
+    try:
+        xyz_text = base64.b64decode(xyz_b64.encode("ascii")).decode("utf-8")
+    except Exception:
+        return None
+    with contextlib.suppress(Exception):
+        return _parse_xyz_text_to_structure(
+            xyz_text,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+    return None
+
+
+def _species_graph_from_payload(species: dict[str, Any] | None) -> Molecule | None:
+    if not species:
+        return None
+    structure = _species_structure_from_payload(species)
+    if structure is not None:
+        with contextlib.suppress(Exception):
+            return structure_to_molecule(structure)
+    smiles = str(species.get("smiles") or "").strip()
+    if smiles:
+        with contextlib.suppress(Exception):
+            return Molecule.from_smiles(smiles)
+    return None
+
+
+def _structure_node_from_species_payload(
+    species: dict[str, Any] | None,
+    *,
+    fallback_molecule: Molecule | None = None,
+) -> Any | None:
+    graph = _species_graph_from_payload(species)
+    if graph is None and fallback_molecule is None:
+        return None
+    graph = graph if graph is not None else fallback_molecule.copy()
+    charge = int((species or {}).get("charge", 0) or 0)
+    multiplicity = int((species or {}).get("multiplicity", 1) or 1)
+    td = structure_node_from_graph_like_molecule(
+        graph,
+        charge=charge,
+        spinmult=multiplicity,
+    )
+    structure = _species_structure_from_payload(species)
+    if structure is not None:
+        td.structure = structure
+    return td
+
+
 def _try_map_product_to_reactant_indices(
     reactant_graph: Molecule | None,
     product_graph: Molecule,
@@ -656,8 +713,9 @@ def _bootstrap_product_endpoint(
 ) -> None:
     if not product:
         return
+    product_structure = _species_structure_from_payload(product)
     product_smiles = str(product.get("smiles") or "").strip()
-    if not product_smiles or not workspace.neb_pot_fp.exists():
+    if (not product_smiles and product_structure is None) or not workspace.neb_pot_fp.exists():
         return
     product_charge = int(product.get("charge", 0) or 0)
     product_multiplicity = int(product.get("multiplicity", 1) or 1)
@@ -670,22 +728,34 @@ def _bootstrap_product_endpoint(
     if root_td is None or getattr(root_td, "structure", None) is None:
         return
 
-    product_graph = _try_map_product_to_reactant_indices(
-        root_attrs.get("molecule") or getattr(root_td, "graph", None),
-        Molecule.from_smiles(product_smiles),
-    )
+    product_graph = _species_graph_from_payload(product)
+    if product_graph is None and product_smiles:
+        product_graph = Molecule.from_smiles(product_smiles)
+    if product_graph is None:
+        return
+    if product_structure is None:
+        product_graph = _try_map_product_to_reactant_indices(
+            root_attrs.get("molecule") or getattr(root_td, "graph", None),
+            product_graph,
+        )
     target_index = _find_matching_node_by_molecule(pot, product_graph)
     if target_index is None:
         target_index = (max(pot.graph.nodes) + 1) if pot.graph.nodes else 0
+        product_td = _structure_node_from_species_payload(
+            product,
+            fallback_molecule=product_graph,
+        )
+        if product_td is None:
+            product_td = structure_node_from_graph_like_molecule(
+                product_graph,
+                charge=product_charge,
+                spinmult=product_multiplicity,
+            )
         pot.graph.add_node(
             target_index,
             molecule=product_graph.copy(),
             converged=False,
-            td=structure_node_from_graph_like_molecule(
-                product_graph,
-                charge=product_charge,
-                spinmult=product_multiplicity,
-            ),
+            td=product_td,
             endpoint_optimized=False,
             generated_by="drive_product_smiles",
         )
@@ -724,15 +794,102 @@ def _apply_bootstrap_species_overrides(
         return
     pot = Pot.read_from_disk(workspace.neb_pot_fp)
     if 0 in pot.graph.nodes:
-        reactant_graph = pot.graph.nodes[0].get("molecule") or Molecule.from_smiles(str(reactant["smiles"]))
-        pot.graph.nodes[0]["td"] = structure_node_from_graph_like_molecule(
+        reactant_graph = _species_graph_from_payload(reactant)
+        if reactant_graph is None:
+            reactant_graph = pot.graph.nodes[0].get("molecule") or Molecule.from_smiles(str(reactant["smiles"]))
+        reactant_td = _structure_node_from_species_payload(
+            reactant,
+            fallback_molecule=reactant_graph,
+        )
+        if reactant_td is not None:
+            pot.graph.nodes[0]["molecule"] = reactant_graph.copy()
+            pot.graph.nodes[0]["td"] = reactant_td
+        pot.graph.nodes[0]["endpoint_optimized"] = False
+    pot.write_to_disk(workspace.neb_pot_fp)
+    _bootstrap_product_endpoint(workspace, product)
+
+
+def _bootstrap_minimal_drive_workspace(
+    workspace: RetropathsWorkspace,
+    *,
+    reactant: dict[str, Any],
+    product: dict[str, Any] | None,
+) -> None:
+    reactant_graph = _species_graph_from_payload(reactant)
+    if reactant_graph is None:
+        reactant_graph = Molecule.from_smiles(str(reactant["smiles"]))
+    reactant_td = _structure_node_from_species_payload(
+        reactant,
+        fallback_molecule=reactant_graph,
+    )
+    if reactant_td is None:
+        reactant_td = structure_node_from_graph_like_molecule(
             reactant_graph,
             charge=int(reactant.get("charge", 0) or 0),
             spinmult=int(reactant.get("multiplicity", 1) or 1),
         )
-        pot.graph.nodes[0]["endpoint_optimized"] = False
+
+    pot = Pot(root=reactant_graph.copy(), target=Molecule())
+    pot.graph.nodes[0].update(
+        molecule=reactant_graph.copy(),
+        converged=False,
+        td=reactant_td,
+        endpoint_optimized=False,
+        generated_by="drive_bootstrap",
+        root=True,
+    )
+
+    if product:
+        product_graph = _species_graph_from_payload(product)
+        if product_graph is None:
+            product_smiles = str(product.get("smiles") or "").strip()
+            if product_smiles:
+                product_graph = Molecule.from_smiles(product_smiles)
+        if product_graph is not None:
+            if _species_structure_from_payload(product) is None:
+                product_graph = _try_map_product_to_reactant_indices(
+                    reactant_graph,
+                    product_graph,
+                )
+            target_index = _find_matching_node_by_molecule(pot, product_graph)
+            if target_index is None:
+                target_index = (max(pot.graph.nodes) + 1) if pot.graph.nodes else 0
+                product_td = _structure_node_from_species_payload(
+                    product,
+                    fallback_molecule=product_graph,
+                )
+                if product_td is None:
+                    product_td = structure_node_from_graph_like_molecule(
+                        product_graph,
+                        charge=int(product.get("charge", 0) or 0),
+                        spinmult=int(product.get("multiplicity", 1) or 1),
+                    )
+                pot.graph.add_node(
+                    target_index,
+                    molecule=product_graph.copy(),
+                    converged=False,
+                    td=product_td,
+                    endpoint_optimized=False,
+                    generated_by="drive_product_smiles",
+                )
+            if int(target_index) != 0 and not pot.graph.has_edge(0, int(target_index)):
+                pot.graph.add_edge(
+                    0,
+                    int(target_index),
+                    reaction="Product target",
+                    list_of_nebs=[],
+                    generated_by="drive_product_smiles",
+                )
+
+    workspace.directory.mkdir(parents=True, exist_ok=True)
     pot.write_to_disk(workspace.neb_pot_fp)
-    _bootstrap_product_endpoint(workspace, product)
+    build_retropaths_neb_queue(
+        pot=pot,
+        queue_fp=workspace.queue_fp,
+        overwrite=True,
+    )
+    if not workspace.retropaths_pot_fp.exists():
+        workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
 
 
 def _node_structure_payload(node_attrs: dict[str, Any]) -> dict[str, Any] | None:
@@ -945,7 +1102,7 @@ def _deployment_program_defaults(program: str) -> tuple[str, str]:
     if program_name == "crest":
         return "gfn2", "gfn2"
     if program_name == "terachem":
-        return "ub3lyp", "3-21g"
+        return "ub3lyp", "sto-3g"
     raise ValueError("Program must be either 'crest' or 'terachem'.")
 
 
@@ -970,7 +1127,7 @@ def _drive_defaults_payload(inputs_fp: Path | None, reactions_fp: Path | None) -
         "allowed_programs": ["crest", "terachem"],
         "program": "terachem",
         "method": "ub3lyp",
-        "basis": "3-21g",
+        "basis": "sto-3g",
     }
     if inputs_fp is None or not inputs_fp.exists():
         return defaults
@@ -1812,6 +1969,7 @@ def _initialize_workspace_job(
     max_nodes: int,
     max_depth: int,
     max_parallel_nebs: int,
+    seed_only: bool = False,
     network_splits: bool = True,
     progress_fp: str | None = None,
 ) -> dict[str, Any]:
@@ -1831,22 +1989,45 @@ def _initialize_workspace_job(
         max_parallel_nebs=max_parallel_nebs,
     )
     init_error = ""
-    try:
-        if progress_fp:
-            initialize_workspace_with_progress(workspace, progress_fp=progress_fp)
-        else:
-            prepare_neb_workspace(workspace)
-        _apply_bootstrap_species_overrides(workspace, reactant=reactant, product=product)
-    except Exception as exc:
-        init_error = f"{type(exc).__name__}: {exc}"
-        required_partial = [
-            workspace.workspace_fp,
-            workspace.neb_pot_fp,
-            workspace.queue_fp,
-            workspace.retropaths_pot_fp,
-        ]
-        if not all(fp.exists() for fp in required_partial):
-            raise
+    if seed_only:
+        _bootstrap_minimal_drive_workspace(
+            workspace,
+            reactant=reactant,
+            product=product,
+        )
+        if not workspace.retropaths_pot_fp.exists():
+            workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+        with contextlib.suppress(Exception):
+            _apply_bootstrap_species_overrides(workspace, reactant=reactant, product=product)
+    else:
+        try:
+            if progress_fp:
+                initialize_workspace_with_progress(workspace, progress_fp=progress_fp)
+            else:
+                prepare_neb_workspace(workspace)
+            _apply_bootstrap_species_overrides(workspace, reactant=reactant, product=product)
+        except Exception as exc:
+            init_error = f"{type(exc).__name__}: {exc}"
+            required_core = [
+                workspace.workspace_fp,
+                workspace.neb_pot_fp,
+                workspace.queue_fp,
+            ]
+            if not all(fp.exists() for fp in required_core):
+                with contextlib.suppress(Exception):
+                    _bootstrap_minimal_drive_workspace(
+                        workspace,
+                        reactant=reactant,
+                        product=product,
+                    )
+            if not workspace.retropaths_pot_fp.exists():
+                with contextlib.suppress(Exception):
+                    workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+            with contextlib.suppress(Exception):
+                _apply_bootstrap_species_overrides(workspace, reactant=reactant, product=product)
+            required_partial = [*required_core, workspace.retropaths_pot_fp]
+            if not all(fp.exists() for fp in required_partial):
+                raise
     payload = _workspace_snapshot_payload(
         workspace,
         reactant=reactant,
@@ -2542,10 +2723,59 @@ def _drive_html() -> str:
       min-height: 700px;
       border: 1px solid var(--line);
       border-radius: calc(var(--radius-lg) - 4px);
+      cursor: grab;
+      touch-action: none;
       background:
         radial-gradient(circle at 20% 18%, rgba(99, 213, 255, 0.11), transparent 20%),
         radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%),
         linear-gradient(180deg, #0d1728 0%, #08111f 100%);
+    }
+    .explorer-svg.is-panning { cursor: grabbing; }
+    .network-canvas-hint {
+      margin-top: 8px;
+      color: rgba(178, 198, 226, 0.82);
+      font-size: 12px;
+    }
+    .network-context-menu {
+      position: absolute;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 220px;
+      max-width: min(260px, calc(100% - 24px));
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(7, 15, 27, 0.97);
+      box-shadow: 0 12px 28px rgba(2, 7, 14, 0.58);
+      backdrop-filter: blur(12px);
+      z-index: 6;
+    }
+    .network-context-menu.visible { display: flex; }
+    .network-context-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink);
+      margin-bottom: 2px;
+    }
+    .network-context-menu button {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--ink-soft);
+      padding: 7px 9px;
+      font-size: 12px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .network-context-menu button:hover {
+      background: rgba(99, 213, 255, 0.14);
+      color: var(--ink);
+      border-color: rgba(99, 213, 255, 0.34);
+    }
+    .network-context-menu button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
     }
     .network-edge-line {
       stroke: rgba(128, 154, 194, 0.42);
@@ -2707,7 +2937,7 @@ def _drive_html() -> str:
     <div class="panel page-title">
       <div class="eyebrow">Reaction Discovery Workspace</div>
       <h1>MEPD Drive</h1>
-      <div class="muted" style="margin-bottom:12px;">Set inputs, grow the reaction network, interact directly with the graph, then queue exploration work and inspect logs from a single workspace.</div>
+      <div class="muted" style="margin-bottom:12px;">Set inputs, build a seed network, then manually grow and explore the graph while inspecting logs from a single workspace.</div>
       <div id="job-banner" class="message">Idle.</div>
       <div id="job-subtext" class="muted" style="margin-top:8px;">No action submitted yet.</div>
     </div>
@@ -2761,7 +2991,7 @@ def _drive_html() -> str:
               </div>
               <div>
                 <label>Basis</label>
-                <input id="theory-basis" type="text" placeholder="gfn2 or 3-21g" />
+                <input id="theory-basis" type="text" placeholder="gfn2 or sto-3g" />
               </div>
               <div>
                 <label>Reactions File</label>
@@ -2789,7 +3019,8 @@ def _drive_html() -> str:
               </div>
             </div>
             <div style="margin-top:12px;">
-              <button id="initialize" class="primary">Build Retropaths Network</button>
+              <button id="initialize-seed" class="primary">Build Seed Network</button>
+              <button id="initialize-grow" class="secondary">Build + Grow Retropaths</button>
               <button id="load-workspace" class="secondary">Load Existing Workspace</button>
               <button id="minimize-all" class="secondary">Queue Minimization For All Geometries</button>
             </div>
@@ -2820,8 +3051,10 @@ def _drive_html() -> str:
           <div class="network-canvas-shell">
             <div id="network-toolbar" class="network-toolbar"></div>
             <svg id="network-svg" class="explorer-svg" viewBox="0 0 1180 680" role="img" aria-label="MEPD Drive network graph"></svg>
+            <div id="network-context-menu" class="network-context-menu"></div>
             <div id="live-activity-inline" class="live-activity live-activity-inline" style="display:none;"></div>
           </div>
+          <div class="network-canvas-hint">Right-click inside the network for tools. Scroll to zoom and drag empty space to pan.</div>
           <div class="path-browser">
             <div class="path-browser-head">
               <div>
@@ -2937,6 +3170,9 @@ def _drive_html() -> str:
       snapshot: null,
       selected: null,
       networkVersion: "",
+      networkView: { x: 0, y: 0, scale: 1, minScale: 0.35, maxScale: 4.5, suppressClickUntil: 0 },
+      networkCanvas: null,
+      inputsDefaultsKey: "",
       connectSourceNodeId: null,
       manualEdgeRequestInFlight: false,
       pathSourceNodeId: 0,
@@ -3169,7 +3405,7 @@ def _drive_html() -> str:
     }
 
     function setButtonsDisabled(disabled) {
-      ["initialize", "load-workspace", "minimize-all", "add-manual-edge"].forEach((id) => {
+      ["initialize-seed", "initialize-grow", "load-workspace", "minimize-all", "add-manual-edge"].forEach((id) => {
         const elem = document.getElementById(id);
         if (elem) elem.disabled = disabled;
       });
@@ -3233,6 +3469,32 @@ def _drive_html() -> str:
       )).join("");
     }
 
+    function deploymentProgramDefaults(program) {
+      const normalized = String(program || "").trim().toLowerCase();
+      if (normalized === "crest") {
+        return { method: "gfn2", basis: "gfn2" };
+      }
+      return { method: "ub3lyp", basis: "sto-3g" };
+    }
+
+    function syncTheoryModelFieldsToProgram(program, { force = false } = {}) {
+      const theoryMethodField = document.getElementById("theory-method");
+      const theoryBasisField = document.getElementById("theory-basis");
+      const defaults = deploymentProgramDefaults(program);
+      if (!theoryMethodField || !theoryBasisField) {
+        return defaults;
+      }
+      const currentMethod = String(theoryMethodField.value || "").trim().toLowerCase();
+      const currentBasis = String(theoryBasisField.value || "").trim().toLowerCase();
+      const isCrestPair = currentMethod === "gfn2" && currentBasis === "gfn2";
+      const isTerachemPair = currentMethod === "ub3lyp" && (currentBasis === "sto-3g" || currentBasis === "3-21g");
+      if (force || !currentMethod || !currentBasis || isCrestPair || isTerachemPair) {
+        theoryMethodField.value = defaults.method;
+        theoryBasisField.value = defaults.basis;
+      }
+      return defaults;
+    }
+
     function renderWorkspaceSummary(snapshot) {
       const inputEl = document.getElementById("workspace-summary");
       const networkEl = document.getElementById("network-summary");
@@ -3251,14 +3513,33 @@ def _drive_html() -> str:
       if (reactionsPathField && !reactionsPathField.value) {
         reactionsPathField.value = String(defaults.reactions_fp || "");
       }
-      if (theoryProgramField && !theoryProgramField.value) {
-        theoryProgramField.value = String(defaults.program || "terachem");
+      const defaultsProgram = String(defaults.program || "terachem").trim().toLowerCase() || "terachem";
+      const programDefaults = deploymentProgramDefaults(defaultsProgram);
+      const defaultsMethod = String(defaults.method || programDefaults.method).trim() || programDefaults.method;
+      const defaultsBasis = String(defaults.basis || programDefaults.basis).trim() || programDefaults.basis;
+      const defaultsKey = `${String(defaults.inputs_path || "")}|${defaultsProgram}|${defaultsMethod}|${defaultsBasis}`;
+      if (state.inputsDefaultsKey !== defaultsKey) {
+        state.inputsDefaultsKey = defaultsKey;
+        if (theoryProgramField) {
+          theoryProgramField.value = defaultsProgram;
+        }
+        if (theoryMethodField) {
+          theoryMethodField.value = defaultsMethod;
+        }
+        if (theoryBasisField) {
+          theoryBasisField.value = defaultsBasis;
+        }
       }
-      if (theoryMethodField && !theoryMethodField.value) {
-        theoryMethodField.value = String(defaults.method || "");
+      if (theoryProgramField && theoryProgramField.dataset.bound !== "true") {
+        theoryProgramField.dataset.bound = "true";
+        theoryProgramField.addEventListener("change", () => {
+          const selectedProgram = String(theoryProgramField.value || "terachem").trim().toLowerCase() || "terachem";
+          syncTheoryModelFieldsToProgram(selectedProgram, { force: true });
+        });
       }
-      if (theoryBasisField && !theoryBasisField.value) {
-        theoryBasisField.value = String(defaults.basis || "");
+      if (theoryProgramField) {
+        const selectedProgram = String(theoryProgramField.value || "terachem").trim().toLowerCase() || "terachem";
+        syncTheoryModelFieldsToProgram(selectedProgram, { force: false });
       }
       if (theoryEngineField) {
         theoryEngineField.value = "chemcloud";
@@ -3915,7 +4196,7 @@ def _drive_html() -> str:
         const connectDisabled = state.manualEdgeRequestInFlight ? "disabled" : "";
         toolbar.innerHTML = `
           <div class="network-toolbar-title">Node ${escapeHtml(node.id)} Actions</div>
-          <div class="muted">${state.manualEdgeRequestInFlight ? "Waiting for the current manual edge request to finish." : connectActive ? "Click a second node to create an edge from this source." : "Node tools are available directly from the graph."}</div>
+          <div class="muted">${state.manualEdgeRequestInFlight ? "Waiting for the current manual edge request to finish." : connectActive ? "Click a second node to create an edge from this source." : "Node tools are available directly from the graph and via right-click context menu."}</div>
           <div class="network-toolbar-actions">
             <button class="network-tool-button" data-drive-action="toolbar-minimize-node" title="Minimize geometry" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>↓</button>
             <button class="network-tool-button" data-drive-action="toolbar-apply-node" title="Apply reaction templates" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>+</button>
@@ -4416,10 +4697,262 @@ def _drive_html() -> str:
       ));
     });
 
+    function hideNetworkContextMenu() {
+      const menu = document.getElementById("network-context-menu");
+      if (!menu) return;
+      menu.classList.remove("visible");
+    }
+
+    function applyNetworkViewTransform() {
+      const canvas = state.networkCanvas;
+      const viewport = canvas?.viewport;
+      if (!viewport) return;
+      const view = state.networkView;
+      viewport.setAttribute(
+        "transform",
+        `translate(${view.x.toFixed(3)},${view.y.toFixed(3)}) scale(${view.scale.toFixed(4)})`,
+      );
+    }
+
+    function networkSvgCoordsFromEvent(event) {
+      const canvas = state.networkCanvas;
+      if (!canvas?.svg) return { x: 0, y: 0 };
+      const bounds = canvas.svg.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) {
+        return { x: canvas.width / 2, y: canvas.height / 2 };
+      }
+      return {
+        x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
+        y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
+      };
+    }
+
+    function zoomNetworkAt(factor, centerX = null, centerY = null) {
+      const canvas = state.networkCanvas;
+      if (!canvas) return;
+      const view = state.networkView;
+      const oldScale = Number(view.scale || 1);
+      const nextScale = Math.max(
+        Number(view.minScale || 0.35),
+        Math.min(Number(view.maxScale || 4.5), oldScale * Number(factor || 1)),
+      );
+      if (!Number.isFinite(nextScale) || nextScale === oldScale) return;
+      const cx = centerX == null ? canvas.width / 2 : Number(centerX);
+      const cy = centerY == null ? canvas.height / 2 : Number(centerY);
+      const ratio = nextScale / oldScale;
+      view.x = cx - ratio * (cx - Number(view.x || 0));
+      view.y = cy - ratio * (cy - Number(view.y || 0));
+      view.scale = nextScale;
+      applyNetworkViewTransform();
+    }
+
+    function resetNetworkView() {
+      state.networkView.x = 0;
+      state.networkView.y = 0;
+      state.networkView.scale = 1;
+      applyNetworkViewTransform();
+    }
+
+    function buildNetworkContextActions(selection) {
+      const actions = [];
+      if (selection?.kind === "node") {
+        const node = selection.node;
+        const nodeId = Number(node.id);
+        actions.push({
+          label: `Minimize node ${nodeId}`,
+          enabled: Boolean(node.minimizable),
+          note: node.minimize_note || "This node cannot be minimized from its current state.",
+          run: () => queueMinimizeNode(nodeId),
+        });
+        actions.push({
+          label: `Apply reactions on node ${nodeId}`,
+          enabled: Boolean(node.can_apply_reactions),
+          note: node.apply_reactions_note || "Reaction-template application is unavailable for this node.",
+          run: () => queueApplyReactions(nodeId),
+        });
+        actions.push({
+          label: `Run nanoreactor from node ${nodeId}`,
+          enabled: Boolean(node.can_nanoreactor),
+          note: node.nanoreactor_note || "Nanoreactor sampling is unavailable for this node.",
+          run: () => queueNanoreactor(nodeId),
+        });
+        actions.push({
+          label: `Run Hessian sample from node ${nodeId}`,
+          enabled: Boolean(node.can_hessian_sample),
+          note: node.hessian_sample_note || "Hessian sampling is unavailable for this node.",
+          run: () => queueHessianSampleFromNode(nodeId),
+        });
+        actions.push({
+          label: `Connect from node ${nodeId}`,
+          enabled: !state.manualEdgeRequestInFlight,
+          note: "A manual edge request is already in progress.",
+          run: () => beginConnectMode(nodeId),
+        });
+      } else if (selection?.kind === "edge") {
+        const edge = selection.edge;
+        const source = Number(edge.source);
+        const target = Number(edge.target);
+        actions.push({
+          label: `Minimize edge endpoints (${source} and ${target})`,
+          enabled: true,
+          note: "",
+          run: () => queueMinimizePair(source, target),
+        });
+        actions.push({
+          label: `Run Hessian sample from edge ${source} -> ${target}`,
+          enabled: Boolean(edge.can_hessian_sample),
+          note: edge.hessian_sample_note || "Hessian sampling is unavailable for this edge.",
+          run: () => queueHessianSampleFromEdge(source, target),
+        });
+        actions.push({
+          label: `Queue NEB for edge ${source} -> ${target}`,
+          enabled: Boolean(edge.can_queue_neb),
+          note: edge.queue_note || "This edge cannot be queued from its current state.",
+          run: () => queueEdgeNeb(source, target),
+        });
+      }
+      actions.push({
+        label: "Zoom in",
+        enabled: true,
+        note: "",
+        run: () => zoomNetworkAt(1.18),
+      });
+      actions.push({
+        label: "Zoom out",
+        enabled: true,
+        note: "",
+        run: () => zoomNetworkAt(1 / 1.18),
+      });
+      actions.push({
+        label: "Reset view",
+        enabled: true,
+        note: "",
+        run: () => resetNetworkView(),
+      });
+      return actions;
+    }
+
+    function renderNetworkContextMenu(event, selectionOverride = null) {
+      const menu = document.getElementById("network-context-menu");
+      const canvas = state.networkCanvas;
+      const host = canvas?.svg?.closest(".network-canvas-shell");
+      if (!menu || !host) return;
+      const selection = selectionOverride || state.selected;
+      const title = selection?.kind === "node"
+        ? `Node ${Number(selection.node.id)} tools`
+        : selection?.kind === "edge"
+          ? `Edge ${Number(selection.edge.source)} -> ${Number(selection.edge.target)} tools`
+          : "Network tools";
+      const actions = buildNetworkContextActions(selection);
+      menu.innerHTML = "";
+      const heading = document.createElement("div");
+      heading.className = "network-context-title";
+      heading.textContent = title;
+      menu.appendChild(heading);
+      actions.forEach((action) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = action.label;
+        button.disabled = !action.enabled;
+        if (!action.enabled && action.note) {
+          button.title = action.note;
+        }
+        button.addEventListener("click", () => {
+          hideNetworkContextMenu();
+          action.run();
+        });
+        menu.appendChild(button);
+      });
+      menu.classList.add("visible");
+      const bounds = host.getBoundingClientRect();
+      const rawX = event.clientX - bounds.left;
+      const rawY = event.clientY - bounds.top;
+      const maxX = Math.max(10, bounds.width - menu.offsetWidth - 10);
+      const maxY = Math.max(10, bounds.height - menu.offsetHeight - 10);
+      const clampedX = Math.max(10, Math.min(maxX, rawX));
+      const clampedY = Math.max(10, Math.min(maxY, rawY));
+      menu.style.left = `${clampedX}px`;
+      menu.style.top = `${clampedY}px`;
+    }
+
+    function bindNetworkInteractionHandlers(svg) {
+      if (!svg || svg.dataset.interactionsBound === "true") return;
+      svg.dataset.interactionsBound = "true";
+      svg.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        renderNetworkContextMenu(event);
+      });
+      svg.addEventListener("wheel", (event) => {
+        event.preventDefault();
+        hideNetworkContextMenu();
+        const coords = networkSvgCoordsFromEvent(event);
+        zoomNetworkAt(event.deltaY < 0 ? 1.12 : 1 / 1.12, coords.x, coords.y);
+      }, { passive: false });
+      svg.addEventListener("mousedown", (event) => {
+        if (event.button !== 0) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (
+          target.closest(".network-node")
+          || target.closest(".network-edge-hitbox")
+          || target.closest(".network-edge-line")
+          || target.closest(".network-label")
+        ) {
+          return;
+        }
+        const canvas = state.networkCanvas;
+        if (!canvas) return;
+        canvas.panning = true;
+        canvas.panOrigin = {
+          mouseX: event.clientX,
+          mouseY: event.clientY,
+          viewX: Number(state.networkView.x || 0),
+          viewY: Number(state.networkView.y || 0),
+        };
+        svg.classList.add("is-panning");
+        hideNetworkContextMenu();
+        event.preventDefault();
+      });
+      window.addEventListener("mousemove", (event) => {
+        const canvas = state.networkCanvas;
+        if (!canvas?.panning || !canvas.panOrigin || !canvas.svg) return;
+        const bounds = canvas.svg.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        const dx = ((event.clientX - canvas.panOrigin.mouseX) / bounds.width) * canvas.width;
+        const dy = ((event.clientY - canvas.panOrigin.mouseY) / bounds.height) * canvas.height;
+        if (Math.abs(dx) + Math.abs(dy) > 1.5) {
+          state.networkView.suppressClickUntil = Date.now() + 150;
+        }
+        state.networkView.x = canvas.panOrigin.viewX + dx;
+        state.networkView.y = canvas.panOrigin.viewY + dy;
+        applyNetworkViewTransform();
+      });
+      window.addEventListener("mouseup", (event) => {
+        const canvas = state.networkCanvas;
+        if (!canvas?.panning || event.button !== 0) return;
+        canvas.panning = false;
+        canvas.panOrigin = null;
+        if (canvas.svg) {
+          canvas.svg.classList.remove("is-panning");
+        }
+      });
+      document.addEventListener("click", (event) => {
+        const menu = document.getElementById("network-context-menu");
+        if (!menu) return;
+        if (menu.contains(event.target)) return;
+        hideNetworkContextMenu();
+      });
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") hideNetworkContextMenu();
+      });
+    }
+
     function renderNetwork(snapshot) {
       const svg = document.getElementById("network-svg");
       while (svg.firstChild) svg.removeChild(svg.firstChild);
+      hideNetworkContextMenu();
       if (!snapshot || !snapshot.initialized || !snapshot.drive?.network) {
+        state.networkCanvas = null;
         renderDetail(null);
         return;
       }
@@ -4432,6 +4965,7 @@ def _drive_html() -> str:
         state.pendingEdgeAddition = null;
       }
       if (!nodes.length) {
+        state.networkCanvas = null;
         renderDetail(null);
         return;
       }
@@ -4540,6 +5074,18 @@ def _drive_html() -> str:
       const height = layout.height;
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       const make = (tag) => document.createElementNS(ns, tag);
+      const viewport = make("g");
+      svg.appendChild(viewport);
+      state.networkCanvas = {
+        svg,
+        viewport,
+        width,
+        height,
+        panning: false,
+        panOrigin: null,
+      };
+      bindNetworkInteractionHandlers(svg);
+      applyNetworkViewTransform();
       const nodeElems = new Map();
       const edgeElems = [];
       const simNodes = nodes.map((node) => ({
@@ -4696,10 +5242,18 @@ def _drive_html() -> str:
         group.appendChild(hitbox);
         group.appendChild(line);
         group.addEventListener("click", () => {
+          if (Date.now() < Number(state.networkView.suppressClickUntil || 0)) return;
           state.connectSourceNodeId = null;
           setSelection({ kind: "edge", edge });
         });
-        svg.appendChild(group);
+        group.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          state.connectSourceNodeId = null;
+          setSelection({ kind: "edge", edge });
+          renderNetworkContextMenu(event, { kind: "edge", edge });
+        });
+        viewport.appendChild(group);
         edgeElems.push({ edge, line, hitbox, curvature: Number(curvatureByEdge.get(edge) || 0) });
       });
 
@@ -4721,6 +5275,7 @@ def _drive_html() -> str:
         group.appendChild(circle);
         group.appendChild(text);
         group.addEventListener("click", async () => {
+          if (Date.now() < Number(state.networkView.suppressClickUntil || 0)) return;
           const connectSource = state.connectSourceNodeId;
           if (connectSource != null && Number(connectSource) !== Number(node.id)) {
             setSelection({ kind: "node", node });
@@ -4729,7 +5284,13 @@ def _drive_html() -> str:
           }
           setSelection({ kind: "node", node });
         });
-        svg.appendChild(group);
+        group.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setSelection({ kind: "node", node });
+          renderNetworkContextMenu(event, { kind: "node", node });
+        });
+        viewport.appendChild(group);
         nodeElems.set(Number(node.id), circle);
         simById.get(Number(node.id)).group = group;
       });
@@ -4778,7 +5339,7 @@ def _drive_html() -> str:
           line.appendChild(animX);
           line.appendChild(animY);
           group.appendChild(line);
-          svg.appendChild(group);
+          viewport.appendChild(group);
         }
       }
       applyNetworkDecorations(state.selected);
@@ -4865,13 +5426,19 @@ def _drive_html() -> str:
       }
     }
 
-    async function initializeDrive() {
+    async function initializeDrive(growRetropaths = false) {
       const mode = document.getElementById("mode").value;
+      const seedOnly = !growRetropaths;
       try {
         setBanner("Submitting initialization request...");
-        setSubtext("Preparing a fresh workspace and building the Retropaths network.");
+        setSubtext(
+          seedOnly
+            ? "Preparing a fresh workspace and seeding only the provided endpoints."
+            : "Preparing a fresh workspace and growing the Retropaths network from the root."
+        );
         await postJson("/api/initialize", {
           mode,
+          seed_only: seedOnly,
           run_name: document.getElementById("run-name").value,
           inputs_path: document.getElementById("inputs-path").value,
           theory_program: document.getElementById("theory-program").value,
@@ -4884,7 +5451,7 @@ def _drive_html() -> str:
           product_smiles: document.getElementById("product-smiles").value,
           product_xyz: document.getElementById("product-xyz").value,
         });
-        setBanner("Initialization request accepted.");
+        setBanner(seedOnly ? "Seed-network initialization request accepted." : "Retropaths growth request accepted.");
         void refreshState();
       } catch (error) {
         setBanner(error.message || String(error), true);
@@ -5173,7 +5740,8 @@ def _drive_html() -> str:
     window.beginConnectMode = beginConnectMode;
     window.setPathSourceNode = setPathSourceNode;
 
-    document.getElementById("initialize").addEventListener("click", initializeDrive);
+    document.getElementById("initialize-seed").addEventListener("click", () => initializeDrive(false));
+    document.getElementById("initialize-grow").addEventListener("click", () => initializeDrive(true));
     document.getElementById("load-workspace").addEventListener("click", loadWorkspace);
     document.getElementById("minimize-all").addEventListener("click", queueMinimizeAll);
     document.getElementById("add-manual-edge").addEventListener("click", addManualEdge);
@@ -5452,9 +6020,20 @@ class MepdDriveServer(ThreadingHTTPServer):
         if str(payload.get("mode") or "reactant") == "reactant-product" and not product:
             raise ValueError("Reactant/product mode requires a product SMILES or product XYZ block.")
 
+        payload_seed_only = payload.get("seed_only")
+        if payload_seed_only is None:
+            seed_only = bool(product) or bool(str(reactant.get("xyz_b64") or "").strip()) or bool(
+                product and str(product.get("xyz_b64") or "").strip()
+            )
+        else:
+            seed_only = bool(payload_seed_only)
+        initialize_label = "Seeding workspace network..." if seed_only else "Building Retropaths network..."
+
         run_name = str(payload.get("run_name") or "").strip() or f"mepd-drive-{int(time.time())}"
         workspace_dir = (self.base_directory / run_name).resolve()
-        progress_fp = str((workspace_dir / "drive_growth.progress.json").resolve())
+        progress_fp: str | None = None
+        if not seed_only:
+            progress_fp = str((workspace_dir / "drive_growth.progress.json").resolve())
         inputs_fp = self._resolve_inputs_fp(payload)
         inputs_fp = _materialize_deployment_inputs(
             template_fp=inputs_fp,
@@ -5509,16 +6088,17 @@ class MepdDriveServer(ThreadingHTTPServer):
             max_nodes=self.max_nodes,
             max_depth=self.max_depth,
             max_parallel_nebs=self.max_parallel_nebs,
+            seed_only=seed_only,
             network_splits=getattr(self, "network_splits", True),
             progress_fp=progress_fp,
-            label="Building Retropaths network...",
+            label=initialize_label,
         )
         future.add_done_callback(_finish_initialize)
         with self.state_lock:
             self.runtime.active_action = {
                 "type": "initialize",
                 "status": "running",
-                "label": "Building Retropaths network...",
+                "label": initialize_label,
                 "progress_fp": progress_fp,
             }
 
@@ -6138,6 +6718,7 @@ def launch_mepd_drive(
             max_nodes=max_nodes,
             max_depth=max_depth,
             max_parallel_nebs=max_parallel_nebs,
+            seed_only=bool(str(product_smiles or "").strip()),
             network_splits=network_splits,
             progress_fp=None,
         )

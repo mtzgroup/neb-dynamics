@@ -265,6 +265,10 @@ def test_write_status_html_writes_visible_pot_sections(monkeypatch, tmp_path):
     assert "Targeted Reaction" in html
     assert "Template Data" in html
     assert "Template Visualization" in html
+    assert "Right-click inside the graph for tools." in html
+    assert 'data-network-tool="zoom-in"' in html
+    assert 'addEventListener("contextmenu"' in html
+    assert 'addEventListener("wheel"' in html
     assert "Prepared Queue Edges" in html
     assert "Completed NEB Edges" in html
     assert "Kinetic Monte Carlo" in html
