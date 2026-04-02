@@ -2,10 +2,12 @@ site_name: NEB Dynamics Documentation
 site_url: https://mtzgroup.github.io/neb-dynamics/
 nav:
   - Home: index.md
+  - Installation: installation.md
   - Key Concepts: concepts.md
   - Engines: engines.md
   - Input Parameters: inputs.md
   - Tutorial: tutorial.md
+  - MEPD Drive Remote: drive_remote.md
   - CLI Reference: cli.md
   - API Reference: api.md
   - About: about.md
@@ -16,6 +18,7 @@ theme:
       primary: blue
       accent: orange
   features:
+    - navigation.tabs
     - search.suggest
     - search.highlight
     - navigation.instant

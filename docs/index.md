@@ -12,31 +12,16 @@ NEB Dynamics is designed to:
 
 ## Installation
 
-```bash
-pip install "git+https://github.com/mtzgroup/neb-dynamics.git"
-```
+Detailed install/setup instructions are in:
 
-### ChemCloud Setup (Recommended)
+- [Installation & Setup](installation.md)
 
-NEB Dynamics uses ChemCloud for electronic structure calculations. You'll need:
+That page includes:
 
-1. Sign up at https://chemcloud.mtzlab.com/signup
-2. Configure authentication (choose one option below):
-
-```bash
-# Option 1: Run setup_profile() - writes credentials to ~/.chemcloud/credentials
-python -c "from chemcloud import setup_profile; setup_profile()"
-
-# Option 2: Use environment variables (for memory-only auth)
-export CHEMCLOUD_USERNAME=your_email@chemcloud.com
-export CHEMCLOUD_PASSWORD=your_password
-
-# Option 3: Custom server (if using a different domain)
-export CHEMCLOUD_DOMAIN="https://your-server-url.com"
-```
-
-### Tips
-- For local calculations, you can also use ASE with machine learning potentials
+- `uv` and `pip` installation workflows
+- backend setup (including ChemCloud auth)
+- optional `retropaths` setup for network-growth features
+- verification commands
 
 ## Quick Start
 
@@ -125,4 +110,3 @@ results = n.optimize_chain()
 n.plot_opt_history(1)
 ch.visualize_chain(n.optimized)
 ```
-

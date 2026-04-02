@@ -443,6 +443,8 @@ Remote-use notes:
 - `--workspace` is the cleanest way to reconnect to a run that is already in progress.
 - If you are starting from SMILES on the remote host, use the same `drive --smiles ... --inputs ...` command there, then tunnel to the printed local URL.
 
+For a dedicated remote-run walkthrough, see [MEPD Drive (Remote)](drive_remote.md).
+
 ---
 
 ### status
