@@ -699,15 +699,6 @@ def _load_visualization_data(
         deps.match_network_endpoint_indices_by_connectivity
         or (lambda pot, start_node, end_node: _match_network_endpoint_indices_by_connectivity(pot, start_node, end_node, deps))
     )
-    find_root = deps.find_pot_root_node_index or _find_pot_root_node_index
-    find_target = (
-        deps.find_pot_target_node_index
-        or (lambda pot, target_idx_hint=None: _find_pot_target_node_index(pot, deps, target_idx_hint))
-    )
-    best_path = (
-        deps.best_path_by_apparent_barrier
-        or (lambda pot, root_idx, target_idx: _best_path_by_apparent_barrier(pot, root_idx, target_idx, deps))
-    )
     path_chain_from_pot = (
         deps.path_chain_from_pot
         or (lambda pot, path: _path_chain_from_pot(pot, path, deps))
@@ -750,6 +741,15 @@ def _load_visualization_data(
                 )
             if not endpoint_hints:
                 endpoint_hints = None
+            find_root = deps.find_pot_root_node_index or _find_pot_root_node_index
+            find_target = (
+                deps.find_pot_target_node_index
+                or (lambda pot, target_idx_hint=None: _find_pot_target_node_index(pot, deps, target_idx_hint))
+            )
+            best_path = (
+                deps.best_path_by_apparent_barrier
+                or (lambda pot, root_idx, target_idx: _best_path_by_apparent_barrier(pot, root_idx, target_idx, deps))
+            )
             root_idx = (
                 int(endpoint_hints["root_index"])
                 if endpoint_hints and endpoint_hints.get("root_index") is not None
@@ -854,14 +854,11 @@ def _load_chain_for_visualization(
     ).chain
 
 
-def _build_network_visualization_payload(
+def _resolve_network_highlight(
     pot,
     deps: VisualizationDeps,
-    atom_indices: list[int] | None = None,
     endpoint_hints: dict | None = None,
-) -> dict:
-    graph_for_layout = pot.graph.to_undirected()
-    layout = deps.nx.spring_layout(graph_for_layout, seed=7)
+) -> tuple[int | None, int | None, list[int], set[tuple[int, int]], float | None]:
     find_root = deps.find_pot_root_node_index or _find_pot_root_node_index
     find_target = (
         deps.find_pot_target_node_index
@@ -870,10 +867,6 @@ def _build_network_visualization_payload(
     best_path = (
         deps.best_path_by_apparent_barrier
         or (lambda pot, root_idx, target_idx: _best_path_by_apparent_barrier(pot, root_idx, target_idx, deps))
-    )
-    best_chain_for_directed_edge = (
-        deps.best_chain_for_directed_edge
-        or (lambda pot, source, target: _best_chain_for_directed_edge(pot, source, target, deps))
     )
 
     root_idx = (
@@ -890,7 +883,7 @@ def _build_network_visualization_payload(
         ),
     )
 
-    highlighted_path = []
+    highlighted_path: list[int] = []
     highlighted_edges: set[tuple[int, int]] = set()
     apparent_barrier = None
     if root_idx is not None and target_idx is not None and deps.nx.has_path(
@@ -910,6 +903,30 @@ def _build_network_visualization_payload(
                 apparent_barrier = float((best_path_peak - root_energy) * 627.5)
         except Exception:
             apparent_barrier = None
+
+    return root_idx, target_idx, highlighted_path, highlighted_edges, apparent_barrier
+
+
+def _build_network_visualization_payload(
+    pot,
+    deps: VisualizationDeps,
+    atom_indices: list[int] | None = None,
+    endpoint_hints: dict | None = None,
+) -> dict:
+    graph_for_layout = pot.graph.to_undirected()
+    layout = deps.nx.spring_layout(graph_for_layout, seed=7)
+    best_chain_for_directed_edge = (
+        deps.best_chain_for_directed_edge
+        or (lambda pot, source, target: _best_chain_for_directed_edge(pot, source, target, deps))
+    )
+
+    root_idx, target_idx, highlighted_path, highlighted_edges, apparent_barrier = (
+        _resolve_network_highlight(
+            pot,
+            deps,
+            endpoint_hints=endpoint_hints,
+        )
+    )
 
     def _cost_to_target(node_idx: int) -> float:
         if target_idx is None:
@@ -1077,7 +1094,7 @@ def _build_chain_visualizer_html(
     </div>
     <div id="networkPanel" style="{network_panel_style} margin-bottom: 12px;">
       <div style="font-weight: 600; margin-bottom: 6px;">Reaction Network</div>
-      <svg id="networkSvg" width="100%" height="320" viewBox="0 0 900 320" style="border: 1px solid #e6e6e6; border-radius: 8px; background: #fafafa;"></svg>
+      <svg id="networkSvg" width="100%" height="320" viewBox="0 0 900 320" style="border: 1px solid #1f304b; border-radius: 8px; background: radial-gradient(circle at 20% 18%, rgba(99, 213, 255, 0.11), transparent 20%), radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%), linear-gradient(180deg, #0d1728 0%, #08111f 100%);"></svg>
       <div id="networkInfo" style="font-size: 12px; color: #666; margin-top: 6px;">Click an edge to load the corresponding best NEB pair. The best overall path is highlighted in gold.</div>
     </div>
     <label for="chainSelect">Chain: </label>
@@ -1102,6 +1119,20 @@ def _build_chain_visualizer_html(
   </div>
   <script>
     const layers = {payload};
+    const DRIVE_VIZ_COLORS = {{
+      edge: "rgba(128, 154, 194, 0.42)",
+      edgeSelected: "#63d5ff",
+      edgeHighlight: "#ffd166",
+      node: "#7d94bb",
+      nodeRoot: "#63d5ff",
+      nodeTarget: "#ff8eb0",
+      nodeSelected: "#ffd166",
+      nodeStroke: "rgba(238, 244, 255, 0.85)",
+      nodeHighlightStroke: "#fff7de",
+      label: "rgba(233, 241, 255, 0.94)",
+      labelMuted: "rgba(214, 226, 245, 0.82)",
+      nodeTextDark: "#08111f",
+    }};
     function decodeB64UTF8(b64) {{
       return decodeURIComponent(escape(window.atob(b64)));
     }}
@@ -1394,7 +1425,7 @@ def _build_chain_visualizer_html(
         line.setAttribute("y1", String(src.y));
         line.setAttribute("x2", String(dst.x));
         line.setAttribute("y2", String(dst.y));
-        line.setAttribute("stroke", edge.highlight ? "#f59e0b" : "#94a3b8");
+        line.setAttribute("stroke", edge.highlight ? DRIVE_VIZ_COLORS.edgeHighlight : DRIVE_VIZ_COLORS.edge);
         line.setAttribute("stroke-width", edge.highlight ? "4" : "2.25");
         line.setAttribute("opacity", edge.highlight ? "0.95" : "0.85");
         group.appendChild(line);
@@ -1415,7 +1446,7 @@ def _build_chain_visualizer_html(
         label.setAttribute("y", String(midY - 8));
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("font-size", "11");
-        label.setAttribute("fill", "#334155");
+        label.setAttribute("fill", DRIVE_VIZ_COLORS.labelMuted);
         label.textContent = `${{edge.source}}→${{edge.target}}`;
         group.appendChild(label);
 
@@ -1438,16 +1469,16 @@ def _build_chain_visualizer_html(
         circle.setAttribute("cx", String(data.x));
         circle.setAttribute("cy", String(data.y));
         circle.setAttribute("r", data.is_root || data.is_target ? "13" : "11");
-        circle.setAttribute("fill", data.is_root ? "#2563eb" : (data.is_target ? "#059669" : "#ffffff"));
-        circle.setAttribute("stroke", "#1f2937");
-        circle.setAttribute("stroke-width", "1.5");
+        circle.setAttribute("fill", data.is_root ? DRIVE_VIZ_COLORS.nodeRoot : (data.is_target ? DRIVE_VIZ_COLORS.nodeTarget : DRIVE_VIZ_COLORS.node));
+        circle.setAttribute("stroke", DRIVE_VIZ_COLORS.nodeStroke);
+        circle.setAttribute("stroke-width", "1.8");
         group.appendChild(circle);
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", String(data.x));
         text.setAttribute("y", String(data.y + 4));
         text.setAttribute("text-anchor", "middle");
         text.setAttribute("font-size", "11");
-        text.setAttribute("fill", data.is_root || data.is_target ? "#ffffff" : "#111827");
+        text.setAttribute("fill", DRIVE_VIZ_COLORS.nodeTextDark);
         text.textContent = String(node.id);
         group.appendChild(text);
         const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -1455,7 +1486,7 @@ def _build_chain_visualizer_html(
         label.setAttribute("y", String(data.y + 24));
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("font-size", "11");
-        label.setAttribute("fill", "#334155");
+        label.setAttribute("fill", DRIVE_VIZ_COLORS.label);
         label.textContent = data.label;
         group.appendChild(label);
         svg.appendChild(group);
@@ -1472,7 +1503,7 @@ def _build_chain_visualizer_html(
         const line = elem.querySelector("line");
         if (!line || !edge) return;
         const selectedEdge = selected && selected.id === edge.id;
-        line.setAttribute("stroke", selectedEdge ? "#dc2626" : (edge.highlight ? "#f59e0b" : "#94a3b8"));
+        line.setAttribute("stroke", selectedEdge ? DRIVE_VIZ_COLORS.edgeSelected : (edge.highlight ? DRIVE_VIZ_COLORS.edgeHighlight : DRIVE_VIZ_COLORS.edge));
         line.setAttribute("stroke-width", selectedEdge ? "5" : (edge.highlight ? "4" : "2.25"));
       }});
       if (!info) return;

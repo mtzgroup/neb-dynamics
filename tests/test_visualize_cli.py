@@ -338,6 +338,48 @@ def test_extract_best_path_writes_joined_chain_and_metadata(monkeypatch, tmp_pat
     assert metadata["path"] == [2, 3, 5]
 
 
+def test_extract_best_path_allows_start_end_node_overrides(monkeypatch, tmp_path):
+    src = tmp_path / "demo_network.json"
+    src.write_text("{}")
+    expected = _chain()
+
+    monkeypatch.setattr(
+        main_cli,
+        "_load_visualization_data",
+        lambda **kwargs: main_cli._VisualizationData(
+            chain=expected,
+            network_pot=object(),
+            network_endpoint_hints={"root_index": 2, "target_index": 5},
+        ),
+    )
+
+    captured = {}
+
+    def _fake_build_network_visualization_payload(pot, endpoint_hints=None, atom_indices=None):
+        captured["endpoint_hints"] = endpoint_hints
+        return {
+            "root_index": endpoint_hints["root_index"],
+            "target_index": endpoint_hints["target_index"],
+            "highlighted_path": [endpoint_hints["root_index"], 4, endpoint_hints["target_index"]],
+        }
+
+    monkeypatch.setattr(
+        main_cli,
+        "_build_network_visualization_payload",
+        _fake_build_network_visualization_payload,
+    )
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: expected)
+    monkeypatch.setattr(main_cli, "_write_chain_with_nan_fallback", lambda chain, fp: Path(fp).write_text("chain"))
+
+    main_cli.extract_best_path(str(src), start_node=7, end_node=9)
+
+    assert captured["endpoint_hints"] == {"root_index": 7, "target_index": 9}
+    metadata = json.loads((tmp_path / "demo_best_path.json").read_text())
+    assert metadata["root_index"] == 7
+    assert metadata["target_index"] == 9
+    assert metadata["path"] == [7, 4, 9]
+
+
 def test_extract_best_path_rejects_non_network_input(monkeypatch, tmp_path):
     src = tmp_path / "plain.xyz"
     src.write_text("x")
@@ -444,6 +486,10 @@ def test_build_chain_visualizer_html_network_mode_has_edge_graph(monkeypatch):
     assert "currentNetworkEdgeId" in html
     assert "best overall path is highlighted in gold" in html
     assert "0->1" in html
+    assert "#63d5ff" in html
+    assert "#ff8eb0" in html
+    assert "#ffd166" in html
+    assert "linear-gradient(180deg, #0d1728 0%, #08111f 100%)" in html
 
 
 def test_best_chain_for_directed_edge_orients_chain_to_source_target():

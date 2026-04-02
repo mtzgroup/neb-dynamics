@@ -2,10 +2,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import networkx as nx
+from qcio import Structure
 
 from neb_dynamics.mepd_drive import (
     _build_growth_live_payload,
     _build_neb_live_payload,
+    _bootstrap_product_endpoint,
     _build_drive_payload,
     _drive_network_version,
     _run_kmc_payload,
@@ -21,7 +23,10 @@ from neb_dynamics.mepd_drive import (
 from neb_dynamics.scripts import main_cli
 from neb_dynamics.scripts.progress import ProgressPrinter
 from neb_dynamics.retropaths_queue import _run_single_item_worker
-from neb_dynamics.retropaths_workflow import apply_reactions_to_node, run_nanoreactor_for_node
+from neb_dynamics.retropaths_workflow import RetropathsWorkspace, apply_reactions_to_node, run_nanoreactor_for_node
+from neb_dynamics.molecule import Molecule
+from neb_dynamics.pot import Pot
+from neb_dynamics.retropaths_compat import structure_node_from_graph_like_molecule
 
 
 def test_parse_xyz_text_to_structure_reads_single_frame():
@@ -118,7 +123,10 @@ def test_drive_command_passes_smiles_bootstrap_options(monkeypatch, tmp_path):
 
     main_cli.drive(
         smiles="C=C",
+        product_smiles="CC",
         environment="O",
+        charge=1,
+        multiplicity=2,
         name="smiles-run",
         inputs=str(tmp_path / "inputs.toml"),
         directory=str(tmp_path / "drive"),
@@ -126,10 +134,46 @@ def test_drive_command_passes_smiles_bootstrap_options(monkeypatch, tmp_path):
     )
 
     assert calls["smiles"] == "C=C"
+    assert calls["product_smiles"] == "CC"
     assert calls["environment_smiles"] == "O"
+    assert calls["charge"] == 1
+    assert calls["multiplicity"] == 2
     assert calls["run_name"] == "smiles-run"
     assert Path(calls["inputs_fp"]).name == "inputs.toml"
     assert calls["served"] is True
+
+
+def test_submit_apply_reactions_errors_when_retropaths_unavailable(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server.runtime = SimpleNamespace(
+        workspace=RetropathsWorkspace(
+            workdir=str(tmp_path),
+            run_name="demo",
+            root_smiles="C",
+            environment_smiles="",
+            inputs_fp=str(tmp_path / "inputs.toml"),
+        ),
+        reactant=None,
+        product=None,
+        last_message="",
+        last_error="",
+        future=None,
+        busy_label="",
+        active_action=None,
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.ensure_retropaths_available",
+        lambda feature="This action": (_ for _ in ()).throw(
+            RuntimeError("MEPD Drive reaction-template application (+) requires retropaths")
+        ),
+    )
+
+    try:
+        server.submit_apply_reactions(node_id=0)
+        assert False, "Expected submit_apply_reactions to fail when retropaths is unavailable."
+    except ValueError as exc:
+        assert "requires retropaths" in str(exc)
 
 
 def test_drive_command_loads_existing_workspace_without_inputs(monkeypatch, tmp_path):
@@ -207,6 +251,7 @@ def test_initialize_workspace_job_clears_existing_workspace(monkeypatch, tmp_pat
 
     monkeypatch.setattr("neb_dynamics.mepd_drive.create_workspace", _fake_create_workspace)
     monkeypatch.setattr("neb_dynamics.mepd_drive.prepare_neb_workspace", lambda _workspace: None)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._apply_bootstrap_species_overrides", lambda _workspace, reactant, product: None)
 
     result = _initialize_workspace_job(
         reactant={"smiles": "C=C"},
@@ -258,6 +303,7 @@ def test_initialize_workspace_job_returns_partial_workspace_on_growth_error(monk
 
     monkeypatch.setattr("neb_dynamics.mepd_drive.create_workspace", _fake_create_workspace)
     monkeypatch.setattr("neb_dynamics.mepd_drive.initialize_workspace_with_progress", _fake_initialize)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._bootstrap_product_endpoint", lambda _workspace, _product: None)
 
     result = _initialize_workspace_job(
         reactant={"smiles": "C=C"},
@@ -276,6 +322,75 @@ def test_initialize_workspace_job_returns_partial_workspace_on_growth_error(monk
     assert result["workspace"]["root_smiles"] == "C=C"
     assert result["message"] == "Initialized partial workspace drive-run."
     assert result["error"] == "RuntimeError: Too many iterations"
+
+
+def test_bootstrap_product_endpoint_adds_target_node_and_queue(tmp_path):
+    workspace_dir = tmp_path / "drive-run"
+    workspace_dir.mkdir()
+    workspace = SimpleNamespace(
+        neb_pot_fp=workspace_dir / "neb_pot.json",
+        queue_fp=workspace_dir / "neb_queue.json",
+    )
+
+    root_mol = Molecule.from_smiles("C=C")
+    pot = Pot(root=root_mol, target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(
+        0,
+        molecule=root_mol,
+        td=structure_node_from_graph_like_molecule(root_mol),
+        endpoint_optimized=False,
+    )
+    pot.write_to_disk(workspace.neb_pot_fp)
+    workspace.queue_fp.write_text('{"items": [], "attempted_pairs": {}, "version": 1}')
+
+    _bootstrap_product_endpoint(workspace, {"smiles": "CC"})
+
+    updated = Pot.read_from_disk(workspace.neb_pot_fp)
+    assert sorted(updated.graph.nodes) == [0, 1]
+    assert updated.graph.nodes[1]["generated_by"] == "drive_product_smiles"
+    assert updated.graph.has_edge(0, 1)
+    assert updated.graph.edges[(0, 1)]["reaction"] == "Product target"
+
+    queue = __import__("json").loads(workspace.queue_fp.read_text())
+    assert queue["items"][0]["source_node"] == 0
+    assert queue["items"][0]["target_node"] == 1
+
+
+def test_apply_bootstrap_species_overrides_sets_charge_and_multiplicity(tmp_path):
+    workspace_dir = tmp_path / "drive-run"
+    workspace_dir.mkdir()
+    workspace = SimpleNamespace(
+        neb_pot_fp=workspace_dir / "neb_pot.json",
+        queue_fp=workspace_dir / "neb_queue.json",
+    )
+
+    root_mol = Molecule.from_smiles("C=C")
+    pot = Pot(root=root_mol, target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(
+        0,
+        molecule=root_mol,
+        td=structure_node_from_graph_like_molecule(root_mol),
+        endpoint_optimized=True,
+    )
+    pot.write_to_disk(workspace.neb_pot_fp)
+    workspace.queue_fp.write_text('{"items": [], "attempted_pairs": {}, "version": 1}')
+
+    from neb_dynamics.mepd_drive import _apply_bootstrap_species_overrides
+
+    _apply_bootstrap_species_overrides(
+        workspace,
+        reactant={"smiles": "C=C", "charge": 1, "multiplicity": 2},
+        product={"smiles": "CC", "charge": 1, "multiplicity": 2},
+    )
+
+    updated = Pot.read_from_disk(workspace.neb_pot_fp)
+    assert updated.graph.nodes[0]["td"].structure.charge == 1
+    assert updated.graph.nodes[0]["td"].structure.multiplicity == 2
+    assert updated.graph.nodes[0]["endpoint_optimized"] is False
+    assert updated.graph.nodes[1]["td"].structure.charge == 1
+    assert updated.graph.nodes[1]["td"].structure.multiplicity == 2
 
 
 def test_load_existing_workspace_job_reads_workspace(monkeypatch, tmp_path):
@@ -390,6 +505,44 @@ def test_load_existing_workspace_job_recovers_stale_queue_items(monkeypatch, tmp
     assert state["recover_kwargs"]["output_dir"] == workspace_dir / "queue_runs"
 
 
+def test_load_existing_workspace_job_imports_network_splits_directory(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "demo_network_splits"
+    workspace_dir.mkdir()
+
+    root_mol = Molecule.from_smiles("C=C")
+    target_mol = Molecule.from_smiles("CC")
+    pot = Pot(root=root_mol)
+    pot.graph.nodes[0].update(
+        molecule=root_mol,
+        td=structure_node_from_graph_like_molecule(root_mol),
+        endpoint_optimized=False,
+    )
+    pot.graph.add_node(
+        1,
+        molecule=target_mol,
+        td=structure_node_from_graph_like_molecule(target_mol),
+        endpoint_optimized=False,
+    )
+    pot.graph.add_edge(0, 1, reaction="Hydrogenation", list_of_nebs=[])
+    pot.write_to_disk(workspace_dir / "demo_network.json")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.load_partial_annotated_pot", lambda workspace: None)
+
+    result = _load_existing_workspace_job(str(workspace_dir))
+
+    assert result["workspace"]["run_name"] == "demo"
+    assert result["reactant"]["smiles"] == "C=C"
+    assert (workspace_dir / "workspace.json").exists()
+    assert (workspace_dir / "neb_pot.json").exists()
+    assert (workspace_dir / "neb_queue.json").exists()
+    assert (workspace_dir / "retropaths_pot.json").exists()
+    queue_payload = __import__("json").loads((workspace_dir / "neb_queue.json").read_text())
+    assert any(
+        int(item.get("source_node", -1)) == 0 and int(item.get("target_node", -1)) == 1
+        for item in queue_payload.get("items", [])
+    )
+
+
 def test_drive_server_rejects_overlapping_actions():
     server = object.__new__(MepdDriveServer)
     server.state_lock = __import__("threading").Lock()
@@ -434,14 +587,25 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "function renderProductPathPanel(snapshot)" in html
     assert "function computePathHighlight(snapshot, sourceNodeId, productLabel)" in html
     assert "function buildOptimisticGrowthActivity(nodeId, title, note)" in html
+    assert "pendingEdgeAddition" in html
+    assert "function setPendingEdgeAddition(sourceNodeId, targetNodeId)" in html
+    assert "manualEdgeRequestInFlight" in html
+    assert "function setManualEdgeRequestInFlight(inFlight)" in html
+    assert "A manual edge request is already in progress." in html
+    assert "network-edge-line pending-add" in html
     assert "function computeTreeNetworkLayout(nodes, edges)" in html
     assert "function runKmcModel()" in html
     assert "pendingLiveActivity" in html
     assert "function renderNetworkToolbar()" in html
     assert "queueNanoreactor" in html
+    assert "queueHessianSampleFromNode" in html
+    assert "queueHessianSampleFromEdge" in html
     assert "Run Nanoreactor Sampling From This Geometry" in html
+    assert "Run Hessian Sample From This Geometry" in html
     assert "Use As Path Source A" in html
     assert "toolbar-nanoreactor-node" in html
+    assert "toolbar-hessian-node" in html
+    assert "toolbar-hessian-edge" in html
     assert "function renderTemplateHtml(templatePayload)" in html
     assert "Template Render" in html
     assert "Template Summary" in html
@@ -1530,6 +1694,52 @@ def test_launch_mepd_drive_loads_existing_workspace_on_startup(monkeypatch, tmp_
     assert captured["network_splits"] is True
 
 
+def test_launch_mepd_drive_loads_network_splits_directory_on_startup(monkeypatch, tmp_path):
+    network_dir = tmp_path / "existing_network_splits"
+    network_dir.mkdir()
+    (network_dir / "existing_network.json").write_text("{}")
+
+    loaded = {
+        "workspace": {
+            "workdir": str(network_dir),
+            "run_name": "existing",
+            "root_smiles": "C=C",
+            "environment_smiles": "",
+            "inputs_fp": str(tmp_path / "inputs.toml"),
+            "reactions_fp": "",
+            "timeout_seconds": 30,
+            "max_nodes": 40,
+            "max_depth": 4,
+            "max_parallel_nebs": 1,
+        },
+        "reactant": {"smiles": "C=C"},
+        "product": None,
+        "message": "Loaded existing workspace existing.",
+    }
+    captured = {}
+
+    class _FakeServer:
+        def __init__(self, _server_address, **kwargs):
+            captured.update(kwargs)
+            self.server_address = ("127.0.0.1", 48123)
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_existing_workspace_job", lambda path, **kwargs: loaded)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.MepdDriveServer", _FakeServer)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.webbrowser.open", lambda _url: True)
+
+    server = main_cli.launch_mepd_drive(
+        directory=str(network_dir),
+        inputs_fp=None,
+        open_browser=False,
+    )
+
+    assert server.server_address == ("127.0.0.1", 48123)
+    assert captured["base_directory"] == network_dir.parent.resolve()
+    assert captured["initial_state"] == loaded
+    assert captured["inputs_fp"] is None
+    assert captured["network_splits"] is True
+
+
 def test_launch_mepd_drive_bootstraps_smiles_workspace_on_startup(monkeypatch, tmp_path):
     initialized = {
         "workspace": {
@@ -1544,8 +1754,8 @@ def test_launch_mepd_drive_bootstraps_smiles_workspace_on_startup(monkeypatch, t
             "max_depth": 4,
             "max_parallel_nebs": 1,
         },
-        "reactant": {"smiles": "C=C"},
-        "product": None,
+        "reactant": {"smiles": "C=C", "charge": 1, "multiplicity": 2},
+        "product": {"smiles": "CC", "charge": 1, "multiplicity": 2},
         "message": "Initialized workspace smiles-run.",
     }
     captured = {}
@@ -1563,7 +1773,10 @@ def test_launch_mepd_drive_bootstraps_smiles_workspace_on_startup(monkeypatch, t
         directory=str(tmp_path / "drive" / "smiles-run"),
         inputs_fp=str(tmp_path / "inputs.toml"),
         smiles="C=C",
+        product_smiles="CC",
         environment_smiles="O",
+        charge=1,
+        multiplicity=2,
         run_name="smiles-run",
         open_browser=False,
     )
@@ -1573,6 +1786,46 @@ def test_launch_mepd_drive_bootstraps_smiles_workspace_on_startup(monkeypatch, t
     assert captured["base_directory"] == (tmp_path / "drive").resolve()
     assert captured["inputs_fp"] == (tmp_path / "inputs.toml").resolve()
     assert captured["network_splits"] is True
+
+
+def test_build_drive_payload_tolerates_missing_inputs_and_retropaths(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "drive-run"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C=C",
+        environment_smiles="",
+        inputs_fp=str(workspace_dir / "missing_inputs.toml"),
+        reactions_fp="",
+    )
+
+    root_mol = Molecule.from_smiles("C=C")
+    target_mol = Molecule.from_smiles("CC")
+    pot = Pot(root=root_mol)
+    pot.graph.nodes[0].update(
+        molecule=root_mol,
+        td=structure_node_from_graph_like_molecule(root_mol),
+    )
+    pot.graph.add_node(
+        1,
+        molecule=target_mol,
+        td=structure_node_from_graph_like_molecule(target_mol),
+    )
+    pot.graph.add_edge(0, 1, reaction="Hydrogenation", list_of_nebs=[])
+    pot.write_to_disk(workspace.neb_pot_fp)
+    workspace.queue_fp.write_text('{"items": [], "attempted_pairs": {}, "version": 1}')
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.load_retropaths_pot", lambda _workspace: (_ for _ in ()).throw(FileNotFoundError("missing")))
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_edge_visualizations", lambda workspace, pot: [])
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_completed_queue_visualizations", lambda workspace, queue: [])
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_template_payloads", lambda workspace: {})
+
+    payload = _build_drive_payload(workspace)
+
+    assert payload["workspace"]["network_nodes"] == 2
+    assert payload["workspace"]["retropaths_nodes"] == 0
+    assert payload["inputs"]["error"]
 
 
 def test_snapshot_uses_fast_builder_for_running_neb(monkeypatch, tmp_path):
@@ -1942,7 +2195,7 @@ def test_run_nanoreactor_for_node_merges_minima(monkeypatch, tmp_path):
     assert fake_pot.graph.edges[(0, 1)]["reaction"] == "Nanoreactor reaction 1"
 
 
-def test_run_nanoreactor_for_node_preserves_graph_for_follow_on_runs(monkeypatch, tmp_path):
+def test_run_nanoreactor_for_node_attaches_follow_on_runs_to_clicked_node(monkeypatch, tmp_path):
     class _FakeGraph:
         def __init__(self, label):
             self.label = label
@@ -2030,10 +2283,10 @@ def test_run_nanoreactor_for_node_preserves_graph_for_follow_on_runs(monkeypatch
 
     run_nanoreactor_for_node(workspace, 1, progress_fp=str(tmp_path / "nanoreactor_2.progress.json"))
     assert engine_calls == ["source", "candidate-1"]
-    assert fake_pot.graph.has_edge(0, 2)
-    assert not fake_pot.graph.has_edge(1, 2)
+    assert not fake_pot.graph.has_edge(0, 2)
+    assert fake_pot.graph.has_edge(1, 2)
     assert fake_pot.graph.nodes[1]["nanoreactor_provenance_node"] == 0
-    assert fake_pot.graph.nodes[2]["nanoreactor_provenance_node"] == 0
+    assert fake_pot.graph.nodes[2]["nanoreactor_provenance_node"] == 1
 
 
 def test_run_nanoreactor_for_node_falls_back_to_single_optimizations(monkeypatch, tmp_path):
@@ -2271,6 +2524,70 @@ def test_build_drive_payload_marks_nanoreactor_available_for_chemcloud_crest(mon
     assert payload["network"]["nodes"][0]["can_nanoreactor"] is True
 
 
+def test_build_drive_payload_marks_hessian_sample_available_when_engine_supports_hessian(monkeypatch, tmp_path):
+    queue = SimpleNamespace(items=[])
+    retropaths_pot = SimpleNamespace(graph=nx.DiGraph())
+    retropaths_pot.graph.add_node(0)
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0, td=SimpleNamespace(structure=SimpleNamespace(symbols=["H"])), molecule="mol")
+
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "queue.json",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        inputs_fp=tmp_path / "inputs.toml",
+        workdir=str(tmp_path),
+        run_name="drive",
+        root_smiles="C",
+        environment_smiles="",
+        reactions_path=tmp_path / "reactions.p",
+        edge_visualizations_dir=tmp_path / "edge_visualizations",
+    )
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.load_retropaths_pot", lambda _workspace: retropaths_pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RetropathsNEBQueue.read_from_disk", lambda _fp: queue)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot", lambda _workspace, **kwargs: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_edge_visualizations", lambda workspace, pot: [])
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_completed_queue_visualizations", lambda workspace, queue: [])
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_template_payloads", lambda workspace: {})
+
+    class _Engine:
+        def _compute_hessian_result(self, _node):
+            return None
+
+        def compute_geometry_optimization(self, _node):
+            return []
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.RunInputs.open",
+        lambda _fp: SimpleNamespace(
+            engine_name="qcop",
+            program="xtb",
+            engine=_Engine(),
+            path_min_method="neb",
+            path_min_inputs={},
+            chain_inputs={},
+            gi_inputs={},
+            optimizer_kwds={},
+            program_kwds={},
+            nanoreactor_inputs={},
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_network_explorer_payload",
+        lambda graph, template_payloads=None, edge_visualizations=None: {
+            "nodes": [{"id": 0, "label": "A", "data": {}}],
+            "edges": [],
+        },
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._node_structure_payload", lambda attrs: {"xyz_b64": "node-xyz"})
+
+    payload = _build_drive_payload(workspace)
+
+    assert payload["network"]["nodes"][0]["can_hessian_sample"] is True
+
+
 def test_snapshot_uses_fast_builder_for_running_nanoreactor(monkeypatch, tmp_path):
     server = object.__new__(MepdDriveServer)
     server.state_lock = __import__("threading").Lock()
@@ -2308,6 +2625,89 @@ def test_snapshot_uses_fast_builder_for_running_nanoreactor(monkeypatch, tmp_pat
     assert snapshot["busy"] is True
     assert called["fast"] is True
     assert called["active_action"]["type"] == "nanoreactor"
+
+
+def test_snapshot_uses_fast_builder_for_running_hessian_sample(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    workspace = SimpleNamespace(queue_fp=tmp_path / "neb_queue.json")
+    workspace.queue_fp.write_text("{}")
+
+    class _PendingFuture:
+        def done(self):
+            return False
+
+    called = {}
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_drive_payload_fast",
+        lambda workspace, product_smiles="", active_job_label="", active_action=None, **kwargs: called.update({"fast": True, "active_action": active_action}) or {"queue": {}, "workspace": {}, "network": {}},
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_drive_payload",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("slow builder should not be used")),
+    )
+
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        reactant={"smiles": "C=C.O"},
+        product=None,
+        last_message="Running Hessian sample from node 0...",
+        last_error="",
+        future=_PendingFuture(),
+        busy_label="Running Hessian sample from node 0...",
+        active_action={"type": "hessian-sample", "status": "running", "label": "Running Hessian sample from node 0..."},
+    )
+
+    snapshot = server.snapshot()
+
+    assert snapshot["busy"] is True
+    assert called["fast"] is True
+    assert called["active_action"]["type"] == "hessian-sample"
+
+
+def test_snapshot_uses_fast_builder_once_after_manual_edge(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server._drive_payload_cache_key = None
+    server._drive_payload_cache_value = None
+    server._prefer_fast_payload_once = True
+    server.network_splits = True
+    workspace = SimpleNamespace(queue_fp=tmp_path / "neb_queue.json")
+    workspace.queue_fp.write_text("{}")
+
+    called = {"fast": 0, "full": 0}
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_drive_payload_fast",
+        lambda workspace, product_smiles="", active_job_label="", active_action=None, **kwargs: called.__setitem__("fast", called["fast"] + 1) or {"queue": {}, "workspace": {}, "network": {}},
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_drive_payload",
+        lambda workspace, product_smiles="", active_job_label="", active_action=None, **kwargs: called.__setitem__("full", called["full"] + 1) or {"queue": {}, "workspace": {}, "network": {}},
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._drive_defaults_payload", lambda *args, **kwargs: {})
+    monkeypatch.setattr("neb_dynamics.mepd_drive._drive_network_version", lambda workspace: "v1")
+
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        reactant={"smiles": "C=C.O"},
+        product=None,
+        last_message="Manual edge updated.",
+        last_error="",
+        future=None,
+        busy_label="",
+        active_action=None,
+    )
+
+    first = server.snapshot()
+    second = server.snapshot()
+
+    assert first["drive"] == {"queue": {}, "workspace": {}, "network": {}}
+    assert second["drive"] == {"queue": {}, "workspace": {}, "network": {}}
+    assert called["fast"] == 1
+    assert called["full"] == 1
+    assert server._prefer_fast_payload_once is False
 
 
 def test_submit_nanoreactor_uses_thread_executor_not_process_pool(monkeypatch, tmp_path):
@@ -2371,6 +2771,151 @@ def test_submit_nanoreactor_uses_thread_executor_not_process_pool(monkeypatch, t
 
     assert called["executor"] == 1
     assert called["process"] == 0
+
+
+def test_submit_hessian_sample_uses_thread_executor_not_process_pool(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = SimpleNamespace(
+        directory=workspace_dir,
+        workdir=str(workspace_dir),
+        run_name="demo",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp=str(tmp_path / "reactions.pkl"),
+        timeout_seconds=10,
+        max_nodes=10,
+        max_depth=3,
+        max_parallel_nebs=1,
+    )
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        future=None,
+        busy_label="",
+        last_error="",
+        last_message="",
+        active_action=None,
+    )
+
+    class _DoneFuture:
+        def add_done_callback(self, _cb):
+            return None
+
+        def done(self):
+            return False
+
+    called = {"executor": 0, "process": 0}
+
+    class _Executor:
+        def submit(self, fn, *args, **kwargs):
+            called["executor"] += 1
+            return _DoneFuture()
+
+    class _ProcessExecutor:
+        def submit(self, fn, *args, **kwargs):
+            called["process"] += 1
+            raise AssertionError("process pool should not be used for Hessian sampling")
+
+    server.executor = _Executor()
+    server.process_executor = _ProcessExecutor()
+    server._set_busy = MepdDriveServer._set_busy.__get__(server, MepdDriveServer)
+    server._finish_future = lambda future: None
+    server._assert_idle = lambda: None
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.RetropathsWorkspace",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+
+    server.submit_hessian_sample(node_id=3, dr=0.15)
+
+    assert called["executor"] == 1
+    assert called["process"] == 0
+
+
+def test_submit_hessian_sample_forwards_max_candidates_to_workflow(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = SimpleNamespace(
+        directory=workspace_dir,
+        workdir=str(workspace_dir),
+        run_name="demo",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp=str(tmp_path / "reactions.pkl"),
+        timeout_seconds=10,
+        max_nodes=10,
+        max_depth=3,
+        max_parallel_nebs=1,
+    )
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        future=None,
+        busy_label="",
+        last_error="",
+        last_message="",
+        active_action=None,
+    )
+
+    class _DoneFuture:
+        def add_done_callback(self, _cb):
+            return None
+
+        def done(self):
+            return False
+
+    forwarded = {}
+
+    class _Executor:
+        def submit(self, fn, *args, **kwargs):
+            fn(*args, **kwargs)
+            return _DoneFuture()
+
+    class _ProcessExecutor:
+        def submit(self, fn, *args, **kwargs):
+            raise AssertionError("process pool should not be used for Hessian sampling")
+
+    def _fake_run_hessian_sample_for_node(
+        workspace_obj,
+        node_id,
+        *,
+        dr,
+        max_candidates,
+        progress_fp=None,
+    ):
+        forwarded["node_id"] = int(node_id)
+        forwarded["dr"] = float(dr)
+        forwarded["max_candidates"] = int(max_candidates)
+        forwarded["progress_fp"] = str(progress_fp or "")
+        return {"message": "ok"}
+
+    server.executor = _Executor()
+    server.process_executor = _ProcessExecutor()
+    server._set_busy = MepdDriveServer._set_busy.__get__(server, MepdDriveServer)
+    server._finish_future = lambda future: None
+    server._assert_idle = lambda: None
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.RetropathsWorkspace",
+        lambda **kwargs: SimpleNamespace(**kwargs),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.run_hessian_sample_for_node",
+        _fake_run_hessian_sample_for_node,
+    )
+
+    server.submit_hessian_sample(node_id=3, dr=0.15, max_candidates=42)
+
+    assert forwarded["node_id"] == 3
+    assert forwarded["dr"] == 0.15
+    assert forwarded["max_candidates"] == 42
+    assert server.runtime.active_action["max_candidates"] == 42
 
 
 def test_progress_printer_writes_live_chain_payload_file(monkeypatch, tmp_path):

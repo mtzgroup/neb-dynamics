@@ -13,6 +13,7 @@ from neb_dynamics.pot import plot_results_from_pot_obj
 from neb_dynamics.pot import Pot
 from neb_dynamics.helper_functions import (
     compute_irc_chain,
+    parse_nma_freq_data,
     parse_terachem_input_file,
     parse_symbols_from_prmtop,
     rst7_to_coords_and_indices,
@@ -66,6 +67,7 @@ from neb_dynamics.mepd_drive import launch_mepd_drive
 from neb_dynamics.retropaths_workflow import (
     RetropathsWorkspace,
     create_workspace,
+    ensure_retropaths_available,
     prepare_neb_workspace,
     run_netgen_smiles_workflow,
     summarize_queue,
@@ -438,6 +440,37 @@ def _compute_ts_node(engine, ts_guess: StructureNode, bigchem: bool = False):
         if program_output is not None:
             return None, program_output
         raise
+
+
+def _extract_normal_modes_from_hessian_result(
+    hessres,
+) -> tuple[list[np.ndarray], list[float]]:
+    results = getattr(hessres, "results", None)
+    if results is None:
+        raise ValueError("Hessian result is missing `results`.")
+
+    modes = getattr(results, "normal_modes_cartesian", None)
+    freqs = getattr(results, "freqs_wavenumber", None)
+    if modes is not None and len(modes) > 0:
+        normal_modes = [np.array(mode) for mode in modes]
+        frequencies = [float(freq) for freq in (freqs or [])]
+        return normal_modes, frequencies
+
+    normal_modes, frequencies = parse_nma_freq_data(hessres)
+    if len(normal_modes) == 0:
+        raise ValueError("No normal modes found in Hessian result.")
+    return [np.array(mode) for mode in normal_modes], [float(freq) for freq in frequencies]
+
+
+def _resolve_command_base_path(geometry: str, name: str | None) -> Path:
+    if name is None:
+        return Path.cwd() / Path(geometry).stem
+    raw = Path(name)
+    if raw.suffix:
+        raw = raw.with_suffix("")
+    if not raw.is_absolute():
+        raw = Path.cwd() / raw
+    return raw
 
 
 def _extract_minima_nodes(history: TreeNode) -> list[StructureNode]:
@@ -2323,6 +2356,270 @@ def ts(
     console.print(f"[dim]Geometry: {filename}[/dim]")
 
 
+@app.command("hessian-sample")
+def hessian_sample(
+    geometry: Annotated[str, typer.Argument(help="Path to input geometry file.")],
+    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path to RunInputs TOML file.")] = None,
+    name: Annotated[str, typer.Option("--name", help="Optional output basename (without extension).")] = None,
+    charge: Annotated[int, typer.Option("--charge", help="Total charge for input geometry.")] = 0,
+    multiplicity: Annotated[int, typer.Option("--multiplicity", help="Spin multiplicity for input geometry.")] = 1,
+    dr: Annotated[float, typer.Option("--dr", help="Displacement magnitude along each normal mode.")] = 0.1,
+    max_candidates: Annotated[int, typer.Option("--max-candidates", help="Maximum number of displaced structures to optimize.")] = 100,
+    maxiter: Annotated[int, typer.Option("--maxiter", help="Maximum geometry-optimization steps for each displaced structure.")] = 500,
+):
+    console.print(BANNER)
+
+    if max_candidates < 1:
+        raise typer.BadParameter("--max-candidates must be at least 1.")
+    if dr <= 0:
+        raise typer.BadParameter("--dr must be positive.")
+    if maxiter < 1:
+        raise typer.BadParameter("--maxiter must be at least 1.")
+
+    with console.status("[bold cyan]Loading input parameters...[/bold cyan]"):
+        if inputs is not None:
+            program_input = RunInputs.open(inputs)
+        else:
+            program_input = RunInputs(program="xtb", engine_name="qcop")
+
+    _render_runinputs(program_input)
+    write_qcio = bool(getattr(program_input, "write_qcio", False))
+
+    struct = Structure.open(geometry)
+    s_dict = struct.model_dump()
+    s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
+    struct = Structure(**s_dict)
+    node = StructureNode(structure=struct)
+
+    engine = program_input.engine
+    if not hasattr(engine, "_compute_hessian_result"):
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] This engine does not expose `_compute_hessian_result`, which is required for normal-mode sampling."
+        )
+        raise typer.Exit(1)
+
+    with console.status("[bold cyan]Computing Hessian...[/bold cyan]"):
+        try:
+            hessres = engine._compute_hessian_result(node)
+        except Exception as exc:
+            hessres = getattr(exc, "program_output", None)
+            if hessres is None:
+                console.print(f"[bold red]✗ Hessian computation failed:[/bold red] {traceback.format_exc()}")
+                raise typer.Exit(1)
+
+    try:
+        normal_modes, frequencies = _extract_normal_modes_from_hessian_result(hessres)
+    except Exception:
+        console.print(f"[bold red]✗ Failed to extract normal modes:[/bold red] {traceback.format_exc()}")
+        raise typer.Exit(1)
+
+    if len(normal_modes) == 0:
+        console.print("[bold red]✗ ERROR:[/bold red] No normal modes were returned from Hessian computation.")
+        raise typer.Exit(1)
+
+    base = _resolve_command_base_path(geometry=geometry, name=name)
+    base.parent.mkdir(parents=True, exist_ok=True)
+    hessian_fp = base.parent / f"{base.stem}_hessian.qcio"
+    displaced_fp = base.parent / f"{base.stem}_hessian_sample_displaced.xyz"
+    optimized_fp = base.parent / f"{base.stem}_hessian_sample_optimized.xyz"
+    unique_fp = base.parent / f"{base.stem}_hessian_sample_unique.xyz"
+    summary_fp = base.parent / f"{base.stem}_hessian_sample_summary.json"
+
+    if hasattr(hessres, "save"):
+        hessres.save(hessian_fp)
+
+    displaced_nodes: list[StructureNode] = []
+    displaced_metadata: list[dict] = []
+    clipped = False
+    for mode_index, mode in enumerate(normal_modes):
+        freq = float(frequencies[mode_index]) if mode_index < len(frequencies) else None
+        for direction, signed_dr in (("+", dr), ("-", -dr)):
+            displaced = displace_by_dr(node=node, displacement=np.array(mode), dr=signed_dr)
+            displaced_nodes.append(displaced)
+            displaced_metadata.append(
+                {
+                    "mode_index": int(mode_index),
+                    "direction": direction,
+                    "frequency_wavenumber": freq,
+                    "dr": float(abs(signed_dr)),
+                }
+            )
+            if len(displaced_nodes) >= max_candidates:
+                clipped = True
+                break
+        if clipped:
+            break
+
+    if len(displaced_nodes) == 0:
+        console.print("[bold red]✗ ERROR:[/bold red] No displaced candidates were generated.")
+        raise typer.Exit(1)
+
+    displaced_chain = Chain.model_validate(
+        {"nodes": [cand.copy() for cand in displaced_nodes], "parameters": program_input.chain_inputs}
+    )
+    displaced_chain.write_to_disk(displaced_fp, write_qcio=False)
+
+    console.print(
+        f"[cyan]Generated {len(displaced_nodes)} displaced candidates from {len(normal_modes)} normal modes"
+        f"{' (clipped by --max-candidates).' if clipped else '.'}[/cyan]"
+    )
+
+    optimized_nodes: list[StructureNode] = []
+    optimized_metadata: list[dict] = []
+    failed_candidates: list[dict] = []
+
+    engine_name = str(getattr(program_input, "engine_name", "")).lower()
+    compute_program = str(getattr(engine, "compute_program", "")).lower()
+    batch_optimizer = getattr(engine, "compute_geometry_optimizations", None)
+    use_chemcloud_batch = engine_name == "chemcloud" or compute_program == "chemcloud"
+    optimization_submission_mode = "serial"
+
+    if use_chemcloud_batch:
+        if engine_name == "chemcloud" and compute_program not in {"", "chemcloud"}:
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] RunInputs requested ChemCloud (`engine_name=chemcloud`) "
+                f"but engine reports `compute_program={compute_program}`. Refusing to run serial fallback."
+            )
+            raise typer.Exit(1)
+        if not callable(batch_optimizer):
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] ChemCloud engine selected, but batch geometry optimization is unavailable (`compute_geometry_optimizations`)."
+            )
+            raise typer.Exit(1)
+
+        console.print(
+            f"[cyan]Submitting {len(displaced_nodes)} geometry optimizations to ChemCloud in parallel.[/cyan]"
+        )
+        optimization_submission_mode = "chemcloud_batch"
+        try:
+            try:
+                trajectories = batch_optimizer(
+                    displaced_nodes, keywords={"coordsys": "cart", "maxiter": maxiter}
+                )
+            except TypeError:
+                trajectories = batch_optimizer(displaced_nodes)
+        except Exception:
+            console.print(
+                f"[bold red]✗ ChemCloud batch geometry optimization failed:[/bold red] {traceback.format_exc()}"
+            )
+            raise typer.Exit(1)
+
+        if len(trajectories) != len(displaced_nodes):
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] ChemCloud batch returned a trajectory count different from the submitted candidate count."
+            )
+            raise typer.Exit(1)
+
+        for meta, trajectory in zip(displaced_metadata, trajectories):
+            if trajectory and len(trajectory) > 0:
+                optimized_nodes.append(trajectory[-1])
+                optimized_metadata.append(meta)
+            else:
+                failed_candidates.append(
+                    {
+                        **meta,
+                        "error": "Batch optimization returned an empty trajectory.",
+                    }
+                )
+    else:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Optimizing displaced candidates", total=len(displaced_nodes))
+            for candidate, meta in zip(displaced_nodes, displaced_metadata):
+                try:
+                    try:
+                        trajectory = engine.compute_geometry_optimization(
+                            candidate, keywords={"coordsys": "cart", "maxiter": maxiter}
+                        )
+                    except TypeError:
+                        trajectory = engine.compute_geometry_optimization(candidate)
+                    optimized_nodes.append(trajectory[-1])
+                    optimized_metadata.append(meta)
+                except Exception:
+                    failed_candidates.append(
+                        {
+                            **meta,
+                            "error": traceback.format_exc().strip(),
+                        }
+                    )
+                progress.update(task, advance=1)
+
+    if len(optimized_nodes) == 0:
+        console.print("[bold red]✗ ERROR:[/bold red] All displaced-candidate optimizations failed.")
+        raise typer.Exit(1)
+
+    optimized_chain = Chain.model_validate(
+        {"nodes": [cand.copy() for cand in optimized_nodes], "parameters": program_input.chain_inputs}
+    )
+    optimized_chain.write_to_disk(optimized_fp, write_qcio=write_qcio)
+
+    unique_nodes = _dedupe_minima_nodes(optimized_nodes, program_input.chain_inputs)
+    unique_chain = Chain.model_validate(
+        {"nodes": [cand.copy() for cand in unique_nodes], "parameters": program_input.chain_inputs}
+    )
+    unique_chain.write_to_disk(unique_fp, write_qcio=write_qcio)
+
+    summary_payload = {
+        "geometry": str(Path(geometry).resolve()),
+        "inputs": str(Path(inputs).resolve()) if inputs is not None else None,
+        "dr": float(dr),
+        "max_candidates": int(max_candidates),
+        "maxiter": int(maxiter),
+        "normal_modes_total": int(len(normal_modes)),
+        "frequencies_wavenumber": [float(freq) for freq in frequencies],
+        "displaced_candidates": int(len(displaced_nodes)),
+        "optimized_candidates": int(len(optimized_nodes)),
+        "failed_candidates": int(len(failed_candidates)),
+        "unique_minima": int(len(unique_nodes)),
+        "optimization_submission_mode": optimization_submission_mode,
+        "engine_name": engine_name,
+        "engine_compute_program": compute_program,
+        "chain_inputs_thresholds": {
+            "node_rms_thre": float(program_input.chain_inputs.node_rms_thre),
+            "node_ene_thre": float(program_input.chain_inputs.node_ene_thre),
+        },
+        "displaced_metadata": displaced_metadata,
+        "optimized_metadata": optimized_metadata,
+        "failed_candidate_details": failed_candidates,
+        "output_files": {
+            "hessian_qcio": str(hessian_fp),
+            "displaced_xyz": str(displaced_fp),
+            "optimized_xyz": str(optimized_fp),
+            "unique_xyz": str(unique_fp),
+        },
+    }
+    _write_json_atomic(summary_fp, summary_payload)
+
+    table = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    table.add_column(style="bold cyan")
+    table.add_column(style="white")
+    table.add_row("Normal modes", str(len(normal_modes)))
+    table.add_row("Displaced candidates", str(len(displaced_nodes)))
+    table.add_row("Optimized candidates", str(len(optimized_nodes)))
+    table.add_row("Failed candidates", str(len(failed_candidates)))
+    table.add_row("Unique minima", str(len(unique_nodes)))
+    table.add_row("Optimization mode", optimization_submission_mode)
+    table.add_row("Hessian", str(hessian_fp))
+    table.add_row("Displaced", str(displaced_fp))
+    table.add_row("Optimized", str(optimized_fp))
+    table.add_row("Unique", str(unique_fp))
+    table.add_row("Summary", str(summary_fp))
+    console.print(
+        Panel(
+            table,
+            title="[bold green]✓ Hessian Sample Complete[/bold green]",
+            border_style="green",
+        )
+    )
+
+
 @app.command("pseuirc")
 def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file to optimize')],
             inputs: Annotated[str, typer.Option("--inputs", "-i",
@@ -2561,6 +2858,10 @@ def extract_best_path(
     network_json: Annotated[str, typer.Argument(help="Path to a network .json file")],
     output_xyz: Annotated[str, typer.Option(
         "--output", "-o", help="Output XYZ file path for the joined best path")] = None,
+    start_node: Annotated[int, typer.Option(
+        "--start-node", help="Explicit network node index to use as the path start")] = None,
+    end_node: Annotated[int, typer.Option(
+        "--end-node", help="Explicit network node index to use as the path end")] = None,
     charge: Annotated[int, typer.Option(
         help="Charge used when reading serialized geometries")] = 0,
     multiplicity: Annotated[int, typer.Option(
@@ -2578,11 +2879,18 @@ def extract_best_path(
         raise typer.BadParameter(
             "extract-best-path requires a network .json input."
         )
+    endpoint_hints = dict(viz_data.network_endpoint_hints or {})
+    if start_node is not None:
+        endpoint_hints["root_index"] = int(start_node)
+    if end_node is not None:
+        endpoint_hints["target_index"] = int(end_node)
+    if not endpoint_hints:
+        endpoint_hints = None
 
     with console.status("[bold cyan]Finding best path...[/bold cyan]"):
         payload = _build_network_visualization_payload(
             viz_data.network_pot,
-            endpoint_hints=viz_data.network_endpoint_hints,
+            endpoint_hints=endpoint_hints,
         )
         path_nodes = payload.get("highlighted_path") or []
         if not path_nodes:
@@ -2646,6 +2954,10 @@ def netgen_smiles(
         raise typer.BadParameter("--smiles is required.")
     if inputs is None:
         raise typer.BadParameter("--inputs/-i is required.")
+    try:
+        ensure_retropaths_available(feature="`netgen-smiles`")
+    except RuntimeError as exc:
+        raise typer.BadParameter(str(exc)) from exc
 
     requested_dir = Path(directory).resolve() if directory else None
     if requested_dir is not None and (requested_dir / "workspace.json").exists():
@@ -2761,7 +3073,10 @@ def status_cmd(
 def drive(
     inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
     smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES to bootstrap a drive workspace before opening the UI")] = None,
+    product_smiles: Annotated[str, typer.Option("--product-smiles", "--end", help="Optional product / end SMILES to bootstrap a target node and queued NEB edge")] = None,
     environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES for SMILES-based drive initialization")] = "",
+    charge: Annotated[int, typer.Option("--charge", help="Total charge for SMILES-bootstrapped drive endpoint structures")] = 0,
+    multiplicity: Annotated[int, typer.Option("--multiplicity", help="Spin multiplicity for SMILES-bootstrapped drive endpoint structures")] = 1,
     name: Annotated[str, typer.Option("--name", help="Run name / workspace name for SMILES-based drive initialization")] = None,
     workspace: Annotated[str, typer.Option("--workspace", help="Existing workspace directory or workspace.json to load on startup")] = None,
     reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
@@ -2793,7 +3108,10 @@ def drive(
         inputs_fp=inputs,
         workspace_path=workspace_path,
         smiles=smiles,
+        product_smiles=product_smiles,
         environment_smiles=environment,
+        charge=charge,
+        multiplicity=multiplicity,
         run_name=name,
         reactions_fp=reactions_fp,
         host=host,

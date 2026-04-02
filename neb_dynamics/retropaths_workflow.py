@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import base64
 import contextlib
+import importlib
 import io
 import json
 import os
@@ -15,6 +17,7 @@ from typing import Any, Callable
 import numpy as np
 
 from neb_dynamics.chain import Chain
+from neb_dynamics.helper_functions import parse_nma_freq_data
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.inputs import RunInputs
 from neb_dynamics.kmc import (
@@ -23,7 +26,7 @@ from neb_dynamics.kmc import (
     simulate_kmc,
 )
 from neb_dynamics.nodes.node import StructureNode
-from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, is_identical
+from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical, displace_by_dr, is_identical
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.pot import Pot
 from neb_dynamics.qcio_structure_helpers import structure_to_molecule
@@ -157,6 +160,44 @@ def _retropaths_repo() -> Path:
     return Path(__file__).resolve().parents[3] / "retropaths"
 
 
+def _retropaths_unavailable_message(*, feature: str, repo: Path, detail: str = "") -> str:
+    msg = (
+        f"{feature} requires the optional `retropaths` repository, but it is not available at "
+        f"`{repo}`. Set `RETROPATHS_REPO` to a valid checkout and retry."
+    )
+    if detail:
+        msg = f"{msg} ({detail})"
+    return msg
+
+
+def ensure_retropaths_available(*, feature: str = "This action") -> None:
+    repo = _retropaths_repo()
+    if not repo.exists():
+        raise RuntimeError(_retropaths_unavailable_message(feature=feature, repo=repo))
+    if not repo.is_dir():
+        raise RuntimeError(
+            _retropaths_unavailable_message(
+                feature=feature,
+                repo=repo,
+                detail="path exists but is not a directory",
+            )
+        )
+
+    prepare_retropaths_imports()
+    try:
+        importlib.import_module("retropaths.helper_functions")
+        importlib.import_module("retropaths.molecules.molecule")
+        importlib.import_module("retropaths.reactions.pot")
+    except Exception as exc:
+        raise RuntimeError(
+            _retropaths_unavailable_message(
+                feature=feature,
+                repo=repo,
+                detail=f"import failed: {type(exc).__name__}: {exc}",
+            )
+        ) from exc
+
+
 def prepare_retropaths_imports() -> None:
     repo = _retropaths_repo()
     if str(repo) not in sys.path:
@@ -174,6 +215,7 @@ def prepare_retropaths_imports() -> None:
 
 
 def _load_retropaths_classes():
+    ensure_retropaths_available(feature="Retropaths workflows")
     prepare_retropaths_imports()
     import retropaths.helper_functions as hf
     from retropaths.molecules.molecule import Molecule
@@ -477,6 +519,578 @@ def _nanoreactor_support_status(run_inputs: RunInputs) -> tuple[bool, str]:
         return True, ""
     return False, "Nanoreactor sampling currently requires a CREST or TeraChem-backed inputs file."
 
+
+def _hessian_sample_support_status(run_inputs: RunInputs) -> tuple[bool, str]:
+    engine = getattr(run_inputs, "engine", None)
+    if engine is None:
+        return False, "The inputs file did not construct an engine, so Hessian sampling cannot be started."
+    if not hasattr(engine, "_compute_hessian_result"):
+        return (
+            False,
+            "The configured engine does not expose `_compute_hessian_result`, which is required for Hessian sampling.",
+        )
+    if not (hasattr(engine, "compute_geometry_optimization") or hasattr(engine, "compute_geometry_optimizations")):
+        return (
+            False,
+            "The configured engine does not expose geometry-optimization methods needed for Hessian sampling.",
+        )
+    return True, ""
+
+
+def _extract_normal_modes_from_hessian_result(
+    hessres: Any,
+) -> tuple[list[np.ndarray], list[float]]:
+    results = getattr(hessres, "results", None)
+    if results is None:
+        raise ValueError("Hessian result is missing `results`.")
+
+    modes = getattr(results, "normal_modes_cartesian", None)
+    freqs = getattr(results, "freqs_wavenumber", None)
+    if modes is not None and len(modes) > 0:
+        normal_modes = [np.array(mode) for mode in modes]
+        frequencies = [float(freq) for freq in (freqs or [])]
+        return normal_modes, frequencies
+
+    normal_modes, frequencies = parse_nma_freq_data(hessres)
+    if len(normal_modes) == 0:
+        raise ValueError("No normal modes found in Hessian result.")
+    return [np.array(mode) for mode in normal_modes], [float(freq) for freq in frequencies]
+
+
+def _load_completed_queue_chain(item: Any) -> Chain | Any | None:
+    chain = None
+    output_chain_xyz = str(getattr(item, "output_chain_xyz", "") or "").strip()
+    if output_chain_xyz:
+        with contextlib.suppress(Exception):
+            chain = Chain.from_xyz(
+                output_chain_xyz,
+                ChainInputs(),
+            )
+    if chain is not None:
+        return chain
+    result_dir = str(getattr(item, "result_dir", "") or "").strip()
+    if not result_dir:
+        return None
+    with contextlib.suppress(Exception):
+        history = TreeNode.read_from_disk(
+            folder_name=result_dir,
+            charge=0,
+            multiplicity=1,
+        )
+        return getattr(history, "output_chain", None)
+    return None
+
+
+def _coerce_chain_candidate(candidate: Any) -> Any | None:
+    if candidate is None:
+        return None
+    if isinstance(candidate, Chain):
+        return candidate
+    if hasattr(candidate, "nodes"):
+        with contextlib.suppress(Exception):
+            if len(candidate.nodes) > 0:
+                return candidate
+    return None
+
+
+def _find_completed_chain_for_edge(
+    workspace: RetropathsWorkspace,
+    pot: Pot,
+    *,
+    source_node: int,
+    target_node: int,
+) -> Any | None:
+    for source, target in ((source_node, target_node), (target_node, source_node)):
+        if not pot.graph.has_edge(source, target):
+            continue
+        edge_attrs = dict(pot.graph.edges[(source, target)])
+        chains = list(edge_attrs.get("list_of_nebs") or [])
+        while chains:
+            candidate = _coerce_chain_candidate(chains.pop())
+            if candidate is not None:
+                return candidate
+
+    if not workspace.queue_fp.exists():
+        return None
+    with contextlib.suppress(Exception):
+        queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
+    if "queue" not in locals():
+        return None
+
+    matching_items: list[Any] = []
+    for item in queue.items:
+        if item.status != "completed":
+            continue
+        pair = (int(item.source_node), int(item.target_node))
+        if pair in {(int(source_node), int(target_node)), (int(target_node), int(source_node))}:
+            matching_items.append(item)
+    if not matching_items:
+        return None
+
+    matching_items.sort(key=lambda item: str(getattr(item, "finished_at", "") or ""))
+    for item in reversed(matching_items):
+        chain = _load_completed_queue_chain(item)
+        candidate = _coerce_chain_candidate(chain)
+        if candidate is None:
+            continue
+        with contextlib.suppress(Exception):
+            if len(candidate) > 0:
+                return candidate
+        with contextlib.suppress(Exception):
+            if len(getattr(candidate, "nodes", [])) > 0:
+                return candidate
+    return None
+
+
+def _safe_node_energy(node: Any) -> float | None:
+    with contextlib.suppress(Exception):
+        value = node.energy
+        if value is not None:
+            return float(value)
+    with contextlib.suppress(Exception):
+        value = getattr(node, "_cached_energy", None)
+        if value is not None:
+            return float(value)
+    with contextlib.suppress(Exception):
+        result = getattr(node, "_cached_result", None)
+        if result is not None:
+            return float(result.results.energy)
+    return None
+
+
+def _peak_node_from_chain(chain: Any) -> StructureNode:
+    nodes = list(getattr(chain, "nodes", []) or [])
+    if not nodes:
+        with contextlib.suppress(Exception):
+            nodes = [chain[index] for index in range(len(chain))]
+    if not nodes:
+        raise ValueError("The selected NEB chain does not contain any geometries.")
+
+    peak_index: int | None = None
+    peak_energy: float | None = None
+    for index, node in enumerate(nodes):
+        energy = _safe_node_energy(node)
+        if energy is None:
+            continue
+        if peak_energy is None or energy > peak_energy:
+            peak_energy = float(energy)
+            peak_index = int(index)
+
+    if peak_index is None:
+        with contextlib.suppress(Exception):
+            energies = np.asarray(getattr(chain, "energies"), dtype=float)
+            if energies.shape[0] == len(nodes):
+                finite_mask = np.isfinite(energies)
+                if bool(np.any(finite_mask)):
+                    masked = np.where(finite_mask, energies, -np.inf)
+                    peak_index = int(np.argmax(masked))
+    if peak_index is None:
+        peak_index = int(len(nodes) // 2)
+
+    peak_node = nodes[peak_index]
+    if not isinstance(peak_node, StructureNode):
+        raise ValueError("The selected NEB chain peak is not a StructureNode geometry.")
+    return peak_node.copy()
+
+
+def _ensure_node_graph(node: StructureNode, *, fallback: StructureNode | None = None) -> StructureNode:
+    graph_like = getattr(node, "graph", None)
+    if graph_like is None and fallback is not None:
+        graph_like = getattr(fallback, "graph", None)
+    if graph_like is None and getattr(node, "structure", None) is not None:
+        with contextlib.suppress(Exception):
+            graph_like = structure_to_molecule(node.structure)
+    if graph_like is not None:
+        node.graph = graph_like
+        node.has_molecular_graph = True
+    return node
+
+
+def _final_optimized_node(result: Any) -> StructureNode | None:
+    if isinstance(result, StructureNode):
+        return result
+    nodes = getattr(result, "nodes", None)
+    if isinstance(nodes, list) and nodes:
+        last = nodes[-1]
+        if isinstance(last, StructureNode):
+            return last
+    with contextlib.suppress(Exception):
+        if len(result) > 0:
+            last = result[-1]
+            if isinstance(last, StructureNode):
+                return last
+    return None
+
+
+def _run_hessian_sample(
+    workspace: RetropathsWorkspace,
+    pot: Pot,
+    seed_node: StructureNode,
+    *,
+    dr: float,
+    max_candidates: int,
+    source_label: str,
+    growing_nodes: list[int],
+    provenance_node_index: int | None = None,
+    provenance_edge: tuple[int, int] | None = None,
+    progress_fp: str | None = None,
+) -> dict[str, Any]:
+    if dr <= 0:
+        raise ValueError("The Hessian-sample displacement (`dr`) must be positive.")
+    if int(max_candidates) <= 0:
+        raise ValueError("`max_candidates` must be a positive integer.")
+    if seed_node is None or getattr(seed_node, "structure", None) is None:
+        raise ValueError("The selected geometry has no 3D structure, so Hessian sampling cannot be started.")
+
+    seed_node = _ensure_node_graph(seed_node.copy())
+    run_inputs = RunInputs.open(workspace.inputs_fp)
+    supported, support_note = _hessian_sample_support_status(run_inputs)
+    if not supported:
+        raise ValueError(support_note)
+
+    engine = run_inputs.engine
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=list(growing_nodes),
+        title=f"Running Hessian sample from {source_label}",
+        note=f"Computing Hessian normal modes with dr={float(dr):.4f}.",
+        phase="growing",
+    )
+
+    try:
+        hessres = engine._compute_hessian_result(seed_node)
+    except Exception as exc:
+        hessres = getattr(exc, "program_output", None)
+        if hessres is None:
+            raise
+
+    normal_modes, _frequencies = _extract_normal_modes_from_hessian_result(hessres)
+    if len(normal_modes) == 0:
+        raise ValueError("No normal modes were returned from the Hessian result.")
+
+    max_candidates = int(max_candidates)
+    maxiter = 500
+    displaced_nodes: list[StructureNode] = []
+    clipped = False
+    for mode in normal_modes:
+        for signed_dr in (float(dr), -float(dr)):
+            displaced = displace_by_dr(node=seed_node, displacement=np.array(mode), dr=signed_dr)
+            displaced = _ensure_node_graph(displaced, fallback=seed_node)
+            displaced_nodes.append(displaced)
+            if len(displaced_nodes) >= max_candidates:
+                clipped = True
+                break
+        if clipped:
+            break
+    if not displaced_nodes:
+        raise ValueError("No displaced candidate geometries were generated from the Hessian normal modes.")
+
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=list(growing_nodes),
+        title=f"Running Hessian sample from {source_label}",
+        note=f"Optimizing {len(displaced_nodes)} displaced structure(s) into minima.",
+        phase="optimizing",
+    )
+
+    optimized_nodes: list[StructureNode] = []
+    compute_single = getattr(engine, "compute_geometry_optimization", None)
+    compute_many = getattr(engine, "compute_geometry_optimizations", None)
+    engine_name = str(getattr(run_inputs, "engine_name", "") or "").strip().lower()
+    compute_program = str(getattr(engine, "compute_program", "") or "").strip().lower()
+    use_chemcloud_batch = engine_name == "chemcloud" or compute_program == "chemcloud"
+
+    if use_chemcloud_batch:
+        if not callable(compute_many):
+            raise ValueError(
+                "ChemCloud Hessian sampling requires batch geometry optimization, but this engine does not expose `compute_geometry_optimizations`."
+            )
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=list(growing_nodes),
+            title=f"Running Hessian sample from {source_label}",
+            note=f"Submitting {len(displaced_nodes)} displaced structure(s) to ChemCloud as one batch.",
+            phase="optimizing",
+        )
+        try:
+            try:
+                optimized_histories = compute_many(
+                    displaced_nodes,
+                    keywords={"coordsys": "cart", "maxiter": int(maxiter)},
+                )
+            except TypeError:
+                optimized_histories = compute_many(displaced_nodes)
+        except Exception as exc:
+            raise ValueError(
+                f"ChemCloud batch geometry optimization failed during Hessian sampling: {type(exc).__name__}: {exc}"
+            ) from exc
+        if len(optimized_histories) != len(displaced_nodes):
+            if len(optimized_histories) < len(displaced_nodes):
+                optimized_histories = list(optimized_histories) + [
+                    [] for _ in range(len(displaced_nodes) - len(optimized_histories))
+                ]
+            else:
+                optimized_histories = list(optimized_histories[: len(displaced_nodes)])
+        for candidate, result in zip(displaced_nodes, optimized_histories):
+            final_node = _final_optimized_node(result)
+            if final_node is None:
+                continue
+            final_node = _ensure_node_graph(final_node, fallback=candidate)
+            optimized_nodes.append(final_node)
+    else:
+        if callable(compute_many):
+            with contextlib.suppress(Exception):
+                try:
+                    optimized_histories = compute_many(
+                        displaced_nodes,
+                        keywords={"coordsys": "cart", "maxiter": int(maxiter)},
+                    )
+                except TypeError:
+                    optimized_histories = compute_many(displaced_nodes)
+                if len(optimized_histories) == len(displaced_nodes):
+                    for candidate, result in zip(displaced_nodes, optimized_histories):
+                        final_node = _final_optimized_node(result)
+                        if final_node is None:
+                            continue
+                        final_node = _ensure_node_graph(final_node, fallback=candidate)
+                        optimized_nodes.append(final_node)
+
+        if not optimized_nodes:
+            for candidate in displaced_nodes:
+                result = None
+                if compute_single is not None:
+                    try:
+                        result = compute_single(
+                            candidate, keywords={"coordsys": "cart", "maxiter": int(maxiter)}
+                        )
+                    except Exception:
+                        with contextlib.suppress(Exception):
+                            result = compute_single(candidate)
+                elif compute_many is not None:
+                    with contextlib.suppress(Exception):
+                        batch = compute_many([candidate]) or []
+                        if batch:
+                            result = batch[0]
+                final_node = _final_optimized_node(result)
+                if final_node is None:
+                    continue
+                final_node = _ensure_node_graph(final_node, fallback=candidate)
+                optimized_nodes.append(final_node)
+
+    if not optimized_nodes:
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=[],
+            title=f"Running Hessian sample from {source_label}",
+            note="The Hessian sample run completed, but no displaced candidate converged to a minimum.",
+            phase="finished",
+        )
+        return {
+            "message": f"Hessian sampling from {source_label} returned no converged minima.",
+            "added_nodes": 0,
+            "added_edges": 0,
+            "targets": [],
+            "dr": float(dr),
+        }
+
+    chain_inputs = getattr(run_inputs, "chain_inputs", ChainInputs())
+    network_inputs = getattr(run_inputs, "network_inputs", None)
+    collapse_rms_thre = float(getattr(network_inputs, "collapse_node_rms_thre", chain_inputs.node_rms_thre))
+    collapse_ene_thre = float(getattr(network_inputs, "collapse_node_ene_thre", chain_inputs.node_ene_thre))
+
+    provenance_sources: list[int] = []
+    if provenance_node_index is not None:
+        provenance_sources = [int(provenance_node_index)]
+    elif provenance_edge is not None:
+        provenance_sources = [int(provenance_edge[0]), int(provenance_edge[1])]
+
+    added_nodes = 0
+    added_edges = 0
+    skipped_duplicates = 0
+    merged_targets: list[int] = []
+    hessian_reaction_index = 1
+
+    for offset, optimized_node in enumerate(optimized_nodes, start=1):
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=list(growing_nodes),
+            title=f"Running Hessian sample from {source_label}",
+            note=f"Merging optimized minimum {offset}/{len(optimized_nodes)} into the network.",
+            phase="merging",
+        )
+        if _nodes_same_species(optimized_node, seed_node):
+            skipped_duplicates += 1
+            continue
+
+        target_index = _find_existing_network_node(
+            pot,
+            optimized_node,
+            chain_inputs,
+            collapse_rms_thre,
+            collapse_ene_thre,
+        )
+        if target_index is None:
+            target_index = (max(pot.graph.nodes) + 1) if pot.graph.nodes else 0
+            graph_like = getattr(optimized_node, "graph", None)
+            pot.graph.add_node(
+                target_index,
+                molecule=copy_graph_like_molecule(graph_like) if graph_like is not None else None,
+                converged=True,
+                td=optimized_node,
+                endpoint_optimized=True,
+                generated_by="hessian_sample",
+                hessian_sample_dr=float(dr),
+                hessian_provenance_node=int(provenance_node_index) if provenance_node_index is not None else None,
+                hessian_provenance_edge=[int(provenance_edge[0]), int(provenance_edge[1])] if provenance_edge is not None else None,
+            )
+            added_nodes += 1
+        else:
+            target_attrs = pot.graph.nodes[target_index]
+            graph_like = getattr(optimized_node, "graph", None)
+            if graph_like is not None:
+                target_attrs["molecule"] = copy_graph_like_molecule(graph_like)
+            target_attrs["td"] = optimized_node
+            target_attrs["endpoint_optimized"] = True
+            target_attrs.setdefault("generated_by", "hessian_sample")
+            target_attrs["hessian_sample_dr"] = float(dr)
+            if provenance_node_index is not None:
+                target_attrs.setdefault("hessian_provenance_node", int(provenance_node_index))
+            if provenance_edge is not None:
+                target_attrs.setdefault(
+                    "hessian_provenance_edge",
+                    [int(provenance_edge[0]), int(provenance_edge[1])],
+                )
+
+        for source_index in provenance_sources:
+            if int(target_index) == int(source_index):
+                skipped_duplicates += 1
+                continue
+            if not pot.graph.has_edge(source_index, target_index):
+                if provenance_node_index is not None:
+                    reaction_label = f"Hessian sample {hessian_reaction_index}"
+                else:
+                    reaction_label = (
+                        f"Hessian sample edge {int(provenance_edge[0])}->{int(provenance_edge[1])} "
+                        f"{hessian_reaction_index}"
+                    )
+                pot.graph.add_edge(
+                    source_index,
+                    target_index,
+                    reaction=reaction_label,
+                    list_of_nebs=[],
+                    generated_by="hessian_sample",
+                )
+                added_edges += 1
+                hessian_reaction_index += 1
+            ensure_queue_item_for_edge(
+                pot=pot,
+                source_node=int(source_index),
+                target_node=int(target_index),
+                queue_fp=workspace.queue_fp,
+                overwrite=False,
+            )
+        merged_targets.append(int(target_index))
+
+    pot.write_to_disk(workspace.neb_pot_fp)
+    build_retropaths_neb_queue(pot=pot, queue_fp=workspace.queue_fp, overwrite=False)
+    _write_growth_progress(
+        progress_fp,
+        graph=pot.graph,
+        growing_nodes=[],
+        title=f"Running Hessian sample from {source_label}",
+        note=(
+            f"Merged {added_nodes} new minima node(s), created {added_edges} new edge(s), "
+            f"and skipped {skipped_duplicates} duplicate minima."
+        ),
+        phase="finished",
+    )
+    return {
+        "message": (
+            f"Hessian sampling from {source_label} merged {added_nodes} new minima "
+            f"and {added_edges} new edges."
+        ),
+        "added_nodes": int(added_nodes),
+        "added_edges": int(added_edges),
+        "targets": sorted(set(int(target) for target in merged_targets)),
+        "dr": float(dr),
+    }
+
+
+def run_hessian_sample_for_node(
+    workspace: RetropathsWorkspace,
+    node_index: int,
+    *,
+    dr: float,
+    max_candidates: int = 100,
+    progress_fp: str | None = None,
+) -> dict[str, Any]:
+    pot = materialize_drive_graph(workspace)
+    if node_index not in pot.graph.nodes:
+        raise ValueError(f"Node {node_index} is not present in the current workspace.")
+    source_attrs = pot.graph.nodes[node_index]
+    source_td = source_attrs.get("td")
+    if source_td is None or getattr(source_td, "structure", None) is None:
+        raise ValueError(f"Node {node_index} has no 3D structure, so Hessian sampling cannot be started.")
+    return _run_hessian_sample(
+        workspace,
+        pot,
+        source_td,
+        dr=float(dr),
+        max_candidates=int(max_candidates),
+        source_label=f"node {int(node_index)}",
+        growing_nodes=[int(node_index)],
+        provenance_node_index=int(node_index),
+        progress_fp=progress_fp,
+    )
+
+
+def run_hessian_sample_for_edge(
+    workspace: RetropathsWorkspace,
+    source_node: int,
+    target_node: int,
+    *,
+    dr: float,
+    max_candidates: int = 100,
+    progress_fp: str | None = None,
+) -> dict[str, Any]:
+    pot = materialize_drive_graph(workspace)
+    forward_exists = pot.graph.has_edge(int(source_node), int(target_node))
+    reverse_exists = pot.graph.has_edge(int(target_node), int(source_node))
+    if not (forward_exists or reverse_exists):
+        raise ValueError(
+            f"Edge {int(source_node)} -> {int(target_node)} is not present in the current workspace."
+        )
+
+    chain = _find_completed_chain_for_edge(
+        workspace,
+        pot,
+        source_node=int(source_node),
+        target_node=int(target_node),
+    )
+    if chain is None:
+        raise ValueError(
+            "Hessian sampling from an edge requires a completed NEB chain on that edge (directly or via queue results)."
+        )
+    peak_node = _peak_node_from_chain(chain)
+    if getattr(peak_node, "structure", None) is None:
+        raise ValueError("The selected edge's NEB peak has no 3D structure, so Hessian sampling cannot be started.")
+    return _run_hessian_sample(
+        workspace,
+        pot,
+        peak_node,
+        dr=float(dr),
+        max_candidates=int(max_candidates),
+        source_label=f"edge {int(source_node)} -> {int(target_node)} peak",
+        growing_nodes=[int(source_node), int(target_node)],
+        provenance_edge=(int(source_node), int(target_node)),
+        progress_fp=progress_fp,
+    )
+
 def apply_reactions_to_node(
     workspace: RetropathsWorkspace,
     node_index: int,
@@ -610,7 +1224,7 @@ def run_nanoreactor_for_node(
     source_td = source_attrs.get("td")
     if source_td is None or getattr(source_td, "structure", None) is None:
         raise ValueError(f"Node {node_index} has no 3D structure, so nanoreactor sampling cannot be started.")
-    provenance_node_index = _nanoreactor_provenance_node_index(pot, node_index)
+    provenance_node_index = int(node_index)
 
     run_inputs = RunInputs.open(workspace.inputs_fp)
     supported, support_note = _nanoreactor_support_status(run_inputs)
@@ -942,16 +1556,6 @@ def _find_existing_network_node(
     return None
 
 
-def _nanoreactor_provenance_node_index(pot: Pot, node_index: int) -> int:
-    attrs = pot.graph.nodes.get(node_index, {})
-    provenance = attrs.get("nanoreactor_provenance_node")
-    with contextlib.suppress(Exception):
-        provenance_index = int(provenance)
-        if provenance_index in pot.graph.nodes:
-            return provenance_index
-    return int(node_index)
-
-
 def _register_network_node(
     pot: Pot,
     source_pot: Pot,
@@ -1015,13 +1619,50 @@ def _write_edge_visualizations(workspace: RetropathsWorkspace, pot: Pot) -> list
     rows: list[dict[str, str]] = []
     out_dir = workspace.edge_visualizations_dir
     out_dir.mkdir(parents=True, exist_ok=True)
-    for stale_fp in out_dir.glob("edge_*.html"):
-        stale_fp.unlink(missing_ok=True)
     display_run_inputs: RunInputs | None = None
+    active_files: set[str] = set()
 
     for source_node, target_node in sorted(pot.graph.edges):
         edge_attrs = pot.graph.edges[(source_node, target_node)]
+        filename = f"edge_{source_node}_{target_node}.html"
+        meta_filename = f"edge_{source_node}_{target_node}.meta.json"
+        out_fp = out_dir / filename
+        meta_fp = out_dir / meta_filename
+        active_files.add(filename)
+        active_files.add(meta_filename)
         chains = edge_attrs.get("list_of_nebs") or []
+        cache_key = {
+            "source_node": int(source_node),
+            "target_node": int(target_node),
+            "reaction": str(edge_attrs.get("reaction") or ""),
+            "barrier": (
+                float(edge_attrs["barrier"])
+                if edge_attrs.get("barrier") is not None
+                else None
+            ),
+            "chains": len(chains),
+            "source_molecule_key": _molecule_key(_node_graph_like_molecule(pot.graph.nodes[source_node])),
+            "target_molecule_key": _molecule_key(_node_graph_like_molecule(pot.graph.nodes[target_node])),
+        }
+        if out_fp.exists() and meta_fp.exists():
+            with contextlib.suppress(Exception):
+                meta = json.loads(meta_fp.read_text(encoding="utf-8"))
+                if meta.get("cache_key") == cache_key:
+                    rows.append(
+                        {
+                            "edge": str(meta.get("edge") or f"{source_node} -> {target_node}"),
+                            "start": str(meta.get("start") or source_node),
+                            "end": str(meta.get("end") or target_node),
+                            "reaction": str(meta.get("reaction") or cache_key["reaction"]),
+                            "barrier": str(meta.get("barrier") or ""),
+                            "chains": str(meta.get("chains") or len(chains)),
+                            "href": filename,
+                            "source_structure": meta.get("source_structure"),
+                            "target_structure": meta.get("target_structure"),
+                        }
+                    )
+                    continue
+
         chain = chains[-1] if chains else None
         if chain is None:
             with contextlib.suppress(Exception):
@@ -1042,8 +1683,19 @@ def _write_edge_visualizations(workspace: RetropathsWorkspace, pot: Pot) -> list
         if chain is None:
             continue
 
-        filename = f"edge_{source_node}_{target_node}.html"
-        out_fp = out_dir / filename
+        source_structure = None
+        target_structure = None
+        if len(chain.nodes) > 0:
+            with contextlib.suppress(Exception):
+                source_structure = {
+                    "xyz_b64": base64.b64encode(chain.nodes[0].structure.to_xyz().encode("utf-8")).decode("ascii"),
+                    "symbols": list(chain.nodes[0].structure.symbols),
+                }
+            with contextlib.suppress(Exception):
+                target_structure = {
+                    "xyz_b64": base64.b64encode(chain.nodes[-1].structure.to_xyz().encode("utf-8")).decode("ascii"),
+                    "symbols": list(chain.nodes[-1].structure.symbols),
+                }
         start_smiles = ""
         end_smiles = ""
         if len(chain.nodes) > 0 and getattr(chain[0], "graph", None) is not None:
@@ -1066,39 +1718,68 @@ def _write_edge_visualizations(workspace: RetropathsWorkspace, pot: Pot) -> list
         )
         html = html.replace("<body>", f"<body>\n  {title_html}", 1)
         out_fp.write_text(html, encoding="utf-8")
-        rows.append(
-            {
-                "edge": f"{source_node} -> {target_node}",
-                "start": start_smiles or str(source_node),
-                "end": end_smiles or str(target_node),
-                "reaction": str(edge_attrs.get("reaction") or ""),
-                "barrier": (
-                    f"{float(edge_attrs['barrier']):.3f}"
-                    if edge_attrs.get("barrier") is not None
-                    else ""
+        row = {
+            "edge": f"{source_node} -> {target_node}",
+            "start": start_smiles or str(source_node),
+            "end": end_smiles or str(target_node),
+            "reaction": str(edge_attrs.get("reaction") or ""),
+            "barrier": (
+                f"{float(edge_attrs['barrier']):.3f}"
+                if edge_attrs.get("barrier") is not None
+                else ""
+            ),
+            "chains": str(len(chains)),
+            "href": filename,
+            "source_structure": source_structure,
+            "target_structure": target_structure,
+        }
+        rows.append(row)
+        with contextlib.suppress(Exception):
+            meta_fp.write_text(
+                json.dumps(
+                    {
+                        "cache_key": cache_key,
+                        **row,
+                    },
+                    indent=2,
+                    sort_keys=True,
                 ),
-                "chains": str(len(chains)),
-                "href": filename,
-            }
-        )
+                encoding="utf-8",
+            )
+
+    for stale_fp in out_dir.glob("edge_*"):
+        if stale_fp.name not in active_files:
+            stale_fp.unlink(missing_ok=True)
 
     return rows
 
 
-def _json_safe(value: Any, depth: int = 0) -> Any:
+def _json_safe(
+    value: Any,
+    depth: int = 0,
+    *,
+    _seen: set[int] | None = None,
+) -> Any:
     if depth > 3:
         return repr(value)
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, Path):
         return str(value)
+    if _seen is None:
+        _seen = set()
+    value_id = id(value)
+    if value_id in _seen:
+        return repr(value)
     if isinstance(value, dict):
+        _seen.add(value_id)
         return {
-            str(key): _json_safe(val, depth + 1)
+            str(key): _json_safe(val, depth + 1, _seen=_seen)
             for key, val in list(value.items())[:40]
         }
     if isinstance(value, (list, tuple, set)):
-        return [_json_safe(item, depth + 1) for item in list(value)[:40]]
+        _seen.add(value_id)
+        return [_json_safe(item, depth + 1, _seen=_seen) for item in list(value)[:40]]
     if hasattr(value, "force_smiles"):
         with contextlib.suppress(Exception):
             return _quiet_force_smiles(value)
@@ -1107,14 +1788,17 @@ def _json_safe(value: Any, depth: int = 0) -> Any:
             return str(value.smiles)
     if hasattr(value, "to_dict"):
         with contextlib.suppress(Exception):
-            return _json_safe(value.to_dict(), depth + 1)
+            _seen.add(value_id)
+            return _json_safe(value.to_dict(), depth + 1, _seen=_seen)
     if hasattr(value, "model_dump"):
         with contextlib.suppress(Exception):
-            return _json_safe(value.model_dump(), depth + 1)
+            _seen.add(value_id)
+            return _json_safe(value.model_dump(), depth + 1, _seen=_seen)
     if hasattr(value, "__dict__"):
         with contextlib.suppress(Exception):
+            _seen.add(value_id)
             return {
-                str(key): _json_safe(val, depth + 1)
+                str(key): _json_safe(val, depth + 1, _seen=_seen)
                 for key, val in list(vars(value).items())[:40]
                 if not str(key).startswith("_") and not callable(val)
             }
@@ -1190,7 +1874,7 @@ def _build_network_explorer_payload(
     for source, target in sorted(graph.edges):
         attrs = graph.edges[(source, target)]
         reaction_name = str(attrs.get("reaction") or "")
-        template_payload = template_payloads.get(reaction_name) or {}
+        template_payload = _json_safe(template_payloads.get(reaction_name) or {})
         edge_key = f"{source} -> {target}"
         edges.append(
             {

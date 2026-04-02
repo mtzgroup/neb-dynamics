@@ -243,6 +243,27 @@ def test_qcop_engine_chemcloud_batches_geometry_optimizations(monkeypatch):
     assert len(out) == 3
 
 
+def test_qcop_engine_bigchem_hessian_accepts_direct_programoutput(monkeypatch):
+    returned = object()
+
+    def _fake_cc_compute(*args, **kwargs):
+        return returned
+
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    eng = QCOPEngine(compute_program="chemcloud")
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0], [0.8, 0.0, 0.0]]),
+            symbols=["H", "H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    out = eng._compute_hessian_result(node=node, use_bigchem=True)
+    assert out is returned
+
+
 def test_qcop_engine_chemcloud_batches_geometry_optimizations_with_file_only_trajectory_entries(monkeypatch):
     class _Files:
         def model_dump(self):
@@ -282,6 +303,55 @@ def test_qcop_engine_chemcloud_batches_geometry_optimizations_with_file_only_tra
     assert len(out) == 2
     assert out[0][-1]._cached_energy is None
     assert out[0][-1]._cached_gradient is None
+
+
+def test_qcop_engine_chemcloud_batch_optimization_keeps_partial_failures(monkeypatch):
+    class _Result:
+        def __init__(self, structure):
+            self.input_data = type("In", (), {"structure": structure})()
+            self.results = type(
+                "ResData",
+                (),
+                {
+                    "energy": 0.0,
+                    "gradient": [[0.0, 0.0, 0.0] for _ in structure.symbols],
+                },
+            )()
+
+    class _SuccessOutput:
+        def __init__(self, structure):
+            self.results = type("Res", (), {"trajectory": [_Result(structure)]})()
+
+    class _FailedOutput:
+        def __init__(self):
+            self.results = type("Res", (), {"trajectory": []})()
+
+    def _fake_cc_compute(*args, **kwargs):
+        batch = args[1]
+        if isinstance(batch, list):
+            assert len(batch) == 2
+            return [_FailedOutput(), _SuccessOutput(batch[1].structure)]
+        return _SuccessOutput(batch.structure)
+
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    eng = QCOPEngine(compute_program="chemcloud")
+    nodes = [
+        StructureNode(
+            structure=Structure(
+                geometry=np.array([[0.0, 0.0, 0.0], [x, 0.0, 0.0]]),
+                symbols=["H", "H"],
+                charge=0,
+                multiplicity=1,
+            )
+        )
+        for x in (0.8, 1.0)
+    ]
+
+    out = eng.compute_geometry_optimizations(nodes)
+
+    assert len(out) == 2
+    assert out[0] == []
+    assert len(out[1]) == 1
 
 
 def test_runinputs_toml_write_qcio_propagates(tmp_path: Path):

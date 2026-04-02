@@ -2,6 +2,8 @@ from types import SimpleNamespace
 from pathlib import Path
 
 import networkx as nx
+import pytest
+import typer
 
 from neb_dynamics.retropaths_queue import RetropathsNEBQueue
 from neb_dynamics.retropaths_workflow import create_workspace, default_workspace_name
@@ -176,3 +178,18 @@ def test_netgen_smiles_passes_reactions_fp(monkeypatch, tmp_path):
     )
 
     assert Path(created["reactions_fp"]).resolve() == reactions_fp.resolve()
+
+
+def test_netgen_smiles_errors_when_retropaths_unavailable(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        main_cli,
+        "ensure_retropaths_available",
+        lambda feature="This action": (_ for _ in ()).throw(RuntimeError("`netgen-smiles` requires retropaths")),
+    )
+
+    with pytest.raises(typer.BadParameter, match="requires retropaths"):
+        main_cli.netgen_smiles(
+            smiles="C",
+            inputs=str(tmp_path / "inputs.toml"),
+            no_open=True,
+        )

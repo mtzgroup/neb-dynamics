@@ -259,6 +259,26 @@ def test_run_recursive_network_splits_skips_pairs_already_seen_on_completed_path
     assert [row["request_id"] for row in request_records] == [0, 1, 2]
 
 
+def test_write_recursive_split_request_artifacts_tolerates_missing_cached_results(tmp_path):
+    params = ChainInputs()
+    unevaluated_chain = Chain.model_validate(
+        {"nodes": [StructureNode(structure=_structure_at_x(0.0)), StructureNode(structure=_structure_at_x(0.0))], "parameters": params}
+    )
+    history = TreeNode(data=_FakeNEB(unevaluated_chain), children=[], index=0)
+
+    main_cli._write_recursive_split_request_artifacts(
+        output_dir=tmp_path / "splits",
+        request_id=7,
+        history=history,
+        write_qcio=False,
+    )
+
+    assert (tmp_path / "splits" / "request_7.xyz").exists()
+    assert not (tmp_path / "splits" / "request_7.energies").exists()
+    assert not (tmp_path / "splits" / "request_7.gradients").exists()
+    assert (tmp_path / "splits" / "request_7_msmep").is_dir()
+
+
 def test_run_network_splits_forces_recursive_mode(monkeypatch, tmp_path):
     params = ChainInputs()
     program_inputs = SimpleNamespace(

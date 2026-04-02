@@ -51,22 +51,53 @@ from neb_dynamics.retropaths_workflow import (
     _write_edge_visualizations,
     add_manual_edge,
     apply_reactions_to_node,
+    ensure_retropaths_available,
     initialize_workspace_with_progress,
     RetropathsWorkspace,
     create_workspace,
     load_partial_annotated_pot,
     load_retropaths_pot,
     prepare_neb_workspace,
+    run_hessian_sample_for_edge,
+    run_hessian_sample_for_node,
     run_nanoreactor_for_node,
     summarize_queue,
 )
 
+_MERGED_DRIVE_POT_CACHE: dict[tuple[str, bool], Pot] = {}
+
+
+def _drive_merge_version(workspace: RetropathsWorkspace) -> str:
+    fingerprints: list[str] = []
+    for fp in filter(
+        None,
+        (
+            getattr(workspace, "neb_pot_fp", None),
+            getattr(workspace, "queue_fp", None),
+            getattr(workspace, "retropaths_pot_fp", None),
+            getattr(workspace, "annotated_neb_pot_fp", None),
+        ),
+    ):
+        if fp.exists():
+            stat = fp.stat()
+            fingerprints.append(f"{fp.name}:{stat.st_mtime_ns}:{stat.st_size}")
+        else:
+            fingerprints.append(f"{fp.name}:missing")
+    return "|".join(fingerprints)
+
 
 def _merge_drive_pot_compat(workspace: RetropathsWorkspace, *, network_splits: bool) -> Pot:
+    cache_key = (_drive_merge_version(workspace), bool(network_splits))
+    cached = _MERGED_DRIVE_POT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        return _merge_drive_pot(workspace, network_splits=network_splits)
+        pot = _merge_drive_pot(workspace, network_splits=network_splits)
     except TypeError:
-        return _merge_drive_pot(workspace)
+        pot = _merge_drive_pot(workspace)
+    _MERGED_DRIVE_POT_CACHE.clear()
+    _MERGED_DRIVE_POT_CACHE[cache_key] = pot
+    return pot
 
 
 def _load_existing_workspace_job_compat(workspace_path: str, *, network_splits: bool) -> dict[str, Any]:
@@ -271,6 +302,31 @@ def _node_nanoreactor_status(
     return False, "Nanoreactor sampling currently requires a CREST or TeraChem-backed inputs file."
 
 
+def _node_hessian_sample_status(
+    node_index: int,
+    node_attrs: dict[str, Any],
+    inputs_summary: dict[str, Any],
+) -> tuple[bool, str]:
+    td = node_attrs.get("td")
+    structure = getattr(td, "structure", None)
+    if structure is None:
+        return False, f"Node {node_index} has no 3D structure attached, so Hessian sampling cannot be started."
+    if str(inputs_summary.get("error") or "").strip():
+        return False, "The inputs file could not be loaded, so Hessian-sample availability is unknown."
+    if not bool(inputs_summary.get("can_hessian_sample", False)):
+        return False, str(inputs_summary.get("hessian_sample_note") or "This inputs configuration does not support Hessian sampling.")
+    return True, "Compute Hessian normal modes, displace by ±dr, optimize each displacement, and merge unique minima."
+
+
+def _edge_hessian_sample_status(edge: dict[str, Any]) -> tuple[bool, str]:
+    has_completed_chain = bool(edge.get("neb_backed")) or bool(edge.get("result_from_completed_queue")) or str(
+        edge.get("queue_status") or ""
+    ).strip() == "completed"
+    if has_completed_chain:
+        return True, "Use the highest-energy geometry from the completed NEB chain as the Hessian-sample seed."
+    return False, "Select an edge with a completed NEB chain before running Hessian sampling from the edge peak."
+
+
 def _edge_neb_status(edge: dict[str, Any]) -> tuple[bool, str]:
     status = str(edge.get("queue_status") or "").strip()
     queue_error = str(edge.get("queue_error") or "").strip()
@@ -360,7 +416,7 @@ def _build_neb_live_payload(
 
 
 def _build_growth_live_payload(active_action: dict[str, Any] | None) -> dict[str, Any] | None:
-    if active_action is None or active_action.get("type") not in {"initialize", "apply-reactions", "nanoreactor"}:
+    if active_action is None or active_action.get("type") not in {"initialize", "apply-reactions", "nanoreactor", "hessian-sample"}:
         return None
     progress = _read_growth_progress(active_action.get("progress_fp")) or {}
     return {
@@ -696,6 +752,18 @@ def _node_structure_payload(node_attrs: dict[str, Any]) -> dict[str, Any] | None
     }
 
 
+def _node_structure_payload_fast(node_attrs: dict[str, Any]) -> dict[str, Any] | None:
+    td = node_attrs.get("td")
+    structure = getattr(td, "structure", None)
+    if structure is None:
+        return None
+    return {
+        "xyz_b64": base64.b64encode(structure.to_xyz().encode("utf-8")).decode("ascii"),
+        "symbols": list(structure.symbols),
+        "molecule_viz": None,
+    }
+
+
 def _structure_payload_from_structure(
     structure: Any,
     *,
@@ -707,6 +775,16 @@ def _structure_payload_from_structure(
         "xyz_b64": base64.b64encode(structure.to_xyz().encode("utf-8")).decode("ascii"),
         "symbols": list(structure.symbols),
         "molecule_viz": _molecule_visual_payload(molecule_like if molecule_like is not None else structure),
+    }
+
+
+def _structure_payload_from_structure_fast(structure: Any) -> dict[str, Any] | None:
+    if structure is None:
+        return None
+    return {
+        "xyz_b64": base64.b64encode(structure.to_xyz().encode("utf-8")).decode("ascii"),
+        "symbols": list(structure.symbols),
+        "molecule_viz": None,
     }
 
 
@@ -822,6 +900,8 @@ def _inputs_summary_payload(workspace: RetropathsWorkspace) -> dict[str, Any]:
         "gi_inputs": {},
         "optimizer_kwds": {},
         "program_kwds": {},
+        "can_hessian_sample": False,
+        "hessian_sample_note": "",
         "error": "",
     }
     try:
@@ -844,6 +924,19 @@ def _inputs_summary_payload(workspace: RetropathsWorkspace) -> dict[str, Any]:
     elif hasattr(program_kwds, "model_dump"):
         with contextlib.suppress(Exception):
             summary["program_kwds"] = _json_safe(program_kwds.model_dump())
+    engine = getattr(run_inputs, "engine", None)
+    if engine is None:
+        summary["can_hessian_sample"] = False
+        summary["hessian_sample_note"] = "The inputs file did not construct an engine, so Hessian sampling cannot be started."
+    elif not hasattr(engine, "_compute_hessian_result"):
+        summary["can_hessian_sample"] = False
+        summary["hessian_sample_note"] = "The configured engine does not expose `_compute_hessian_result`."
+    elif not (hasattr(engine, "compute_geometry_optimization") or hasattr(engine, "compute_geometry_optimizations")):
+        summary["can_hessian_sample"] = False
+        summary["hessian_sample_note"] = "The configured engine does not expose geometry-optimization methods."
+    else:
+        summary["can_hessian_sample"] = True
+        summary["hessian_sample_note"] = ""
     return summary
 
 
@@ -1176,6 +1269,68 @@ def _write_completed_queue_visualizations(
     return rows
 
 
+def _read_edge_visualization_metadata(
+    workspace: RetropathsWorkspace,
+    pot: Pot,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    out_dir = workspace.edge_visualizations_dir
+    if not out_dir.exists():
+        return rows
+    for source_node, target_node in sorted(pot.graph.edges):
+        filename = f"edge_{source_node}_{target_node}.html"
+        meta_fp = out_dir / f"edge_{source_node}_{target_node}.meta.json"
+        if not meta_fp.exists():
+            continue
+        with contextlib.suppress(Exception):
+            meta = json.loads(meta_fp.read_text(encoding="utf-8"))
+            rows.append(
+                {
+                    "edge": str(meta.get("edge") or f"{source_node} -> {target_node}"),
+                    "start": str(meta.get("start") or source_node),
+                    "end": str(meta.get("end") or target_node),
+                    "reaction": str(meta.get("reaction") or ""),
+                    "barrier": str(meta.get("barrier") or ""),
+                    "chains": str(meta.get("chains") or ""),
+                    "href": filename,
+                    "source_structure": meta.get("source_structure"),
+                    "target_structure": meta.get("target_structure"),
+                }
+            )
+    return rows
+
+
+def _read_completed_queue_visualization_metadata(
+    workspace: RetropathsWorkspace,
+    queue: RetropathsNEBQueue,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    out_dir = workspace.edge_visualizations_dir
+    if not out_dir.exists():
+        return rows
+    for item in queue.items:
+        if item.status != "completed" or not item.result_dir:
+            continue
+        filename = f"queue_edge_{int(item.source_node)}_{int(item.target_node)}.html"
+        meta_fp = out_dir / f"queue_edge_{int(item.source_node)}_{int(item.target_node)}.meta.json"
+        if not meta_fp.exists():
+            continue
+        with contextlib.suppress(Exception):
+            meta = json.loads(meta_fp.read_text(encoding="utf-8"))
+            rows.append(
+                {
+                    "edge": f"{int(item.source_node)} -> {int(item.target_node)}",
+                    "barrier": meta.get("barrier"),
+                    "href": filename,
+                    "source_node": int(meta.get("source_node", item.source_node)),
+                    "target_node": int(meta.get("target_node", item.target_node)),
+                    "source_structure": meta.get("source_structure"),
+                    "target_structure": meta.get("target_structure"),
+                }
+            )
+    return rows
+
+
 def _build_drive_payload(
     workspace: RetropathsWorkspace,
     *,
@@ -1184,17 +1339,29 @@ def _build_drive_payload(
     active_action: dict[str, Any] | None = None,
     network_splits: bool = True,
 ) -> dict[str, Any]:
-    retropaths_pot = load_retropaths_pot(workspace)
+    retropaths_nodes = 0
+    retropaths_edges = 0
+    with contextlib.suppress(Exception):
+        retropaths_pot = load_retropaths_pot(workspace)
+        retropaths_nodes = int(retropaths_pot.graph.number_of_nodes())
+        retropaths_edges = int(retropaths_pot.graph.number_of_edges())
     queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
     pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
     inputs_summary = _inputs_summary_payload(workspace)
-    display_run_inputs = RunInputs.open(workspace.inputs_fp)
+    display_run_inputs = None
+    with contextlib.suppress(Exception):
+        display_run_inputs = RunInputs.open(workspace.inputs_fp)
     edge_visualizations = _write_edge_visualizations(workspace=workspace, pot=pot)
     completed_queue_visualizations = _write_completed_queue_visualizations(workspace=workspace, queue=queue)
     viewer_by_edge = {
         str(item.get("edge") or ""): f"edge_visualizations/{item['href']}"
         for item in edge_visualizations
         if item.get("edge") and item.get("href")
+    }
+    viewer_row_by_edge = {
+        str(item.get("edge") or ""): item
+        for item in edge_visualizations
+        if item.get("edge")
     }
     queue_result_by_edge = {
         str(item.get("edge") or ""): item
@@ -1232,6 +1399,7 @@ def _build_drive_payload(
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
         node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
         node["can_nanoreactor"], node["nanoreactor_note"] = _node_nanoreactor_status(node_index, attrs, inputs_summary)
+        node["can_hessian_sample"], node["hessian_sample_note"] = _node_hessian_sample_status(node_index, attrs, inputs_summary)
         node["neb_backed"] = node_index in backed_nodes
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
@@ -1245,6 +1413,7 @@ def _build_drive_payload(
             queue_result_by_edge.get(f"{target} -> {source}") if used_reverse_result else None
         )
         viewer_edge_key = f"{target} -> {source}" if used_reverse_result else f"{source} -> {target}"
+        viewer_row = viewer_row_by_edge.get(viewer_edge_key)
         edge["neb_backed"] = bool(display_attrs.get("list_of_nebs"))
         edge["barrier"] = float(display_attrs["barrier"]) if display_attrs.get("barrier") is not None else None
         edge["chains"] = len(display_attrs.get("list_of_nebs") or [])
@@ -1270,25 +1439,15 @@ def _build_drive_payload(
         edge["queue_status"] = queue_item.status if queue_item is not None else ""
         edge["queue_error"] = queue_item.error if queue_item is not None else ""
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
+        edge["can_hessian_sample"], edge["hessian_sample_note"] = _edge_hessian_sample_status(edge)
         edge["source_structure"] = _node_structure_payload(pot.graph.nodes[source])
         edge["target_structure"] = _node_structure_payload(pot.graph.nodes[target])
-        with contextlib.suppress(Exception):
-            pair_item = queue_item or NEBQueueItem(
-                job_id=f"{source}->{target}",
-                source_node=source,
-                target_node=target,
-                reaction=str(attrs.get("reaction") or ""),
-                attempt_key="preview",
-            )
-            display_pair = _make_pair_chain(pot=pot, item=pair_item, run_inputs=display_run_inputs)
-            edge["source_structure"] = _structure_payload_from_structure(
-                display_pair.nodes[0].structure,
-                molecule_like=getattr(display_pair.nodes[0], "graph", None),
-            )
-            edge["target_structure"] = _structure_payload_from_structure(
-                display_pair.nodes[-1].structure,
-                molecule_like=getattr(display_pair.nodes[-1], "graph", None),
-            )
+        viewer_source_structure = viewer_row.get("source_structure") if isinstance(viewer_row, dict) else None
+        viewer_target_structure = viewer_row.get("target_structure") if isinstance(viewer_row, dict) else None
+        if viewer_source_structure is not None:
+            edge["source_structure"] = viewer_source_structure
+        if viewer_target_structure is not None:
+            edge["target_structure"] = viewer_target_structure
         if queue_result is not None:
             queue_source = int(queue_result.get("source_node", source))
             queue_target = int(queue_result.get("target_node", target))
@@ -1298,6 +1457,27 @@ def _build_drive_payload(
             elif queue_source == target and queue_target == source:
                 edge["source_structure"] = queue_result.get("target_structure") or edge["source_structure"]
                 edge["target_structure"] = queue_result.get("source_structure") or edge["target_structure"]
+        if (
+            (edge["source_structure"] is None or edge["target_structure"] is None)
+            and display_run_inputs is not None
+        ):
+            with contextlib.suppress(Exception):
+                pair_item = queue_item or NEBQueueItem(
+                    job_id=f"{source}->{target}",
+                    source_node=source,
+                    target_node=target,
+                    reaction=str(attrs.get("reaction") or ""),
+                    attempt_key="preview",
+                )
+                display_pair = _make_pair_chain(pot=pot, item=pair_item, run_inputs=display_run_inputs)
+                edge["source_structure"] = _structure_payload_from_structure(
+                    display_pair.nodes[0].structure,
+                    molecule_like=getattr(display_pair.nodes[0], "graph", None),
+                )
+                edge["target_structure"] = _structure_payload_from_structure(
+                    display_pair.nodes[-1].structure,
+                    molecule_like=getattr(display_pair.nodes[-1], "graph", None),
+                )
 
     user_started_items = [
         item for item in queue.items
@@ -1323,8 +1503,8 @@ def _build_drive_payload(
             "root_smiles": workspace.root_smiles,
             "environment_smiles": workspace.environment_smiles,
             "reactions_fp": str(workspace.reactions_path),
-            "retropaths_nodes": int(retropaths_pot.graph.number_of_nodes()),
-            "retropaths_edges": int(retropaths_pot.graph.number_of_edges()),
+            "retropaths_nodes": int(retropaths_nodes),
+            "retropaths_edges": int(retropaths_edges),
             "network_nodes": int(pot.graph.number_of_nodes()),
             "network_edges": int(pot.graph.number_of_edges()),
             "optimized_endpoints": int(optimized_endpoints),
@@ -1351,33 +1531,77 @@ def _build_drive_payload_fast(
     inputs_summary = _inputs_summary_payload(workspace)
     normalized_product = product_smiles.strip()
     explorer = _build_network_explorer_payload(pot.graph)
+    edge_visualizations = _read_edge_visualization_metadata(workspace=workspace, pot=pot)
+    completed_queue_visualizations = _read_completed_queue_visualization_metadata(workspace=workspace, queue=queue)
+    viewer_by_edge = {
+        str(item.get("edge") or ""): f"edge_visualizations/{item['href']}"
+        for item in edge_visualizations
+        if item.get("edge") and item.get("href")
+    }
+    queue_result_by_edge = {
+        str(item.get("edge") or ""): item
+        for item in completed_queue_visualizations
+        if item.get("edge")
+    }
 
     queue_by_edge = {
         (int(item.source_node), int(item.target_node)): item
         for item in queue.items
     }
+    backed_nodes = _neb_backed_nodes(pot.graph)
     for node in explorer["nodes"]:
         node_index = int(node["id"])
         attrs = pot.graph.nodes[node_index]
-        node["structure"] = _node_structure_payload(attrs)
+        node["structure"] = _node_structure_payload_fast(attrs)
         node["endpoint_optimized"] = bool(attrs.get("endpoint_optimized"))
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
         node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
         node["can_nanoreactor"], node["nanoreactor_note"] = _node_nanoreactor_status(node_index, attrs, inputs_summary)
-        node["neb_backed"] = False
+        node["can_hessian_sample"], node["hessian_sample_note"] = _node_hessian_sample_status(node_index, attrs, inputs_summary)
+        node["neb_backed"] = node_index in backed_nodes
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
     for edge in explorer["edges"]:
         source = int(edge["source"])
         target = int(edge["target"])
+        attrs = pot.graph.edges[(source, target)]
+        display_attrs, used_reverse_result = _resolve_display_edge_attrs(pot.graph, source, target)
         queue_item = queue_by_edge.get((source, target))
-        edge["neb_backed"] = False
+        queue_result = queue_result_by_edge.get(f"{source} -> {target}") or (
+            queue_result_by_edge.get(f"{target} -> {source}") if used_reverse_result else None
+        )
+        viewer_edge_key = f"{target} -> {source}" if used_reverse_result else f"{source} -> {target}"
+        edge["neb_backed"] = bool(display_attrs.get("list_of_nebs"))
+        edge["barrier"] = float(display_attrs["barrier"]) if display_attrs.get("barrier") is not None else None
+        edge["chains"] = len(display_attrs.get("list_of_nebs") or [])
+        edge["viewer_href"] = viewer_by_edge.get(viewer_edge_key)
+        edge["result_from_reverse_edge"] = bool(used_reverse_result)
+        edge["result_from_completed_queue"] = False
+        if queue_result is not None:
+            if edge["barrier"] is None and queue_result.get("barrier") is not None:
+                edge["barrier"] = float(queue_result["barrier"])
+            if queue_result.get("href"):
+                edge["viewer_href"] = f"edge_visualizations/{queue_result['href']}"
+            if edge["chains"] == 0:
+                edge["chains"] = 1
+            edge["neb_backed"] = edge["neb_backed"] or bool(edge["viewer_href"]) or edge["barrier"] is not None
+            edge["result_from_completed_queue"] = True
         edge["queue_status"] = queue_item.status if queue_item is not None else ""
         edge["queue_error"] = queue_item.error if queue_item is not None else ""
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
-        edge["source_structure"] = _node_structure_payload(pot.graph.nodes[source])
-        edge["target_structure"] = _node_structure_payload(pot.graph.nodes[target])
+        edge["can_hessian_sample"], edge["hessian_sample_note"] = _edge_hessian_sample_status(edge)
+        edge["source_structure"] = _node_structure_payload_fast(pot.graph.nodes[source])
+        edge["target_structure"] = _node_structure_payload_fast(pot.graph.nodes[target])
+        if queue_result is not None:
+            queue_source = int(queue_result.get("source_node", source))
+            queue_target = int(queue_result.get("target_node", target))
+            if queue_source == source and queue_target == target:
+                edge["source_structure"] = queue_result.get("source_structure") or edge["source_structure"]
+                edge["target_structure"] = queue_result.get("target_structure") or edge["target_structure"]
+            elif queue_source == target and queue_target == source:
+                edge["source_structure"] = queue_result.get("target_structure") or edge["source_structure"]
+                edge["target_structure"] = queue_result.get("source_structure") or edge["target_structure"]
 
     user_started_items = [
         item for item in queue.items
@@ -1413,7 +1637,10 @@ def _build_drive_payload_fast(
             "network_nodes": int(pot.graph.number_of_nodes()),
             "network_edges": int(pot.graph.number_of_edges()),
             "optimized_endpoints": int(optimized_endpoints),
-            "neb_backed_edges": 0,
+            "neb_backed_edges": sum(
+                bool(pot.graph.edges[(source, target)].get("list_of_nebs"))
+                for source, target in pot.graph.edges
+            ),
         },
         "inputs": inputs_summary,
         "kmc": {
@@ -1442,6 +1669,18 @@ def _build_drive_payload_fast_neb(
     inputs_summary = _inputs_summary_payload(workspace)
     normalized_product = product_smiles.strip()
     explorer = _build_network_explorer_payload(pot.graph)
+    edge_visualizations = _write_edge_visualizations(workspace=workspace, pot=pot)
+    completed_queue_visualizations = _write_completed_queue_visualizations(workspace=workspace, queue=queue)
+    viewer_by_edge = {
+        str(item.get("edge") or ""): f"edge_visualizations/{item['href']}"
+        for item in edge_visualizations
+        if item.get("edge") and item.get("href")
+    }
+    queue_result_by_edge = {
+        str(item.get("edge") or ""): item
+        for item in completed_queue_visualizations
+        if item.get("edge")
+    }
 
     queue_by_edge = {
         (int(item.source_node), int(item.target_node)): item
@@ -1457,25 +1696,55 @@ def _build_drive_payload_fast_neb(
     for node in explorer["nodes"]:
         node_index = int(node["id"])
         attrs = pot.graph.nodes[node_index]
-        node["structure"] = _node_structure_payload(attrs)
+        node["structure"] = _node_structure_payload_fast(attrs)
         node["endpoint_optimized"] = bool(attrs.get("endpoint_optimized"))
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
         node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
         node["can_nanoreactor"], node["nanoreactor_note"] = _node_nanoreactor_status(node_index, attrs, inputs_summary)
-        node["neb_backed"] = False
+        node["can_hessian_sample"], node["hessian_sample_note"] = _node_hessian_sample_status(node_index, attrs, inputs_summary)
+        node["neb_backed"] = node_index in _neb_backed_nodes(pot.graph)
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
     for edge in explorer["edges"]:
         source = int(edge["source"])
         target = int(edge["target"])
+        display_attrs, used_reverse_result = _resolve_display_edge_attrs(pot.graph, source, target)
         queue_item = queue_by_edge.get((source, target))
-        edge["neb_backed"] = bool((source, target) == active_edge)
+        queue_result = queue_result_by_edge.get(f"{source} -> {target}") or (
+            queue_result_by_edge.get(f"{target} -> {source}") if used_reverse_result else None
+        )
+        viewer_edge_key = f"{target} -> {source}" if used_reverse_result else f"{source} -> {target}"
+        edge["neb_backed"] = bool((source, target) == active_edge) or bool(display_attrs.get("list_of_nebs"))
+        edge["barrier"] = float(display_attrs["barrier"]) if display_attrs.get("barrier") is not None else None
+        edge["chains"] = len(display_attrs.get("list_of_nebs") or [])
+        edge["viewer_href"] = viewer_by_edge.get(viewer_edge_key)
+        edge["result_from_reverse_edge"] = bool(used_reverse_result)
+        edge["result_from_completed_queue"] = False
+        if queue_result is not None:
+            if edge["barrier"] is None and queue_result.get("barrier") is not None:
+                edge["barrier"] = float(queue_result["barrier"])
+            if queue_result.get("href"):
+                edge["viewer_href"] = f"edge_visualizations/{queue_result['href']}"
+            if edge["chains"] == 0:
+                edge["chains"] = 1
+            edge["neb_backed"] = edge["neb_backed"] or bool(edge["viewer_href"]) or edge["barrier"] is not None
+            edge["result_from_completed_queue"] = True
         edge["queue_status"] = queue_item.status if queue_item is not None else ""
         edge["queue_error"] = queue_item.error if queue_item is not None else ""
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
-        edge["source_structure"] = _node_structure_payload(pot.graph.nodes[source])
-        edge["target_structure"] = _node_structure_payload(pot.graph.nodes[target])
+        edge["can_hessian_sample"], edge["hessian_sample_note"] = _edge_hessian_sample_status(edge)
+        edge["source_structure"] = _node_structure_payload_fast(pot.graph.nodes[source])
+        edge["target_structure"] = _node_structure_payload_fast(pot.graph.nodes[target])
+        if queue_result is not None:
+            queue_source = int(queue_result.get("source_node", source))
+            queue_target = int(queue_result.get("target_node", target))
+            if queue_source == source and queue_target == target:
+                edge["source_structure"] = queue_result.get("source_structure") or edge["source_structure"]
+                edge["target_structure"] = queue_result.get("target_structure") or edge["target_structure"]
+            elif queue_source == target and queue_target == source:
+                edge["source_structure"] = queue_result.get("target_structure") or edge["source_structure"]
+                edge["target_structure"] = queue_result.get("source_structure") or edge["target_structure"]
 
     user_started_items = [
         item for item in queue.items
@@ -1511,7 +1780,10 @@ def _build_drive_payload_fast_neb(
             "network_nodes": int(pot.graph.number_of_nodes()),
             "network_edges": int(pot.graph.number_of_edges()),
             "optimized_endpoints": int(optimized_endpoints),
-            "neb_backed_edges": 0,
+            "neb_backed_edges": sum(
+                bool(pot.graph.edges[(source, target)].get("list_of_nebs"))
+                for source, target in pot.graph.edges
+            ),
         },
         "inputs": inputs_summary,
         "kmc": {
@@ -1918,10 +2190,126 @@ def _run_selected_edge_neb_logged(
                 os.environ["MEPD_DRIVE_CHAIN_JSON"] = old_chain
 
 
+def _extract_network_splits_run_name(network_fp: Path) -> str:
+    suffix = "_network.json"
+    if network_fp.name.endswith(suffix):
+        return network_fp.name[: -len(suffix)] or network_fp.stem
+    return network_fp.stem
+
+
+def _resolve_network_splits_pot_fp(path: Path) -> Path | None:
+    candidate_path = Path(path).expanduser().resolve()
+    if candidate_path.is_file():
+        if candidate_path.name.endswith("_network.json"):
+            return candidate_path
+        if candidate_path.name.endswith("_request_manifest.json"):
+            base_name = candidate_path.name[: -len("_request_manifest.json")]
+            paired = candidate_path.parent / f"{base_name}_network.json"
+            if paired.exists():
+                return paired
+        return None
+    if not candidate_path.is_dir():
+        return None
+
+    candidates = sorted(
+        fp for fp in candidate_path.glob("*_network.json") if fp.is_file()
+    )
+    if not candidates:
+        return None
+
+    suffix = "_network_splits"
+    if candidate_path.name.endswith(suffix):
+        base_name = candidate_path.name[: -len(suffix)]
+        preferred = candidate_path / f"{base_name}_network.json"
+        if preferred.exists():
+            return preferred
+
+    if len(candidates) == 1:
+        return candidates[0]
+    return max(candidates, key=lambda fp: fp.stat().st_mtime_ns)
+
+
+def _guess_inputs_fp_for_network_splits(workspace_dir: Path, run_name: str) -> Path:
+    candidates = [
+        workspace_dir / f"{run_name}.toml",
+        workspace_dir.parent / f"{run_name}.toml",
+        workspace_dir / "inputs.toml",
+        workspace_dir.parent / "inputs.toml",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate.resolve()
+    return candidates[0].resolve()
+
+
+def _materialize_workspace_from_network_splits(path: Path) -> RetropathsWorkspace | None:
+    network_fp = _resolve_network_splits_pot_fp(path)
+    if network_fp is None:
+        return None
+
+    workspace_dir = network_fp.parent
+    workspace_json_fp = workspace_dir / "workspace.json"
+    if workspace_json_fp.exists():
+        return RetropathsWorkspace.read(workspace_dir)
+
+    pot = Pot.read_from_disk(network_fp)
+    run_name = _extract_network_splits_run_name(network_fp)
+    root_smiles = ""
+    with contextlib.suppress(Exception):
+        root_smiles = _quiet_force_smiles(getattr(pot, "root", None))
+    if not root_smiles and 0 in pot.graph.nodes:
+        molecule = pot.graph.nodes[0].get("molecule")
+        if isinstance(molecule, str):
+            root_smiles = molecule
+        elif molecule is not None:
+            with contextlib.suppress(Exception):
+                root_smiles = _quiet_force_smiles(molecule)
+    if not root_smiles:
+        root_smiles = run_name
+
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name=run_name,
+        root_smiles=root_smiles,
+        environment_smiles="",
+        inputs_fp=str(_guess_inputs_fp_for_network_splits(workspace_dir, run_name)),
+        reactions_fp="",
+        timeout_seconds=30,
+        max_nodes=40,
+        max_depth=4,
+        max_parallel_nebs=1,
+    )
+    workspace.write()
+
+    if workspace.neb_pot_fp.resolve() != network_fp.resolve():
+        shutil.copy2(network_fp, workspace.neb_pot_fp)
+        pot = Pot.read_from_disk(workspace.neb_pot_fp)
+
+    build_retropaths_neb_queue(
+        pot=pot,
+        queue_fp=workspace.queue_fp,
+        overwrite=False,
+    )
+
+    if not workspace.retropaths_pot_fp.exists():
+        workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+
+    return workspace
+
+
 def _load_existing_workspace_job(workspace_path: str, *, network_splits: bool = True) -> dict[str, Any]:
     path = Path(workspace_path).expanduser().resolve()
-    workspace_dir = path.parent if path.is_file() and path.name == "workspace.json" else path
-    workspace = RetropathsWorkspace.read(workspace_dir)
+    workspace_dir = path.parent if path.is_file() else path
+    workspace_json_fp = workspace_dir / "workspace.json"
+    if workspace_json_fp.exists():
+        workspace = RetropathsWorkspace.read(workspace_dir)
+    else:
+        workspace = _materialize_workspace_from_network_splits(path)
+        if workspace is None:
+            raise ValueError(
+                "Workspace path must point to a drive workspace directory, a workspace.json file, "
+                "a *_network_splits directory, or a *_network.json artifact."
+            )
     required = [
         workspace.workspace_fp,
         workspace.neb_pot_fp,
@@ -2086,9 +2474,17 @@ def _drive_html() -> str:
     .tool-panel, .detail-panel { display: none; }
     .tool-panel.active, .detail-panel.active { display: block; }
     .inputs-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.86fr); gap: 16px; }
-    .network-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(300px, 0.85fr); gap: 16px; align-items: start; }
+    .network-workspace-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(320px, 0.95fr); gap: 16px; align-items: start; }
+    .network-left-stack { display: grid; gap: 16px; }
     .network-canvas-shell { position: relative; }
     .path-browser {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+    .exploration-shell {
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
       background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
@@ -2151,11 +2547,34 @@ def _drive_html() -> str:
         radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%),
         linear-gradient(180deg, #0d1728 0%, #08111f 100%);
     }
-    .network-edge-line { stroke: rgba(128, 154, 194, 0.42); stroke-width: 2.1; fill: none; }
+    .network-edge-line {
+      stroke: rgba(128, 154, 194, 0.42);
+      stroke-width: 2.1;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      pointer-events: none;
+    }
     .network-edge-line.neb-backed { stroke: var(--backed); stroke-width: 3.4; }
     .network-edge-line.path-highlight { stroke: #ffd166; stroke-width: 4.6; }
     .network-edge-line.selected { stroke: var(--accent); stroke-width: 4.4; }
-    .network-edge-hitbox { stroke: transparent; stroke-width: 18; fill: none; cursor: pointer; }
+    .network-edge-line.pending-add {
+      stroke: #ffd166;
+      stroke-width: 3.2;
+      stroke-dasharray: 7 7;
+      stroke-linecap: round;
+      opacity: 0.95;
+      animation: pending-edge-dash 0.95s linear infinite;
+    }
+    .network-edge-hitbox {
+      stroke: transparent;
+      stroke-width: 14;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      cursor: pointer;
+      pointer-events: stroke;
+    }
     .network-node {
       fill: #7d94bb;
       stroke: rgba(238, 244, 255, 0.85);
@@ -2172,6 +2591,10 @@ def _drive_html() -> str:
     .network-node.selected { fill: #ffd166; stroke: #fff7de; stroke-width: 3; }
     .network-node.connect-source { fill: var(--accent-2); stroke: rgba(238, 244, 255, 0.92); stroke-width: 3.2; }
     .network-label { font-size: 11px; fill: rgba(233, 241, 255, 0.94); pointer-events: none; }
+    @keyframes pending-edge-dash {
+      from { stroke-dashoffset: 28; }
+      to { stroke-dashoffset: 0; }
+    }
     .viewer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     iframe.structure {
       width: 100%;
@@ -2393,90 +2816,91 @@ def _drive_html() -> str:
         <div id="stats" class="stats"></div>
       </div>
       <div class="network-workspace-grid">
-        <div class="network-canvas-shell">
-          <div id="network-toolbar" class="network-toolbar"></div>
-          <svg id="network-svg" class="explorer-svg" viewBox="0 0 1180 680" role="img" aria-label="MEPD Drive network graph"></svg>
-          <div id="live-activity-inline" class="live-activity live-activity-inline" style="display:none;"></div>
-        </div>
-        <div class="path-browser">
-          <div class="path-browser-head">
-            <div>
-              <h3>Products & Paths</h3>
-              <div class="muted">Select structure A, then highlight the shortest route(s) to a created product.</div>
+        <div class="network-left-stack">
+          <div class="network-canvas-shell">
+            <div id="network-toolbar" class="network-toolbar"></div>
+            <svg id="network-svg" class="explorer-svg" viewBox="0 0 1180 680" role="img" aria-label="MEPD Drive network graph"></svg>
+            <div id="live-activity-inline" class="live-activity live-activity-inline" style="display:none;"></div>
+          </div>
+          <div class="path-browser">
+            <div class="path-browser-head">
+              <div>
+                <h3>Products & Paths</h3>
+                <div class="muted">Select structure A, then highlight the shortest route(s) to a created product.</div>
+              </div>
             </div>
-          </div>
-          <div class="path-browser-controls">
-            <div>
-              <label for="path-source-node">Structure A</label>
-              <select id="path-source-node"></select>
+            <div class="path-browser-controls">
+              <div>
+                <label for="path-source-node">Structure A</label>
+                <select id="path-source-node"></select>
+              </div>
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button id="clear-product-path" class="secondary" type="button">Clear Highlight</button>
+              </div>
             </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button id="clear-product-path" class="secondary" type="button">Clear Highlight</button>
+            <div id="product-path-summary" class="muted">Initialize or load a workspace to browse created products.</div>
+            <div id="product-path-list" class="product-list" style="margin-top:12px;"></div>
+          </div>
+        </div>
+        <div class="exploration-shell">
+          <div class="section-head">
+            <h2>Exploration</h2>
+            <div class="muted">Queue NEBs, minimizations, reaction-template application, nanoreactor sampling, Hessian minima exploration, and inspect the selected graph item.</div>
+          </div>
+          <div id="detail-title" style="font-size:22px; margin-bottom:6px;">Select a node or edge</div>
+          <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
+          <div class="detail-tabs">
+            <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
+            <button class="detail-tab" data-tab="template-data">Template Data</button>
+            <button class="detail-tab" data-tab="structures">Structures</button>
+            <button class="detail-tab" data-tab="kinetics">Kinetics</button>
+            <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
+          </div>
+          <div id="panel-targeted" class="detail-panel active"></div>
+          <div id="panel-template-data" class="detail-panel"></div>
+          <div id="panel-structures" class="detail-panel"></div>
+          <div id="panel-kinetics" class="detail-panel">
+            <div class="form-grid">
+              <div>
+                <label>KMC temperature (K)</label>
+                <input id="kmc-temperature" type="number" step="0.1" min="0" value="298.15" />
+              </div>
+              <div>
+                <label>KMC final time</label>
+                <input id="kmc-final-time" type="number" step="any" min="0" value="" />
+              </div>
+              <div>
+                <label>KMC max steps</label>
+                <input id="kmc-max-steps" type="number" step="1" min="1" value="200" />
+              </div>
+              <div>
+                <label>Initial conditions JSON</label>
+                <textarea id="kmc-initial-conditions" placeholder='{"0": 1.0, "4": 0.25}'></textarea>
+              </div>
             </div>
+            <div style="margin-top:12px;">
+              <button id="run-kmc" class="secondary">Run Kinetic Model</button>
+            </div>
+            <div id="kmc-panel" style="margin-top:12px;"></div>
           </div>
-          <div id="product-path-summary" class="muted">Initialize or load a workspace to browse created products.</div>
-          <div id="product-path-list" class="product-list" style="margin-top:12px;"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="section-head">
-        <h2>Exploration</h2>
-        <div class="muted">Queue NEBs, minimizations, reaction-template application, nanoreactor sampling, and inspect the selected graph item.</div>
-      </div>
-      <div id="detail-title" style="font-size:22px; margin-bottom:6px;">Select a node or edge</div>
-      <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
-      <div class="detail-tabs">
-        <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
-        <button class="detail-tab" data-tab="template-data">Template Data</button>
-        <button class="detail-tab" data-tab="structures">Structures</button>
-        <button class="detail-tab" data-tab="kinetics">Kinetics</button>
-        <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
-      </div>
-      <div id="panel-targeted" class="detail-panel active"></div>
-      <div id="panel-template-data" class="detail-panel"></div>
-      <div id="panel-structures" class="detail-panel"></div>
-      <div id="panel-kinetics" class="detail-panel">
-        <div class="form-grid">
-          <div>
-            <label>KMC temperature (K)</label>
-            <input id="kmc-temperature" type="number" step="0.1" min="0" value="298.15" />
-          </div>
-          <div>
-            <label>KMC final time</label>
-            <input id="kmc-final-time" type="number" step="any" min="0" value="" />
-          </div>
-          <div>
-            <label>KMC max steps</label>
-            <input id="kmc-max-steps" type="number" step="1" min="1" value="200" />
-          </div>
-          <div>
-            <label>Initial conditions JSON</label>
-            <textarea id="kmc-initial-conditions" placeholder='{"0": 1.0, "4": 0.25}'></textarea>
-          </div>
-        </div>
-        <div style="margin-top:12px;">
-          <button id="run-kmc" class="secondary">Run Kinetic Model</button>
-        </div>
-        <div id="kmc-panel" style="margin-top:12px;"></div>
-      </div>
-      <div id="panel-manual-edge" class="detail-panel">
-        <div class="form-grid">
-          <div>
-            <label>Manual edge source node</label>
-            <input id="manual-edge-source" type="number" min="0" placeholder="Source node id" />
-          </div>
-          <div>
-            <label>Manual edge target node</label>
-            <input id="manual-edge-target" type="number" min="0" placeholder="Target node id" />
-          </div>
-          <div>
-            <label>Manual edge label</label>
-            <input id="manual-edge-label" type="text" placeholder="Optional reaction label" />
-          </div>
-          <div style="display:flex; align-items:end;">
-            <button id="add-manual-edge" class="secondary" style="width:100%;">Attempt To Add Manual Edge</button>
+          <div id="panel-manual-edge" class="detail-panel">
+            <div class="form-grid">
+              <div>
+                <label>Manual edge source node</label>
+                <input id="manual-edge-source" type="number" min="0" placeholder="Source node id" />
+              </div>
+              <div>
+                <label>Manual edge target node</label>
+                <input id="manual-edge-target" type="number" min="0" placeholder="Target node id" />
+              </div>
+              <div>
+                <label>Manual edge label</label>
+                <input id="manual-edge-label" type="text" placeholder="Optional reaction label" />
+              </div>
+              <div style="display:flex; align-items:end;">
+                <button id="add-manual-edge" class="secondary" style="width:100%;">Attempt To Add Manual Edge</button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2514,19 +2938,115 @@ def _drive_html() -> str:
       selected: null,
       networkVersion: "",
       connectSourceNodeId: null,
+      manualEdgeRequestInFlight: false,
       pathSourceNodeId: 0,
       selectedProductLabel: "",
       pathHighlight: null,
       pendingLiveActivity: null,
+      pendingEdgeAddition: null,
       networkLayoutVersion: "",
       networkNodePositions: {},
       refreshTimer: null,
       kmcResult: null,
+      hessianSampleDr: 0.1,
+      hessianSampleMaxCandidates: 100,
     };
 
     function setManualEdgeEndpoint(which, nodeId) {
       const input = document.getElementById(which === "source" ? "manual-edge-source" : "manual-edge-target");
       if (input) input.value = String(Number(nodeId));
+    }
+
+    function setPendingEdgeAddition(sourceNodeId, targetNodeId) {
+      state.pendingEdgeAddition = {
+        source: Number(sourceNodeId),
+        target: Number(targetNodeId),
+      };
+      if (state.snapshot?.drive?.network) renderNetwork(state.snapshot);
+    }
+
+    function clearPendingEdgeAddition() {
+      if (!state.pendingEdgeAddition) return;
+      state.pendingEdgeAddition = null;
+      if (state.snapshot?.drive?.network) renderNetwork(state.snapshot);
+    }
+
+    function setManualEdgeRequestInFlight(inFlight) {
+      state.manualEdgeRequestInFlight = Boolean(inFlight);
+      const addButton = document.getElementById("add-manual-edge");
+      if (addButton) addButton.disabled = state.manualEdgeRequestInFlight;
+      const sourceInput = document.getElementById("manual-edge-source");
+      if (sourceInput) sourceInput.disabled = state.manualEdgeRequestInFlight;
+      const targetInput = document.getElementById("manual-edge-target");
+      if (targetInput) targetInput.disabled = state.manualEdgeRequestInFlight;
+      const labelInput = document.getElementById("manual-edge-label");
+      if (labelInput) labelInput.disabled = state.manualEdgeRequestInFlight;
+      renderNetworkToolbar();
+    }
+
+    function normalizeHessianSampleDr(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) return 0.1;
+      return parsed;
+    }
+
+    function normalizeHessianSampleMaxCandidates(value) {
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed <= 0) return 100;
+      return Math.max(1, Math.floor(parsed));
+    }
+
+    function getHessianSampleDr() {
+      const input = document.getElementById("hessian-sample-dr");
+      const value = normalizeHessianSampleDr(input ? input.value : state.hessianSampleDr);
+      state.hessianSampleDr = value;
+      if (input) {
+        input.value = String(value);
+      }
+      return value;
+    }
+
+    function getHessianSampleMaxCandidates() {
+      const input = document.getElementById("hessian-sample-max-candidates");
+      const value = normalizeHessianSampleMaxCandidates(
+        input ? input.value : state.hessianSampleMaxCandidates
+      );
+      state.hessianSampleMaxCandidates = value;
+      if (input) {
+        input.value = String(value);
+      }
+      return value;
+    }
+
+    function bindHessianSampleDrInput() {
+      const drInput = document.getElementById("hessian-sample-dr");
+      if (drInput) {
+        drInput.value = String(normalizeHessianSampleDr(state.hessianSampleDr));
+        if (drInput.dataset.bound !== "true") {
+          drInput.dataset.bound = "true";
+          drInput.addEventListener("change", () => {
+            getHessianSampleDr();
+          });
+          drInput.addEventListener("blur", () => {
+            getHessianSampleDr();
+          });
+        }
+      }
+      const maxInput = document.getElementById("hessian-sample-max-candidates");
+      if (maxInput) {
+        maxInput.value = String(
+          normalizeHessianSampleMaxCandidates(state.hessianSampleMaxCandidates)
+        );
+        if (maxInput.dataset.bound !== "true") {
+          maxInput.dataset.bound = "true";
+          maxInput.addEventListener("change", () => {
+            getHessianSampleMaxCandidates();
+          });
+          maxInput.addEventListener("blur", () => {
+            getHessianSampleMaxCandidates();
+          });
+        }
+      }
     }
 
     function escapeHtml(value) {
@@ -3392,14 +3912,16 @@ def _drive_html() -> str:
       if (selection.kind === "node") {
         const node = selection.node;
         const connectActive = Number(state.connectSourceNodeId) === Number(node.id);
+        const connectDisabled = state.manualEdgeRequestInFlight ? "disabled" : "";
         toolbar.innerHTML = `
           <div class="network-toolbar-title">Node ${escapeHtml(node.id)} Actions</div>
-          <div class="muted">${connectActive ? "Click a second node to create an edge from this source." : "Node tools are available directly from the graph."}</div>
+          <div class="muted">${state.manualEdgeRequestInFlight ? "Waiting for the current manual edge request to finish." : connectActive ? "Click a second node to create an edge from this source." : "Node tools are available directly from the graph."}</div>
           <div class="network-toolbar-actions">
             <button class="network-tool-button" data-drive-action="toolbar-minimize-node" title="Minimize geometry" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>↓</button>
             <button class="network-tool-button" data-drive-action="toolbar-apply-node" title="Apply reaction templates" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>+</button>
             <button class="network-tool-button" data-drive-action="toolbar-nanoreactor-node" title="Run nanoreactor sampling" onclick="queueNanoreactor(${Number(node.id)})" ${node.can_nanoreactor ? "" : "disabled"}>⊕</button>
-            <button class="network-tool-button ${connectActive ? "active" : ""}" data-drive-action="toolbar-connect-node" title="Connect to new node" onclick="beginConnectMode(${Number(node.id)})">→</button>
+            <button class="network-tool-button" data-drive-action="toolbar-hessian-node" title="Run Hessian minima explorer" onclick="queueHessianSampleFromNode(${Number(node.id)})" ${node.can_hessian_sample ? "" : "disabled"}>*</button>
+            <button class="network-tool-button ${connectActive ? "active" : ""}" data-drive-action="toolbar-connect-node" title="Connect to new node" onclick="beginConnectMode(${Number(node.id)})" ${connectDisabled}>→</button>
           </div>
         `;
         return;
@@ -3411,6 +3933,7 @@ def _drive_html() -> str:
         <div class="muted">Queue work on both endpoints or launch an autosplitting NEB for this edge.</div>
         <div class="network-toolbar-actions">
           <button class="network-tool-button" data-drive-action="toolbar-minimize-edge" title="Minimize both endpoint geometries" onclick="queueMinimizePair(${Number(edge.source)}, ${Number(edge.target)})">↓↓</button>
+          <button class="network-tool-button" data-drive-action="toolbar-hessian-edge" title="Run Hessian minima explorer from edge peak" onclick="queueHessianSampleFromEdge(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_hessian_sample ? "" : "disabled"}>*</button>
           <button class="network-tool-button" data-drive-action="toolbar-neb-edge" title="Queue NEB minimization" onclick="queueEdgeNeb(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_queue_neb ? "" : "disabled"}>#</button>
         </div>
       `;
@@ -3564,33 +4087,58 @@ def _drive_html() -> str:
       const height = 280;
       const levels = new Map();
       const parentsByNode = new Map();
+      const childrenByNode = new Map();
       edges.forEach((edge) => {
         const source = Number(edge.source);
         const target = Number(edge.target);
         const parents = parentsByNode.get(target) || [];
         parents.push(source);
         parentsByNode.set(target, parents);
+        const children = childrenByNode.get(source) || [];
+        children.push(target);
+        childrenByNode.set(source, children);
       });
 
       const depthMemo = new Map();
-      function depthFor(nodeId) {
-        if (depthMemo.has(nodeId)) return depthMemo.get(nodeId);
-        if (Number(nodeId) === 0) {
-          depthMemo.set(nodeId, 0);
-          return 0;
-        }
-        const parents = parentsByNode.get(Number(nodeId)) || [];
-        if (!parents.length) {
-          depthMemo.set(nodeId, 1);
-          return 1;
-        }
-        const depth = 1 + Math.min(...parents.map((parentId) => depthFor(parentId)));
-        depthMemo.set(nodeId, depth);
-        return depth;
+      const nodeIds = nodes.map((node) => Number(node.id));
+      if (nodeIds.includes(0)) {
+        depthMemo.set(0, 0);
       }
+      nodeIds.forEach((nodeId) => {
+        const parents = parentsByNode.get(nodeId) || [];
+        if (!parents.length && !depthMemo.has(nodeId)) {
+          depthMemo.set(nodeId, 1);
+        }
+      });
+      const queue = Array.from(depthMemo.keys());
+      while (queue.length) {
+        const parentId = Number(queue.shift());
+        const parentDepth = Number(depthMemo.get(parentId) || 0);
+        const children = childrenByNode.get(parentId) || [];
+        children.forEach((childId) => {
+          const nextDepth = parentDepth + 1;
+          const current = depthMemo.get(childId);
+          if (current == null || nextDepth < current) {
+            depthMemo.set(childId, nextDepth);
+            queue.push(childId);
+          }
+        });
+      }
+      nodeIds.forEach((nodeId) => {
+        if (depthMemo.has(nodeId)) return;
+        const parents = (parentsByNode.get(nodeId) || []).filter((parentId) => depthMemo.has(parentId));
+        if (parents.length) {
+          depthMemo.set(
+            nodeId,
+            1 + Math.min(...parents.map((parentId) => Number(depthMemo.get(parentId) || 0))),
+          );
+        } else {
+          depthMemo.set(nodeId, 1);
+        }
+      });
 
       nodes.forEach((node) => {
-        const depth = depthFor(Number(node.id));
+        const depth = Number(depthMemo.get(Number(node.id)) || 1);
         const row = levels.get(depth) || [];
         row.push(node);
         levels.set(depth, row);
@@ -3726,15 +4274,28 @@ def _drive_html() -> str:
           <div><strong>Can queue minimization:</strong> ${node.minimizable ? "yes" : "no"}</div>
           <div><strong>Can apply reactions:</strong> ${node.can_apply_reactions ? "yes" : "no"}</div>
           <div><strong>Can run nanoreactor:</strong> ${node.can_nanoreactor ? "yes" : "no"}</div>
+          <div><strong>Can run Hessian sample:</strong> ${node.can_hessian_sample ? "yes" : "no"}</div>
           ${node.minimize_note ? `<div><strong>Minimization note:</strong> ${escapeHtml(node.minimize_note)}</div>` : ""}
           ${node.apply_reactions_note ? `<div><strong>Reaction note:</strong> ${escapeHtml(node.apply_reactions_note)}</div>` : ""}
           ${node.nanoreactor_note ? `<div><strong>Nanoreactor note:</strong> ${escapeHtml(node.nanoreactor_note)}</div>` : ""}
+          ${node.hessian_sample_note ? `<div><strong>Hessian note:</strong> ${escapeHtml(node.hessian_sample_note)}</div>` : ""}
           <div><strong>NEB-backed:</strong> ${node.neb_backed ? "yes" : "no"}</div>
         `;
         targeted.innerHTML = `
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="minimize-node" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>Queue Minimization For This Geometry</button></div>
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="apply-reactions" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>Apply Reactions To This Node</button></div>
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="nanoreactor" onclick="queueNanoreactor(${Number(node.id)})" ${node.can_nanoreactor ? "" : "disabled"}>Run Nanoreactor Sampling From This Geometry</button></div>
+          <div style="margin-bottom:10px; display:grid; grid-template-columns:minmax(0, 140px) minmax(0, 180px) minmax(0, 1fr); gap:8px; align-items:end;">
+            <div>
+              <label for="hessian-sample-dr">Hessian sample dr</label>
+              <input id="hessian-sample-dr" type="number" step="0.01" min="0.0001" value="${escapeHtml(state.hessianSampleDr)}" />
+            </div>
+            <div>
+              <label for="hessian-sample-max-candidates">Max minimizations</label>
+              <input id="hessian-sample-max-candidates" type="number" step="1" min="1" value="${escapeHtml(state.hessianSampleMaxCandidates)}" />
+            </div>
+            <button class="secondary" data-drive-action="hessian-sample-node" onclick="queueHessianSampleFromNode(${Number(node.id)})" ${node.can_hessian_sample ? "" : "disabled"}>Run Hessian Sample From This Geometry</button>
+          </div>
           <div style="margin-bottom:10px;"><button class="secondary" type="button" onclick="setPathSourceNode(${Number(node.id)})">Use As Path Source A</button></div>
           <div style="margin-bottom:10px; display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px;">
             <button class="secondary" onclick="setManualEdgeEndpoint('source', ${Number(node.id)})">Use As Manual Edge Source</button>
@@ -3743,12 +4304,14 @@ def _drive_html() -> str:
           ${node.minimize_note ? `<div style="margin-bottom:10px; color:${node.minimizable ? "var(--muted)" : "var(--warn)"};">${escapeHtml(node.minimize_note)}</div>` : ""}
           ${node.apply_reactions_note ? `<div style="margin-bottom:10px; color:${node.can_apply_reactions ? "var(--muted)" : "var(--warn)"};">${escapeHtml(node.apply_reactions_note)}</div>` : ""}
           ${node.nanoreactor_note ? `<div style="margin-bottom:10px; color:${node.can_nanoreactor ? "var(--muted)" : "var(--warn)"};">${escapeHtml(node.nanoreactor_note)}</div>` : ""}
+          ${node.hessian_sample_note ? `<div style="margin-bottom:10px; color:${node.can_hessian_sample ? "var(--muted)" : "var(--warn)"};">${escapeHtml(node.hessian_sample_note)}</div>` : ""}
           <pre>${escapeHtml(JSON.stringify(node.data || {}, null, 2))}</pre>
         `;
         templateData.innerHTML = `<pre>${escapeHtml(JSON.stringify(node.data || {}, null, 2))}</pre>`;
         structures.innerHTML = node.structure?.xyz_b64
           ? `<iframe class="structure" srcdoc="${escapeHtml(makeStructureSrcdoc(node.structure.xyz_b64))}"></iframe>`
           : `<div class="muted">No 3D structure is available for this node.</div>`;
+        bindHessianSampleDrInput();
         renderNetworkToolbar();
         return;
       }
@@ -3762,14 +4325,27 @@ def _drive_html() -> str:
         <div><strong>Reaction:</strong> ${escapeHtml(edge.reaction || "Unknown")}</div>
         <div><strong>Queue status:</strong> ${escapeHtml(edge.queue_status || "not queued")}</div>
         <div><strong>NEB-backed:</strong> ${edge.neb_backed ? "yes" : "no"}</div>
+        <div><strong>Can run Hessian sample:</strong> ${edge.can_hessian_sample ? "yes" : "no"}</div>
         ${edge.result_from_reverse_edge ? `<div><strong>Displayed NEB result:</strong> reverse-directed edge</div>` : ""}
         ${edge.result_from_completed_queue ? `<div><strong>Displayed NEB result:</strong> completed queue attempt</div>` : ""}
         ${edge.queue_note ? `<div><strong>Queue note:</strong> ${escapeHtml(edge.queue_note)}</div>` : ""}
+        ${edge.hessian_sample_note ? `<div><strong>Hessian note:</strong> ${escapeHtml(edge.hessian_sample_note)}</div>` : ""}
         ${edge.barrier == null ? "" : `<div><strong>Barrier:</strong> ${escapeHtml(Number(edge.barrier).toFixed(3))}</div>`}
       `;
       targeted.innerHTML = `
         <div style="margin-bottom:10px;">
           <button class="primary" data-drive-action="run-neb" onclick="queueEdgeNeb(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_queue_neb ? "" : "disabled"}>Queue Autosplitting NEB For This Edge</button>
+        </div>
+        <div style="margin-bottom:10px; display:grid; grid-template-columns:minmax(0, 140px) minmax(0, 180px) minmax(0, 1fr); gap:8px; align-items:end;">
+          <div>
+            <label for="hessian-sample-dr">Hessian sample dr</label>
+            <input id="hessian-sample-dr" type="number" step="0.01" min="0.0001" value="${escapeHtml(state.hessianSampleDr)}" />
+          </div>
+          <div>
+            <label for="hessian-sample-max-candidates">Max minimizations</label>
+            <input id="hessian-sample-max-candidates" type="number" step="1" min="1" value="${escapeHtml(state.hessianSampleMaxCandidates)}" />
+          </div>
+          <button class="secondary" data-drive-action="hessian-sample-edge" onclick="queueHessianSampleFromEdge(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_hessian_sample ? "" : "disabled"}>Run Hessian Sample From Edge Peak</button>
         </div>
         <div style="margin-bottom:10px;">
           <strong>Targeted reaction:</strong> ${escapeHtml(edge.reaction || "Unknown")}
@@ -3777,6 +4353,7 @@ def _drive_html() -> str:
         ${edge.result_from_reverse_edge ? `<div style="margin-bottom:10px;" class="muted">Showing completed NEB data reconstructed from the reverse-directed edge because this directed edge does not carry the chain payload directly.</div>` : ""}
         ${edge.result_from_completed_queue ? `<div style="margin-bottom:10px;" class="muted">Showing NEB data from the completed attempted pair because autosplitting did not leave a direct annotated edge for this exact selection.</div>` : ""}
         ${edge.queue_note ? `<div style="margin-bottom:10px; color: ${edge.can_queue_neb ? "var(--muted)" : "var(--warn)"};"><strong>${edge.can_queue_neb ? "Queue note" : "Edge cannot run as-is"}:</strong> ${escapeHtml(edge.queue_note)}</div>` : ""}
+        ${edge.hessian_sample_note ? `<div style="margin-bottom:10px; color: ${edge.can_hessian_sample ? "var(--muted)" : "var(--warn)"};"><strong>${edge.can_hessian_sample ? "Hessian note" : "Hessian sampling unavailable"}:</strong> ${escapeHtml(edge.hessian_sample_note)}</div>` : ""}
         ${edge.viewer_href ? `<div style="margin-bottom:10px;"><a href="${escapeHtml(edge.viewer_href)}" target="_blank" rel="noreferrer">Open completed NEB viewer</a></div>` : ""}
         <pre>${escapeHtml(JSON.stringify(edge.data || {}, null, 2))}</pre>
       `;
@@ -3806,6 +4383,7 @@ def _drive_html() -> str:
           </div>
         </div>
       `;
+      bindHessianSampleDrInput();
       renderNetworkToolbar();
     }
 
@@ -3849,6 +4427,10 @@ def _drive_html() -> str:
       const payload = snapshot.drive.network;
       const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
       const edges = Array.isArray(payload.edges) ? payload.edges : [];
+      const pendingEdge = state.pendingEdgeAddition;
+      if (pendingEdge && edges.some((edge) => Number(edge.source) === Number(pendingEdge.source) && Number(edge.target) === Number(pendingEdge.target))) {
+        state.pendingEdgeAddition = null;
+      }
       if (!nodes.length) {
         renderDetail(null);
         return;
@@ -3967,6 +4549,118 @@ def _drive_html() -> str:
         y: Number(layout.positions.get(Number(node.id))?.y || height / 2),
       }));
       const simById = new Map(simNodes.map((node) => [node.id, node]));
+      const sourceBuckets = new Map();
+      const targetBuckets = new Map();
+      const pairBuckets = new Map();
+      edges.forEach((edge, renderIndex) => {
+        const source = Number(edge.source);
+        const target = Number(edge.target);
+        const sourceEntries = sourceBuckets.get(source) || [];
+        sourceEntries.push({ edge, renderIndex });
+        sourceBuckets.set(source, sourceEntries);
+        const targetEntries = targetBuckets.get(target) || [];
+        targetEntries.push({ edge, renderIndex });
+        targetBuckets.set(target, targetEntries);
+        const pairKey = source <= target ? `${source}|${target}` : `${target}|${source}`;
+        const pairEntries = pairBuckets.get(pairKey) || [];
+        pairEntries.push({ edge, renderIndex });
+        pairBuckets.set(pairKey, pairEntries);
+      });
+      const sourceRankByEdge = new Map();
+      const sourceCountByEdge = new Map();
+      sourceBuckets.forEach((entries) => {
+        entries.sort((left, right) => {
+          const leftTarget = Number(left.edge.target);
+          const rightTarget = Number(right.edge.target);
+          if (leftTarget !== rightTarget) return leftTarget - rightTarget;
+          const leftReaction = String(left.edge.reaction || "");
+          const rightReaction = String(right.edge.reaction || "");
+          if (leftReaction !== rightReaction) return leftReaction.localeCompare(rightReaction);
+          return left.renderIndex - right.renderIndex;
+        });
+        const center = (entries.length - 1) / 2;
+        entries.forEach((entry, index) => {
+          sourceRankByEdge.set(entry.edge, index - center);
+          sourceCountByEdge.set(entry.edge, entries.length);
+        });
+      });
+      const targetRankByEdge = new Map();
+      const targetCountByEdge = new Map();
+      targetBuckets.forEach((entries) => {
+        entries.sort((left, right) => {
+          const leftSource = Number(left.edge.source);
+          const rightSource = Number(right.edge.source);
+          if (leftSource !== rightSource) return leftSource - rightSource;
+          const leftReaction = String(left.edge.reaction || "");
+          const rightReaction = String(right.edge.reaction || "");
+          if (leftReaction !== rightReaction) return leftReaction.localeCompare(rightReaction);
+          return left.renderIndex - right.renderIndex;
+        });
+        const center = (entries.length - 1) / 2;
+        entries.forEach((entry, index) => {
+          targetRankByEdge.set(entry.edge, index - center);
+          targetCountByEdge.set(entry.edge, entries.length);
+        });
+      });
+      const pairRankByEdge = new Map();
+      const pairCountByEdge = new Map();
+      pairBuckets.forEach((entries) => {
+        entries.sort((left, right) => {
+          const leftSource = Number(left.edge.source);
+          const rightSource = Number(right.edge.source);
+          if (leftSource !== rightSource) return leftSource - rightSource;
+          const leftTarget = Number(left.edge.target);
+          const rightTarget = Number(right.edge.target);
+          if (leftTarget !== rightTarget) return leftTarget - rightTarget;
+          const leftReaction = String(left.edge.reaction || "");
+          const rightReaction = String(right.edge.reaction || "");
+          if (leftReaction !== rightReaction) return leftReaction.localeCompare(rightReaction);
+          return left.renderIndex - right.renderIndex;
+        });
+        const center = (entries.length - 1) / 2;
+        entries.forEach((entry, index) => {
+          pairRankByEdge.set(entry.edge, index - center);
+          pairCountByEdge.set(entry.edge, entries.length);
+        });
+      });
+      const curvatureByEdge = new Map();
+      edges.forEach((edge, renderIndex) => {
+        const pairCount = Number(pairCountByEdge.get(edge) || 1);
+        const sourceCount = Number(sourceCountByEdge.get(edge) || 1);
+        const targetCount = Number(targetCountByEdge.get(edge) || 1);
+        let curvature = 0;
+        if (pairCount > 1) {
+          curvature += Number(pairRankByEdge.get(edge) || 0) * 34;
+        }
+        if (sourceCount > 1) {
+          curvature += Number(sourceRankByEdge.get(edge) || 0) * 12;
+        }
+        if (targetCount > 1) {
+          curvature -= Number(targetRankByEdge.get(edge) || 0) * 12;
+        }
+        if (Math.abs(curvature) < 6 && edges.length > 1) {
+          const seed = (Number(edge.source) * 131 + Number(edge.target) * 37 + renderIndex * 17) % 2 === 0 ? -1 : 1;
+          curvature = seed * 8;
+        }
+        curvatureByEdge.set(edge, curvature);
+      });
+
+      function edgePathD(source, target, curvature) {
+        const sx = Number(source?.x || 0);
+        const sy = Number(source?.y || 0);
+        const tx = Number(target?.x || 0);
+        const ty = Number(target?.y || 0);
+        const dx = tx - sx;
+        const dy = ty - sy;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        const normalX = -dy / distance;
+        const normalY = dx / distance;
+        const maxBend = Math.max(16, Math.min(88, distance * 0.42));
+        const bend = Math.max(-maxBend, Math.min(maxBend, Number(curvature || 0)));
+        const cx = (sx + tx) / 2 + normalX * bend;
+        const cy = (sy + ty) / 2 + normalY * bend;
+        return `M ${sx.toFixed(2)} ${sy.toFixed(2)} Q ${cx.toFixed(2)} ${cy.toFixed(2)} ${tx.toFixed(2)} ${ty.toFixed(2)}`;
+      }
 
       function applyNetworkDecorations(selection) {
         const overlay = state.pathHighlight || null;
@@ -3995,9 +4689,9 @@ def _drive_html() -> str:
 
       edges.forEach((edge) => {
         const group = make("g");
-        const hitbox = make("line");
+        const hitbox = make("path");
         hitbox.setAttribute("class", "network-edge-hitbox");
-        const line = make("line");
+        const line = make("path");
         line.setAttribute("class", `network-edge-line${edge.neb_backed ? " neb-backed" : ""}`);
         group.appendChild(hitbox);
         group.appendChild(line);
@@ -4006,7 +4700,7 @@ def _drive_html() -> str:
           setSelection({ kind: "edge", edge });
         });
         svg.appendChild(group);
-        edgeElems.push({ edge, line, hitbox });
+        edgeElems.push({ edge, line, hitbox, curvature: Number(curvatureByEdge.get(edge) || 0) });
       });
 
       nodes.forEach((node) => {
@@ -4044,20 +4738,49 @@ def _drive_html() -> str:
         edgeElems.forEach((item) => {
           const source = simById.get(Number(item.edge.source));
           const target = simById.get(Number(item.edge.target));
-          item.line.setAttribute("x1", String(source.x));
-          item.line.setAttribute("y1", String(source.y));
-          item.line.setAttribute("x2", String(target.x));
-          item.line.setAttribute("y2", String(target.y));
-          item.hitbox.setAttribute("x1", String(source.x));
-          item.hitbox.setAttribute("y1", String(source.y));
-          item.hitbox.setAttribute("x2", String(target.x));
-          item.hitbox.setAttribute("y2", String(target.y));
+          if (!source || !target) return;
+          const d = edgePathD(source, target, item.curvature);
+          item.line.setAttribute("d", d);
+          item.hitbox.setAttribute("d", d);
         });
         simNodes.forEach((simNode) => {
           if (simNode.group) simNode.group.setAttribute("transform", `translate(${simNode.x},${simNode.y})`);
         });
       }
       applySimPositions();
+
+      const pending = state.pendingEdgeAddition;
+      if (pending) {
+        const source = simById.get(Number(pending.source));
+        const target = simById.get(Number(pending.target));
+        if (source && target) {
+          const group = make("g");
+          group.setAttribute("aria-hidden", "true");
+          group.style.pointerEvents = "none";
+          const line = make("line");
+          line.setAttribute("class", "network-edge-line pending-add");
+          line.setAttribute("x1", String(source.x));
+          line.setAttribute("y1", String(source.y));
+          line.setAttribute("x2", String(source.x));
+          line.setAttribute("y2", String(source.y));
+          const animX = make("animate");
+          animX.setAttribute("attributeName", "x2");
+          animX.setAttribute("from", String(source.x));
+          animX.setAttribute("to", String(target.x));
+          animX.setAttribute("dur", "1.05s");
+          animX.setAttribute("repeatCount", "indefinite");
+          const animY = make("animate");
+          animY.setAttribute("attributeName", "y2");
+          animY.setAttribute("from", String(source.y));
+          animY.setAttribute("to", String(target.y));
+          animY.setAttribute("dur", "1.05s");
+          animY.setAttribute("repeatCount", "indefinite");
+          line.appendChild(animX);
+          line.appendChild(animY);
+          group.appendChild(line);
+          svg.appendChild(group);
+        }
+      }
       applyNetworkDecorations(state.selected);
 
       const selected = state.selected;
@@ -4109,6 +4832,8 @@ def _drive_html() -> str:
             setSubtext("Reaction templates are being applied to the selected node. Any newly grown products will be merged into the current graph after the job finishes.");
           } else if (activeAction.type === "nanoreactor") {
             setSubtext("Nanoreactor sampling is running from the selected node. Distinct minimized products will be merged into the graph after the backend finishes.");
+          } else if (activeAction.type === "hessian-sample") {
+            setSubtext("Hessian sampling is running from the selected node or edge peak. Displaced-mode minima will be merged into the graph when the backend finishes.");
           } else {
             setSubtext("Background work is running. The network and counters will refresh automatically.");
           }
@@ -4276,6 +5001,57 @@ def _drive_html() -> str:
       }
     }
 
+    async function queueHessianSampleFromNode(nodeId) {
+      const dr = getHessianSampleDr();
+      const maxCandidates = getHessianSampleMaxCandidates();
+      try {
+        setBanner(`Running Hessian sample from node ${nodeId} (dr=${dr}, max=${maxCandidates})...`);
+        setSubtext("The selected minimum will be displaced along Hessian normal modes by ±dr, then up to the requested number of candidates will be optimized and merged as unique minima.");
+        state.pendingLiveActivity = buildOptimisticGrowthActivity(
+          Number(nodeId),
+          `Running Hessian sample from node ${Number(nodeId)} (dr=${dr}, max=${maxCandidates})...`,
+          `Sampling minima from node ${Number(nodeId)} with dr=${dr}, max=${maxCandidates}.`
+        );
+        renderLiveActivity(state.snapshot);
+        await postJson("/api/hessian-sample", { node_id: Number(nodeId), dr: Number(dr), max_candidates: Number(maxCandidates) });
+        setBanner(`Hessian-sample request accepted for node ${nodeId}.`);
+        void refreshState();
+      } catch (error) {
+        clearPendingLiveActivity();
+        renderLiveActivity(state.snapshot);
+        setBanner(error.message || String(error), true);
+        setSubtext("The Hessian-sample request failed before it could start.");
+      }
+    }
+
+    async function queueHessianSampleFromEdge(sourceNode, targetNode) {
+      const dr = getHessianSampleDr();
+      const maxCandidates = getHessianSampleMaxCandidates();
+      try {
+        setBanner(`Running Hessian sample from edge ${sourceNode} -> ${targetNode} peak (dr=${dr}, max=${maxCandidates})...`);
+        setSubtext("The highest-energy geometry on the completed edge chain will be displaced by ±dr, then up to the requested number of candidates will be optimized and merged as minima.");
+        state.pendingLiveActivity = buildOptimisticGrowthActivity(
+          Number(sourceNode),
+          `Running Hessian sample from edge ${Number(sourceNode)} -> ${Number(targetNode)} peak (dr=${dr}, max=${maxCandidates})...`,
+          `Sampling minima from edge peak ${Number(sourceNode)} -> ${Number(targetNode)} with dr=${dr}, max=${maxCandidates}.`
+        );
+        renderLiveActivity(state.snapshot);
+        await postJson("/api/hessian-sample", {
+          source_node: Number(sourceNode),
+          target_node: Number(targetNode),
+          dr: Number(dr),
+          max_candidates: Number(maxCandidates),
+        });
+        setBanner(`Hessian-sample request accepted for edge ${sourceNode} -> ${targetNode}.`);
+        void refreshState();
+      } catch (error) {
+        clearPendingLiveActivity();
+        renderLiveActivity(state.snapshot);
+        setBanner(error.message || String(error), true);
+        setSubtext("The edge Hessian-sample request failed before it could start.");
+      }
+    }
+
     async function runKmcModel() {
       try {
         setBanner("Running kinetic model...");
@@ -4297,6 +5073,11 @@ def _drive_html() -> str:
     }
 
     async function addManualEdge() {
+      if (state.manualEdgeRequestInFlight) {
+        setBanner("A manual edge request is already in progress.", true);
+        setSubtext("Wait for the current edge add to finish before sending another one.");
+        return;
+      }
       const sourceRaw = document.getElementById("manual-edge-source").value;
       const targetRaw = document.getElementById("manual-edge-target").value;
       if (sourceRaw === "" || targetRaw === "") {
@@ -4307,8 +5088,10 @@ def _drive_html() -> str:
       const sourceNode = Number(sourceRaw);
       const targetNode = Number(targetRaw);
       try {
+        setManualEdgeRequestInFlight(true);
         setBanner(`Attempting to add manual edge ${sourceNode} -> ${targetNode}...`);
         setSubtext("The graph edge will be created if needed and prepared for a subsequent autosplitting NEB run.");
+        setPendingEdgeAddition(sourceNode, targetNode);
         const result = await postJson("/api/add-edge", {
           source_node: sourceNode,
           target_node: targetNode,
@@ -4317,12 +5100,19 @@ def _drive_html() -> str:
         setBanner(result.message || `Manual edge ${sourceNode} -> ${targetNode} updated.`);
         await refreshState();
       } catch (error) {
+        clearPendingEdgeAddition();
         setBanner(error.message || String(error), true);
         setSubtext("The manual edge could not be added.");
+      } finally {
+        setManualEdgeRequestInFlight(false);
       }
     }
 
     function beginConnectMode(nodeId) {
+      if (state.manualEdgeRequestInFlight) {
+        setSubtext("Wait for the current manual edge request to finish.");
+        return;
+      }
       const nextId = Number(nodeId);
       state.connectSourceNodeId = Number(state.connectSourceNodeId) === nextId ? null : nextId;
       setManualEdgeEndpoint("source", nextId);
@@ -4336,6 +5126,11 @@ def _drive_html() -> str:
     }
 
     async function completeConnectMode(targetNodeId) {
+      if (state.manualEdgeRequestInFlight) {
+        setBanner("A manual edge request is already in progress.", true);
+        setSubtext("Wait for the current edge add to finish before sending another one.");
+        return;
+      }
       const sourceNodeId = Number(state.connectSourceNodeId);
       const targetNode = Number(targetNodeId);
       if (!Number.isFinite(sourceNodeId) || sourceNodeId < 0 || sourceNodeId === targetNode) {
@@ -4345,8 +5140,10 @@ def _drive_html() -> str:
       setManualEdgeEndpoint("target", targetNode);
       state.connectSourceNodeId = null;
       try {
+        setManualEdgeRequestInFlight(true);
         setBanner(`Attempting to add manual edge ${sourceNodeId} -> ${targetNode}...`);
         setSubtext("Creating an edge directly from the graph selection.");
+        setPendingEdgeAddition(sourceNodeId, targetNode);
         const result = await postJson("/api/add-edge", {
           source_node: sourceNodeId,
           target_node: targetNode,
@@ -4355,8 +5152,11 @@ def _drive_html() -> str:
         setBanner(result.message || `Manual edge ${sourceNodeId} -> ${targetNode} updated.`);
         await refreshState();
       } catch (error) {
+        clearPendingEdgeAddition();
         setBanner(error.message || String(error), true);
         setSubtext("The graph-directed manual edge could not be added.");
+      } finally {
+        setManualEdgeRequestInFlight(false);
       }
     }
 
@@ -4366,6 +5166,8 @@ def _drive_html() -> str:
     window.queueEdgeNeb = queueEdgeNeb;
     window.queueApplyReactions = queueApplyReactions;
     window.queueNanoreactor = queueNanoreactor;
+    window.queueHessianSampleFromNode = queueHessianSampleFromNode;
+    window.queueHessianSampleFromEdge = queueHessianSampleFromEdge;
     window.runKmcModel = runKmcModel;
     window.setManualEdgeEndpoint = setManualEdgeEndpoint;
     window.beginConnectMode = beginConnectMode;
@@ -4397,6 +5199,7 @@ class _DriveRuntimeState:
     future: Future | None = None
     busy_label: str = ""
     active_action: dict[str, Any] | None = None
+    payload_mode_hint: str = ""
 
 
 class MepdDriveServer(ThreadingHTTPServer):
@@ -4426,6 +5229,8 @@ class MepdDriveServer(ThreadingHTTPServer):
         self.runtime = _DriveRuntimeState()
         self._drive_payload_cache_key: tuple[Any, ...] | None = None
         self._drive_payload_cache_value: dict[str, Any] | None = None
+        self._prefer_fast_payload_once = False
+        self._prefer_fast_payload_until = 0.0
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mepd-drive")
         self.process_executor = ProcessPoolExecutor(
             max_workers=1,
@@ -4450,6 +5255,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                         future=None,
                         busy_label="",
                         active_action=None,
+                        payload_mode_hint="",
                     )
                     self._drive_payload_cache_lookup(
                         workspace=self.runtime.workspace,
@@ -4483,10 +5289,20 @@ class MepdDriveServer(ThreadingHTTPServer):
         network_splits = getattr(self, "network_splits", True)
         builder = _build_drive_payload
         builder_name = "full"
+        with self.state_lock:
+            prefer_fast_once = bool(getattr(self, "_prefer_fast_payload_once", False))
+            prefer_fast_until = float(getattr(self, "_prefer_fast_payload_until", 0.0) or 0.0)
         if (
             runtime.active_action is not None
             and runtime.active_action.get("status") == "running"
-            and runtime.active_action.get("type") in {"minimize", "initialize", "apply-reactions", "nanoreactor", "load-workspace"}
+            and runtime.active_action.get("type") in {
+                "minimize",
+                "initialize",
+                "apply-reactions",
+                "nanoreactor",
+                "hessian-sample",
+                "load-workspace",
+            }
         ):
             builder = _build_drive_payload_fast
             builder_name = f"fast-{runtime.active_action.get('type')}"
@@ -4497,6 +5313,9 @@ class MepdDriveServer(ThreadingHTTPServer):
         ):
             builder = _build_drive_payload_fast_neb
             builder_name = "fast-neb"
+        elif prefer_fast_once or time.time() < prefer_fast_until:
+            builder = _build_drive_payload_fast
+            builder_name = "fast-post-manual-edge"
 
         product_smiles = str((runtime.product or {}).get("smiles") or "")
         active_action = runtime.active_action or {}
@@ -4554,6 +5373,8 @@ class MepdDriveServer(ThreadingHTTPServer):
         with self.state_lock:
             self._drive_payload_cache_key = cache_key
             self._drive_payload_cache_value = payload
+            if builder_name == "fast-post-manual-edge":
+                self._prefer_fast_payload_once = False
         return payload
 
     def _assert_idle(self) -> None:
@@ -4815,6 +5636,10 @@ class MepdDriveServer(ThreadingHTTPServer):
             workspace = self.runtime.workspace
         if workspace is None:
             raise ValueError("Initialize a workspace before applying reactions.")
+        try:
+            ensure_retropaths_available(feature="MEPD Drive reaction-template application (+)")
+        except RuntimeError as exc:
+            raise ValueError(str(exc)) from exc
 
         progress_fp = str((workspace.directory / f"drive_apply_reactions_{int(node_id)}.progress.json").resolve())
         future = self._submit_process_action(
@@ -4862,6 +5687,93 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "node_id": int(node_id),
                 "progress_fp": progress_fp,
             }
+
+    def submit_hessian_sample(
+        self,
+        *,
+        dr: float,
+        max_candidates: int = 100,
+        node_id: int | None = None,
+        source_node: int | None = None,
+        target_node: int | None = None,
+    ) -> None:
+        self._assert_idle()
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize a workspace before running Hessian sampling.")
+        if not (float(dr) > 0):
+            raise ValueError("`dr` must be a positive number.")
+        max_candidates = int(max_candidates)
+        if max_candidates <= 0:
+            raise ValueError("`max_candidates` must be a positive integer.")
+
+        workspace_copy = RetropathsWorkspace(**dict(workspace.__dict__))
+        if node_id is not None:
+            progress_fp = str((workspace.directory / f"drive_hessian_node_{int(node_id)}.progress.json").resolve())
+            label = (
+                f"Running Hessian sample from node {int(node_id)} "
+                f"(dr={float(dr):.4f}, max={int(max_candidates)})..."
+            )
+
+            def _job() -> dict[str, Any]:
+                return run_hessian_sample_for_node(
+                    workspace_copy,
+                    int(node_id),
+                    dr=float(dr),
+                    max_candidates=int(max_candidates),
+                    progress_fp=progress_fp,
+                )
+
+            action_payload = {
+                "type": "hessian-sample",
+                "status": "running",
+                "label": label,
+                "dr": float(dr),
+                "max_candidates": int(max_candidates),
+                "node_id": int(node_id),
+                "progress_fp": progress_fp,
+            }
+        else:
+            if source_node is None or target_node is None:
+                raise ValueError("Provide either `node_id` or both `source_node` and `target_node` for Hessian sampling.")
+            progress_fp = str(
+                (
+                    workspace.directory
+                    / f"drive_hessian_edge_{int(source_node)}_{int(target_node)}.progress.json"
+                ).resolve()
+            )
+            label = (
+                f"Running Hessian sample from edge {int(source_node)} -> {int(target_node)} peak "
+                f"(dr={float(dr):.4f}, max={int(max_candidates)})..."
+            )
+
+            def _job() -> dict[str, Any]:
+                return run_hessian_sample_for_edge(
+                    workspace_copy,
+                    int(source_node),
+                    int(target_node),
+                    dr=float(dr),
+                    max_candidates=int(max_candidates),
+                    progress_fp=progress_fp,
+                )
+
+            action_payload = {
+                "type": "hessian-sample",
+                "status": "running",
+                "label": label,
+                "dr": float(dr),
+                "max_candidates": int(max_candidates),
+                "source_node": int(source_node),
+                "target_node": int(target_node),
+                "progress_fp": progress_fp,
+            }
+
+        future = self.executor.submit(_job)
+        future.add_done_callback(self._finish_future)
+        self._set_busy(label, future)
+        with self.state_lock:
+            self.runtime.active_action = action_payload
 
     def submit_run_neb(self, *, source_node: int, target_node: int) -> None:
         self._assert_idle()
@@ -4942,6 +5854,8 @@ class MepdDriveServer(ThreadingHTTPServer):
         with self.state_lock:
             self.runtime.last_error = ""
             self.runtime.last_message = str(result.get("message") or "Manual edge updated.")
+            self._prefer_fast_payload_once = True
+            self._prefer_fast_payload_until = time.time() + 30.0
         return result
 
     def submit_run_kmc(
@@ -4992,7 +5906,10 @@ class MepdDriveServer(ThreadingHTTPServer):
             "active_action": runtime.active_action,
             "live_activity": None,
             "drive": None,
-            "defaults": _drive_defaults_payload(self.inputs_fp, self.reactions_fp),
+            "defaults": _drive_defaults_payload(
+                getattr(self, "inputs_fp", None),
+                getattr(self, "reactions_fp", None),
+            ),
         }
         if runtime.active_action is not None and runtime.active_action.get("status") == "running":
             with contextlib.suppress(Exception):
@@ -5000,7 +5917,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                     snapshot["live_activity"] = _build_neb_live_payload(runtime.active_action, runtime.workspace)
                 elif runtime.active_action.get("type") == "minimize":
                     snapshot["live_activity"] = _build_minimize_live_payload(runtime.active_action)
-                elif runtime.active_action.get("type") in {"initialize", "apply-reactions", "nanoreactor"}:
+                elif runtime.active_action.get("type") in {"initialize", "apply-reactions", "nanoreactor", "hessian-sample"}:
                     snapshot["live_activity"] = _build_growth_live_payload(runtime.active_action)
         if runtime.workspace is not None and runtime.workspace.queue_fp.exists():
             try:
@@ -5100,6 +6017,16 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 )
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
+            if self.path == "/api/hessian-sample":
+                self.server.submit_hessian_sample(
+                    dr=float(payload.get("dr", 0.1)),
+                    max_candidates=int(payload.get("max_candidates") or 100),
+                    node_id=(int(payload["node_id"]) if payload.get("node_id") is not None else None),
+                    source_node=(int(payload["source_node"]) if payload.get("source_node") is not None else None),
+                    target_node=(int(payload["target_node"]) if payload.get("target_node") is not None else None),
+                )
+                self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
+                return
             if self.path == "/api/run-neb":
                 self.server.submit_run_neb(
                     source_node=int(payload["source_node"]),
@@ -5159,13 +6086,24 @@ def launch_mepd_drive(
 ) -> MepdDriveServer:
     explicit_directory = Path(directory).resolve() if directory else None
     startup_workspace_path = workspace_path
-    if startup_workspace_path is None and explicit_directory is not None and (explicit_directory / "workspace.json").exists():
+    if (
+        startup_workspace_path is None
+        and explicit_directory is not None
+        and (
+            (explicit_directory / "workspace.json").exists()
+            or _resolve_network_splits_pot_fp(explicit_directory) is not None
+        )
+    ):
         startup_workspace_path = str(explicit_directory)
 
     initial_state: dict[str, Any] | None = None
     if startup_workspace_path:
         workspace_dir = Path(startup_workspace_path).expanduser().resolve()
-        if workspace_dir.is_file() and workspace_dir.name == "workspace.json":
+        if workspace_dir.is_file() and (
+            workspace_dir.name == "workspace.json"
+            or workspace_dir.name.endswith("_network.json")
+            or workspace_dir.name.endswith("_request_manifest.json")
+        ):
             workspace_dir = workspace_dir.parent
         base_directory = workspace_dir.parent
         initial_state = _load_existing_workspace_job_compat(str(workspace_dir), network_splits=network_splits)
