@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -516,6 +516,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#qmmm-toml-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QMMM TOML Inputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="QMMM TOML Inputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#qmmm_inputs-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        qmmm_inputs reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generated-tcin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated tc.in
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#frozen-atoms-for-qmmm-neb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frozen atoms for QM/MM NEB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#minimal-examples" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -842,6 +892,56 @@
       
     </span>
   </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qmmm-toml-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QMMM TOML Inputs
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="QMMM TOML Inputs">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#qmmm_inputs-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        qmmm_inputs reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#generated-tcin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Generated tc.in
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#frozen-atoms-for-qmmm-neb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Frozen atoms for QM/MM NEB
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1400,6 +1500,109 @@ backend-specific passthrough.</p>
 <span class="n">name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;cg&quot;</span>
 <span class="n">timestep</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.5</span>
 </code></pre></div>
+<h2 id="qmmm-toml-inputs">QMMM TOML Inputs<a class="headerlink" href="#qmmm-toml-inputs" title="Permanent link">🔗</a></h2>
+<p>Use <code>engine_name = "qmmm"</code> with a <code>[qmmm_inputs]</code> block.</p>
+<div class="highlight"><pre><span></span><code><span class="n">engine_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qmmm&quot;</span>
+<span class="n">program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;terachem&quot;</span>
+<span class="n">chemcloud_queue</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;gpu-a100&quot;</span><span class="w">   </span><span class="c1"># optional; overrides env queue</span>
+
+<span class="k">[program_kwds.model]</span>
+<span class="n">method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;b3lyp&quot;</span>
+<span class="n">basis</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;6-31g**&quot;</span>
+
+<span class="k">[program_kwds.keywords]</span>
+<span class="n">dispersion</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;yes&quot;</span>
+<span class="n">maxit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">500</span>
+
+<span class="k">[qmmm_inputs]</span>
+<span class="n">qminds_fp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;qmindices.dat&quot;</span><span class="w">      </span><span class="c1"># required</span>
+<span class="n">prmtop_fp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;ref.prmtop&quot;</span><span class="w">         </span><span class="c1"># required</span>
+<span class="n">rst7_fp_react</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;ref.rst7&quot;</span><span class="w">       </span><span class="c1"># required</span>
+<span class="n">tcin_fp</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;tc.in&quot;</span><span class="w">                </span><span class="c1"># optional; if omitted, tc.in is generated from TOML</span>
+<span class="n">compute_program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;chemcloud&quot;</span><span class="w">    </span><span class="c1"># &quot;chemcloud&quot; or &quot;qcop&quot;</span>
+<span class="n">print_stdout</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">             </span><span class="c1"># stream QCOP stdout if true</span>
+</code></pre></div>
+<h3 id="qmmm_inputs-reference"><code>qmmm_inputs</code> reference<a class="headerlink" href="#qmmm_inputs-reference" title="Permanent link">🔗</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>qminds_fp</code></td>
+<td>yes</td>
+<td>Path to QM atom index file</td>
+</tr>
+<tr>
+<td><code>prmtop_fp</code></td>
+<td>yes</td>
+<td>Path to AMBER topology</td>
+</tr>
+<tr>
+<td><code>rst7_fp_react</code></td>
+<td>yes</td>
+<td>Reference rst7 used for coordinate replacement</td>
+</tr>
+<tr>
+<td><code>rst7_fp_prod</code></td>
+<td>no</td>
+<td>Optional product reference rst7</td>
+</tr>
+<tr>
+<td><code>tcin_fp</code></td>
+<td>no</td>
+<td>TeraChem input file path</td>
+</tr>
+<tr>
+<td><code>tcin_text</code></td>
+<td>no</td>
+<td>Inline <code>tc.in</code> contents</td>
+</tr>
+<tr>
+<td><code>compute_program</code></td>
+<td>no</td>
+<td><code>"chemcloud"</code> (default) or <code>"qcop"</code></td>
+</tr>
+<tr>
+<td><code>chemcloud_queue</code></td>
+<td>no</td>
+<td>Queue name (overrides env)</td>
+</tr>
+<tr>
+<td><code>print_stdout</code></td>
+<td>no</td>
+<td>Stream stdout during compute calls</td>
+</tr>
+<tr>
+<td><code>debug_dump_inputs</code></td>
+<td>no</td>
+<td>Dump bundled QM/MM inputs for debugging</td>
+</tr>
+<tr>
+<td><code>debug_dump_dir</code></td>
+<td>no</td>
+<td>Directory for debug input dumps</td>
+</tr>
+</tbody>
+</table>
+<h3 id="generated-tcin">Generated <code>tc.in</code><a class="headerlink" href="#generated-tcin" title="Permanent link">🔗</a></h3>
+<p>If <code>tcin_fp</code>/<code>tcin_text</code> is not provided, <code>RunInputs</code> generates <code>tc.in</code> from TOML:</p>
+<ul>
+<li>QM/MM file references (<code>coordinates ref.rst7</code>, <code>qmindices qmindices.dat</code>, <code>prmtop ref.prmtop</code>)</li>
+<li><code>charge</code>, <code>spinmult</code>, <code>run</code> type</li>
+<li>method/basis and extra keywords from <code>[program_kwds]</code></li>
+</ul>
+<h3 id="frozen-atoms-for-qmmm-neb">Frozen atoms for QM/MM NEB<a class="headerlink" href="#frozen-atoms-for-qmmm-neb" title="Permanent link">🔗</a></h3>
+<p>Configure frozen atoms in <code>[chain_inputs]</code> using <code>frozen_atom_indices</code>.
+Keep endpoint and NEB frozen regions consistent to avoid interior images becoming artificially lower than endpoints.</p>
+<p>If you already have a TeraChem <code>.in</code> file (for example <code>s0min_3A_reactant.in</code>), you can generate a matching QMMM TOML with:</p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>toml-from-tcin<span class="w"> </span>s0min_3A_reactant.in<span class="w"> </span>--output<span class="w"> </span>qmmm_inputs_s0min_frozen.toml
+</code></pre></div>
+<p>This helper parses <code>$constraints</code> <code>atom N</code> lines and stores them as 0-based <code>frozen_atom_indices</code>.</p>
 <h2 id="minimal-examples">Minimal Examples<a class="headerlink" href="#minimal-examples" title="Permanent link">🔗</a></h2>
 <h3 id="chemcloud-xtb-run">ChemCloud xTB run<a class="headerlink" href="#chemcloud-xtb-run" title="Permanent link">🔗</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">engine_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;chemcloud&quot;</span>

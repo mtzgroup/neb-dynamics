@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -521,6 +521,61 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#toml-from-tcin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        toml-from-tcin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#visualize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        visualize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#netgen-smiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        netgen-smiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#run-netgen" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -753,6 +808,61 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#toml-from-tcin" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        toml-from-tcin
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#visualize" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        visualize
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#netgen-smiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        netgen-smiles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drive" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        drive
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#run-netgen" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -911,6 +1021,10 @@ mepd<span class="w"> </span>--help
 <td><code>--use-bigchem</code></td>
 <td>Use ChemCloud for Hessian calculations in TS optimization</td>
 </tr>
+<tr>
+<td><code>--rst7-prmtop</code></td>
+<td>Required only when <code>--start</code> or <code>--end</code> is <code>.rst7</code>; used to convert rst7 endpoints to XYZ internally</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Example:</strong></p>
@@ -925,6 +1039,9 @@ mepd<span class="w"> </span>run<span class="w"> </span>--start<span class="w"> <
 
 <span class="c1"># With TS optimization and IRC</span>
 mepd<span class="w"> </span>run<span class="w"> </span>--start<span class="w"> </span>start.xyz<span class="w"> </span>--end<span class="w"> </span>end.xyz<span class="w"> </span>--use-tsopt<span class="w"> </span>--create-irc<span class="w"> </span>--inputs<span class="w"> </span>inputs.toml
+</code></pre></div>
+<p>For <code>.rst7</code> endpoints, provide a prmtop:</p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>run<span class="w"> </span>--start<span class="w"> </span>react.rst7<span class="w"> </span>--end<span class="w"> </span>prod.rst7<span class="w"> </span>--rst7-prmtop<span class="w"> </span>ref.prmtop<span class="w"> </span>--inputs<span class="w"> </span>qmmm_inputs.toml
 </code></pre></div>
 <hr />
 <h3 id="run-refine">run-refine<a class="headerlink" href="#run-refine" title="Permanent link">🔗</a></h3>
@@ -1049,6 +1166,7 @@ mepd<span class="w"> </span>run<span class="w"> </span>--start<span class="w"> <
 <div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>ts<span class="w"> </span>ts_guess.xyz<span class="w"> </span>--inputs<span class="w"> </span>inputs.toml
 mepd<span class="w"> </span>ts<span class="w"> </span>ts_guess.xyz<span class="w"> </span>--bigchem<span class="w"> </span>--name<span class="w"> </span>my_ts
 </code></pre></div>
+<p><code>mepd ts</code> now uses the engine-level TS protocol (<code>compute_transition_state</code>) when available, including <code>QMMMEngine</code>.</p>
 <hr />
 <h3 id="pseuirc">pseuirc<a class="headerlink" href="#pseuirc" title="Permanent link">🔗</a></h3>
 <p>Compute pseudo-IRC path from a transition state.</p>
@@ -1116,6 +1234,434 @@ mepd<span class="w"> </span>ts<span class="w"> </span>ts_guess.xyz<span class="w
 </tr>
 </tbody>
 </table>
+<hr />
+<h3 id="toml-from-tcin">toml-from-tcin<a class="headerlink" href="#toml-from-tcin" title="Permanent link">🔗</a></h3>
+<p>Create a QMMM <code>RunInputs</code> TOML from a TeraChem input file (including frozen atoms from <code>$constraints</code>).</p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>toml-from-tcin<span class="w"> </span>tc.in<span class="w"> </span>--output<span class="w"> </span>qmmm_inputs_s0min_frozen.toml
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tcin</code></td>
+<td>Path to TeraChem input file (<code>.in</code> / <code>tc.in</code>)</td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o</code></td>
+<td>Output TOML path (default: <code>qmmm_inputs_from_tc.toml</code>)</td>
+</tr>
+<tr>
+<td><code>--compute-program</code></td>
+<td>QMMM backend (<code>chemcloud</code> or <code>qcop</code>, default: <code>chemcloud</code>)</td>
+</tr>
+<tr>
+<td><code>--queue</code></td>
+<td>Optional ChemCloud queue to write into TOML</td>
+</tr>
+</tbody>
+</table>
+<p>Notes:
+- Parses <code>method</code>, <code>basis</code>, <code>charge</code>, <code>spinmult</code>, <code>run</code>, and <code>min_coordinates</code>.
+- Parses additional TeraChem keywords into <code>[program_kwds.keywords]</code>.
+- Parses <code>$constraints</code> lines of the form <code>atom N</code> into 0-based <code>chain_inputs.frozen_atom_indices</code>.</p>
+<hr />
+<h3 id="visualize">visualize<a class="headerlink" href="#visualize" title="Permanent link">🔗</a></h3>
+<p>Render an interactive browser-based viewer for saved NEB/MSMEP results.</p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>visualize<span class="w"> </span>path/to/result
+</code></pre></div>
+<p><code>result</code> can be either:</p>
+<ul>
+<li>a NEB output <code>.xyz</code> with sibling <code>&lt;stem&gt;_history/</code> folder</li>
+<li>a recursive MSMEP TreeNode folder containing <code>adj_matrix.txt</code></li>
+</ul>
+<p><strong>Options:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>result_path</code></td>
+<td>Path to result <code>.xyz</code> or TreeNode folder</td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o</code></td>
+<td>Output HTML path (default: <code>&lt;name&gt;_visualize.html</code>)</td>
+</tr>
+<tr>
+<td><code>--qminds-fp</code></td>
+<td>Path to <code>qmindices.dat</code> to visualize only selected atoms</td>
+</tr>
+<tr>
+<td><code>--atom-indices</code></td>
+<td>Comma/space-separated atom indices for subset visualization</td>
+</tr>
+<tr>
+<td><code>--charge</code></td>
+<td>Charge for reading serialized geometries (default: 0)</td>
+</tr>
+<tr>
+<td><code>--multiplicity</code></td>
+<td>Multiplicity for reading serialized geometries (default: 1)</td>
+</tr>
+<tr>
+<td><code>--no-open</code></td>
+<td>Do not automatically open browser</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>visualize<span class="w"> </span>mep_output_neb.xyz
+mepd<span class="w"> </span>visualize<span class="w"> </span>mep_output_msmep<span class="w"> </span>--output<span class="w"> </span>msmep_view.html
+mepd<span class="w"> </span>visualize<span class="w"> </span>mep_output_neb.xyz<span class="w"> </span>--qminds-fp<span class="w"> </span>qmindices.dat
+mepd<span class="w"> </span>visualize<span class="w"> </span>mep_output_neb.xyz<span class="w"> </span>--atom-indices<span class="w"> </span><span class="s2">&quot;12,13,14,15&quot;</span>
+</code></pre></div>
+<hr />
+<h3 id="netgen-smiles">netgen-smiles<a class="headerlink" href="#netgen-smiles" title="Permanent link">🔗</a></h3>
+<p>Grow a retropaths reaction network from a root SMILES string, convert each node into a structure-bearing NEB network, minimize endpoints, queue recursive MSMEP runs, and write a live status page.</p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>netgen-smiles<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--smiles<span class="w"> </span><span class="s2">&quot;C=CC(O)CC=C&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--environment<span class="w"> </span><span class="s2">&quot;O&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--reactions-fp<span class="w"> </span>/path/to/reactions.p<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--inputs<span class="w"> </span>examples/example_inputs.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--name<span class="w"> </span>allylic_alcohol_water
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--smiles</code>, <code>-s</code></td>
+<td>Root reactant SMILES</td>
+</tr>
+<tr>
+<td><code>--environment</code>, <code>-e</code></td>
+<td>Environment SMILES (optional)</td>
+</tr>
+<tr>
+<td><code>--reactions-fp</code></td>
+<td>Path to the retropaths <code>reactions.p</code> library</td>
+</tr>
+<tr>
+<td><code>--inputs</code>, <code>-i</code></td>
+<td>Path minimization <code>RunInputs</code> TOML</td>
+</tr>
+<tr>
+<td><code>--name</code></td>
+<td>Workspace name / default output directory</td>
+</tr>
+<tr>
+<td><code>--directory</code>, <code>-d</code></td>
+<td>Existing or new workspace directory</td>
+</tr>
+<tr>
+<td><code>--timeout-seconds</code></td>
+<td>Retropaths growth timeout</td>
+</tr>
+<tr>
+<td><code>--max-nodes</code></td>
+<td>Maximum retropaths pot size</td>
+</tr>
+<tr>
+<td><code>--max-depth</code></td>
+<td>Maximum retropaths search depth</td>
+</tr>
+<tr>
+<td><code>--max-parallel-nebs</code></td>
+<td>Number of recursive NEBs to run concurrently</td>
+</tr>
+<tr>
+<td><code>--no-open</code></td>
+<td>Do not automatically open <code>status.html</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Example:</strong></p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>netgen-smiles<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--smiles<span class="w"> </span><span class="s2">&quot;C=CC(O)CC=C&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--environment<span class="w"> </span><span class="s2">&quot;O&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--reactions-fp<span class="w"> </span>/Users/janestrada/retropaths/data/reactions.p<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--inputs<span class="w"> </span>examples/example_inputs.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--name<span class="w"> </span>allylic_alcohol_water<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-nodes<span class="w"> </span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-parallel-nebs<span class="w"> </span><span class="m">4</span>
+</code></pre></div>
+<p><strong>What it does:</strong></p>
+<ol>
+<li>grows the retropaths pot from the input SMILES
+   using the configured <code>reactions.p</code> library</li>
+<li>converts each pot node into a <code>StructureNode</code> while preserving molecular graph atom indices</li>
+<li>minimizes each endpoint structure once, caching the optimization result in the workspace</li>
+<li>builds a persistent NEB queue</li>
+<li>runs recursive MSMEP on queued pairs</li>
+<li>reconstructs a completed-results NEB pot from the finished leaf chains</li>
+</ol>
+<p><strong>Workspace outputs:</strong></p>
+<ul>
+<li><code>workspace.json</code></li>
+<li><code>retropaths_pot.json</code></li>
+<li><code>neb_pot.json</code></li>
+<li><code>neb_queue.json</code></li>
+<li><code>neb_pot_annotated.json</code></li>
+<li><code>queue_runs/</code></li>
+<li><code>endpoint_optimizations/</code></li>
+<li><code>status.html</code></li>
+</ul>
+<p>Notes:
+- completed NEB chains are treated as bidirectional when reconstructing the completed network
+- each autosplit leaf is labeled as <code>ReactionName(step N)</code> in the completed NEB graph
+- reverse edges inherit the same step label and use the reversed chain with the reverse barrier</p>
+<hr />
+<h3 id="drive">drive<a class="headerlink" href="#drive" title="Permanent link">🔗</a></h3>
+<p>Launch the interactive MEPD Drive web UI.</p>
+<p><code>drive</code> can start in three modes:</p>
+<ol>
+<li>blank interactive mode (initialize from the browser)</li>
+<li>SMILES-bootstrap mode (create workspace before the browser opens)</li>
+<li>resume mode (load an existing workspace immediately)</li>
+</ol>
+<p><strong>Requirements (local):</strong></p>
+<ol>
+<li>Install project dependencies (from source checkout):
+   <div class="highlight"><pre><span></span><code>uv<span class="w"> </span>sync
+</code></pre></div></li>
+<li>Have a usable RunInputs TOML (for example <code>examples/example_inputs.toml</code>).</li>
+<li>Configure your electronic-structure backend:</li>
+<li>ChemCloud-backed runs: valid credentials (for example <code>~/.chemcloud/credentials</code>)</li>
+<li>Local QCOP runs: required backend program binaries (such as <code>xtb</code>, <code>crest</code>, or <code>terachem</code>) on <code>PATH</code></li>
+<li>Optional but recommended for reaction-template features:</li>
+<li>a <code>retropaths</code> checkout at <code>~/retropaths</code> (default lookup) or</li>
+<li>set <code>RETROPATHS_REPO</code> to your <code>retropaths</code> checkout path</li>
+</ol>
+<p><strong>Examples:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="c1"># Blank drive session; initialize from the browser UI</span>
+uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>drive<span class="w"> </span>--inputs<span class="w"> </span>examples/example_inputs.toml
+
+<span class="c1"># Start drive from SMILES on the command line</span>
+uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>drive<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--smiles<span class="w"> </span><span class="s2">&quot;C=CC(O)CC=C&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--product-smiles<span class="w"> </span><span class="s2">&quot;C=CC(=O)CC=C&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--environment<span class="w"> </span><span class="s2">&quot;O&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--charge<span class="w"> </span><span class="m">0</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--multiplicity<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--inputs<span class="w"> </span>examples/example_inputs.toml<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--name<span class="w"> </span>allylic_alcohol_drive
+
+<span class="c1"># Re-open an existing workspace mid-run</span>
+uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>drive<span class="w"> </span>--workspace<span class="w"> </span>./allylic_alcohol_drive
+
+<span class="c1"># `--directory` also resumes automatically when it already contains workspace.json</span>
+uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>drive<span class="w"> </span>--directory<span class="w"> </span>./allylic_alcohol_drive
+
+<span class="c1"># Disable network-split overlay if you only want base pot/queue visualization</span>
+uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>drive<span class="w"> </span>--workspace<span class="w"> </span>./allylic_alcohol_drive<span class="w"> </span>--no-network-splits
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--inputs</code>, <code>-i</code></td>
+<td>Path minimization <code>RunInputs</code> TOML. Required for <code>--smiles</code>; optional when resuming an existing workspace</td>
+</tr>
+<tr>
+<td><code>--smiles</code>, <code>-s</code></td>
+<td>Root reactant SMILES to bootstrap a new drive workspace before opening the UI</td>
+</tr>
+<tr>
+<td><code>--product-smiles</code>, <code>--end</code></td>
+<td>Optional product/end SMILES used to add a target endpoint and queue the initial edge</td>
+</tr>
+<tr>
+<td><code>--environment</code>, <code>-e</code></td>
+<td>Optional environment SMILES for SMILES-based drive initialization</td>
+</tr>
+<tr>
+<td><code>--charge</code></td>
+<td>Total charge for SMILES-bootstrapped endpoint structures</td>
+</tr>
+<tr>
+<td><code>--multiplicity</code></td>
+<td>Spin multiplicity for SMILES-bootstrapped endpoint structures</td>
+</tr>
+<tr>
+<td><code>--name</code></td>
+<td>Run name / workspace name for SMILES-based drive initialization</td>
+</tr>
+<tr>
+<td><code>--workspace</code></td>
+<td>Existing workspace directory, <code>workspace.json</code>, <code>*_network.json</code>, or <code>*_request_manifest.json</code> to load on startup</td>
+</tr>
+<tr>
+<td><code>--reactions-fp</code></td>
+<td>Path to the retropaths <code>reactions.p</code> library</td>
+</tr>
+<tr>
+<td><code>--directory</code>, <code>-d</code></td>
+<td>Base directory for new drive workspaces, or an existing workspace directory to resume</td>
+</tr>
+<tr>
+<td><code>--host</code></td>
+<td>Host interface for the local drive server</td>
+</tr>
+<tr>
+<td><code>--port</code></td>
+<td>Port for the local drive server (<code>0</code> selects a free port)</td>
+</tr>
+<tr>
+<td><code>--ssh-login</code></td>
+<td>SSH target used to print a ready-made tunnel command</td>
+</tr>
+<tr>
+<td><code>--local-port</code></td>
+<td>Local laptop-side port for the printed SSH tunnel command</td>
+</tr>
+<tr>
+<td><code>--timeout-seconds</code></td>
+<td>Retropaths growth timeout</td>
+</tr>
+<tr>
+<td><code>--max-nodes</code></td>
+<td>Maximum retropaths pot size</td>
+</tr>
+<tr>
+<td><code>--max-depth</code></td>
+<td>Maximum retropaths search depth</td>
+</tr>
+<tr>
+<td><code>--max-parallel-nebs</code></td>
+<td>Number of autosplitting NEBs to run concurrently</td>
+</tr>
+<tr>
+<td><code>--network-splits/--no-network-splits</code></td>
+<td>Enable/disable the recursive autosplit overlay in Drive</td>
+</tr>
+<tr>
+<td><code>--no-open</code></td>
+<td>Do not automatically open the browser</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Drive behavior notes:</strong></p>
+<ul>
+<li>If you launch <code>drive</code> with no workspace flags, you can still initialize entirely from the browser.</li>
+<li>The browser-side initializer accepts an inputs TOML path, reactions file, environment SMILES, and mode (<code>reactant-only</code> or <code>reactant-product</code>).</li>
+<li>If you did not pass <code>--inputs</code> at launch, you must provide an inputs TOML path in the initializer UI before initialization.</li>
+<li><code>netgen-smiles</code> and the Drive reaction-template <code>+</code> action require the optional <code>retropaths</code> repository. If unavailable, Drive now returns a clear error describing how to set <code>RETROPATHS_REPO</code>.</li>
+<li>When an autosplitting NEB finishes, drive now shows a barrier and viewer link even when the completed result is attached to the reverse edge or when the original attempted pair was split into intermediate edges.</li>
+<li>Completed queue-pair viewers are cached after first materialization so state polling stays responsive after the first finished NEB.</li>
+<li>When multiple node minimizations are submitted and the loaded inputs use a ChemCloud-backed engine, drive submits them as one ChemCloud batch instead of serial single-node jobs.</li>
+</ul>
+<p><strong>Running drive on a remote server over SSH:</strong></p>
+<p>Start the server on the remote machine and bind it to loopback:</p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>drive<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--workspace<span class="w"> </span>./allylic_alcohol_drive<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--port<span class="w"> </span><span class="m">8123</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--no-open
+</code></pre></div>
+<p>Then create an SSH tunnel from your laptop:</p>
+<div class="highlight"><pre><span></span><code>ssh<span class="w"> </span>-N<span class="w"> </span>-L<span class="w"> </span><span class="m">9000</span>:127.0.0.1:8123<span class="w"> </span>user@remote-host
+</code></pre></div>
+<p>Open the tunneled URL locally:</p>
+<div class="highlight"><pre><span></span><code>http://127.0.0.1:9000/
+</code></pre></div>
+<p>You can also ask <code>drive</code> to print the tunnel command for you:</p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>drive<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--workspace<span class="w"> </span>./allylic_alcohol_drive<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--host<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--port<span class="w"> </span><span class="m">8123</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--ssh-login<span class="w"> </span>user@remote-host<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--local-port<span class="w"> </span><span class="m">9000</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--no-open
+</code></pre></div>
+<p>Remote-use notes:</p>
+<ul>
+<li>Keep <code>--host 127.0.0.1</code> unless you intentionally want the web server exposed on the remote network.</li>
+<li><code>--workspace</code> is the cleanest way to reconnect to a run that is already in progress.</li>
+<li>If you are starting from SMILES on the remote host, use the same <code>drive --smiles ... --inputs ...</code> command there, then tunnel to the printed local URL.</li>
+</ul>
+<hr />
+<h3 id="status">status<a class="headerlink" href="#status" title="Permanent link">🔗</a></h3>
+<p>Regenerate the live status page for a <code>netgen-smiles</code> workspace.</p>
+<div class="highlight"><pre><span></span><code>mepd<span class="w"> </span>status<span class="w"> </span>--directory<span class="w"> </span>./allylic_alcohol_water
+</code></pre></div>
+<p><strong>Options:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--directory</code>, <code>-d</code></td>
+<td>Workspace directory containing <code>workspace.json</code></td>
+</tr>
+<tr>
+<td><code>--output</code>, <code>-o</code></td>
+<td>Optional output path for the generated HTML</td>
+</tr>
+<tr>
+<td><code>--temperature</code></td>
+<td>Temperature in kelvin for the kinetics widget</td>
+</tr>
+<tr>
+<td><code>--initial-condition</code></td>
+<td>Repeatable <code>NODE=VALUE</code> override for initial concentrations</td>
+</tr>
+<tr>
+<td><code>--no-open</code></td>
+<td>Do not automatically open the browser</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Examples:</strong></p>
+<div class="highlight"><pre><span></span><code>uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>status<span class="w"> </span>-d<span class="w"> </span>./allylic_alcohol_water
+
+uv<span class="w"> </span>run<span class="w"> </span>mepd<span class="w"> </span>status<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span>./allylic_alcohol_water<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--temperature<span class="w"> </span><span class="m">350</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--initial-condition<span class="w"> </span><span class="nv">0</span><span class="o">=</span><span class="m">0</span>.8<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--initial-condition<span class="w"> </span><span class="nv">1</span><span class="o">=</span><span class="m">0</span>.2
+</code></pre></div>
+<p><code>status.html</code> includes:</p>
+<ul>
+<li>the original retropaths pot graph</li>
+<li>the completed-results NEB pot graph</li>
+<li>graph-delta counts</li>
+<li>queue status tables</li>
+<li>clickable per-edge NEB viewers</li>
+<li>a concentration-vs-time kinetics widget over the completed directed NEB graph</li>
+</ul>
+<p>Kinetics defaults:
+- all nodes start at <code>0.0 M</code>
+- node <code>0</code> starts at <code>1.0 M</code></p>
+<p>Kinetics note:
+- the status-page kinetics widget now solves the linear rate equations over the directed completed NEB graph
+- <code>End Time</code> is the simulation horizon
+- <code>Time Points</code> is the numerical resolution used by the ODE integrator
+- the time axis is currently best interpreted as relative/arbitrary time, not a validated physical seconds scale</p>
 <hr />
 <h3 id="run-netgen">run-netgen<a class="headerlink" href="#run-netgen" title="Permanent link">🔗</a></h3>
 <p>Run network generation for multiple conformer pairs.</p>
@@ -1251,6 +1797,7 @@ mepd<span class="w"> </span>ts<span class="w"> </span>ts_guess.xyz<span class="w
 <h3 id="mlpgi-toml-example">MLPGI TOML Example<a class="headerlink" href="#mlpgi-toml-example" title="Permanent link">🔗</a></h3>
 <div class="highlight"><pre><span></span><code><span class="n">engine_name</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;chemcloud&quot;</span>
 <span class="n">program</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;crest&quot;</span>
+<span class="n">write_qcio</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
 <span class="n">path_min_method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;mlpgi&quot;</span>
 
 <span class="k">[path_min_inputs]</span>
@@ -1261,6 +1808,7 @@ mepd<span class="w"> </span>ts<span class="w"> </span>ts_guess.xyz<span class="w
 <span class="n">model_repo</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">&quot;facebook/OMol25&quot;</span>
 <span class="n">auto_download_model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
 </code></pre></div>
+<p><code>write_qcio</code> is a top-level optional flag and defaults to <code>false</code>. When enabled, saved CLI outputs also include cached <code>qcio.ProgramOutput</code> sidecars (<code>*.qcio</code>), which can take substantial disk space.</p>
 <p>If auto-download is enabled and the model repo is gated, authenticate first:</p>
 <div class="highlight"><pre><span></span><code>huggingface-cli<span class="w"> </span>login
 </code></pre></div>

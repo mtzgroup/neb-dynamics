@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.3">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
     
     
       
@@ -434,6 +434,67 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#qmmmengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QMMMEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="QMMMEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#main-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Main capabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queue-and-streaming-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Queue and streaming behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes-for-neb-users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes for NEB users
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#aseengine" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -775,6 +836,67 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#qmmmengine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QMMMEngine
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="QMMMEngine">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#main-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Main capabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#queue-and-streaming-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Queue and streaming behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#notes-for-neb-users" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes for NEB users
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#aseengine" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -912,6 +1034,11 @@
 <td>Production calculations with ChemCloud, XTB, ORCA, etc.</td>
 </tr>
 <tr>
+<td><code>QMMMEngine</code></td>
+<td>TeraChem QM/MM engine with <code>tc.in</code> + AMBER inputs</td>
+<td>Protein/solvent QM/MM NEB and TS workflows</td>
+</tr>
+<tr>
 <td><code>ASEEngine</code></td>
 <td>Interfaces with ASE calculators</td>
 <td>ML potentials, custom methods</td>
@@ -963,6 +1090,9 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;f
     <span class="n">keywords</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;threads&quot;</span><span class="p">:</span> <span class="mi">4</span><span class="p">}</span>
 <span class="p">)</span>
 <span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">program_args</span><span class="o">=</span><span class="n">args</span><span class="p">,</span> <span class="n">program</span><span class="o">=</span><span class="s2">&quot;xtb&quot;</span><span class="p">)</span>
+
+<span class="c1"># Optional: also write cached ProgramOutput objects when saving results</span>
+<span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">write_qcio</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="features">Features<a class="headerlink" href="#features" title="Permanent link">🔗</a></h3>
 <ul>
@@ -970,7 +1100,10 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;f
 <li><strong>Energy Calculation</strong>: <code>eng.compute_energies(chain)</code></li>
 <li><strong>Gradient Calculation</strong>: <code>eng.compute_gradients(chain)</code></li>
 <li><strong>Supports external programs</strong>: XTB, ORCA, TeraChem, Psi4, etc.</li>
+<li><strong>Optional <code>.qcio</code> output writing</strong>: set <code>write_qcio=True</code> to emit cached <code>qcio.ProgramOutput</code> objects when chain/history results are written to disk</li>
 </ul>
+<p>When <code>write_qcio=True</code>, <code>QCOPEngine</code> emits a warning because writing every cached <code>ProgramOutput</code>
+can consume substantial disk space, especially for ChemCloud runs and saved optimization histories.</p>
 <h3 id="supported-programs">Supported Programs<a class="headerlink" href="#supported-programs" title="Permanent link">🔗</a></h3>
 <div class="highlight"><pre><span></span><code><span class="c1"># ChemCloud (recommended)</span>
 <span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">compute_program</span><span class="o">=</span><span class="s2">&quot;chemcloud&quot;</span><span class="p">)</span>
@@ -984,6 +1117,37 @@ python<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;f
 <span class="c1"># TeraChem</span>
 <span class="n">eng</span> <span class="o">=</span> <span class="n">QCOPEngine</span><span class="p">(</span><span class="n">program</span><span class="o">=</span><span class="s2">&quot;terachem&quot;</span><span class="p">)</span>
 </code></pre></div>
+<h2 id="qmmmengine">QMMMEngine<a class="headerlink" href="#qmmmengine" title="Permanent link">🔗</a></h2>
+<p><code>QMMMEngine</code> runs TeraChem QM/MM jobs from AMBER files and a TeraChem input template.</p>
+<h3 id="required-files">Required files<a class="headerlink" href="#required-files" title="Permanent link">🔗</a></h3>
+<ul>
+<li><code>qmindices.dat</code></li>
+<li><code>ref.prmtop</code></li>
+<li><code>ref.rst7</code> (reactant/reference coordinates)</li>
+<li><code>tc.in</code> (optional if <code>tcin_text</code> is provided in TOML)</li>
+</ul>
+<h3 id="main-capabilities">Main capabilities<a class="headerlink" href="#main-capabilities" title="Permanent link">🔗</a></h3>
+<ul>
+<li><code>compute_gradients(chain)</code> and <code>compute_energies(chain)</code></li>
+<li><code>compute_geometry_optimization(node)</code>:</li>
+<li>uses <code>run minimize</code></li>
+<li>preserves all method/basis/QM/MM settings from your TOML <code>tc.in</code></li>
+<li><code>compute_transition_state(node)</code>:</li>
+<li>geomeTRIC TS optimization over QMMM energies/gradients</li>
+</ul>
+<h3 id="queue-and-streaming-behavior">Queue and streaming behavior<a class="headerlink" href="#queue-and-streaming-behavior" title="Permanent link">🔗</a></h3>
+<ul>
+<li>ChemCloud queue precedence:</li>
+<li><code>chemcloud_queue</code> in TOML</li>
+<li>environment variable (<code>MEPD_CHEMCLOUD_QUEUE</code>, <code>CHEMCLOUD_QUEUE</code>, <code>CCQUEUE</code>)</li>
+<li>default <code>"celery"</code></li>
+<li><code>print_stdout = true</code> forwards QCOP stdout streaming during QM/MM calls.</li>
+</ul>
+<h3 id="notes-for-neb-users">Notes for NEB users<a class="headerlink" href="#notes-for-neb-users" title="Permanent link">🔗</a></h3>
+<ul>
+<li>If endpoint minimizations and NEB use different frozen-atom protocols, interior beads can drop below endpoint energies and produce an endpoint TS guess.</li>
+<li>NEB now emits a warning when this profile is detected so you can align frozen-atom settings.</li>
+</ul>
 <h2 id="aseengine">ASEEngine<a class="headerlink" href="#aseengine" title="Permanent link">🔗</a></h2>
 <p>The ASEEngine interfaces with ASE (Atomic Simulation Environment) calculators, enabling use of machine learning potentials and other methods.</p>
 <h3 id="basic-usage_1">Basic Usage<a class="headerlink" href="#basic-usage_1" title="Permanent link">🔗</a></h3>
