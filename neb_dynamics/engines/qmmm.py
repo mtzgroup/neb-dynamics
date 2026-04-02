@@ -61,6 +61,7 @@ class QMMMEngine(Engine):
     rst7_fp_prod: Path = None
     rst7_fp_react: Path = None
     compute_program: str = "qcop"
+    geometry_optimizer: str = "native"
     chemcloud_queue: str | None = None
     print_stdout: bool = False
     debug_dump_inputs: bool = False

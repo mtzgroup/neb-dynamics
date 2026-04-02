@@ -580,7 +580,7 @@ def _run_geom_opt(node: Node, engine: Engine):
     """
     # try:
     kwds = {}
-    if engine.geometry_optimizer == "geometric":
+    if getattr(engine, "geometry_optimizer", None) == "geometric":
         kwds = {'coord_sys': "cart", 'maxiter': 1000}
     opt_traj = engine.compute_geometry_optimization(node, keywords=kwds)
     # except AttributeError:
