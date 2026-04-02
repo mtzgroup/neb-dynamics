@@ -30,6 +30,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import re
 import tempfile
+from time import sleep
 
 
 def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
@@ -64,6 +65,9 @@ class QMMMEngine(Engine):
     print_stdout: bool = False
     debug_dump_inputs: bool = False
     debug_dump_dir: Path | None = None
+    frozen_atom_indices: list[int] | None = None
+    chemcloud_retry_attempts: int = 3
+    chemcloud_retry_delay_seconds: float = 2.0
 
     def __post_init__(self):
         self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
@@ -81,8 +85,20 @@ class QMMMEngine(Engine):
         _, indices_coordinates = rst7_to_coords_and_indices(
             self.ref_rst7_react)
         self.indices_coordinates = indices_coordinates
+        if isinstance(self.frozen_atom_indices, tuple):
+            self.frozen_atom_indices = list(self.frozen_atom_indices)
+        if isinstance(self.frozen_atom_indices, list):
+            self.frozen_atom_indices = sorted(
+                {
+                    int(ind)
+                    for ind in self.frozen_atom_indices
+                    if int(ind) >= 0
+                }
+            )
+        else:
+            self.frozen_atom_indices = None
 
-    def _dump_debug_inputs(self, rst7_strings: list[str]) -> None:
+    def _dump_debug_inputs(self, rst7_strings: list[str], tcin_text: str | None = None) -> None:
         if not self.debug_dump_inputs or len(rst7_strings) == 0:
             return
 
@@ -116,7 +132,7 @@ class QMMMEngine(Engine):
         for idx in selected_indices:
             label = labels[idx]
             prefix = call_dir / f"node_{idx:03d}_{label}"
-            (prefix.with_suffix(".tc.in")).write_text(self.inp_file)
+            (prefix.with_suffix(".tc.in")).write_text(self.inp_file if tcin_text is None else tcin_text)
             (prefix.with_suffix(".rst7")).write_text(rst7_strings[idx])
 
     def _next_debug_dump_counter(self) -> None:
@@ -204,11 +220,57 @@ class QMMMEngine(Engine):
 
         return []
 
+    @staticmethod
+    def _is_retryable_chemcloud_exception(exc: Exception) -> bool:
+        msg = str(exc).lower()
+        retryable_markers = (
+            "500 internal server error",
+            "error collecting task",
+            "validation errors for programoutput",
+            "extra inputs are not permitted",
+            "field required",
+        )
+        return any(marker in msg for marker in retryable_markers)
+
+    @staticmethod
+    def _is_retryable_chemcloud_output(output) -> bool:
+        if output is None or getattr(output, "success", True):
+            return False
+        payload = "\n".join(
+            str(getattr(output, attr, "") or "")
+            for attr in ("logs", "stdout", "traceback")
+        ).lower()
+        return "500 internal server error" in payload or "error collecting task" in payload
+
+    @staticmethod
+    def _normalize_single_output(output):
+        if isinstance(output, list):
+            if len(output) != 1:
+                raise ElectronicStructureError(
+                    msg=f"QMMM minimize expected one output, got {len(output)}.",
+                    obj=output,
+                )
+            return output[0]
+        return output
+
+    def _with_frozen_atom_constraints(self, tcin_text: str) -> str:
+        if not self.frozen_atom_indices:
+            return tcin_text
+        if re.search(r"(?im)^\s*\$constraints\b", tcin_text):
+            return tcin_text
+
+        # TeraChem constraint atoms are 1-indexed.
+        constraint_lines = ["$constraints"]
+        constraint_lines.extend(f"atom {atom_index + 1}" for atom_index in self.frozen_atom_indices)
+        constraint_lines.append("$end")
+        return tcin_text.rstrip() + "\n\n" + "\n".join(constraint_lines) + "\n"
+
     def _compute_minimize_output(self, rst7_string: str, keywords: dict | None = None):
         tcin_text = self._with_run_type(self.inp_file, "minimize")
         tcin_text = self._apply_tcin_overrides(tcin_text, keywords or {})
+        tcin_text = self._with_frozen_atom_constraints(tcin_text)
         inp = self._construct_input(rst7_string, tcin_text=tcin_text)
-        self._dump_debug_inputs([rst7_string])
+        self._dump_debug_inputs([rst7_string], tcin_text=tcin_text)
         try:
             if self.compute_program.lower() != "chemcloud":
                 return compute(
@@ -217,20 +279,43 @@ class QMMMEngine(Engine):
                     print_stdout=self.print_stdout,
                     collect_files=True,
                 )
-            out = ccompute(
-                "terachem",
-                inp,
-                queue=self.chemcloud_queue,
-                collect_files=True,
-            )
-            if hasattr(out, "get"):
-                out = out.get()
-            return out
-        except Exception as exc:
-            raise ElectronicStructureError(
-                msg=f"QMMM minimize submission failed ({self.compute_program}): {exc}",
-                obj=None,
-            ) from exc
+
+            attempts = max(1, int(self.chemcloud_retry_attempts))
+            for attempt in range(1, attempts + 1):
+                try:
+                    out = ccompute(
+                        "terachem",
+                        inp,
+                        queue=self.chemcloud_queue,
+                        collect_files=True,
+                    )
+                    if hasattr(out, "get"):
+                        out = out.get()
+                    out = self._normalize_single_output(out)
+
+                    if self._is_retryable_chemcloud_output(out) and attempt < attempts:
+                        sleep(self.chemcloud_retry_delay_seconds * attempt)
+                        continue
+
+                    if getattr(out, "success", True) is False:
+                        raise ElectronicStructureError(
+                            msg=(
+                                "QMMM minimize failed on ChemCloud. "
+                                "See output logs/traceback on attached object."
+                            ),
+                            obj=out,
+                        )
+                    return out
+                except ElectronicStructureError:
+                    raise
+                except Exception as exc:
+                    if self._is_retryable_chemcloud_exception(exc) and attempt < attempts:
+                        sleep(self.chemcloud_retry_delay_seconds * attempt)
+                        continue
+                    raise ElectronicStructureError(
+                        msg=f"QMMM minimize submission failed ({self.compute_program}): {exc}",
+                        obj=None,
+                    ) from exc
         finally:
             self._next_debug_dump_counter()
 

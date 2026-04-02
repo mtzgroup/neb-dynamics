@@ -35,6 +35,7 @@ _QMMM_ENGINE_KEYS = {
     "print_stdout",
     "debug_dump_inputs",
     "debug_dump_dir",
+    "frozen_atom_indices",
 }
 
 
@@ -400,6 +401,9 @@ class RunInputs:
             }
             qmmm_kwargs.setdefault("compute_program", "chemcloud")
             qmmm_kwargs.setdefault("chemcloud_queue", self.chemcloud_queue)
+            frozen_atom_indices = getattr(self.chain_inputs, "frozen_atom_indices", None)
+            if isinstance(frozen_atom_indices, list) and frozen_atom_indices:
+                qmmm_kwargs.setdefault("frozen_atom_indices", list(frozen_atom_indices))
             if not qmmm_kwargs.get("tcin_fp") and not qmmm_kwargs.get("tcin_text"):
                 qmmm_kwargs["tcin_text"] = _build_qmmm_tcin(
                     program_kwds=self.program_kwds, qmmm_inputs=self.qmmm_inputs
