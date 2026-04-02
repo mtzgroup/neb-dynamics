@@ -131,18 +131,9 @@ class ASEEngine(Engine):
 
         # compute bias if relevant
         if self.biaser:
-            for i, node in enumerate(node_list):
-                ene_bias = 0
-                grad_bias = np.zeros_like(node.gradient)
-                for ref_chain in self.biaser.reference_chains:
-                    g_bias = self.biaser.gradient_node_bias(node=node)
-                    dist = self.biaser.compute_min_dist_to_ref(
-                        node=node,
-                        dist_func=self.biaser.compute_euclidean_distance,
-                        reference=ref_chain
-                    )
-                    ene_bias += self.biaser.energy_gaussian_bias(distance=dist)
-                    grad_bias += g_bias
+            for node in node_list:
+                ene_bias = self.biaser.energy_node_bias(node=node)
+                grad_bias = self.biaser.gradient_node_bias(node=node)
                 node._cached_energy += ene_bias
                 node._cached_gradient += grad_bias
 

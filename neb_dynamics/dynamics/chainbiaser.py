@@ -15,6 +15,7 @@ class ChainBiaser:
 
     amplitude: float = 1.0
     sigma: float = 1.0
+    gradient_scale: float = 1.0
 
     distance_func: str = "simp_frechet"
 
@@ -116,8 +117,40 @@ class ChainBiaser:
     def energy_gaussian_bias(self, distance):
         return self.amplitude * np.exp(-(distance**2) / (2 * self.sigma**2))
 
-    def compute_min_dist_to_ref(self, dist_func, node: Node, reference: List[Node]):
-        return min([dist_func(node, ref) for ref in reference])
+    def _reference_collections(
+        self, reference_chains: List[List[Node]] | None = None
+    ) -> List[List[Node]]:
+        if reference_chains is None:
+            return self.reference_chains
+        return reference_chains
+
+    def compute_min_dist_to_ref(
+        self,
+        dist_func,
+        node: Node,
+        reference: List[Node] | None = None,
+        reference_chains: List[List[Node]] | None = None,
+    ):
+        if reference is not None:
+            references = [reference]
+        else:
+            references = self._reference_collections(reference_chains=reference_chains)
+        return min(min(dist_func(node, ref) for ref in ref_nodes) for ref_nodes in references)
+
+    def energy_node_bias(
+        self, node: Node, reference_chains: List[List[Node]] | None = None
+    ) -> float:
+        references = self._reference_collections(reference_chains=reference_chains)
+        energy = 0.0
+        dist_func = (
+            self.compute_rmsd if isinstance(node, StructureNode) else self.compute_euclidean_distance
+        )
+        for reference in references:
+            dist = self.compute_min_dist_to_ref(
+                dist_func=dist_func, node=node, reference=reference
+            )
+            energy += self.energy_gaussian_bias(distance=dist)
+        return energy
 
     def energy_chain_bias(self, chain):
         dist_to_chain = self.distance_node_wise(chain)
@@ -128,8 +161,7 @@ class ChainBiaser:
         computes the gradient acting on `node` from `reference` nodes.
         """
         n_atoms = len(node.coords)
-        if reference_chains is None:
-            reference_chains = self.reference_chains
+        reference_chains = self._reference_collections(reference_chains=reference_chains)
 
         if isinstance(node, StructureNode):
             shape = (n_atoms, 3)
@@ -243,18 +275,7 @@ class ChainBiaser:
 
     def gradient_chain_bias(self, chain):
         grad_bias = grad_chain_bias_function(chain, self.gradient_node_in_chain_bias)
-        if isinstance(chain[0], StructureNode):
-            mass_weights = ch._get_mass_weights(chain)
-            mass_weights = mass_weights.reshape(-1, 1)
-        else:
-            mass_weights = 1.0 * len(chain)
-
-        energy_weights = chain.energies_kcalmol[1:-1]
-        grad_bias = grad_bias * mass_weights
-        out_arr = [grad * weight for grad, weight in zip(grad_bias, energy_weights)]
-        grad_bias = np.array(out_arr)
-
-        return grad_bias
+        return self.gradient_scale * np.array(grad_bias)
 
 
 def grad_chain_bias_function(chain, grad_node_bias_fn):

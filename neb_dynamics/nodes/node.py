@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Union
 
 import numpy as np
@@ -13,6 +14,22 @@ from neb_dynamics.errors import (EnergiesNotComputedError,
 from neb_dynamics.fakeoutputs import FakeQCIOOutput, FakeQCIOResults
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.qcio_structure_helpers import structure_to_molecule
+
+
+def _json_safe(value):
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 @dataclass
@@ -111,16 +128,18 @@ class StructureNode(Node):
     graph: Molecule = None
 
     def __post_init__(self):
-        self.graph = structure_to_molecule(self.structure)
+        if self.graph is None:
+            self.graph = structure_to_molecule(self.structure)
         if self._cached_result is not None:
             self._cached_energy = self._cached_result.results.energy
             self._cached_gradient = self._cached_result.results.gradient
 
     @classmethod
     def from_serializable(cls, data):
-        data['graph'] = Molecule.from_serializable(data['graph'])
+        if data.get('graph') is not None:
+            data['graph'] = Molecule.from_serializable(data['graph'])
         data['structure'] = Structure(**data['structure'])
-        if '_cached_result' in data:
+        if '_cached_result' in data and data['_cached_result'] is not None:
             if len(data['_cached_result'].keys()) > 2:
                 data['_cached_result'] = ProgramOutput(
                     **data['_cached_result'])
@@ -136,8 +155,11 @@ class StructureNode(Node):
     def to_serializable(self):
         data = self.__dict__.copy()
         data['structure'] = data['structure'].model_dump()
-        data["_cached_result"] = data["_cached_result"].model_dump()
-        if hasattr(self, 'graph'):
+        data["_cached_energy"] = _json_safe(data.get("_cached_energy"))
+        data["_cached_gradient"] = _json_safe(data.get("_cached_gradient"))
+        if data["_cached_result"] is not None:
+            data["_cached_result"] = _json_safe(data["_cached_result"].model_dump())
+        if hasattr(self, 'graph') and data['graph'] is not None:
             data['graph'] = data['graph'].to_serializable()
         return data
 

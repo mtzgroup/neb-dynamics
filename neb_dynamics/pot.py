@@ -44,6 +44,22 @@ class PotStatus(Enum):
     OTHER = auto()
 
 
+def _json_safe(value):
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
+
+
 class PotMoleculeSummary(BaseModel):
     """
     NtimesLeaf -> number of times this molecule is seen in the graph in a LEAF node
@@ -169,10 +185,11 @@ class Pot(BaseModel):
         if isinstance(fp, str):
             fp = Path(fp)
 
-        dump = self.model_dump()
-        with open(fp, 'w+') as f:
+        dump = _json_safe(self.model_dump())
+        tmp_fp = fp.with_suffix(fp.suffix + ".tmp")
+        with open(tmp_fp, 'w+') as f:
             json.dump(dump, f)
-        f.close()
+        tmp_fp.replace(fp)
 
     @classmethod
     def read_from_disk(cls, fp: Path):
@@ -190,20 +207,37 @@ class Pot(BaseModel):
         data['root'] = data['root'].to_serializable()
         data['target'] = data['target'].to_serializable()
         for node_data in data['graph']['nodes']:
-            if 'molecule' in node_data:
+            if 'molecule' in node_data and node_data['molecule'] is not None:
                 node_data['molecule'] = node_data['molecule'].to_serializable()
+            if 'environment' in node_data and node_data['environment'] is not None:
+                node_data['environment'] = node_data['environment'].to_serializable()
             if "conformers" in node_data:
                 for conformer in node_data["conformers"]:
-                    conformer['graph'] = conformer['graph'].to_serializable()
+                    if conformer.get('graph') is not None:
+                        conformer['graph'] = conformer['graph'].to_serializable()
             if "td" in node_data:
-                node_data['td']['graph'] = node_data['td']['graph'].to_serializable()
+                if node_data['td'].get('graph') is not None:
+                    node_data['td']['graph'] = node_data['td']['graph'].to_serializable()
 
         link_data = data['graph']["links"]
         for i, _ in enumerate(link_data):
-            for j, _ in enumerate(link_data[i]['list_of_nebs']):
-                neb = self.graph.edges[(link_data[i]['target'],
-                                        link_data[i]['source'])]['list_of_nebs'][j]
-                link_data[i]['list_of_nebs'][j] = neb.model_dump()
+            list_of_nebs = link_data[i].get('list_of_nebs', [])
+            link_data[i]['list_of_nebs'] = list_of_nebs
+            edge_key = (link_data[i]['source'], link_data[i]['target'])
+            reverse_edge_key = (link_data[i]['target'], link_data[i]['source'])
+            edge_attrs = {}
+            if self.graph.has_edge(*edge_key):
+                edge_attrs = self.graph.edges[edge_key]
+            elif self.graph.has_edge(*reverse_edge_key):
+                edge_attrs = self.graph.edges[reverse_edge_key]
+            for j, _ in enumerate(list_of_nebs):
+                nebs = edge_attrs.get('list_of_nebs', [])
+                if j < len(nebs):
+                    neb = nebs[j]
+                    if hasattr(neb, "model_dump"):
+                        link_data[i]['list_of_nebs'][j] = neb.model_dump()
+                    else:
+                        link_data[i]['list_of_nebs'][j] = _json_safe(neb)
 
         return data
 
@@ -225,6 +259,9 @@ class Pot(BaseModel):
             if 'molecule' in node_data:
                 node_data['molecule'] = Molecule.from_serializable(
                     node_data['molecule'])
+            if 'environment' in node_data:
+                node_data['environment'] = Molecule.from_serializable(
+                    node_data['environment'])
 
             if "conformers" in node_data:
                 for i, conformer in enumerate(node_data["conformers"]):

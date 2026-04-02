@@ -96,6 +96,38 @@ mepd ts ts_guess.xyz --inputs inputs.toml
 mepd make-default-inputs --name inputs.toml
 ```
 
+## Render Deploy
+
+This repository includes a Render Blueprint in `render.yaml` and a startup wrapper in `scripts/start_render_drive.sh` for deploying `mepd drive` as a Render Web Service.
+
+Default behavior:
+
+- binds Drive to `0.0.0.0:$PORT`
+- loads a bundled demo workspace from `examples/claisen`
+- rewrites that workspace into `/tmp/mepd-drive` before startup
+- uses `examples/example_inputs.toml` for follow-on actions inside the deployed app
+- can hydrate `~/.chemcloud/credentials` from a Render secret at startup
+- clones `retropaths` into `/opt/render/project/retropaths` during the Render build and points `RETROPATHS_REPO` there
+
+To deploy on Render:
+
+1. Push this repository to GitHub.
+2. In Render, create a new Blueprint and point it at this repo.
+3. Set either `CHEMCLOUD_CREDENTIALS_B64` or `CHEMCLOUD_CREDENTIALS_TOML` in the Render dashboard.
+4. Deploy the Blueprint.
+
+To reuse an existing local ChemCloud login without storing your password in Render, base64-encode your local credentials file and paste the result into `CHEMCLOUD_CREDENTIALS_B64`:
+
+```bash
+base64 < ~/.chemcloud/credentials
+```
+
+That env var is written back to `~/.chemcloud/credentials` inside the Render instance before `mepd drive` starts.
+
+The default public URL will be `https://<service-name>.onrender.com`.
+
+Note: the included Blueprint uses the free plan, which has an ephemeral filesystem. The Drive workspace under `/tmp/mepd-drive` will not survive service restarts or redeploys.
+
 ## Maintainers
 
 For questions, contact:

@@ -298,6 +298,8 @@ class NetworkInputs:
     CREST_temp: float = 298.15  # Kelvin
     CREST_ewin: float = 6.0  # kcal/mol
     # crest inputs for conformer generation. Incomplete list.
+    collapse_node_rms_thre: float = 5.0  # Bohr
+    collapse_node_ene_thre: float = 5.0  # kcal/mol
 
 
 @dataclass
@@ -307,17 +309,20 @@ class RunInputs:
     chemcloud_queue: str = None
     write_qcio: bool = False
     qmmm_inputs: dict = None
+    nanoreactor_inputs: dict = None
 
     path_min_method: str = 'NEB'
     path_min_inputs: dict = None
 
     chain_inputs: dict = None
     gi_inputs: dict = None
+    network_inputs: dict = None
 
     program_kwds: ProgramArgs = None
     optimizer_kwds: dict = None
 
     def __post_init__(self):
+        default_kwds = {}
 
         if self.path_min_method.upper() == "NEB":
             default_kwds = NEBInputs().__dict__
@@ -361,6 +366,11 @@ class RunInputs:
         else:
             self.gi_inputs = GIInputs(**self.gi_inputs)
 
+        if self.network_inputs is None:
+            self.network_inputs = NetworkInputs()
+        else:
+            self.network_inputs = NetworkInputs(**self.network_inputs)
+
         if self.program_kwds is None:
             if self.program == "xtb":
                 if shutil.which("crest") is not None:
@@ -396,6 +406,11 @@ class RunInputs:
         for key, val in self.qmmm_inputs.items():
             if key in _QMMM_PATH_KEYS and val is not None:
                 self.qmmm_inputs[key] = Path(val)
+
+        if self.nanoreactor_inputs is None:
+            self.nanoreactor_inputs = {}
+        else:
+            self.nanoreactor_inputs = dict(self.nanoreactor_inputs)
 
         if self.chain_inputs is None:
             self.chain_inputs = ChainInputs()
@@ -504,6 +519,22 @@ class RunInputs:
         return obj
 
     def save(self, fp):
+        def _toml_safe(value):
+            if value is None:
+                return None
+            if isinstance(value, Path):
+                return str(value)
+            if isinstance(value, dict):
+                cleaned = {}
+                for sub_key, sub_val in value.items():
+                    normalized = _toml_safe(sub_val)
+                    if normalized is not None:
+                        cleaned[sub_key] = normalized
+                return cleaned
+            if isinstance(value, (list, tuple)):
+                return [_toml_safe(item) for item in value]
+            return value
+
         json_dict = self.__dict__.copy()
         del json_dict['engine']
         del json_dict['optimizer']

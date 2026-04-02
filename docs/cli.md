@@ -186,6 +186,30 @@ mepd make-default-inputs --name inputs.toml
 
 ---
 
+### toml-from-tcin
+
+Create a QMMM `RunInputs` TOML from a TeraChem input file (including frozen atoms from `$constraints`).
+
+```bash
+mepd toml-from-tcin tc.in --output qmmm_inputs_s0min_frozen.toml
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `tcin` | Path to TeraChem input file (`.in` / `tc.in`) |
+| `--output`, `-o` | Output TOML path (default: `qmmm_inputs_from_tc.toml`) |
+| `--compute-program` | QMMM backend (`chemcloud` or `qcop`, default: `chemcloud`) |
+| `--queue` | Optional ChemCloud queue to write into TOML |
+
+Notes:
+- Parses `method`, `basis`, `charge`, `spinmult`, `run`, and `min_coordinates`.
+- Parses additional TeraChem keywords into `[program_kwds.keywords]`.
+- Parses `$constraints` lines of the form `atom N` into 0-based `chain_inputs.frozen_atom_indices`.
+
+---
+
 ### visualize
 
 Render an interactive browser-based viewer for saved NEB/MSMEP results.
@@ -219,6 +243,228 @@ mepd visualize mep_output_msmep --output msmep_view.html
 mepd visualize mep_output_neb.xyz --qminds-fp qmindices.dat
 mepd visualize mep_output_neb.xyz --atom-indices "12,13,14,15"
 ```
+
+---
+
+### netgen-smiles
+
+Grow a retropaths reaction network from a root SMILES string, convert each node into a structure-bearing NEB network, minimize endpoints, queue recursive MSMEP runs, and write a live status page.
+
+```bash
+mepd netgen-smiles \
+  --smiles "C=CC(O)CC=C" \
+  --environment "O" \
+  --reactions-fp /path/to/reactions.p \
+  --inputs examples/example_inputs.toml \
+  --name allylic_alcohol_water
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--smiles`, `-s` | Root reactant SMILES |
+| `--environment`, `-e` | Environment SMILES (optional) |
+| `--reactions-fp` | Path to the retropaths `reactions.p` library |
+| `--inputs`, `-i` | Path minimization `RunInputs` TOML |
+| `--name` | Workspace name / default output directory |
+| `--directory`, `-d` | Existing or new workspace directory |
+| `--timeout-seconds` | Retropaths growth timeout |
+| `--max-nodes` | Maximum retropaths pot size |
+| `--max-depth` | Maximum retropaths search depth |
+| `--max-parallel-nebs` | Number of recursive NEBs to run concurrently |
+| `--no-open` | Do not automatically open `status.html` |
+
+**Example:**
+
+```bash
+uv run mepd netgen-smiles \
+  --smiles "C=CC(O)CC=C" \
+  --environment "O" \
+  --reactions-fp /Users/janestrada/retropaths/data/reactions.p \
+  --inputs examples/example_inputs.toml \
+  --name allylic_alcohol_water \
+  --max-nodes 10 \
+  --max-parallel-nebs 4
+```
+
+**What it does:**
+
+1. grows the retropaths pot from the input SMILES
+   using the configured `reactions.p` library
+2. converts each pot node into a `StructureNode` while preserving molecular graph atom indices
+3. minimizes each endpoint structure once, caching the optimization result in the workspace
+4. builds a persistent NEB queue
+5. runs recursive MSMEP on queued pairs
+6. reconstructs a completed-results NEB pot from the finished leaf chains
+
+**Workspace outputs:**
+
+- `workspace.json`
+- `retropaths_pot.json`
+- `neb_pot.json`
+- `neb_queue.json`
+- `neb_pot_annotated.json`
+- `queue_runs/`
+- `endpoint_optimizations/`
+- `status.html`
+
+Notes:
+- completed NEB chains are treated as bidirectional when reconstructing the completed network
+- each autosplit leaf is labeled as `ReactionName(step N)` in the completed NEB graph
+- reverse edges inherit the same step label and use the reversed chain with the reverse barrier
+
+---
+
+### drive
+
+Launch the interactive MEPD Drive web UI. `drive` can start in three modes:
+
+1. blank interactive mode, where you initialize from the browser
+2. SMILES-bootstrap mode, where the workspace is created from the command line before the browser opens
+3. resume mode, where an existing workspace is loaded immediately so you can inspect an in-progress or completed run
+
+**Examples:**
+
+```bash
+# Blank drive session; initialize from the browser UI
+uv run mepd drive --inputs examples/example_inputs.toml
+
+# Start drive from SMILES on the command line
+uv run mepd drive \
+  --smiles "C=CC(O)CC=C" \
+  --environment "O" \
+  --inputs examples/example_inputs.toml \
+  --name allylic_alcohol_drive
+
+# Re-open an existing workspace mid-run
+uv run mepd drive --workspace ./allylic_alcohol_drive
+
+# `--directory` also resumes automatically when it already contains workspace.json
+uv run mepd drive --directory ./allylic_alcohol_drive
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--inputs`, `-i` | Path minimization `RunInputs` TOML. Required for `--smiles`; optional when resuming an existing workspace |
+| `--smiles`, `-s` | Root reactant SMILES to bootstrap a new drive workspace before opening the UI |
+| `--environment`, `-e` | Optional environment SMILES for SMILES-based drive initialization |
+| `--name` | Run name / workspace name for SMILES-based drive initialization |
+| `--workspace` | Existing workspace directory or `workspace.json` to load on startup |
+| `--reactions-fp` | Path to the retropaths `reactions.p` library |
+| `--directory`, `-d` | Base directory for new drive workspaces, or an existing workspace directory to resume |
+| `--host` | Host interface for the local drive server |
+| `--port` | Port for the local drive server (`0` selects a free port) |
+| `--ssh-login` | SSH target used to print a ready-made tunnel command |
+| `--local-port` | Local laptop-side port for the printed SSH tunnel command |
+| `--timeout-seconds` | Retropaths growth timeout |
+| `--max-nodes` | Maximum retropaths pot size |
+| `--max-depth` | Maximum retropaths search depth |
+| `--max-parallel-nebs` | Number of autosplitting NEBs to run concurrently |
+| `--no-open` | Do not automatically open the browser |
+
+**Drive behavior notes:**
+
+- If you launch `drive` with no workspace flags, you can still initialize entirely from the browser.
+- The browser-side initializer now also accepts an inputs TOML path, reactions file, and environment SMILES.
+- When an autosplitting NEB finishes, drive now shows a barrier and viewer link even when the completed result is attached to the reverse edge or when the original attempted pair was split into intermediate edges.
+- Completed queue-pair viewers are cached after first materialization so state polling stays responsive after the first finished NEB.
+- When multiple node minimizations are submitted and the loaded inputs use a ChemCloud-backed engine, drive submits them as one ChemCloud batch instead of serial single-node jobs.
+
+**Running drive on a remote server over SSH:**
+
+Start the server on the remote machine and bind it to loopback:
+
+```bash
+uv run mepd drive \
+  --workspace ./allylic_alcohol_drive \
+  --host 127.0.0.1 \
+  --port 8123 \
+  --no-open
+```
+
+Then create an SSH tunnel from your laptop:
+
+```bash
+ssh -N -L 9000:127.0.0.1:8123 user@remote-host
+```
+
+Open the tunneled URL locally:
+
+```text
+http://127.0.0.1:9000/
+```
+
+You can also ask `drive` to print the tunnel command for you:
+
+```bash
+uv run mepd drive \
+  --workspace ./allylic_alcohol_drive \
+  --host 127.0.0.1 \
+  --port 8123 \
+  --ssh-login user@remote-host \
+  --local-port 9000 \
+  --no-open
+```
+
+Remote-use notes:
+
+- Keep `--host 127.0.0.1` unless you intentionally want the web server exposed on the remote network.
+- `--workspace` is the cleanest way to reconnect to a run that is already in progress.
+- If you are starting from SMILES on the remote host, use the same `drive --smiles ... --inputs ...` command there, then tunnel to the printed local URL.
+
+---
+
+### status
+
+Regenerate the live status page for a `netgen-smiles` workspace.
+
+```bash
+mepd status --directory ./allylic_alcohol_water
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--directory`, `-d` | Workspace directory containing `workspace.json` |
+| `--output`, `-o` | Optional output path for the generated HTML |
+| `--temperature` | Temperature in kelvin for the kinetics widget |
+| `--initial-condition` | Repeatable `NODE=VALUE` override for initial concentrations |
+| `--no-open` | Do not automatically open the browser |
+
+**Examples:**
+
+```bash
+uv run mepd status -d ./allylic_alcohol_water
+
+uv run mepd status \
+  -d ./allylic_alcohol_water \
+  --temperature 350 \
+  --initial-condition 0=0.8 \
+  --initial-condition 1=0.2
+```
+
+`status.html` includes:
+
+- the original retropaths pot graph
+- the completed-results NEB pot graph
+- graph-delta counts
+- queue status tables
+- clickable per-edge NEB viewers
+- a concentration-vs-time kinetics widget over the completed directed NEB graph
+
+Kinetics defaults:
+- all nodes start at `0.0 M`
+- node `0` starts at `1.0 M`
+
+Kinetics note:
+- the status-page kinetics widget now solves the linear rate equations over the directed completed NEB graph
+- `End Time` is the simulation horizon
+- `Time Points` is the numerical resolution used by the ODE integrator
+- the time axis is currently best interpreted as relative/arbitrary time, not a validated physical seconds scale
 
 ---
 

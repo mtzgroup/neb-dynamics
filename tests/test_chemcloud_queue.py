@@ -3,14 +3,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from neb_dynamics.chain import Chain
 from neb_dynamics.engines import qcop as qcop_module
 from neb_dynamics.engines.qcop import QCOPEngine
-from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import RunInputs
 from neb_dynamics.nodes.node import StructureNode
 from qcio import ProgramOutput
-from qcio.models.inputs import ProgramArgs
 from qcio import Structure
+from qcio.models.inputs import ProgramArgs
 from qcop.exceptions import ExternalProgramError
 
 
@@ -27,7 +27,11 @@ def test_qcop_engine_chemcloud_queue_precedence_toml_over_env(monkeypatch):
         return None
 
     monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
-    monkeypatch.setattr(qcop_module, "cc_configure_client", lambda **kwargs: captured.setdefault("configured", kwargs))
+    monkeypatch.setattr(
+        qcop_module,
+        "cc_configure_client",
+        lambda **kwargs: captured.setdefault("configured", kwargs),
+    )
     eng = QCOPEngine(
         compute_program="chemcloud",
         chemcloud_queue="toml-queue",
@@ -46,7 +50,11 @@ def test_qcop_engine_chemcloud_queue_from_env(monkeypatch):
         return None
 
     monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
-    monkeypatch.setattr(qcop_module, "cc_configure_client", lambda **kwargs: captured.setdefault("configured", kwargs))
+    monkeypatch.setattr(
+        qcop_module,
+        "cc_configure_client",
+        lambda **kwargs: captured.setdefault("configured", kwargs),
+    )
     eng = QCOPEngine(compute_program="chemcloud")
     eng.compute_func("xtb", object())
     assert captured["queue"] == "env-queue"
@@ -64,14 +72,20 @@ def test_qcop_engine_chemcloud_queue_defaults_to_celery(monkeypatch):
         return None
 
     monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
-    monkeypatch.setattr(qcop_module, "cc_configure_client", lambda **kwargs: captured.setdefault("configured", kwargs))
+    monkeypatch.setattr(
+        qcop_module,
+        "cc_configure_client",
+        lambda **kwargs: captured.setdefault("configured", kwargs),
+    )
     eng = QCOPEngine(compute_program="chemcloud")
     eng.compute_func("xtb", object())
     assert captured["queue"] == "celery"
     assert _configured_queue(captured["configured"]) == "celery"
 
 
-def test_qcop_engine_chemcloud_schema_mismatch_raises_external_program_error(monkeypatch):
+def test_qcop_engine_chemcloud_schema_mismatch_raises_external_program_error(
+    monkeypatch,
+):
     def _sample_validation_error():
         try:
             ProgramOutput(input_data=None, success=False, results={})
@@ -106,7 +120,11 @@ def test_qcop_engine_chemcloud_retries_transient_502(monkeypatch):
         return "ok"
 
     monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
-    monkeypatch.setattr(qcop_module.time, "sleep", lambda _: calls.__setitem__("slept", calls["slept"] + 1))
+    monkeypatch.setattr(
+        qcop_module.time,
+        "sleep",
+        lambda _: calls.__setitem__("slept", calls["slept"] + 1),
+    )
     eng = QCOPEngine(compute_program="chemcloud")
 
     out = eng._chemcloud_compute_with_retries("xtb", object())
@@ -149,7 +167,11 @@ def test_qcop_engine_chemcloud_retries_connect_error_message(monkeypatch):
         return "ok"
 
     monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
-    monkeypatch.setattr(qcop_module.time, "sleep", lambda _: calls.__setitem__("slept", calls["slept"] + 1))
+    monkeypatch.setattr(
+        qcop_module.time,
+        "sleep",
+        lambda _: calls.__setitem__("slept", calls["slept"] + 1),
+    )
     eng = QCOPEngine(compute_program="chemcloud")
 
     out = eng._chemcloud_compute_with_retries("xtb", object())
@@ -171,6 +193,165 @@ def test_runinputs_toml_chemcloud_queue_propagates(tmp_path: Path):
     )
     run_inputs = RunInputs.open(inputs_fp)
     assert run_inputs.engine.chemcloud_queue == "toml-queue"
+
+
+def test_qcop_engine_chemcloud_batches_geometry_optimizations(monkeypatch):
+    captured = {"calls": 0, "input_len": None}
+
+    class _Result:
+        def __init__(self, structure):
+            self.input_data = type("In", (), {"structure": structure})()
+            self.results = type(
+                "ResData",
+                (),
+                {
+                    "energy": 0.0,
+                    "gradient": [[0.0, 0.0, 0.0] for _ in structure.symbols],
+                },
+            )()
+
+    class _Output:
+        def __init__(self, structure):
+            self.results = type("Res", (), {"trajectory": [_Result(structure)]})()
+
+    def _fake_cc_compute(*args, **kwargs):
+        captured["calls"] += 1
+        batch = args[1]
+        captured["input_len"] = len(batch) if isinstance(batch, list) else 1
+        if isinstance(batch, list):
+            return [_Output(inp.structure) for inp in batch]
+        return _Output(batch.structure)
+
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    eng = QCOPEngine(compute_program="chemcloud")
+    nodes = [
+        StructureNode(
+            structure=Structure(
+                geometry=np.array([[0.0, 0.0, 0.0], [x, 0.0, 0.0]]),
+                symbols=["H", "H"],
+                charge=0,
+                multiplicity=1,
+            )
+        )
+        for x in (0.8, 1.0, 1.2)
+    ]
+
+    out = eng.compute_geometry_optimizations(nodes)
+
+    assert captured["calls"] == 1
+    assert captured["input_len"] == 3
+    assert len(out) == 3
+
+
+def test_qcop_engine_bigchem_hessian_accepts_direct_programoutput(monkeypatch):
+    returned = object()
+
+    def _fake_cc_compute(*args, **kwargs):
+        return returned
+
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    eng = QCOPEngine(compute_program="chemcloud")
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0], [0.8, 0.0, 0.0]]),
+            symbols=["H", "H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    out = eng._compute_hessian_result(node=node, use_bigchem=True)
+    assert out is returned
+
+
+def test_qcop_engine_chemcloud_batches_geometry_optimizations_with_file_only_trajectory_entries(monkeypatch):
+    class _Files:
+        def model_dump(self):
+            return {"optim.xyz": "unused"}
+
+    class _Result:
+        def __init__(self, structure):
+            self.input_data = type("In", (), {"structure": structure})()
+            self.results = _Files()
+
+    class _Output:
+        def __init__(self, structure):
+            self.results = type("Res", (), {"trajectory": [_Result(structure)]})()
+
+    def _fake_cc_compute(*args, **kwargs):
+        batch = args[1]
+        if isinstance(batch, list):
+            return [_Output(inp.structure) for inp in batch]
+        return _Output(batch.structure)
+
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    eng = QCOPEngine(compute_program="chemcloud")
+    nodes = [
+        StructureNode(
+            structure=Structure(
+                geometry=np.array([[0.0, 0.0, 0.0], [x, 0.0, 0.0]]),
+                symbols=["H", "H"],
+                charge=0,
+                multiplicity=1,
+            )
+        )
+        for x in (0.8, 1.0)
+    ]
+
+    out = eng.compute_geometry_optimizations(nodes)
+
+    assert len(out) == 2
+    assert out[0][-1]._cached_energy is None
+    assert out[0][-1]._cached_gradient is None
+
+
+def test_qcop_engine_chemcloud_batch_optimization_keeps_partial_failures(monkeypatch):
+    class _Result:
+        def __init__(self, structure):
+            self.input_data = type("In", (), {"structure": structure})()
+            self.results = type(
+                "ResData",
+                (),
+                {
+                    "energy": 0.0,
+                    "gradient": [[0.0, 0.0, 0.0] for _ in structure.symbols],
+                },
+            )()
+
+    class _SuccessOutput:
+        def __init__(self, structure):
+            self.results = type("Res", (), {"trajectory": [_Result(structure)]})()
+
+    class _FailedOutput:
+        def __init__(self):
+            self.results = type("Res", (), {"trajectory": []})()
+
+    def _fake_cc_compute(*args, **kwargs):
+        batch = args[1]
+        if isinstance(batch, list):
+            assert len(batch) == 2
+            return [_FailedOutput(), _SuccessOutput(batch[1].structure)]
+        return _SuccessOutput(batch.structure)
+
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    eng = QCOPEngine(compute_program="chemcloud")
+    nodes = [
+        StructureNode(
+            structure=Structure(
+                geometry=np.array([[0.0, 0.0, 0.0], [x, 0.0, 0.0]]),
+                symbols=["H", "H"],
+                charge=0,
+                multiplicity=1,
+            )
+        )
+        for x in (0.8, 1.0)
+    ]
+
+    out = eng.compute_geometry_optimizations(nodes)
+
+    assert len(out) == 2
+    assert out[0] == []
+    assert len(out[1]) == 1
 
 
 def test_runinputs_toml_write_qcio_propagates(tmp_path: Path):
@@ -195,7 +376,9 @@ def test_qcop_engine_warns_when_write_qcio_enabled(monkeypatch):
     monkeypatch.setattr(
         qcop_module.logging,
         "warning",
-        lambda message, *args, **kwargs: calls.append(message % args if args else message),
+        lambda message, *args, **kwargs: calls.append(
+            message % args if args else message
+        ),
     )
 
     eng = QCOPEngine(write_qcio=True)
@@ -204,7 +387,9 @@ def test_qcop_engine_warns_when_write_qcio_enabled(monkeypatch):
     assert any("write_qcio=True" in message for message in calls)
 
 
-def test_qcop_engine_chemcloud_run_calc_submits_each_geometry_individually(monkeypatch):
+def test_qcop_engine_chemcloud_run_calc_submits_gradient_batch(
+    monkeypatch,
+):
     calls = []
 
     def _fake_update_node_cache(node_list, results):
@@ -212,6 +397,8 @@ def test_qcop_engine_chemcloud_run_calc_submits_each_geometry_individually(monke
 
     def _fake_compute_func(program, prog_inp, collect_files=False):
         calls.append(prog_inp)
+        if isinstance(prog_inp, list):
+            return [object() for _ in prog_inp]
         return object()
 
     monkeypatch.setattr(qcop_module, "update_node_cache", _fake_update_node_cache)
@@ -242,5 +429,6 @@ def test_qcop_engine_chemcloud_run_calc_submits_each_geometry_individually(monke
     chain = Chain.model_validate({"nodes": [_node(0.8), _node(1.0), _node(1.2)]})
     eng._run_calc(chain=chain, calctype="gradient")
 
-    assert len(calls) == 3
-    assert all(not isinstance(call, list) for call in calls)
+    assert len(calls) == 1
+    assert isinstance(calls[0], list)
+    assert len(calls[0]) == 3

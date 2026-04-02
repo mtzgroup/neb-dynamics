@@ -32,6 +32,7 @@ import matplotlib.pyplot as plt
 import re
 import tempfile
 import logging
+import time
 
 
 def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
@@ -66,10 +67,21 @@ class QMMMEngine(Engine):
     print_stdout: bool = False
     debug_dump_inputs: bool = False
     debug_dump_dir: Path | None = None
+    frozen_atom_indices: list[int] | str | None = None
 
     def __post_init__(self):
         self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
         self._debug_dump_counter = 0
+        if isinstance(self.frozen_atom_indices, str):
+            self.frozen_atom_indices = [
+                int(tok)
+                for tok in self.frozen_atom_indices.replace(",", " ").split()
+                if tok.strip()
+            ]
+        elif self.frozen_atom_indices is None:
+            self.frozen_atom_indices = []
+        else:
+            self.frozen_atom_indices = [int(v) for v in self.frozen_atom_indices]
         if self.tcin_text is not None:
             self.inp_file = self.tcin_text
         elif self.tcin_fp is not None:
@@ -208,7 +220,12 @@ class QMMMEngine(Engine):
 
     def _compute_minimize_output(self, rst7_string: str, keywords: dict | None = None):
         tcin_text = self._with_run_type(self.inp_file, "minimize")
-        tcin_text = self._apply_tcin_overrides(tcin_text, keywords or {})
+        min_kwds = self._normalize_minimize_keywords(keywords)
+        # TeraChem's new minimizer is unstable for this QMMM workflow; force legacy minimizer.
+        min_kwds["new_minimizer"] = "no"
+        tcin_text = self._apply_tcin_overrides(
+            tcin_text, min_kwds
+        )
         inp = self._construct_input(rst7_string, tcin_text=tcin_text)
         self._dump_debug_inputs([rst7_string])
         try:
@@ -219,15 +236,10 @@ class QMMMEngine(Engine):
                     print_stdout=self.print_stdout,
                     collect_files=True,
                 )
-            out = ccompute(
-                "terachem",
+            return self._chemcloud_compute_with_retries(
                 inp,
-                queue=self.chemcloud_queue,
                 collect_files=True,
             )
-            if hasattr(out, "get"):
-                out = out.get()
-            return out
         except Exception as exc:
             raise ElectronicStructureError(
                 msg=f"QMMM minimize submission failed ({self.compute_program}): {exc}",
@@ -256,10 +268,10 @@ class QMMMEngine(Engine):
                         )
                 else:
                     batch_input = inputs[0] if len(inputs) == 1 else inputs
-                    outputs = ccompute(
-                        "terachem", batch_input, queue=self.chemcloud_queue)
-                    if hasattr(outputs, "get"):
-                        outputs = outputs.get()
+                    outputs = self._chemcloud_compute_with_retries(
+                        batch_input,
+                        collect_files=False,
+                    )
                     if len(inputs) == 1 and not isinstance(outputs, list):
                         outputs = [outputs]
             except Exception as exc:
@@ -311,6 +323,53 @@ class QMMMEngine(Engine):
         finally:
             self._next_debug_dump_counter()
 
+    @staticmethod
+    def _is_retryable_chemcloud_error(exc: Exception) -> bool:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code is not None:
+            return int(status_code) >= 500
+        msg = str(exc).lower()
+        retry_markers = (
+            "502",
+            "503",
+            "504",
+            "bad gateway",
+            "service unavailable",
+            "gateway timeout",
+            "temporarily unavailable",
+            "connection reset",
+            "timed out",
+        )
+        return any(token in msg for token in retry_markers)
+
+    def _chemcloud_compute_with_retries(self, inp, collect_files: bool):
+        max_attempts = 3
+        delay_sec = 2.0
+        for attempt in range(1, max_attempts + 1):
+            try:
+                out = ccompute(
+                    "terachem",
+                    inp,
+                    queue=self.chemcloud_queue,
+                    collect_files=collect_files,
+                )
+                if hasattr(out, "get"):
+                    out = out.get()
+                return out
+            except Exception as exc:
+                retryable = self._is_retryable_chemcloud_error(exc)
+                if attempt >= max_attempts or not retryable:
+                    raise
+                logging.warning(
+                    "QMMM ChemCloud call failed on attempt %d/%d (%s). Retrying in %.1fs...",
+                    attempt,
+                    max_attempts,
+                    exc,
+                    delay_sec,
+                )
+                time.sleep(delay_sec)
+                delay_sec *= 2.0
+
     def compute_energies(self, chain: Chain):
         self.compute_gradients(chain)
         enes = np.array([node.energy for node in chain])
@@ -346,7 +405,13 @@ class QMMMEngine(Engine):
 
         return grads
 
-    def compute_geometry_optimization(self, node: StructureNode, keywords={'coordsys': 'cart', 'maxit': 500}) -> list[StructureNode]:
+    def compute_geometry_optimization(
+        self,
+        node: StructureNode,
+        keywords: dict | None = None,
+    ) -> list[StructureNode]:
+        if keywords is None:
+            keywords = {"coordsys": "cart", "maxit": 500}
         rst7_string = self.structure_to_rst7(node.structure)
         output = self._compute_minimize_output(rst7_string=rst7_string, keywords=keywords)
         structures = self._extract_optimization_structures(output, reference_structure=node.structure)
@@ -356,6 +421,23 @@ class QMMMEngine(Engine):
                 obj=output,
             )
         return [StructureNode(structure=struct) for struct in structures]
+
+    @staticmethod
+    def _normalize_minimize_keywords(keywords: dict | None) -> dict:
+        if not keywords:
+            return {}
+
+        normalized = {}
+        for key, value in keywords.items():
+            k = str(key).strip().lower()
+            if k in {"maxiter", "max_iter"}:
+                normalized["maxit"] = value
+            elif k in {"coordsys", "coord_sys", "coordinates", "coordinate_system"}:
+                coord_val = str(value).strip().lower()
+                normalized["min_coordinates"] = "cartesian" if coord_val == "cart" else value
+            else:
+                normalized[str(key)] = value
+        return normalized
 
     def _run_geometric_transition_state(
         self,
@@ -408,26 +490,54 @@ class QMMMEngine(Engine):
                     logger.propagate = propagate
 
         class _GeometricQMMMEngine(geometric.engine.Engine):
-            def __init__(self, molecule, qmmm_engine, ref_node):
+            def __init__(self, molecule, qmmm_engine, ref_node, active_atom_indices):
                 super().__init__(molecule)
                 self.qmmm_engine = qmmm_engine
                 self.ref_node = ref_node
+                self.active_atom_indices = np.array(active_atom_indices, dtype=int)
 
             def calc_new(self, coords, dirname):
-                curr_node = self.ref_node.copy().update_coords(np.array(coords))
+                curr_coords = np.array(coords, dtype=float).reshape((-1, 3))
+                full_coords = np.array(self.ref_node.coords, dtype=float).copy()
+                full_coords[self.active_atom_indices] = curr_coords
+                curr_node = self.ref_node.copy().update_coords(full_coords)
                 curr_node.has_molecular_graph = False
                 curr_node.graph = None
                 energy = self.qmmm_engine.compute_energies([curr_node])[0]
                 gradient = self.qmmm_engine.compute_gradients([curr_node])[0]
+                gradient = np.array(gradient)[self.active_atom_indices]
                 # geomeTRIC expects gradient in Hartree/Angstrom.
                 return {
                     "energy": energy,
                     "gradient": np.array(gradient).reshape(-1) * BOHR_TO_ANGSTROMS,
                 }
 
+        ts_kwds = dict(keywords or {})
+        kwd_frozen = ts_kwds.pop("frozen_atom_indices", None)
+        if kwd_frozen is not None:
+            if isinstance(kwd_frozen, str):
+                frozen_atom_indices = [
+                    int(tok)
+                    for tok in kwd_frozen.replace(",", " ").split()
+                    if tok.strip()
+                ]
+            else:
+                frozen_atom_indices = [int(v) for v in kwd_frozen]
+        else:
+            frozen_atom_indices = list(self.frozen_atom_indices or [])
+
+        n_atoms = len(node.structure.symbols)
+        frozen_set = {i for i in frozen_atom_indices if 0 <= i < n_atoms}
+        active_atom_indices = [i for i in range(n_atoms) if i not in frozen_set]
+        if len(active_atom_indices) == 0:
+            raise ElectronicStructureError(
+                msg="All atoms are frozen for TS optimization; need at least one active atom.",
+                obj=None,
+            )
+
         molecule = geometric.molecule.Molecule()
-        molecule.elem = list(node.structure.symbols)
-        molecule.xyzs = [node.structure.geometry * ANGSTROM_TO_BOHR]
+        molecule.elem = [node.structure.symbols[i] for i in active_atom_indices]
+        molecule.xyzs = [node.structure.geometry[active_atom_indices] * ANGSTROM_TO_BOHR]
         ref_node = node.copy()
         ref_node.has_molecular_graph = False
         ref_node.graph = None
@@ -435,6 +545,7 @@ class QMMMEngine(Engine):
             molecule=molecule,
             qmmm_engine=self,
             ref_node=ref_node,
+            active_atom_indices=active_atom_indices,
         )
 
         ts_keywords = {
@@ -445,17 +556,19 @@ class QMMMEngine(Engine):
             "tmax": 0.3,
             "maxiter": 800,
         }
-        if keywords:
-            ts_keywords.update(keywords)
+        if ts_kwds:
+            ts_keywords.update(ts_kwds)
         ts_keywords["transition"] = True
 
         with _geometric_log_context():
             with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmpf:
-                return geometric.optimize.run_optimizer(
+                output = geometric.optimize.run_optimizer(
                     customengine=custom_engine,
                     input=tmpf.name,
                     **ts_keywords,
                 )
+                setattr(output, "_active_atom_indices", active_atom_indices)
+                return output
 
     def compute_transition_state(
         self,
@@ -473,7 +586,12 @@ class QMMMEngine(Engine):
                 obj=output,
             )
 
-        final_coords_bohr = np.array(xyzs[-1]) * ANGSTROM_TO_BOHR
+        active_atom_indices = getattr(output, "_active_atom_indices", None)
+        if active_atom_indices is None:
+            active_atom_indices = list(range(len(node.structure.symbols)))
+        final_active_bohr = np.array(xyzs[-1]) * ANGSTROM_TO_BOHR
+        final_coords_bohr = np.array(node.coords, dtype=float).copy()
+        final_coords_bohr[np.array(active_atom_indices, dtype=int)] = final_active_bohr
         ts_node = node.copy().update_coords(final_coords_bohr)
         ts_node.has_molecular_graph = False
         ts_node.graph = None

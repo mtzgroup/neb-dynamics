@@ -126,7 +126,8 @@ def iter_triplets(chain: Chain):
 
 def neighs_grad_func(
     chain: Chain, prev_node: Node, current_node: Node, next_node: Node,
-    geodesic_tangent: bool = False
+    geodesic_tangent: bool = False,
+    additional_gradient: np.ndarray | None = None,
 ):
     if geodesic_tangent:
         ind = _get_closest_node_ind(
@@ -142,6 +143,8 @@ def neighs_grad_func(
     unit_tan_path = vec_tan_path / np.linalg.norm(vec_tan_path)
 
     pe_grad = np.array(current_node.gradient)
+    if additional_gradient is not None:
+        pe_grad = pe_grad + np.array(additional_gradient)
 
     # if chain.parameters.frozen_atom_indices:
     #     inds = np.array(chain.parameters.frozen_atom_indices.split(), dtype=int)
@@ -197,17 +200,23 @@ def neighs_grad_func(
     return pe_grads_nudged, spring_forces_nudged
 
 
-def pe_grads_spring_forces_nudged(chain: Chain, geodesic_tangent: bool = False):
+def pe_grads_spring_forces_nudged(
+    chain: Chain,
+    geodesic_tangent: bool = False,
+    additional_gradients: np.ndarray | None = None,
+):
     pe_grads_nudged = []
     spring_forces_nudged = []
 
-    for prev_node, current_node, next_node in iter_triplets(chain):
+    for ind, (prev_node, current_node, next_node) in enumerate(iter_triplets(chain), start=1):
+        add_grad = None if additional_gradients is None else additional_gradients[ind]
         pe_grad_nudged, spring_force_nudged = neighs_grad_func(
             chain=chain,
             prev_node=prev_node,
             current_node=current_node,
             next_node=next_node,
-            geodesic_tangent=geodesic_tangent
+            geodesic_tangent=geodesic_tangent,
+            additional_gradient=add_grad,
         )
 
         pe_grads_nudged.append(pe_grad_nudged)
@@ -218,11 +227,13 @@ def pe_grads_spring_forces_nudged(chain: Chain, geodesic_tangent: bool = False):
     return pe_grads_nudged, spring_forces_nudged
 
 
-def get_g_perps(chain: Chain) -> NDArray:
+def get_g_perps(chain: Chain, additional_gradients: np.ndarray | None = None) -> NDArray:
     """
     computes the perpendicular gradients of a chain.
     """
-    pe_grads_nudged, _ = pe_grads_spring_forces_nudged(chain=chain)
+    pe_grads_nudged, _ = pe_grads_spring_forces_nudged(
+        chain=chain, additional_gradients=additional_gradients
+    )
     zero = np.zeros_like(pe_grads_nudged[0])
     grads = np.insert(pe_grads_nudged, 0, zero, axis=0)
     grads = np.insert(grads, len(grads), zero, axis=0)
@@ -255,23 +266,31 @@ def _k_between_nodes(
     # return new_k
 
 
-def compute_NEB_gradient(chain: Chain, geodesic_tangent: bool = False) -> NDArray:
+def compute_NEB_gradient(
+    chain: Chain,
+    geodesic_tangent: bool = False,
+    additional_gradients: np.ndarray | None = None,
+) -> NDArray:
     """
     will return the sum of the perpendicular gradient
     and the spring gradient
     """
     pe_grads_nudged, spring_forces_nudged = pe_grads_spring_forces_nudged(
-        chain=chain, geodesic_tangent=geodesic_tangent)
+        chain=chain,
+        geodesic_tangent=geodesic_tangent,
+        additional_gradients=additional_gradients,
+    )
 
     grads = pe_grads_nudged - spring_forces_nudged
 
-    # remove rotations and translations
-    ed = ElementData()
-    masses = np.array([ed.from_symbol(n).mass_amu for n in chain[0].symbols])
-    grads = np.array([
-        project_rigid_body_forces(
-            node.coords, g, masses=masses) for (node, g) in zip(chain[1:-1], grads)]
-            )
+    # remove rotations and translations for molecular chains only
+    if chain[0].has_molecular_graph:
+        ed = ElementData()
+        masses = np.array([ed.from_symbol(n).mass_amu for n in chain[0].symbols])
+        grads = np.array([
+            project_rigid_body_forces(
+                node.coords, g, masses=masses) for (node, g) in zip(chain[1:-1], grads)]
+                )
 
     # endpoints have 0 gradient because we freeze them
     zero = np.zeros_like(grads[0])

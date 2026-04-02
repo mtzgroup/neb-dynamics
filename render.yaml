@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: mtzdrive
+    runtime: python
+    plan: free
+    region: ohio
+    buildCommand: git submodule update --init --recursive && pip install uv && uv sync --frozen && uv pip install -e ./retropaths
+    startCommand: bash ./scripts/start_render_drive.sh
+    healthCheckPath: /api/state
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: MEPD_DRIVE_HOST
+        value: 0.0.0.0
+      - key: RETROPATHS_REPO
+        value: /opt/render/project/src/retropaths
+      - key: MEPD_DRIVE_WORKDIR
+        value: /tmp/mepd-drive
+      - key: MEPD_DRIVE_INPUTS
+        value: examples/example_inputs.toml
+      - key: CHEMCLOUD_CREDENTIALS_B64
+        sync: false
+      - key: CHEMCLOUD_CREDENTIALS_TOML
+        sync: false

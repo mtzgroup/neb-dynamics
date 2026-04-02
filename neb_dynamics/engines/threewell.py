@@ -24,11 +24,7 @@ class ThreeWellPotential(Engine):
         x, y = xy
         ene = (x**2 + y - 11) ** 2 + (x + y**2 - 7) ** 2
         if self.biaser:
-            dist = self.biaser.compute_min_dist_to_ref(
-                node=XYNode(structure=xy),
-                dist_func=self.biaser.compute_euclidean_distance,
-            )
-            ene += self.biaser.energy_gaussian_bias(distance=dist)
+            ene += self.biaser.energy_node_bias(node=XYNode(structure=xy))
         return ene
 
     def _grad_func(self, xy: np.array) -> NDArray:

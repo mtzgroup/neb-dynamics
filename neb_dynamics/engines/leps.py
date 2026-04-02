@@ -55,10 +55,7 @@ class LEPS(Engine):
 
         result = result_Qs - (result_Js) ** (1 / 2)
         if self.biaser:
-            dist = self.biaser.compute_min_dist_to_ref(
-                node=node, dist_func=self.biaser.compute_euclidean_distance
-            )
-            result += self.biaser.energy_gaussian_bias(distance=dist)
+            result += self.biaser.energy_node_bias(node=XYNode(structure=node))
 
         return result
 

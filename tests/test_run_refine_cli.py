@@ -75,6 +75,35 @@ class _FakeMSMEP:
         )
         return neb, None
 
+    def run_recursive_minimize(self, input_chain: Chain):
+        if self.inputs.label == "cheap":
+            cheap_chain = _chain_from_xs(
+                [1.0, 10.0, 20.0, 30.0, 40.0],
+                self.inputs.chain_inputs,
+                energies=[0.0, 5.0, 1.0, 6.0, 0.0],
+            )
+
+            class _FakeHistory:
+                data = True
+                output_chain = cheap_chain
+                ordered_leaves = []
+
+                def write_to_disk(self, _path):
+                    return None
+
+            return _FakeHistory()
+
+        _FakeMSMEP.expensive_pair_inputs.append(input_chain.copy())
+
+        class _FakeExpensiveHistory:
+            data = True
+            output_chain = input_chain.copy()
+
+            def write_to_disk(self, _path):
+                return None
+
+        return _FakeExpensiveHistory()
+
 
 def _make_fake_runinputs(label: str, shift: float, nimages: int = 3):
     return SimpleNamespace(
@@ -151,6 +180,53 @@ def test_run_refine_recycle_nodes_seeds_expensive_pairs_from_cheap_chain(monkeyp
     ]
     assert bond_lengths0 == [1.0, 10.0, 20.0]
     assert bond_lengths1 == [20.0, 30.0, 40.0]
+
+
+def test_run_refine_network_splits_refines_only_best_path(monkeypatch, tmp_path):
+    cheap_inputs = _make_fake_runinputs("cheap", shift=0.0, nimages=3)
+    expensive_inputs = _make_fake_runinputs("expensive", shift=1.0, nimages=3)
+
+    def _fake_open(path: str):
+        return cheap_inputs if "cheap" in path else expensive_inputs
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(_fake_open))
+    monkeypatch.setattr(main_cli, "MSMEP", _FakeMSMEP)
+    monkeypatch.setattr(
+        main_cli,
+        "read_multiple_structure_from_file",
+        lambda *args, **kwargs: [_structure_at_x(1.0), _structure_at_x(40.0)],
+    )
+    monkeypatch.setattr(main_cli, "_ascii_profile_for_chain", lambda chain: None)
+    monkeypatch.setattr(
+        main_cli,
+        "_run_recursive_network_splits",
+        lambda **kwargs: ([], tmp_path / "fake_network.json", tmp_path / "fake_manifest.json"),
+    )
+    monkeypatch.setattr(
+        main_cli,
+        "_load_best_path_chain_from_network_splits",
+        lambda **kwargs: _chain_from_xs([1.0, 20.0, 40.0], cheap_inputs.chain_inputs, energies=[0.0, 1.0, 0.0]),
+    )
+    _FakeMSMEP.expensive_pair_inputs = []
+
+    monkeypatch.chdir(tmp_path)
+    main_cli.run_refine(
+        geometries="dummy.xyz",
+        inputs="expensive.toml",
+        cheap_inputs="cheap.toml",
+        recursive=True,
+        network_splits=True,
+        recycle_nodes=False,
+        name="refine_network_case",
+    )
+
+    pair_inputs = list(_FakeMSMEP.expensive_pair_inputs)
+    assert len(pair_inputs) == 2
+    pair_lengths = [
+        [float(np.linalg.norm(node.coords[1] - node.coords[0])) for node in pair.nodes]
+        for pair in pair_inputs
+    ]
+    assert pair_lengths == [[1.0, 20.0], [20.0, 40.0]]
 
 
 def test_load_endpoint_structure_converts_rst7_with_prmtop(tmp_path):

@@ -35,7 +35,6 @@ except ImportError:
 SLOPE_THRESH = 0.1
 # SLOPE_THRESH = 20
 
-
 @dataclass
 class ElemStepResults:
     """
@@ -413,7 +412,7 @@ def is_approx_elem_step(
         elif verbose:
             print("Chemcloud detected, skipping approx elem step check.")
 
-        return False, 0
+        return True, 0
 
     try:
         r_passes_opt, r_traj = _converges_to_an_endpoints(

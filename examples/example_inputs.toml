@@ -1,5 +1,5 @@
 engine_name = "chemcloud"
-program = "crest"
+program = "terachem"
 path_min_method = "neb"
 
 [path_min_inputs]
@@ -31,12 +31,60 @@ node_ene_thre = 5.0
 frozen_atom_indices = ""
 
 [gi_inputs]
-nimages = 10
+nimages = 15
 friction = 0.001
-nudge = 0.1
+nudge = 0.01
 align = true
 
 [gi_inputs.extra_kwds]
+
+# Nanoreactor controls.
+# These are used when the selected engine/program supports nanoreactor sampling.
+# For TeraChem-backed runs, choose one of:
+# - conservative: baseline spherical-piston MD, nstep=2000, md_r1/r2=6.0/4.0,
+#   md_k1/k2=3.0/5.0, mdbc_t1/t2=750/250.
+# - fast-oscillating: shorter piston cycles without making the run longer,
+#   nstep=1600, md_r1/r2=5.8/3.6, md_k1/k2=3.5/6.0, mdbc_t1/t2=300/100.
+# - hot-fast-oscillating: shorter, hotter, more aggressive cycling,
+#   nstep=1500, tinit/t0=1600/1900, lnvtime=120, md_r1/r2=5.6/3.4,
+#   md_k1/k2=4.0/7.0, mdbc_t1/t2=250/75.
+[nanoreactor_inputs]
+preset = "fast-oscillating"
+max_candidates = 12
+
+# TeraChem nanoreactor overrides. These can be edited directly.
+terachem_method = "uhf"
+terachem_basis = "3-21g"
+terachem_frame_stride = 5
+terachem_nstep = 1600
+terachem_timestep = 0.5
+terachem_tinit = 1200.0
+terachem_thermostat = "langevin"
+terachem_t0 = 1500.0
+terachem_lnvtime = 200.0
+terachem_convthre = 0.005
+terachem_levelshift = true
+terachem_levelshiftvala = 0.3
+terachem_levelshiftvalb = 0.1
+terachem_scf = "diis+a"
+terachem_maxit = 300
+terachem_md_r1 = 5.8
+terachem_md_k1 = 3.5
+terachem_md_r2 = 3.6
+terachem_md_k2 = 6.0
+terachem_mdbc_hydrogen = true
+terachem_mdbc_mass_scaled = true
+terachem_mdbc_t1 = 300
+terachem_mdbc_t2 = 100
+
+# CREST MSREACT nanoreactor overrides.
+# crest_msinput = ""
+# crest_msmolbar = false
+# crest_msinchi = false
+# crest_msiso = false
+# crest_msnoiso = false
+# crest_msnbonds = 0
+# crest_msnshifts = 0
 
 [program_kwds]
 cmdline_args = []
@@ -55,4 +103,5 @@ basis = "gfn2"
 [program_kwds.model.extras]
 
 [optimizer_kwds]
-timestep = 0.5
+# timestep = 0.5
+name = 'cg'

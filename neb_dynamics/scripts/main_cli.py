@@ -1,7 +1,9 @@
 from __future__ import annotations
+import base64
 import contextlib
 import io
 import json
+import logging
 from dataclasses import dataclass
 import networkx as nx
 import numpy as np
@@ -11,6 +13,7 @@ from neb_dynamics.pot import plot_results_from_pot_obj
 from neb_dynamics.pot import Pot
 from neb_dynamics.helper_functions import (
     compute_irc_chain,
+    parse_nma_freq_data,
     parse_terachem_input_file,
     parse_symbols_from_prmtop,
     rst7_to_coords_and_indices,
@@ -29,12 +32,14 @@ from neb_dynamics.nodes.nodehelpers import (
     is_identical,
 )
 from neb_dynamics.inputs import RunInputs
-from neb_dynamics.constants import ANGSTROM_TO_BOHR
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
+from neb_dynamics.geodesic_interpolation2.fileio import write_xyz
 
 import typer
 from typing_extensions import Annotated
 
 import os
+from openbabel import openbabel
 from qcio import Structure, ProgramOutput
 from qcio.view import generate_structure_viewer_html
 from qcop.exceptions import ExternalProgramError
@@ -47,7 +52,10 @@ import webbrowser
 import shutil
 import tomli_w
 
+from rich.console import Console
+from rich.theme import Theme
 from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn, TimeElapsedColumn
 from rich.status import Status
 from rich.table import Table
 from rich.box import Box
@@ -55,6 +63,16 @@ from rich.text import Text
 from rich.syntax import Syntax
 from rich import box
 from neb_dynamics.chainhelpers import generate_neb_plot
+from neb_dynamics.mepd_drive import launch_mepd_drive
+from neb_dynamics.retropaths_workflow import (
+    RetropathsWorkspace,
+    create_workspace,
+    ensure_retropaths_available,
+    prepare_neb_workspace,
+    run_netgen_smiles_workflow,
+    summarize_queue,
+    write_status_html,
+)
 from neb_dynamics.scripts._cli_results import (
     _create_recursive_request_record,
     _load_status_snapshot,
@@ -79,6 +97,79 @@ from neb_dynamics.scripts._cli_runtime import (
     print_banner,
 )
 from neb_dynamics.scripts import _cli_visualize
+
+# Custom theme for Claude Code-like styling
+custom_theme = Theme({
+    "info": "cyan",
+    "warning": "yellow",
+    "error": "bold red",
+    "success": "bold green",
+    "header": "bold magenta",
+    "dim": "dim",
+})
+
+
+class _SuppressWarningFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno != logging.WARNING
+
+
+logging.getLogger().addFilter(_SuppressWarningFilter())
+
+
+def _format_drive_access_panel(
+    *,
+    actual_host: str,
+    actual_port: int,
+    ssh_login: str | None = None,
+    local_port: int | None = None,
+) -> Panel:
+    local_port = int(local_port or actual_port)
+    lines = [
+        "[bold cyan]MEPD Drive[/bold cyan]",
+        f"[white]http://{actual_host}:{actual_port}/[/white]",
+        "[dim]Press Ctrl+C to stop the server.[/dim]",
+    ]
+    if ssh_login:
+        lines.extend(
+            [
+                "",
+                "[bold]SSH Tunnel[/bold]",
+                f"[white]ssh -N -L {local_port}:127.0.0.1:{actual_port} {ssh_login}[/white]",
+                f"[dim]Then open http://127.0.0.1:{local_port}/ on your laptop.[/dim]",
+            ]
+        )
+    return Panel.fit("\n".join(lines), border_style="cyan")
+
+
+ob_log_handler = openbabel.OBMessageHandler()
+
+
+def _parse_kmc_initial_condition_overrides(
+    overrides: list[str] | None,
+) -> dict[int, float] | None:
+    if not overrides:
+        return None
+
+    parsed: dict[int, float] = {}
+    for override in overrides:
+        if "=" not in override:
+            raise typer.BadParameter(
+                f"Invalid --initial-condition '{override}'. Use NODE=VALUE, for example 0=1.0."
+            )
+        node_text, value_text = override.split("=", 1)
+        try:
+            node_index = int(node_text.strip())
+            value = float(value_text.strip())
+        except ValueError as exc:
+            raise typer.BadParameter(
+                f"Invalid --initial-condition '{override}'. Use NODE=VALUE, for example 0=1.0."
+            ) from exc
+        parsed[node_index] = value
+    return parsed
+
+
+ob_log_handler.SetOutputLevel(0)
 
 app = typer.Typer(
     rich_markup_mode="rich",
@@ -351,6 +442,37 @@ def _compute_ts_node(engine, ts_guess: StructureNode, bigchem: bool = False):
         raise
 
 
+def _extract_normal_modes_from_hessian_result(
+    hessres,
+) -> tuple[list[np.ndarray], list[float]]:
+    results = getattr(hessres, "results", None)
+    if results is None:
+        raise ValueError("Hessian result is missing `results`.")
+
+    modes = getattr(results, "normal_modes_cartesian", None)
+    freqs = getattr(results, "freqs_wavenumber", None)
+    if modes is not None and len(modes) > 0:
+        normal_modes = [np.array(mode) for mode in modes]
+        frequencies = [float(freq) for freq in (freqs or [])]
+        return normal_modes, frequencies
+
+    normal_modes, frequencies = parse_nma_freq_data(hessres)
+    if len(normal_modes) == 0:
+        raise ValueError("No normal modes found in Hessian result.")
+    return [np.array(mode) for mode in normal_modes], [float(freq) for freq in frequencies]
+
+
+def _resolve_command_base_path(geometry: str, name: str | None) -> Path:
+    if name is None:
+        return Path.cwd() / Path(geometry).stem
+    raw = Path(name)
+    if raw.suffix:
+        raw = raw.with_suffix("")
+    if not raw.is_absolute():
+        raw = Path.cwd() / raw
+    return raw
+
+
 def _extract_minima_nodes(history: TreeNode) -> list[StructureNode]:
     """Extract minima candidates from recursive cheap-history leaves."""
     minima: list[StructureNode] = []
@@ -397,6 +519,28 @@ def _dedupe_minima_nodes(nodes: list[StructureNode], chain_inputs: ChainInputs) 
         if not duplicate:
             unique_nodes.append(node.copy())
     return unique_nodes
+
+
+def _load_best_path_chain_from_network_splits(
+    *,
+    network_fp: Path | None,
+    output_dir: Path,
+    base_name: str,
+) -> Chain | None:
+    if network_fp is None or not Path(network_fp).exists():
+        return None
+    best_path_fp = output_dir / f"{base_name}_best_path.json"
+    if not best_path_fp.exists():
+        return None
+    try:
+        payload = json.loads(best_path_fp.read_text(encoding="utf-8"))
+        path = [int(v) for v in payload.get("path") or []]
+        if len(path) < 2:
+            return None
+        pot = Pot.read_from_disk(network_fp)
+        return _path_chain_from_pot(pot, path)
+    except Exception:
+        return None
 
 
 def _dedupe_minima_and_sources(
@@ -645,15 +789,91 @@ def _queue_follow_on_recursive_requests(
     return queued, next_request_id
 
 
+def _mark_path_pairs_attempted(
+    path_nodes: list[StructureNode],
+    *,
+    chain_inputs: ChainInputs,
+    node_registry: list[StructureNode],
+    attempted_pairs: set[tuple[int, int]],
+) -> None:
+    if len(path_nodes) < 2:
+        return
+    path_indices = [
+        _register_recursive_split_node(
+            node=node, registry=node_registry, chain_inputs=chain_inputs
+        )
+        for node in path_nodes
+    ]
+    for start_index, end_index in zip(path_indices[:-1], path_indices[1:]):
+        attempted_pairs.add((start_index, end_index))
+
+
 def _write_recursive_split_request_artifacts(
     output_dir: Path,
     request_id: int,
     history: TreeNode,
     write_qcio: bool = False,
 ):
+    output_dir.mkdir(parents=True, exist_ok=True)
     history.output_chain.write_to_disk(
         output_dir / f"request_{request_id}.xyz", write_qcio=write_qcio)
     history.write_to_disk(output_dir / f"request_{request_id}_msmep", write_qcio=write_qcio)
+
+
+def _load_recursive_split_request_history(
+    output_dir: Path,
+    request_id: int,
+    *,
+    chain_inputs: ChainInputs,
+    engine,
+    charge: int,
+    multiplicity: int,
+) -> TreeNode | None:
+    request_dir = Path(output_dir) / f"request_{request_id}_msmep"
+    if not request_dir.is_dir():
+        return None
+    try:
+        return TreeNode.read_from_disk(
+            request_dir,
+            chain_parameters=chain_inputs,
+            engine=engine,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+    except Exception:
+        return None
+
+
+def _maybe_resume_recursive_history(
+    status_fp: Path,
+    *,
+    chain_inputs: ChainInputs,
+    engine,
+    charge: int,
+    multiplicity: int,
+) -> TreeNode | None:
+    if not Path(status_fp).exists():
+        return None
+    try:
+        snapshot = _load_status_snapshot(str(status_fp))
+        run_status = snapshot.get("run_status") or {}
+        if str(run_status.get("phase") or "") not in {"network_splits", "complete"}:
+            return None
+        tree_path = run_status.get("tree_path")
+        if not tree_path:
+            return None
+        tree_dir = Path(tree_path)
+        if not tree_dir.exists():
+            return None
+        return TreeNode.read_from_disk(
+            tree_dir,
+            chain_parameters=chain_inputs,
+            engine=engine,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+    except Exception:
+        return None
 
 
 def _build_recursive_split_network_summary(
@@ -766,14 +986,25 @@ def _run_recursive_network_splits(
     base_name: str,
     status_fp: Path | None = None,
 ) -> tuple[list[dict], Path | None, Path]:
-    if output_dir.exists():
+    manifest_fp = _recursive_split_manifest_path(output_dir=output_dir, base_name=base_name)
+    resume_mode = output_dir.exists() and (
+        manifest_fp.exists() or (output_dir / "request_0_msmep").is_dir()
+    )
+    if output_dir.exists() and not resume_mode:
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    if resume_mode:
+        console.print(
+            f"[bold cyan]Resuming network splits from {output_dir}[/bold cyan]"
+        )
 
     attempted_pairs: set[tuple[int, int]] = set()
     node_registry: list[StructureNode] = []
     request_records: list[dict] = []
     network_fp: Path | None = None
+    write_qcio = bool(getattr(program_input, "write_qcio", False))
+    charge = int(initial_start.structure.charge)
+    multiplicity = int(initial_start.structure.multiplicity)
 
     start_index = _register_recursive_split_node(
         node=initial_start, registry=node_registry, chain_inputs=program_input.chain_inputs
@@ -783,14 +1014,33 @@ def _run_recursive_network_splits(
     )
     attempted_pairs.add((start_index, end_index))
 
-    _write_recursive_split_request_artifacts(
-        output_dir=output_dir,
-        request_id=0,
-        history=history,
-        write_qcio=program_input.write_qcio,
-    )
+    initial_history = (
+        _load_recursive_split_request_history(
+            output_dir,
+            0,
+            chain_inputs=program_input.chain_inputs,
+            engine=program_input.engine,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+        if resume_mode
+        else None
+    ) or history
+    if not (output_dir / "request_0_msmep").is_dir():
+        _write_recursive_split_request_artifacts(
+            output_dir=output_dir,
+            request_id=0,
+            history=initial_history,
+            write_qcio=write_qcio,
+        )
     initial_path_nodes = _ordered_leaf_path_nodes(
-        history=history, chain_inputs=program_input.chain_inputs
+        history=initial_history, chain_inputs=program_input.chain_inputs
+    )
+    _mark_path_pairs_attempted(
+        initial_path_nodes,
+        chain_inputs=program_input.chain_inputs,
+        node_registry=node_registry,
+        attempted_pairs=attempted_pairs,
     )
     _upsert_request_record(
         request_records,
@@ -875,45 +1125,15 @@ def _run_recursive_network_splits(
     msmep_runner = MSMEP(inputs=program_input)
     while queue:
         request = queue.pop(0)
-        _upsert_request_record(
-            request_records,
-            _create_recursive_request_record(
-                request_id=request.request_id,
-                parent_request_id=request.parent_request_id,
-                start_index=request.start_index,
-                end_index=request.end_index,
-                status="running",
-                started_at=datetime.now().isoformat(),
-            ),
+        existing_history = _load_recursive_split_request_history(
+            output_dir,
+            request.request_id,
+            chain_inputs=program_input.chain_inputs,
+            engine=program_input.engine,
+            charge=charge,
+            multiplicity=multiplicity,
         )
-        manifest_fp = _write_recursive_split_manifest(
-            output_dir=output_dir,
-            base_name=base_name,
-            request_records=request_records,
-            run_state="running",
-            current_request_id=request.request_id,
-            network_fp=network_fp,
-        )
-        if status_fp is not None:
-            _write_run_status(
-                status_fp,
-                base_name=base_name,
-                run_state="running",
-                phase="network_splits",
-                network_splits_dir=output_dir,
-                manifest_fp=manifest_fp,
-                network_fp=network_fp,
-            )
-        request_chain = Chain.model_validate(
-            {
-                "nodes": [request.start_node.copy(), request.end_node.copy()],
-                "parameters": program_input.chain_inputs,
-            }
-        )
-        try:
-            request_history = msmep_runner.run_recursive_minimize(
-                request_chain)
-        except Exception:
+        if existing_history is None:
             _upsert_request_record(
                 request_records,
                 _create_recursive_request_record(
@@ -921,9 +1141,8 @@ def _run_recursive_network_splits(
                     parent_request_id=request.parent_request_id,
                     start_index=request.start_index,
                     end_index=request.end_index,
-                    status="failed",
-                    completed_at=datetime.now().isoformat(),
-                    error=traceback.format_exc().strip(),
+                    status="running",
+                    started_at=datetime.now().isoformat(),
                 ),
             )
             manifest_fp = _write_recursive_split_manifest(
@@ -931,10 +1150,53 @@ def _run_recursive_network_splits(
                 base_name=base_name,
                 request_records=request_records,
                 run_state="running",
-                current_request_id=None,
+                current_request_id=request.request_id,
                 network_fp=network_fp,
             )
-            continue
+            if status_fp is not None:
+                _write_run_status(
+                    status_fp,
+                    base_name=base_name,
+                    run_state="running",
+                    phase="network_splits",
+                    network_splits_dir=output_dir,
+                    manifest_fp=manifest_fp,
+                    network_fp=network_fp,
+                )
+        request_chain = Chain.model_validate(
+            {
+                "nodes": [request.start_node.copy(), request.end_node.copy()],
+                "parameters": program_input.chain_inputs,
+            }
+        )
+        if existing_history is None:
+            try:
+                request_history = msmep_runner.run_recursive_minimize(
+                    request_chain)
+            except Exception:
+                _upsert_request_record(
+                    request_records,
+                    _create_recursive_request_record(
+                        request_id=request.request_id,
+                        parent_request_id=request.parent_request_id,
+                        start_index=request.start_index,
+                        end_index=request.end_index,
+                        status="failed",
+                        completed_at=datetime.now().isoformat(),
+                        error=traceback.format_exc().strip(),
+                    ),
+                )
+                manifest_fp = _write_recursive_split_manifest(
+                    output_dir=output_dir,
+                    base_name=base_name,
+                    request_records=request_records,
+                    run_state="running",
+                    current_request_id=None,
+                    network_fp=network_fp,
+                )
+                continue
+        else:
+            request_history = existing_history
 
         if not request_history.data:
             _upsert_request_record(
@@ -958,14 +1220,21 @@ def _run_recursive_network_splits(
             )
             continue
 
-        _write_recursive_split_request_artifacts(
-            output_dir=output_dir,
-            request_id=request.request_id,
-            history=request_history,
-            write_qcio=program_input.write_qcio,
-        )
+        if existing_history is None:
+            _write_recursive_split_request_artifacts(
+                output_dir=output_dir,
+                request_id=request.request_id,
+                history=request_history,
+                write_qcio=write_qcio,
+            )
         request_path_nodes = _ordered_leaf_path_nodes(
             history=request_history, chain_inputs=program_input.chain_inputs
+        )
+        _mark_path_pairs_attempted(
+            request_path_nodes,
+            chain_inputs=program_input.chain_inputs,
+            node_registry=node_registry,
+            attempted_pairs=attempted_pairs,
         )
         _upsert_request_record(
             request_records,
@@ -1300,18 +1569,35 @@ def run(
 
     _render_runinputs(program_input)
     sys.stdout.flush()
+    write_qcio = bool(getattr(program_input, "write_qcio", False))
 
     # minimize endpoints if requested
     all_nodes = [StructureNode(structure=s) for s in all_structs]
     if minimize_ends:
         console.print("[bold cyan]⟳ Minimizing input endpoints...[/bold cyan]")
-        start_tr = program_input.engine.compute_geometry_optimization(
-            all_nodes[0], keywords={'coordsys': 'cart', 'maxiter': 500})
-
-        all_nodes[0] = start_tr[-1]
-        end_tr = program_input.engine.compute_geometry_optimization(
-            all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter': 500})
-        all_nodes[-1] = end_tr[-1]
+        batch_optimizer = getattr(program_input.engine, "compute_geometry_optimizations", None)
+        if callable(batch_optimizer):
+            console.print("[dim]Submitting batched endpoint geometry optimizations...[/dim]")
+            try:
+                trajectories = batch_optimizer(
+                    [all_nodes[0], all_nodes[-1]],
+                    keywords={'coordsys': 'cart', 'maxiter': 500},
+                )
+                all_nodes[0] = trajectories[0][-1]
+                all_nodes[-1] = trajectories[-1][-1]
+            except TypeError:
+                trajectories = batch_optimizer([all_nodes[0], all_nodes[-1]])
+                all_nodes[0] = trajectories[0][-1]
+                all_nodes[-1] = trajectories[-1][-1]
+        else:
+            console.print("[dim]Minimizing start endpoint...[/dim]")
+            start_tr = program_input.engine.compute_geometry_optimization(
+                all_nodes[0], keywords={'coordsys': 'cart', 'maxiter': 500})
+            all_nodes[0] = start_tr[-1]
+            console.print("[dim]Minimizing end endpoint...[/dim]")
+            end_tr = program_input.engine.compute_geometry_optimization(
+                all_nodes[-1], keywords={'coordsys': 'cart', 'maxiter': 500})
+            all_nodes[-1] = end_tr[-1]
         console.print("[bold green]✓ Done![/bold green]")
 
     # create Chain
@@ -1357,20 +1643,36 @@ def run(
             program_input.path_min_inputs.do_elem_step_checks = True
         console.print(
             f"[bold magenta]▶ RUNNING AUTOSPLITTING {program_input.path_min_method}[/bold magenta]")
-        try:
-            history = m.run_recursive_minimize(chain)
-        except Exception:
-            _write_run_status(
+        history = (
+            _maybe_resume_recursive_history(
                 status_fp,
-                base_name=filename.stem,
-                run_state="failed",
-                phase="initial_recursive_request",
-                recursive=True,
-                network_splits=network_splits,
-                path_min_method=str(program_input.path_min_method),
-                error=traceback.format_exc().strip(),
+                chain_inputs=program_input.chain_inputs,
+                engine=program_input.engine,
+                charge=int(chain[0].structure.charge),
+                multiplicity=int(chain[0].structure.multiplicity),
             )
-            raise
+            if network_splits
+            else None
+        )
+        if history is not None:
+            console.print(
+                f"[bold cyan]Resuming saved recursive history from {foldername}[/bold cyan]"
+            )
+        else:
+            try:
+                history = m.run_recursive_minimize(chain)
+            except Exception:
+                _write_run_status(
+                    status_fp,
+                    base_name=filename.stem,
+                    run_state="failed",
+                    phase="initial_recursive_request",
+                    recursive=True,
+                    network_splits=network_splits,
+                    path_min_method=str(program_input.path_min_method),
+                    error=traceback.format_exc().strip(),
+                )
+                raise
 
         if not history.data:
             _write_run_status(
@@ -1389,8 +1691,8 @@ def run(
         leaves_nebs = [
             obj for obj in history.get_optimization_history() if obj]
         end_time = time.time()
-        history.output_chain.write_to_disk(filename, write_qcio=program_input.write_qcio)
-        history.write_to_disk(foldername, write_qcio=program_input.write_qcio)
+        history.output_chain.write_to_disk(filename, write_qcio=write_qcio)
+        history.write_to_disk(foldername, write_qcio=write_qcio)
         chain_for_profile = history.output_chain
         _write_run_status(
             status_fp,
@@ -1529,9 +1831,12 @@ def run(
             raise
 
         end_time = time.time()
-        wrote_outputs = _write_neb_results_with_history(
-            n, filename, write_qcio=program_input.write_qcio
-        )
+        try:
+            wrote_outputs = _write_neb_results_with_history(
+                n, filename, write_qcio=write_qcio
+            )
+        except TypeError:
+            wrote_outputs = _write_neb_results_with_history(n, filename)
         if n.chain_trajectory:
             chain_for_profile = n.chain_trajectory[-1]
         elif n.optimized is not None:
@@ -1632,6 +1937,10 @@ def run_refine(
             "--recycle-nodes",
             help="Reuse cheap-stage path nodes as initial guess for expensive pair refinement.",
         )] = False,
+        network_splits: Annotated[bool, typer.Option(
+            "--network-splits",
+            help="For recursive cheap discovery, run follow-on split requests and refine only the best path through the resulting network.",
+        )] = False,
         use_smiles: bool = False,
         recursive: bool = False,
         minimize_ends: bool = False,
@@ -1651,6 +1960,9 @@ def run_refine(
         )
         raise typer.Exit(1)
 
+    if network_splits and not recursive:
+        recursive = True
+
     start_time = time.time()
     table = Table(box=None, show_header=False)
     table.add_column(style="dim")
@@ -1660,6 +1972,8 @@ def run_refine(
                   f"[yellow]{use_smiles}[/yellow]")
     table.add_row("[bold cyan]Method:[/bold cyan]",
                   f"[yellow]{'recursive' if recursive else 'regular'}[/yellow]")
+    table.add_row("[bold cyan]Network splits:[/bold cyan]",
+                  f"[yellow]{network_splits}[/yellow]")
     table.add_row("[bold cyan]Cheap Inputs:[/bold cyan]",
                   f"[yellow]{cheap_inputs if cheap_inputs else inputs}[/yellow]")
     table.add_row("[bold cyan]Expensive Inputs:[/bold cyan]",
@@ -1797,6 +2111,36 @@ def run_refine(
     cheap_output_chain.write_to_disk(cheap_chain_fp)
     if cheap_history is not None:
         cheap_history.write_to_disk(cheap_tree_dir)
+
+    if recursive and network_splits and cheap_history is not None:
+        network_dir = data_dir / f"{base_name}_cheap_network_splits"
+        console.print(
+            "[bold magenta]▶ CHEAP DISCOVERY NETWORK SPLITS[/bold magenta]"
+        )
+        _request_records, network_fp, _manifest_fp = _run_recursive_network_splits(
+            history=cheap_history,
+            program_input=cheap_input,
+            initial_start=cheap_chain[0],
+            initial_end=cheap_chain[-1],
+            output_dir=network_dir,
+            base_name=f"{base_name}_cheap",
+            status_fp=None,
+        )
+        best_path_chain = _load_best_path_chain_from_network_splits(
+            network_fp=network_fp,
+            output_dir=network_dir,
+            base_name=f"{base_name}_cheap",
+        )
+        if best_path_chain is None:
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] Network splits did not produce a best path for refinement."
+            )
+            raise typer.Exit(1)
+        cheap_output_chain = best_path_chain
+        cheap_minima = [node.copy() for node in best_path_chain.nodes]
+        console.print(
+            f"[cyan]Using best network path with {len(cheap_minima)} nodes for expensive refinement.[/cyan]"
+        )
 
     cheap_minima = _dedupe_minima_nodes(cheap_minima, cheap_input.chain_inputs)
     console.print(
@@ -2010,6 +2354,270 @@ def ts(
     ts_node.structure.save(filename)
     console.print(f"[bold green]✓ TS optimization complete![/bold green]")
     console.print(f"[dim]Geometry: {filename}[/dim]")
+
+
+@app.command("hessian-sample")
+def hessian_sample(
+    geometry: Annotated[str, typer.Argument(help="Path to input geometry file.")],
+    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path to RunInputs TOML file.")] = None,
+    name: Annotated[str, typer.Option("--name", help="Optional output basename (without extension).")] = None,
+    charge: Annotated[int, typer.Option("--charge", help="Total charge for input geometry.")] = 0,
+    multiplicity: Annotated[int, typer.Option("--multiplicity", help="Spin multiplicity for input geometry.")] = 1,
+    dr: Annotated[float, typer.Option("--dr", help="Displacement magnitude along each normal mode.")] = 0.1,
+    max_candidates: Annotated[int, typer.Option("--max-candidates", help="Maximum number of displaced structures to optimize.")] = 100,
+    maxiter: Annotated[int, typer.Option("--maxiter", help="Maximum geometry-optimization steps for each displaced structure.")] = 500,
+):
+    console.print(BANNER)
+
+    if max_candidates < 1:
+        raise typer.BadParameter("--max-candidates must be at least 1.")
+    if dr <= 0:
+        raise typer.BadParameter("--dr must be positive.")
+    if maxiter < 1:
+        raise typer.BadParameter("--maxiter must be at least 1.")
+
+    with console.status("[bold cyan]Loading input parameters...[/bold cyan]"):
+        if inputs is not None:
+            program_input = RunInputs.open(inputs)
+        else:
+            program_input = RunInputs(program="xtb", engine_name="qcop")
+
+    _render_runinputs(program_input)
+    write_qcio = bool(getattr(program_input, "write_qcio", False))
+
+    struct = Structure.open(geometry)
+    s_dict = struct.model_dump()
+    s_dict["charge"], s_dict["multiplicity"] = charge, multiplicity
+    struct = Structure(**s_dict)
+    node = StructureNode(structure=struct)
+
+    engine = program_input.engine
+    if not hasattr(engine, "_compute_hessian_result"):
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] This engine does not expose `_compute_hessian_result`, which is required for normal-mode sampling."
+        )
+        raise typer.Exit(1)
+
+    with console.status("[bold cyan]Computing Hessian...[/bold cyan]"):
+        try:
+            hessres = engine._compute_hessian_result(node)
+        except Exception as exc:
+            hessres = getattr(exc, "program_output", None)
+            if hessres is None:
+                console.print(f"[bold red]✗ Hessian computation failed:[/bold red] {traceback.format_exc()}")
+                raise typer.Exit(1)
+
+    try:
+        normal_modes, frequencies = _extract_normal_modes_from_hessian_result(hessres)
+    except Exception:
+        console.print(f"[bold red]✗ Failed to extract normal modes:[/bold red] {traceback.format_exc()}")
+        raise typer.Exit(1)
+
+    if len(normal_modes) == 0:
+        console.print("[bold red]✗ ERROR:[/bold red] No normal modes were returned from Hessian computation.")
+        raise typer.Exit(1)
+
+    base = _resolve_command_base_path(geometry=geometry, name=name)
+    base.parent.mkdir(parents=True, exist_ok=True)
+    hessian_fp = base.parent / f"{base.stem}_hessian.qcio"
+    displaced_fp = base.parent / f"{base.stem}_hessian_sample_displaced.xyz"
+    optimized_fp = base.parent / f"{base.stem}_hessian_sample_optimized.xyz"
+    unique_fp = base.parent / f"{base.stem}_hessian_sample_unique.xyz"
+    summary_fp = base.parent / f"{base.stem}_hessian_sample_summary.json"
+
+    if hasattr(hessres, "save"):
+        hessres.save(hessian_fp)
+
+    displaced_nodes: list[StructureNode] = []
+    displaced_metadata: list[dict] = []
+    clipped = False
+    for mode_index, mode in enumerate(normal_modes):
+        freq = float(frequencies[mode_index]) if mode_index < len(frequencies) else None
+        for direction, signed_dr in (("+", dr), ("-", -dr)):
+            displaced = displace_by_dr(node=node, displacement=np.array(mode), dr=signed_dr)
+            displaced_nodes.append(displaced)
+            displaced_metadata.append(
+                {
+                    "mode_index": int(mode_index),
+                    "direction": direction,
+                    "frequency_wavenumber": freq,
+                    "dr": float(abs(signed_dr)),
+                }
+            )
+            if len(displaced_nodes) >= max_candidates:
+                clipped = True
+                break
+        if clipped:
+            break
+
+    if len(displaced_nodes) == 0:
+        console.print("[bold red]✗ ERROR:[/bold red] No displaced candidates were generated.")
+        raise typer.Exit(1)
+
+    displaced_chain = Chain.model_validate(
+        {"nodes": [cand.copy() for cand in displaced_nodes], "parameters": program_input.chain_inputs}
+    )
+    displaced_chain.write_to_disk(displaced_fp, write_qcio=False)
+
+    console.print(
+        f"[cyan]Generated {len(displaced_nodes)} displaced candidates from {len(normal_modes)} normal modes"
+        f"{' (clipped by --max-candidates).' if clipped else '.'}[/cyan]"
+    )
+
+    optimized_nodes: list[StructureNode] = []
+    optimized_metadata: list[dict] = []
+    failed_candidates: list[dict] = []
+
+    engine_name = str(getattr(program_input, "engine_name", "")).lower()
+    compute_program = str(getattr(engine, "compute_program", "")).lower()
+    batch_optimizer = getattr(engine, "compute_geometry_optimizations", None)
+    use_chemcloud_batch = engine_name == "chemcloud" or compute_program == "chemcloud"
+    optimization_submission_mode = "serial"
+
+    if use_chemcloud_batch:
+        if engine_name == "chemcloud" and compute_program not in {"", "chemcloud"}:
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] RunInputs requested ChemCloud (`engine_name=chemcloud`) "
+                f"but engine reports `compute_program={compute_program}`. Refusing to run serial fallback."
+            )
+            raise typer.Exit(1)
+        if not callable(batch_optimizer):
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] ChemCloud engine selected, but batch geometry optimization is unavailable (`compute_geometry_optimizations`)."
+            )
+            raise typer.Exit(1)
+
+        console.print(
+            f"[cyan]Submitting {len(displaced_nodes)} geometry optimizations to ChemCloud in parallel.[/cyan]"
+        )
+        optimization_submission_mode = "chemcloud_batch"
+        try:
+            try:
+                trajectories = batch_optimizer(
+                    displaced_nodes, keywords={"coordsys": "cart", "maxiter": maxiter}
+                )
+            except TypeError:
+                trajectories = batch_optimizer(displaced_nodes)
+        except Exception:
+            console.print(
+                f"[bold red]✗ ChemCloud batch geometry optimization failed:[/bold red] {traceback.format_exc()}"
+            )
+            raise typer.Exit(1)
+
+        if len(trajectories) != len(displaced_nodes):
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] ChemCloud batch returned a trajectory count different from the submitted candidate count."
+            )
+            raise typer.Exit(1)
+
+        for meta, trajectory in zip(displaced_metadata, trajectories):
+            if trajectory and len(trajectory) > 0:
+                optimized_nodes.append(trajectory[-1])
+                optimized_metadata.append(meta)
+            else:
+                failed_candidates.append(
+                    {
+                        **meta,
+                        "error": "Batch optimization returned an empty trajectory.",
+                    }
+                )
+    else:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TimeRemainingColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Optimizing displaced candidates", total=len(displaced_nodes))
+            for candidate, meta in zip(displaced_nodes, displaced_metadata):
+                try:
+                    try:
+                        trajectory = engine.compute_geometry_optimization(
+                            candidate, keywords={"coordsys": "cart", "maxiter": maxiter}
+                        )
+                    except TypeError:
+                        trajectory = engine.compute_geometry_optimization(candidate)
+                    optimized_nodes.append(trajectory[-1])
+                    optimized_metadata.append(meta)
+                except Exception:
+                    failed_candidates.append(
+                        {
+                            **meta,
+                            "error": traceback.format_exc().strip(),
+                        }
+                    )
+                progress.update(task, advance=1)
+
+    if len(optimized_nodes) == 0:
+        console.print("[bold red]✗ ERROR:[/bold red] All displaced-candidate optimizations failed.")
+        raise typer.Exit(1)
+
+    optimized_chain = Chain.model_validate(
+        {"nodes": [cand.copy() for cand in optimized_nodes], "parameters": program_input.chain_inputs}
+    )
+    optimized_chain.write_to_disk(optimized_fp, write_qcio=write_qcio)
+
+    unique_nodes = _dedupe_minima_nodes(optimized_nodes, program_input.chain_inputs)
+    unique_chain = Chain.model_validate(
+        {"nodes": [cand.copy() for cand in unique_nodes], "parameters": program_input.chain_inputs}
+    )
+    unique_chain.write_to_disk(unique_fp, write_qcio=write_qcio)
+
+    summary_payload = {
+        "geometry": str(Path(geometry).resolve()),
+        "inputs": str(Path(inputs).resolve()) if inputs is not None else None,
+        "dr": float(dr),
+        "max_candidates": int(max_candidates),
+        "maxiter": int(maxiter),
+        "normal_modes_total": int(len(normal_modes)),
+        "frequencies_wavenumber": [float(freq) for freq in frequencies],
+        "displaced_candidates": int(len(displaced_nodes)),
+        "optimized_candidates": int(len(optimized_nodes)),
+        "failed_candidates": int(len(failed_candidates)),
+        "unique_minima": int(len(unique_nodes)),
+        "optimization_submission_mode": optimization_submission_mode,
+        "engine_name": engine_name,
+        "engine_compute_program": compute_program,
+        "chain_inputs_thresholds": {
+            "node_rms_thre": float(program_input.chain_inputs.node_rms_thre),
+            "node_ene_thre": float(program_input.chain_inputs.node_ene_thre),
+        },
+        "displaced_metadata": displaced_metadata,
+        "optimized_metadata": optimized_metadata,
+        "failed_candidate_details": failed_candidates,
+        "output_files": {
+            "hessian_qcio": str(hessian_fp),
+            "displaced_xyz": str(displaced_fp),
+            "optimized_xyz": str(optimized_fp),
+            "unique_xyz": str(unique_fp),
+        },
+    }
+    _write_json_atomic(summary_fp, summary_payload)
+
+    table = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    table.add_column(style="bold cyan")
+    table.add_column(style="white")
+    table.add_row("Normal modes", str(len(normal_modes)))
+    table.add_row("Displaced candidates", str(len(displaced_nodes)))
+    table.add_row("Optimized candidates", str(len(optimized_nodes)))
+    table.add_row("Failed candidates", str(len(failed_candidates)))
+    table.add_row("Unique minima", str(len(unique_nodes)))
+    table.add_row("Optimization mode", optimization_submission_mode)
+    table.add_row("Hessian", str(hessian_fp))
+    table.add_row("Displaced", str(displaced_fp))
+    table.add_row("Optimized", str(optimized_fp))
+    table.add_row("Unique", str(unique_fp))
+    table.add_row("Summary", str(summary_fp))
+    console.print(
+        Panel(
+            table,
+            title="[bold green]✓ Hessian Sample Complete[/bold green]",
+            border_style="green",
+        )
+    )
 
 
 @app.command("pseuirc")
@@ -2327,6 +2935,212 @@ def make_default_inputs(
         f"[bold green]✓ Default inputs saved to:[/bold green] {out.parent / (out.stem+'.toml')}")
 
 
+@app.command("netgen-smiles")
+def netgen_smiles(
+    smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES")] = None,
+    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
+    environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES")] = "",
+    name: Annotated[str, typer.Option("--name", help="Run name / default workspace folder name")] = None,
+    directory: Annotated[str, typer.Option("--directory", "-d", help="Workspace directory")] = None,
+    timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
+    max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
+    max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
+    max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of recursive NEBs to run concurrently")] = 1,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the generated status HTML")] = False,
+):
+    console.print(BANNER)
+    if smiles is None:
+        raise typer.BadParameter("--smiles is required.")
+    if inputs is None:
+        raise typer.BadParameter("--inputs/-i is required.")
+    try:
+        ensure_retropaths_available(feature="`netgen-smiles`")
+    except RuntimeError as exc:
+        raise typer.BadParameter(str(exc)) from exc
+
+    requested_dir = Path(directory).resolve() if directory else None
+    if requested_dir is not None and (requested_dir / "workspace.json").exists():
+        workspace = RetropathsWorkspace.read(requested_dir)
+        workspace.max_parallel_nebs = max_parallel_nebs
+        if reactions_fp is not None:
+            workspace.reactions_fp = str(Path(reactions_fp).resolve())
+        workspace.write()
+    else:
+        workspace = create_workspace(
+            root_smiles=smiles,
+            environment_smiles=environment,
+            inputs_fp=inputs,
+            reactions_fp=reactions_fp,
+            name=name,
+            directory=directory,
+            timeout_seconds=timeout_seconds,
+            max_nodes=max_nodes,
+            max_depth=max_depth,
+            max_parallel_nebs=max_parallel_nebs,
+        )
+
+    console.print(f"[bold cyan]Workspace:[/bold cyan] [white]{workspace.workdir}[/white]")
+    console.print(f"[bold cyan]Root SMILES:[/bold cyan] [white]{workspace.root_smiles}[/white]")
+    console.print(f"[bold cyan]Environment:[/bold cyan] [white]{workspace.environment_smiles or '(none)'}[/white]")
+    console.print(f"[bold cyan]Reactions File:[/bold cyan] [white]{workspace.reactions_path}[/white]")
+
+    with console.status("[bold cyan]Preparing retropaths cache, converted pot, and queue...[/bold cyan]"):
+        prepare_neb_workspace(workspace)
+        queue, _, status_fp = write_status_html(workspace)
+    console.print(f"[dim]Initial status HTML: {status_fp}[/dim]")
+
+    try:
+        queue, _pot = run_netgen_smiles_workflow(
+            workspace,
+            progress=lambda msg: console.print(f"[cyan]{msg}[/cyan]"),
+        )
+    finally:
+        queue, _, status_fp = write_status_html(workspace)
+
+    counts = summarize_queue(queue)
+    summary = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    summary.add_column(style="bold cyan")
+    summary.add_column(style="white")
+    summary.add_row("Workspace", workspace.workdir)
+    summary.add_row("Queue Items", str(counts["items"]))
+    summary.add_row("Completed", str(counts.get("completed", 0)))
+    summary.add_row("Running", str(counts.get("running", 0)))
+    summary.add_row("Pending", str(counts.get("pending", 0)))
+    summary.add_row("Failed", str(counts.get("failed", 0)))
+    summary.add_row("Incompatible", str(counts.get("incompatible", 0)))
+    summary.add_row("Optimized Endpoints", str(sum(bool(_pot.graph.nodes[n].get("endpoint_optimized")) for n in _pot.graph.nodes)))
+    summary.add_row("Status HTML", str(status_fp))
+    console.print(Panel(summary, title="[bold green]✓ netgen-smiles Finished[/bold green]", border_style="green"))
+
+    if not no_open:
+        webbrowser.open(status_fp.resolve().as_uri())
+
+
+@app.command("status")
+def status_cmd(
+    directory: Annotated[str, typer.Option("--directory", "-d", help="Workspace directory containing workspace.json")] = ".",
+    output_html: Annotated[str, typer.Option("--output", "-o", help="Optional override path for generated status HTML")] = None,
+    temperature: Annotated[float, typer.Option("--temperature", help="KMC temperature in kelvin for the status page")] = 298.15,
+    initial_conditions: Annotated[List[str], typer.Option("--initial-condition", help="Override KMC initial conditions as NODE=VALUE. Repeatable.")] = None,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open browser window")] = False,
+):
+    console.print(BANNER)
+    workspace_dir = Path(directory).resolve()
+    workspace_fp = workspace_dir / "workspace.json"
+    if not workspace_fp.exists():
+        console.print(f"[bold red]✗ ERROR:[/bold red] No workspace.json found in {workspace_dir}")
+        raise typer.Exit(1)
+
+    workspace = RetropathsWorkspace.read(workspace_dir)
+    kmc_initial_conditions = _parse_kmc_initial_condition_overrides(initial_conditions)
+    queue, pot, status_fp = write_status_html(
+        workspace,
+        kmc_temperature_kelvin=temperature,
+        kmc_initial_conditions=kmc_initial_conditions,
+    )
+    counts = summarize_queue(queue)
+
+    if output_html is not None:
+        out_fp = Path(output_html).resolve()
+        out_fp.write_text(status_fp.read_text(encoding="utf-8"), encoding="utf-8")
+        status_fp = out_fp
+
+    summary = Table(box=box.ROUNDED, border_style="cyan", show_header=False)
+    summary.add_column(style="bold cyan")
+    summary.add_column(style="white")
+    summary.add_row("Workspace", workspace.workdir)
+    summary.add_row("Root", workspace.root_smiles)
+    summary.add_row("Environment", workspace.environment_smiles or "(none)")
+    summary.add_row("Queue Items", str(counts["items"]))
+    summary.add_row("Completed", str(counts.get("completed", 0)))
+    summary.add_row("Running", str(counts.get("running", 0)))
+    summary.add_row("Pending", str(counts.get("pending", 0)))
+    summary.add_row("Failed", str(counts.get("failed", 0)))
+    summary.add_row("Incompatible", str(counts.get("incompatible", 0)))
+    summary.add_row("Network Nodes", str(pot.graph.number_of_nodes()))
+    summary.add_row("Network Edges", str(pot.graph.number_of_edges()))
+    summary.add_row("Optimized Endpoints", str(sum(bool(pot.graph.nodes[n].get("endpoint_optimized")) for n in pot.graph.nodes)))
+    summary.add_row("KMC Temperature (K)", f"{temperature:.2f}")
+    summary.add_row("Status HTML", str(status_fp))
+    console.print(Panel(summary, title="[bold cyan]Network Status[/bold cyan]", border_style="cyan"))
+
+    if not no_open:
+        webbrowser.open(status_fp.resolve().as_uri())
+
+
+@app.command("drive")
+def drive(
+    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES to bootstrap a drive workspace before opening the UI")] = None,
+    product_smiles: Annotated[str, typer.Option("--product-smiles", "--end", help="Optional product / end SMILES to bootstrap a target node and queued NEB edge")] = None,
+    environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES for SMILES-based drive initialization")] = "",
+    charge: Annotated[int, typer.Option("--charge", help="Total charge for SMILES-bootstrapped drive endpoint structures")] = 0,
+    multiplicity: Annotated[int, typer.Option("--multiplicity", help="Spin multiplicity for SMILES-bootstrapped drive endpoint structures")] = 1,
+    name: Annotated[str, typer.Option("--name", help="Run name / workspace name for SMILES-based drive initialization")] = None,
+    workspace: Annotated[str, typer.Option("--workspace", help="Existing workspace directory or workspace.json to load on startup")] = None,
+    reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
+    directory: Annotated[str, typer.Option("--directory", "-d", help="Directory where MEPD Drive workspaces should be created")] = None,
+    host: Annotated[str, typer.Option("--host", help="Host interface for the local drive server")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Port for the local drive server (0 selects a free port)")] = 0,
+    ssh_login: Annotated[str, typer.Option("--ssh-login", help="SSH target to print a ready-made tunnel command, e.g. user@cluster")] = None,
+    local_port: Annotated[int, typer.Option("--local-port", help="Laptop-side port for the printed SSH tunnel command")] = None,
+    timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
+    max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
+    max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
+    max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of autosplitting NEBs to run concurrently")] = 1,
+    network_splits: Annotated[bool, typer.Option("--network-splits/--no-network-splits", help="Use recursive autosplit results to build the displayed network overlay")] = True,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the browser")] = False,
+):
+    console.print(BANNER)
+    workspace_path = str(workspace or "").strip() or None
+    requested_dir = Path(directory).resolve() if directory else None
+    if workspace_path is None and requested_dir is not None and (requested_dir / "workspace.json").exists():
+        workspace_path = str(requested_dir)
+
+    if smiles and workspace_path:
+        raise typer.BadParameter("Choose either --smiles/--inputs to bootstrap a new drive workspace or --workspace/--directory to load an existing one, not both.")
+    if smiles and inputs is None:
+        raise typer.BadParameter("--inputs/-i is required when using --smiles.")
+
+    server = launch_mepd_drive(
+        directory=directory,
+        inputs_fp=inputs,
+        workspace_path=workspace_path,
+        smiles=smiles,
+        product_smiles=product_smiles,
+        environment_smiles=environment,
+        charge=charge,
+        multiplicity=multiplicity,
+        run_name=name,
+        reactions_fp=reactions_fp,
+        host=host,
+        port=port,
+        timeout_seconds=timeout_seconds,
+        max_nodes=max_nodes,
+        max_depth=max_depth,
+        max_parallel_nebs=max_parallel_nebs,
+        network_splits=network_splits,
+        open_browser=not no_open,
+    )
+    actual_host, actual_port = server.server_address[:2]
+    console.print(
+        _format_drive_access_panel(
+            actual_host=actual_host,
+            actual_port=actual_port,
+            ssh_login=ssh_login,
+            local_port=local_port,
+        )
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        console.print("[dim]Stopping MEPD Drive.[/dim]")
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def _path_str_for_toml(path_text: str | None, source_dir: Path, output_dir: Path) -> str | None:
     if path_text is None:
         return None
@@ -2585,8 +3399,8 @@ def run_netgen(
         try:
             history = m.run_recursive_minimize(chain)
 
-            history.output_chain.write_to_disk(filename, write_qcio=program_input.write_qcio)
-            history.write_to_disk(foldername, write_qcio=program_input.write_qcio)
+            history.output_chain.write_to_disk(filename, write_qcio=bool(getattr(program_input, "write_qcio", False)))
+            history.write_to_disk(foldername, write_qcio=bool(getattr(program_input, "write_qcio", False)))
         except Exception:
             console.print(f"[bold red]✗ Failed on pair {i}[/bold red]")
             continue

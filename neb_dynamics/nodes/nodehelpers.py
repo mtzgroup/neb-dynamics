@@ -2,6 +2,7 @@ import numpy as np
 from neb_dynamics.nodes.node import Node, XYNode
 from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
 from neb_dynamics.geodesic_interpolation2.coord_utils import align_geom
+from neb_dynamics.errors import EnergiesNotComputedError
 # from neb_dynamics.molecule import Molecule
 # from neb_dynamics.qcio_structure_helpers import molecule_to_structure
 import traceback
@@ -65,18 +66,24 @@ def _print_all_comparisons():
     table.add_column("Structure 2 (ASCII)", width=30)
 
     for i, result in enumerate(_comparison_results):
-        graph_iso = "[green]✓[/green]" if result.get('graph_isomorphic', False) else "[red]✗[/red]"
-        smiles_match = "[green]✓[/green]" if result.get('smiles_identical', False) else "[red]✗[/red]"
+        graph_iso = "[green]✓[/green]" if result.get(
+            'graph_isomorphic', False) else "[red]✗[/red]"
+        smiles_match = "[green]✓[/green]" if result.get(
+            'smiles_identical', False) else "[red]✗[/red]"
 
         # Get ASCII representations
         smi1 = result.get('smi1', '')
         smi2 = result.get('smi2', '')
-        ascii1 = _render_molecule_ascii(smi1, width=28, height=6) if _rdkit_available else smi1[:25]
-        ascii2 = _render_molecule_ascii(smi2, width=28, height=6) if _rdkit_available else smi2[:25]
+        ascii1 = _render_molecule_ascii(
+            smi1, width=28, height=6) if _rdkit_available else smi1[:25]
+        ascii2 = _render_molecule_ascii(
+            smi2, width=28, height=6) if _rdkit_available else smi2[:25]
 
         # Truncate for table cell
-        ascii1_lines = ascii1.split('\n')[:6] if '\n' in ascii1 else [ascii1[:28]]
-        ascii2_lines = ascii2.split('\n')[:6] if '\n' in ascii2 else [ascii2[:28]]
+        ascii1_lines = ascii1.split(
+            '\n')[:6] if '\n' in ascii1 else [ascii1[:28]]
+        ascii2_lines = ascii2.split(
+            '\n')[:6] if '\n' in ascii2 else [ascii2[:28]]
 
         # Pad to same height
         max_lines = max(len(ascii1_lines), len(ascii2_lines))
@@ -87,7 +94,8 @@ def _print_all_comparisons():
         ascii1_cell = '\n'.join(ascii1_lines)
         ascii2_cell = '\n'.join(ascii2_lines)
 
-        table.add_row(f"#{i+1}", graph_iso, smiles_match, ascii1_cell, ascii2_cell)
+        table.add_row(f"#{i+1}", graph_iso, smiles_match,
+                      ascii1_cell, ascii2_cell)
 
     _console.print(table)
 
@@ -244,6 +252,7 @@ def _render_smiles_ascii(smiles: str, width: int = 40) -> str:
     # Fallback: just wrap at width
     return '\n'.join([smiles[i:i+width] for i in range(0, len(smiles), width)])
 
+
 # Rich imports for flashy CLI output
 try:
     from rich.console import Console
@@ -306,7 +315,8 @@ def _render_smiles_comparison(smi1: str, smi2: str) -> str:
         Chem.Compute2DCoords(mol2)
 
         # Draw both molecules side by side
-        img = Draw.MolsToGridImage([mol1, mol2], molsPerRow=2, subImgSize=(250, 200))
+        img = Draw.MolsToGridImage(
+            [mol1, mol2], molsPerRow=2, subImgSize=(250, 200))
 
         buffer = io.BytesIO()
         img.save(buffer, format='PNG')
@@ -461,23 +471,30 @@ def _is_conformer_identical(
             per_frag_dists.append(frag_dist)
             if verbose:
                 if _rich_available:
-                    _console.print(f"[dim]Fragment distance: {frag_dist:.4f}[/dim]")
+                    _console.print(
+                        f"[dim]Fragment distance: {frag_dist:.4f}[/dim]")
                 else:
                     print(f"\t\t\tfrag dist: {frag_dist}")
     else:
         per_frag_dists.append(global_dist)
 
-    en_delta = np.abs((self.energy - other.energy) * 627.5)
+    energy_missing = False
+    try:
+        en_delta = np.abs((self.energy - other.energy) * 627.5)
+    except EnergiesNotComputedError:
+        energy_missing = True
+        en_delta = 0.0
 
     global_rmsd_identical = global_dist <= global_rmsd_cutoff
     fragment_rmsd_identical = max(per_frag_dists) <= fragment_rmsd_cutoff
     rmsd_identical = global_rmsd_identical and fragment_rmsd_identical
-    energies_identical = en_delta < kcal_mol_cutoff
+    energies_identical = energy_missing or en_delta < kcal_mol_cutoff
 
     if verbose:
         if _rich_available:
             # Show convergence results in a table
-            results_table = Table(title="Geometry Comparison Results", show_header=False)
+            results_table = Table(
+                title="Geometry Comparison Results", show_header=False)
             results_table.add_column("Criterion", style="cyan")
             results_table.add_column("Value", style="white")
             results_table.add_column("Status", justify="center")
@@ -488,15 +505,21 @@ def _is_conformer_identical(
 
             frag_rmsd_val = f"Max fragment RMSD: {max(per_frag_dists):.4f} (cutoff: {fragment_rmsd_cutoff})"
             frag_rmsd_status = "[green]✓[/green]" if fragment_rmsd_identical else "[red]✗[/red]"
-            results_table.add_row("Fragment RMSD", frag_rmsd_val, frag_rmsd_status)
+            results_table.add_row(
+                "Fragment RMSD", frag_rmsd_val, frag_rmsd_status)
 
-            en_val = f"ΔE: {en_delta:.4f} kcal/mol (cutoff: {kcal_mol_cutoff})"
+            en_val = "ΔE unavailable; using geometry-only comparison" if energy_missing else f"ΔE: {en_delta:.4f} kcal/mol (cutoff: {kcal_mol_cutoff})"
             en_status = "[green]✓[/green]" if energies_identical else "[red]✗[/red]"
             results_table.add_row("Energy", en_val, en_status)
 
             _console.print(results_table)
         else:
-            print(f"\t\t{rmsd_identical=} {energies_identical=} {en_delta=}")
+            if energy_missing:
+                print(
+                    f"\t\t{rmsd_identical=} energy unavailable; using geometry-only comparison")
+            else:
+                print(
+                    f"\t\t{rmsd_identical=} {energies_identical=} {en_delta=}")
     if rmsd_identical and energies_identical:
         return True
     else:
@@ -565,9 +588,12 @@ def _is_connectivity_identical(
 
             # If not identical, show the SMILES side by side
             if not stereochem_identical:
-                smiles_table = Table(title="SMILES Comparison", show_header=True)
-                smiles_table.add_column("Structure 1", style="yellow", width=50)
-                smiles_table.add_column("Structure 2", style="yellow", width=50)
+                smiles_table = Table(
+                    title="SMILES Comparison", show_header=True)
+                smiles_table.add_column(
+                    "Structure 1", style="yellow", width=50)
+                smiles_table.add_column(
+                    "Structure 2", style="yellow", width=50)
 
                 # Render SMILES in ASCII art style (wrapped for readability)
                 smi1_rendered = _render_smiles_ascii(smi1, 45)
@@ -576,8 +602,10 @@ def _is_connectivity_identical(
                 smiles_table.add_row(smi1_rendered, smi2_rendered)
                 _console.print(smiles_table)
         else:
-            print(f"\t\tGraphs isomorphic to each other: {connectivity_identical}")
-            print(f"\t\tStereochemical smiles identical: {stereochem_identical}")
+            print(
+                f"\t\tGraphs isomorphic to each other: {connectivity_identical}")
+            print(
+                f"\t\tStereochemical smiles identical: {stereochem_identical}")
             if not stereochem_identical:
                 print(f"\t{smi1} || {smi2}")
 
@@ -590,10 +618,26 @@ def update_node_cache(node_list, results):
     """
     for node, result in zip(node_list, results):
         node._cached_result = result
+
         if result is not None:
             if result.success:
-                node._cached_energy = result.results.energy
-                node._cached_gradient = result.results.gradient
+                if 'cis' in result.input_data.keywords.keys():
+                    if 'cistarget' in result.input_data.keywords.keys():
+                        ind = int(result.input_data.keywords['cistarget']) - 1
+                        if ind < 0:
+                            print(
+                                "Warning: cistarget is 1-indexed. Subtracting 1 to get 0-indexed. If cistarget was intended to be 1, this will set ind to 0.")
+                    else:
+                        print(
+                            "Warning: cistarget needs to be set. defaulting to first excited state.")
+                        ind = 0
+                    energy = result.results.extras['excited_states'][ind]['energy']
+                    node._cached_energy = energy
+                    node._cached_gradient = result.results.gradient
+                else:
+                    node._cached_energy = result.results.energy
+                    node._cached_gradient = result.results.gradient
+
         else:
             node._cached_energy = None
             node._cached_gradient = None
