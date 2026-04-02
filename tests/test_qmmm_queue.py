@@ -287,6 +287,126 @@ def test_qmmm_geometry_optimization_uses_minimize_and_parses_trajectory(monkeypa
     assert captured["kwargs"]["collect_files"] is True
 
 
+def test_qmmm_geometry_optimization_accepts_non_optim_xyz_filename(monkeypatch, tmp_path):
+    _write_minimal_qmmm_files(tmp_path)
+
+    class _FakeOut:
+        def __init__(self, files):
+            self.files = files
+            self.stdout = "ok"
+
+    def _fake_compute(*args, **kwargs):
+        xyz = (
+            "1\n"
+            "frame0\n"
+            "H 0.000000 0.000000 0.000000\n"
+            "1\n"
+            "frame1\n"
+            "H 0.100000 0.000000 0.000000\n"
+        )
+        return _FakeOut(files={"geometry.xyz": xyz})
+
+    monkeypatch.setattr(qmmm_module, "compute", _fake_compute)
+    eng = QMMMEngine(
+        tcin_text="run gradient\n",
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+    )
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0]]),
+            symbols=["H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    traj = eng.compute_geometry_optimization(node=node, keywords={"maxit": 25})
+    assert len(traj) == 2
+
+
+def test_qmmm_geometry_optimization_fallback_parses_rst7(monkeypatch, tmp_path):
+    _write_minimal_qmmm_files(tmp_path)
+
+    class _FakeOut:
+        def __init__(self, files):
+            self.files = files
+            self.stdout = "ok"
+
+    def _fake_compute(*args, **kwargs):
+        rst7 = (
+            "TITLE\n"
+            "1\n"
+            "  0.2000000  0.0000000  0.0000000\n"
+            "  0.0000000  0.0000000  0.0000000\n"
+            "  90.0000000 90.0000000 90.0000000\n"
+        )
+        return _FakeOut(files={"optim.rst7": rst7})
+
+    monkeypatch.setattr(qmmm_module, "compute", _fake_compute)
+    eng = QMMMEngine(
+        tcin_text="run gradient\n",
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+    )
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0]]),
+            symbols=["H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    traj = eng.compute_geometry_optimization(node=node, keywords={"maxit": 25})
+    assert len(traj) == 1
+    assert np.allclose(traj[-1].coords, np.array([[0.2, 0.0, 0.0]]) * ANGSTROM_TO_BOHR)
+
+
+def test_qmmm_geometry_optimization_prefers_optim_rst7_when_multiple_rst7_present(
+    monkeypatch, tmp_path
+):
+    _write_minimal_qmmm_files(tmp_path)
+
+    class _FakeOut:
+        def __init__(self, files):
+            self.files = files
+            self.stdout = "ok"
+
+    def _fake_compute(*args, **kwargs):
+        return _FakeOut(
+            files={
+                "ref.rst7": "TITLE\n1\n 0.0000000  0.0000000  0.0000000\n",
+                "optim.rst7": "TITLE\n1\n 0.3000000  0.0000000  0.0000000\n",
+            }
+        )
+
+    monkeypatch.setattr(qmmm_module, "compute", _fake_compute)
+    eng = QMMMEngine(
+        tcin_text="run gradient\n",
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+    )
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0]]),
+            symbols=["H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    traj = eng.compute_geometry_optimization(node=node, keywords={"maxit": 25})
+    assert len(traj) == 1
+    assert np.allclose(traj[-1].coords, np.array([[0.3, 0.0, 0.0]]) * ANGSTROM_TO_BOHR)
+
+
 def test_qmmm_geometry_optimization_chemcloud_retries_on_schema_error(monkeypatch, tmp_path):
     _write_minimal_qmmm_files(tmp_path)
     captured = {"calls": 0}

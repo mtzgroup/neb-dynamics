@@ -173,17 +173,85 @@ class QMMMEngine(Engine):
         return out
 
     @staticmethod
-    def _extract_output_files(output) -> dict | None:
+    def _coerce_files_mapping(files_obj) -> dict | None:
+        if files_obj is None:
+            return None
+        if isinstance(files_obj, dict):
+            return files_obj
+        direct = getattr(files_obj, "files", None)
+        if isinstance(direct, dict):
+            return direct
+        if hasattr(files_obj, "items"):
+            try:
+                return dict(files_obj.items())
+            except Exception:
+                return None
+        return None
+
+    @classmethod
+    def _extract_output_files(cls, output) -> dict | None:
         for files_obj in (
             getattr(output, "files", None),
             getattr(getattr(output, "results", None), "files", None),
             getattr(getattr(output, "data", None), "files", None),
         ):
-            if files_obj:
-                return files_obj
+            files_map = cls._coerce_files_mapping(files_obj)
+            if files_map:
+                return files_map
         return None
 
+    @staticmethod
+    def _decode_file_contents(contents) -> str:
+        if isinstance(contents, bytes):
+            return contents.decode()
+        return str(contents)
+
+    @staticmethod
+    def _coords_from_rst7_text(rst7_text: str) -> np.ndarray:
+        lines = [line for line in rst7_text.splitlines() if line.strip()]
+        if len(lines) < 2:
+            raise ValueError("RST7 content is too short.")
+        natom = int(lines[1].split()[0])
+        if natom <= 0:
+            raise ValueError("RST7 content has no atoms.")
+
+        numbers: list[float] = []
+        for token in " ".join(lines[2:]).split():
+            try:
+                numbers.append(float(token))
+            except ValueError:
+                continue
+            if len(numbers) >= 3 * natom:
+                break
+        if len(numbers) < 3 * natom:
+            raise ValueError("RST7 content does not contain enough coordinate values.")
+        return np.array(numbers[: 3 * natom], dtype=float).reshape(natom, 3)
+
+    def _structure_from_rst7_contents(self, contents, reference_structure: Structure) -> Structure | None:
+        try:
+            rst7_text = self._decode_file_contents(contents)
+            coords_angstrom = self._coords_from_rst7_text(rst7_text)
+            if len(coords_angstrom) != len(reference_structure.symbols):
+                return None
+            return Structure(
+                geometry=np.array(coords_angstrom) * ANGSTROM_TO_BOHR,
+                symbols=reference_structure.symbols,
+                charge=reference_structure.charge,
+                multiplicity=reference_structure.multiplicity,
+            )
+        except Exception:
+            return None
+
     def _extract_optimization_structures(self, output, reference_structure: Structure) -> list[Structure]:
+        for struct in (
+            getattr(getattr(output, "results", None), "structure", None),
+            getattr(getattr(output, "data", None), "structure", None),
+            getattr(getattr(output, "data", None), "final_structure", None),
+            getattr(output, "structure", None),
+        ):
+            if struct is not None:
+                return [struct]
+
         trajectory = None
         for tr in (
             getattr(getattr(output, "results", None), "trajectory", None),
@@ -205,19 +273,53 @@ class QMMMEngine(Engine):
 
         files = self._extract_output_files(output)
         if files:
-            for key, contents in files.items():
-                if str(key).endswith("optim.xyz") or str(key) == "optim.xyz":
-                    with tempfile.TemporaryDirectory() as td:
-                        xyz_fp = Path(td) / "optim.xyz"
-                        if isinstance(contents, bytes):
-                            xyz_fp.write_bytes(contents)
-                        else:
-                            xyz_fp.write_text(str(contents))
-                        return Structure.open_multi(
+            rst7_items = [
+                (str(key), contents)
+                for key, contents in files.items()
+                if ".rst7" in str(key).lower()
+            ]
+            rst7_items.sort(
+                key=lambda kv: (
+                    0 if Path(kv[0]).name.lower() == "optim.rst7" else 1,
+                    0 if "optim" in kv[0].lower() else 1,
+                    kv[0].lower(),
+                )
+            )
+            for _, contents in rst7_items:
+                struct = self._structure_from_rst7_contents(
+                    contents, reference_structure=reference_structure
+                )
+                if struct is not None:
+                    return [struct]
+
+            xyz_items = [
+                (str(key), contents)
+                for key, contents in files.items()
+                if str(key).lower().endswith(".xyz")
+            ]
+            xyz_items.sort(
+                key=lambda kv: (
+                    0 if any(token in kv[0].lower() for token in ("optim", "opt", "min")) else 1,
+                    kv[0].lower(),
+                )
+            )
+            for key, contents in xyz_items:
+                with tempfile.TemporaryDirectory() as td:
+                    xyz_fp = Path(td) / Path(key).name
+                    if isinstance(contents, bytes):
+                        xyz_fp.write_bytes(contents)
+                    else:
+                        xyz_fp.write_text(str(contents))
+                    try:
+                        structures = Structure.open_multi(
                             xyz_fp,
                             charge=reference_structure.charge,
                             multiplicity=reference_structure.multiplicity,
                         )
+                    except Exception:
+                        continue
+                    if len(structures) > 0:
+                        return structures
 
         return []
 
@@ -436,7 +538,7 @@ class QMMMEngine(Engine):
         structures = self._extract_optimization_structures(output, reference_structure=node.structure)
         if len(structures) == 0:
             raise ElectronicStructureError(
-                msg="QMMM minimize completed but no optimization trajectory was found (optim.xyz missing).",
+                msg="QMMM minimize completed but no parseable optimized structures were found in output.",
                 obj=output,
             )
         return [StructureNode(structure=struct) for struct in structures]
