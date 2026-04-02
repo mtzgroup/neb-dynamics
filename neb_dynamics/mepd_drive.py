@@ -1106,6 +1106,13 @@ def _deployment_program_defaults(program: str) -> tuple[str, str]:
     raise ValueError("Program must be either 'crest' or 'terachem'.")
 
 
+def _normalize_deployment_engine_name(engine_name: str | None) -> str:
+    normalized = str(engine_name or "").strip().lower()
+    if normalized in {"chemcloud", "qcop"}:
+        return normalized
+    return "chemcloud"
+
+
 def _extract_program_model_fields(program_kwds: Any) -> tuple[str, str]:
     payload: dict[str, Any] = {}
     if isinstance(program_kwds, dict):
@@ -1135,13 +1142,14 @@ def _drive_defaults_payload(inputs_fp: Path | None, reactions_fp: Path | None) -
         run_inputs = RunInputs.open(inputs_fp)
     except Exception:
         return defaults
-    defaults["engine_name"] = "chemcloud"
+    defaults["engine_name"] = _normalize_deployment_engine_name(getattr(run_inputs, "engine_name", ""))
     program = str(getattr(run_inputs, "program", "") or "").strip().lower()
     if program in {"crest", "terachem"}:
         defaults["program"] = program
     program_default_method, program_default_basis = _deployment_program_defaults(defaults["program"])
-    defaults["method"] = program_default_method
-    defaults["basis"] = program_default_basis
+    configured_method, configured_basis = _extract_program_model_fields(getattr(run_inputs, "program_kwds", None))
+    defaults["method"] = configured_method or program_default_method
+    defaults["basis"] = configured_basis or program_default_basis
     return defaults
 
 
@@ -1155,6 +1163,7 @@ def _materialize_deployment_inputs(
     theory_basis: str | None,
 ) -> Path:
     run_inputs = RunInputs.open(template_fp)
+    selected_engine = _normalize_deployment_engine_name(getattr(run_inputs, "engine_name", ""))
     selected_program = str(theory_program or getattr(run_inputs, "program", "") or "").strip().lower()
     if selected_program not in {"crest", "terachem"}:
         selected_program = "terachem"
@@ -1169,12 +1178,14 @@ def _materialize_deployment_inputs(
             existing_payload = dict(existing_program_kwds.model_dump())
 
     model_payload = dict(existing_payload.get("model") or {})
-    method = str(theory_method or default_method).strip() or default_method
-    basis = str(theory_basis or default_basis).strip() or default_basis
+    existing_method = str(model_payload.get("method") or "").strip()
+    existing_basis = str(model_payload.get("basis") or "").strip()
+    method = str(theory_method or existing_method or default_method).strip() or default_method
+    basis = str(theory_basis or existing_basis or default_basis).strip() or default_basis
     model_payload["method"] = method
     model_payload["basis"] = basis
 
-    run_inputs.engine_name = "chemcloud"
+    run_inputs.engine_name = selected_engine
     run_inputs.program = selected_program
     run_inputs.program_kwds = ProgramArgs(
         model=model_payload,
@@ -3024,7 +3035,7 @@ def _drive_html() -> str:
               <button id="load-workspace" class="secondary">Load Existing Workspace</button>
               <button id="minimize-all" class="secondary">Queue Minimization For All Geometries</button>
             </div>
-            <div class="muted" style="margin-top:10px;">This deployment always uses the `chemcloud` engine. You can choose only the QC program and model.</div>
+            <div class="muted" style="margin-top:10px;">Drive uses the engine declared in the selected inputs TOML (`qcop` or `chemcloud`). You can choose the QC program and model used for this deployment.</div>
           </div>
           <div>
             <div id="workspace-summary" class="muted">No workspace initialized yet.</div>
@@ -3514,12 +3525,16 @@ def _drive_html() -> str:
         reactionsPathField.value = String(defaults.reactions_fp || "");
       }
       const defaultsProgram = String(defaults.program || "terachem").trim().toLowerCase() || "terachem";
+      const defaultsEngine = String(defaults.engine_name || "chemcloud").trim().toLowerCase() || "chemcloud";
       const programDefaults = deploymentProgramDefaults(defaultsProgram);
       const defaultsMethod = String(defaults.method || programDefaults.method).trim() || programDefaults.method;
       const defaultsBasis = String(defaults.basis || programDefaults.basis).trim() || programDefaults.basis;
-      const defaultsKey = `${String(defaults.inputs_path || "")}|${defaultsProgram}|${defaultsMethod}|${defaultsBasis}`;
+      const defaultsKey = `${String(defaults.inputs_path || "")}|${defaultsEngine}|${defaultsProgram}|${defaultsMethod}|${defaultsBasis}`;
       if (state.inputsDefaultsKey !== defaultsKey) {
         state.inputsDefaultsKey = defaultsKey;
+        if (theoryEngineField) {
+          theoryEngineField.value = defaultsEngine;
+        }
         if (theoryProgramField) {
           theoryProgramField.value = defaultsProgram;
         }
@@ -3540,9 +3555,6 @@ def _drive_html() -> str:
       if (theoryProgramField) {
         const selectedProgram = String(theoryProgramField.value || "terachem").trim().toLowerCase() || "terachem";
         syncTheoryModelFieldsToProgram(selectedProgram, { force: false });
-      }
-      if (theoryEngineField) {
-        theoryEngineField.value = "chemcloud";
       }
       if (!inputEl || !networkEl) return;
       if (!snapshot || !snapshot.initialized || !snapshot.drive) {

@@ -2,7 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import networkx as nx
-from qcio import Structure
+from qcio import ProgramArgs, Structure
 
 from neb_dynamics.mepd_drive import (
     _build_growth_live_payload,
@@ -10,7 +10,9 @@ from neb_dynamics.mepd_drive import (
     _bootstrap_product_endpoint,
     _build_drive_payload,
     _deployment_program_defaults,
+    _drive_defaults_payload,
     _drive_network_version,
+    _materialize_deployment_inputs,
     _run_kmc_payload,
     _drive_html,
     _initialize_workspace_job,
@@ -46,6 +48,65 @@ H 0.0 0.0 0.74
 def test_deployment_program_defaults_are_program_consistent():
     assert _deployment_program_defaults("crest") == ("gfn2", "gfn2")
     assert _deployment_program_defaults("terachem") == ("ub3lyp", "sto-3g")
+
+
+def test_drive_defaults_payload_preserves_qcop_engine(monkeypatch, tmp_path):
+    inputs_fp = tmp_path / "inputs.toml"
+    inputs_fp.write_text('engine_name = "qcop"\n')
+    reactions_fp = tmp_path / "reactions.p"
+    reactions_fp.write_text("placeholder")
+
+    fake_inputs = SimpleNamespace(
+        engine_name="qcop",
+        program="crest",
+        program_kwds=ProgramArgs(model={"method": "gfn2", "basis": "gfn2"}),
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RunInputs.open", lambda _fp: fake_inputs)
+
+    defaults = _drive_defaults_payload(inputs_fp, reactions_fp)
+
+    assert defaults["engine_name"] == "qcop"
+    assert defaults["program"] == "crest"
+    assert defaults["method"] == "gfn2"
+    assert defaults["basis"] == "gfn2"
+
+
+def test_materialize_deployment_inputs_keeps_qcop_engine(monkeypatch, tmp_path):
+    template_fp = tmp_path / "template.toml"
+    template_fp.write_text('engine_name = "qcop"\n')
+
+    class _FakeRunInputs:
+        def __init__(self):
+            self.engine_name = "qcop"
+            self.program = "crest"
+            self.program_kwds = ProgramArgs(
+                model={"method": "gfn2", "basis": "gfn2"},
+                keywords={"threads": 1},
+            )
+            self.saved_fp = None
+
+        def save(self, fp):
+            self.saved_fp = Path(fp)
+            self.saved_fp.write_text(
+                f'engine_name = "{self.engine_name}"\nprogram = "{self.program}"\n',
+            )
+
+    fake_inputs = _FakeRunInputs()
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RunInputs.open", lambda _fp: fake_inputs)
+
+    out_fp = _materialize_deployment_inputs(
+        template_fp=template_fp,
+        output_dir=tmp_path,
+        run_name="qcop-drive",
+        theory_program="crest",
+        theory_method=None,
+        theory_basis=None,
+    )
+
+    assert fake_inputs.engine_name == "qcop"
+    assert fake_inputs.program == "crest"
+    assert fake_inputs.saved_fp == out_fp
+    assert out_fp.exists()
 
 
 def test_merge_drive_pot_overlays_annotated_edges(monkeypatch, tmp_path):
@@ -663,6 +724,9 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "function deploymentProgramDefaults(program)" in html
     assert "function syncTheoryModelFieldsToProgram(program, { force = false } = {})" in html
     assert "gfn2 or sto-3g" in html
+    assert "Drive uses the engine declared in the selected inputs TOML" in html
+    assert "theoryEngineField.value = defaultsEngine;" in html
+    assert 'theoryEngineField.value = "chemcloud";' not in html
     assert "function setManualEdgeRequestInFlight(inFlight)" in html
     assert "A manual edge request is already in progress." in html
     assert "network-edge-line pending-add" in html
