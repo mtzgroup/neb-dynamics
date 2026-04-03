@@ -111,7 +111,7 @@ def test_build_retropaths_neb_queue_refreshes_legacy_atom_mismatch_failures(tmp_
     assert "legacy" not in queue.attempted_pairs
 
 
-def test_build_retropaths_neb_queue_refreshes_stale_attempt_signature_after_endpoint_changes(tmp_path):
+def test_build_retropaths_neb_queue_keeps_skipped_attempted_when_signature_changes_after_completion(tmp_path):
     original_nodes = {0: _node_at_x(0.0), 1: _node_at_x(1.0)}
     original_attempt_key = pair_attempt_key(original_nodes[1], original_nodes[0])
     queue_fp = tmp_path / "queue.json"
@@ -142,8 +142,45 @@ def test_build_retropaths_neb_queue_refreshes_stale_attempt_signature_after_endp
     queue = build_retropaths_neb_queue(pot=pot, queue_fp=queue_fp)
 
     assert queue.items[0].attempt_key != original_attempt_key
-    assert queue.items[0].status == "pending"
+    assert queue.items[0].status == "skipped_attempted"
     assert original_attempt_key in queue.attempted_pairs
+
+
+def test_build_retropaths_neb_queue_keeps_completed_item_terminal_when_signature_changes(tmp_path):
+    original_nodes = {0: _node_at_x(0.0), 1: _node_at_x(1.0)}
+    original_attempt_key = pair_attempt_key(original_nodes[1], original_nodes[0])
+    queue_fp = tmp_path / "queue.json"
+
+    RetropathsNEBQueue(
+        items=[
+            NEBQueueItem(
+                job_id="1->0",
+                source_node=1,
+                target_node=0,
+                attempt_key=original_attempt_key,
+                status="completed",
+                result_dir=str(tmp_path / "old_result"),
+                output_chain_xyz=str(tmp_path / "old.xyz"),
+            )
+        ],
+        attempted_pairs={
+            original_attempt_key: {
+                "job_id": "prior",
+                "source_node": 1,
+                "target_node": 0,
+                "status": "completed",
+            }
+        },
+    ).write_to_disk(queue_fp)
+
+    optimized_nodes = {0: _node_at_x(0.25), 1: _node_at_x(1.5)}
+    pot = _test_pot(optimized_nodes, [(1, 0)])
+
+    queue = build_retropaths_neb_queue(pot=pot, queue_fp=queue_fp)
+
+    assert queue.items[0].attempt_key == original_attempt_key
+    assert queue.items[0].status == "completed"
+    assert queue.items[0].result_dir == str(tmp_path / "old_result")
 
 
 def test_load_completed_queue_chains_includes_completed_attempted_pairs(tmp_path, monkeypatch):

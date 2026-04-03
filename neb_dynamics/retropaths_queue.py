@@ -562,7 +562,23 @@ def _queue_item_for_edge(
         )
 
     attempt_key = pair_attempt_key(source_td, target_td)
-    status = "skipped_attempted" if attempt_key in attempted_pairs else "pending"
+    pair_key = tuple(sorted((int(source_node), int(target_node))))
+    has_terminal_pair_attempt = False
+    for attempt in attempted_pairs.values():
+        if not isinstance(attempt, dict):
+            continue
+        with contextlib.suppress(Exception):
+            attempt_pair_key = tuple(
+                sorted((int(attempt.get("source_node")), int(attempt.get("target_node"))))
+            )
+            if attempt_pair_key != pair_key:
+                continue
+            status = str(attempt.get("status") or "").strip().lower()
+            if status in {"completed", "running", "skipped_identical"}:
+                has_terminal_pair_attempt = True
+                break
+
+    status = "skipped_attempted" if (attempt_key in attempted_pairs or has_terminal_pair_attempt) else "pending"
     return NEBQueueItem(
         job_id=f"{source_node}->{target_node}",
         source_node=source_node,
@@ -593,6 +609,8 @@ def _should_refresh_existing_item(
     existing: NEBQueueItem,
     candidate: NEBQueueItem,
 ) -> bool:
+    if str(existing.status or "").strip().lower() in {"completed", "running", "skipped_identical"}:
+        return False
     if _is_retryable_legacy_failure(existing):
         return True
     if existing.reaction != candidate.reaction:

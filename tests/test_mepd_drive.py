@@ -24,6 +24,7 @@ from neb_dynamics.mepd_drive import (
     _parse_xyz_text_to_structure,
     _run_hessian_on_completed_edges,
     _run_unattempted_nebs,
+    _write_hawaii_progress,
     _write_completed_queue_visualizations,
     MepdDriveServer,
 )
@@ -4058,6 +4059,102 @@ def test_hawaii_neb_stage_writes_progress_after_each_completed_neb(monkeypatch, 
     assert len(completed) == 2
     assert "0 -> 1" in completed[0]
     assert "1 -> 2" in completed[1]
+
+
+def test_hawaii_neb_stage_deduplicates_reverse_direction_pairs(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C=C.O",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+    )
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_nodes_from([0, 1])
+    pot.graph.add_edge(0, 1)
+    pot.graph.add_edge(1, 0)
+    queue = SimpleNamespace(
+        attempted_pairs={},
+        items=[
+            SimpleNamespace(source_node=1, target_node=0, status="pending", attempt_key="1-0"),
+            SimpleNamespace(source_node=0, target_node=1, status="pending", attempt_key="0-1"),
+        ],
+    )
+
+    calls: list[tuple[int, int]] = []
+
+    def _fake_run_selected_edge_neb_logged(*_args, **kwargs):
+        calls.append((int(kwargs["source_node"]), int(kwargs["target_node"])))
+        return {"message": "ok"}
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.materialize_drive_graph", lambda _workspace: pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.build_retropaths_neb_queue",
+        lambda **kwargs: queue,
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._run_selected_edge_neb_logged",
+        _fake_run_selected_edge_neb_logged,
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_hawaii_progress", lambda *args, **kwargs: None)
+
+    attempts, failures = _run_unattempted_nebs(
+        workspace,
+        network_splits=True,
+        progress_fp=str(workspace_dir / "drive_hawaii.progress.json"),
+        control_fp=None,
+        dr=1.0,
+    )
+
+    assert attempts == 1
+    assert failures == 0
+    assert calls == [(0, 1)]
+
+
+def test_write_hawaii_progress_uses_passed_pot_without_remerge(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C=C.O",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+    )
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_nodes_from([0, 1])
+    pot.graph.add_edge(0, 1)
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._merge_drive_pot_compat",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unexpected merge call")),
+    )
+
+    progress_fp = workspace_dir / "drive_hawaii.progress.json"
+    _write_hawaii_progress(
+        workspace,
+        network_splits=True,
+        pot=pot,
+        progress_fp=str(progress_fp),
+        title="test",
+        note="test note",
+        phase="growing",
+        stage="neb",
+        dr=1.0,
+        control_mode="go",
+        growing_nodes=[0],
+    )
+
+    payload = __import__("json").loads(progress_fp.read_text(encoding="utf-8"))
+    assert payload["network"]["nodes"] == [
+        {"id": 0, "label": "0", "growing": True},
+        {"id": 1, "label": "1", "growing": False},
+    ]
+    assert payload["network"]["edges"] == [{"source": 0, "target": 1}]
 
 
 def test_progress_printer_writes_live_chain_payload_file(monkeypatch, tmp_path):

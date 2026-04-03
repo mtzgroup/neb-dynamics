@@ -2582,6 +2582,7 @@ def _write_hawaii_progress(
     workspace: RetropathsWorkspace,
     *,
     network_splits: bool,
+    pot: Pot | None = None,
     progress_fp: str | None,
     title: str,
     note: str,
@@ -2598,7 +2599,7 @@ def _write_hawaii_progress(
     if not progress_fp:
         return
     with contextlib.suppress(Exception):
-        pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+        progress_pot = pot if pot is not None else _merge_drive_pot_compat(workspace, network_splits=network_splits)
         growing = {int(node_id) for node_id in (growing_nodes or [])}
         payload = {
             "title": str(title),
@@ -2629,7 +2630,7 @@ def _write_hawaii_progress(
                         "label": str(node_index),
                         "growing": int(node_index) in growing,
                     }
-                    for node_index in sorted(int(n) for n in pot.graph.nodes)
+                    for node_index in sorted(int(n) for n in progress_pot.graph.nodes)
                 ],
                 "edges": [
                     {
@@ -2638,7 +2639,7 @@ def _write_hawaii_progress(
                     }
                     for source_node, target_node in sorted(
                         (int(source), int(target))
-                        for source, target in pot.graph.edges
+                        for source, target in progress_pot.graph.edges
                     )
                 ],
             },
@@ -2675,6 +2676,7 @@ def _connect_all_unconnected_nodes(
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
+            pot=pot,
             progress_fp=progress_fp,
             title="Hawaii autonomous exploration",
             note="Step 1/3: all current nodes are already connected by at least one edge.",
@@ -2691,6 +2693,7 @@ def _connect_all_unconnected_nodes(
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
+            pot=pot,
             progress_fp=progress_fp,
             title="Hawaii autonomous exploration",
             note=(
@@ -2709,6 +2712,7 @@ def _connect_all_unconnected_nodes(
             target_node=int(target_node),
             reaction_label=f"Hawaii auto edge {source_node}->{target_node}",
         )
+        pot.graph.add_edge(int(source_node), int(target_node))
     return len(missing_edges)
 
 
@@ -2728,14 +2732,19 @@ def _run_unattempted_nebs(
         overwrite=False,
     )
     attempted_keys = set(str(key) for key in queue.attempted_pairs.keys())
-    pending_items = [
-        item
-        for item in queue.items
-        if str(item.status) == "pending"
-        and str(item.attempt_key or "").strip()
-        and str(item.attempt_key) not in attempted_keys
-    ]
-    pending_items.sort(key=lambda item: (int(item.source_node), int(item.target_node)))
+    pending_items: list[NEBQueueItem] = []
+    seen_pairs: set[tuple[int, int]] = set()
+    for item in sorted(queue.items, key=lambda candidate: (int(candidate.source_node), int(candidate.target_node))):
+        if str(item.status) != "pending":
+            continue
+        attempt_key = str(item.attempt_key or "").strip()
+        if not attempt_key or attempt_key in attempted_keys:
+            continue
+        pair_key = tuple(sorted((int(item.source_node), int(item.target_node))))
+        if pair_key in seen_pairs:
+            continue
+        seen_pairs.add(pair_key)
+        pending_items.append(item)
 
     attempts = 0
     failures = 0
@@ -2743,6 +2752,7 @@ def _run_unattempted_nebs(
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
+            pot=pot,
             progress_fp=progress_fp,
             title="Hawaii autonomous exploration",
             note="Step 2/3: no unattempted NEB queue items remain.",
@@ -2780,6 +2790,7 @@ def _run_unattempted_nebs(
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
+            pot=pot,
             progress_fp=progress_fp,
             title="Hawaii autonomous exploration",
             note=(
@@ -2811,6 +2822,7 @@ def _run_unattempted_nebs(
             _write_hawaii_progress(
                 workspace,
                 network_splits=network_splits,
+                pot=pot,
                 progress_fp=progress_fp,
                 title="Hawaii autonomous exploration",
                 note=(
@@ -2824,9 +2836,11 @@ def _run_unattempted_nebs(
                 growing_nodes=[source_node, target_node],
             )
             continue
+        pot = materialize_drive_graph(workspace)
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
+            pot=pot,
             progress_fp=progress_fp,
             title="Hawaii autonomous exploration",
             note=(
@@ -2921,6 +2935,7 @@ def _run_hessian_on_completed_edges(
                 _write_hawaii_progress(
                     workspace,
                     network_splits=network_splits,
+                    pot=pot,
                     progress_fp=progress_fp,
                     title="Hawaii autonomous exploration",
                     note=(
@@ -2950,6 +2965,7 @@ def _run_hessian_on_completed_edges(
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
+            pot=pot,
             progress_fp=progress_fp,
             title="Hawaii autonomous exploration",
             note=(
@@ -2969,6 +2985,7 @@ def _run_hessian_on_completed_edges(
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
+            pot=pot,
             progress_fp=progress_fp,
             title="Hawaii autonomous exploration",
             note=(
@@ -2991,6 +3008,7 @@ def _run_hessian_on_completed_edges(
                 progress_fp=progress_fp,
             )
             added_nodes += int(result.get("added_nodes") or 0)
+            pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
         except Exception:
             failures += 1
         finally:
@@ -3007,6 +3025,7 @@ def _run_hawaii_autonomy(
     max_hessian_candidates: int = 100,
 ) -> dict[str, Any]:
     workspace = RetropathsWorkspace(**workspace_data)
+    current_pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
     dr_schedule = (1.0, 2.0, 3.0)
     attempted_hessian_by_dr: dict[str, set[str]] = {
         f"{float(dr):.1f}": set()
@@ -3023,6 +3042,7 @@ def _run_hawaii_autonomy(
     _write_hawaii_progress(
         workspace,
         network_splits=network_splits,
+        pot=current_pot,
         progress_fp=progress_fp,
         title="Hawaii autonomous exploration",
         note="Starting autonomous connect/NEB/Hessian exploration.",
@@ -3040,10 +3060,12 @@ def _run_hawaii_autonomy(
             _raise_if_hawaii_stop_now(control_fp)
             cycle_index += 1
             dr = float(dr_schedule[dr_index])
-            before_nodes = _hawaii_node_count(workspace, network_splits=network_splits)
+            current_pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+            before_nodes = int(current_pot.graph.number_of_nodes())
             _write_hawaii_progress(
                 workspace,
                 network_splits=network_splits,
+                pot=current_pot,
                 progress_fp=progress_fp,
                 title="Hawaii autonomous exploration",
                 note=(
@@ -3093,7 +3115,8 @@ def _run_hawaii_autonomy(
             if _read_hawaii_control_mode(control_fp) == "yellow":
                 break
 
-            after_nodes = _hawaii_node_count(workspace, network_splits=network_splits)
+            current_pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+            after_nodes = int(current_pot.graph.number_of_nodes())
             discovered_minima = max(0, int(after_nodes - before_nodes))
             if discovered_minima <= 0:
                 discovered_minima = int(hessian_added_nodes)
@@ -3103,6 +3126,7 @@ def _run_hawaii_autonomy(
                 _write_hawaii_progress(
                     workspace,
                     network_splits=network_splits,
+                    pot=current_pot,
                     progress_fp=progress_fp,
                     title="Hawaii autonomous exploration",
                     note=(
@@ -3120,6 +3144,7 @@ def _run_hawaii_autonomy(
             _write_hawaii_progress(
                 workspace,
                 network_splits=network_splits,
+                pot=current_pot,
                 progress_fp=progress_fp,
                 title="Hawaii autonomous exploration",
                 note=(
@@ -3153,6 +3178,7 @@ def _run_hawaii_autonomy(
     _write_hawaii_progress(
         workspace,
         network_splits=network_splits,
+        pot=_merge_drive_pot_compat(workspace, network_splits=network_splits),
         progress_fp=progress_fp,
         title="Hawaii autonomous exploration",
         note=final_note,
