@@ -621,9 +621,14 @@ def update_node_cache(node_list, results):
 
         if result is not None:
             if result.success:
-                if 'cis' in result.input_data.keywords.keys():
-                    if 'cistarget' in result.input_data.keywords.keys():
-                        ind = int(result.input_data.keywords['cistarget']) - 1
+                input_data = getattr(result, "input_data", None)
+                input_keywords = getattr(input_data, "keywords", None)
+                if not isinstance(input_keywords, dict):
+                    input_keywords = {}
+
+                if 'cis' in input_keywords.keys():
+                    if 'cistarget' in input_keywords.keys():
+                        ind = int(input_keywords['cistarget']) - 1
                         if ind < 0:
                             print(
                                 "Warning: cistarget is 1-indexed. Subtracting 1 to get 0-indexed. If cistarget was intended to be 1, this will set ind to 0.")
