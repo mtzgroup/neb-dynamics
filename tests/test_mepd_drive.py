@@ -21,6 +21,7 @@ from neb_dynamics.mepd_drive import (
     _merge_drive_pot,
     _optimize_selected_nodes,
     _parse_xyz_text_to_structure,
+    _run_hessian_on_completed_edges,
     _write_completed_queue_visualizations,
     MepdDriveServer,
 )
@@ -3682,6 +3683,71 @@ def test_submit_hawaii_control_red_resets_process_pool_when_running(monkeypatch,
     assert payload["mode"] == "red"
     assert called["reset"] == 1
     assert "immediately" in server.runtime.last_message
+
+
+def test_hawaii_hessian_falls_back_to_singleton_seed_node_when_no_edges(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+    )
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0)
+
+    class _Queue:
+        def find_item(self, *_args, **_kwargs):
+            return None
+
+    calls = {"node": 0}
+
+    def _fake_run_hessian_sample_for_node(
+        workspace_obj,
+        node_id,
+        *,
+        dr,
+        max_candidates,
+        progress_fp=None,
+    ):
+        calls["node"] += 1
+        assert int(node_id) == 0
+        assert float(dr) == 1.0
+        assert int(max_candidates) == 11
+        assert workspace_obj == workspace
+        return {"added_nodes": 2}
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot_compat", lambda _workspace, **kwargs: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.build_retropaths_neb_queue", lambda **kwargs: _Queue())
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_hawaii_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.run_hessian_sample_for_node", _fake_run_hessian_sample_for_node)
+
+    attempted = set()
+    first = _run_hessian_on_completed_edges(
+        workspace,
+        network_splits=True,
+        progress_fp=None,
+        dr=1.0,
+        max_candidates=11,
+        attempted_edge_keys=attempted,
+        control_fp=None,
+    )
+    second = _run_hessian_on_completed_edges(
+        workspace,
+        network_splits=True,
+        progress_fp=None,
+        dr=1.0,
+        max_candidates=11,
+        attempted_edge_keys=attempted,
+        control_fp=None,
+    )
+
+    assert first == (1, 0, 2)
+    assert second == (0, 0, 0)
+    assert calls["node"] == 1
 
 
 def test_progress_printer_writes_live_chain_payload_file(monkeypatch, tmp_path):

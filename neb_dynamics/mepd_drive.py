@@ -2507,6 +2507,10 @@ def _hawaii_edge_key(source_node: int, target_node: int) -> str:
     return f"{target}-{source}"
 
 
+def _hawaii_singleton_node_key(node_index: int) -> str:
+    return f"singleton-node-{int(node_index)}"
+
+
 def _write_hawaii_progress(
     workspace: RetropathsWorkspace,
     *,
@@ -2807,6 +2811,44 @@ def _run_hessian_on_completed_edges(
     failures = 0
     added_nodes = 0
     if not candidates:
+        singleton_node_index: int | None = None
+        if int(pot.graph.number_of_nodes()) == 1:
+            with contextlib.suppress(Exception):
+                singleton_node_index = int(next(iter(pot.graph.nodes)))
+        if singleton_node_index is not None:
+            singleton_key = _hawaii_singleton_node_key(singleton_node_index)
+            if singleton_key not in attempted_edge_keys:
+                _raise_if_hawaii_stop_now(control_fp)
+                attempts += 1
+                _write_hawaii_progress(
+                    workspace,
+                    network_splits=network_splits,
+                    progress_fp=progress_fp,
+                    title="Hawaii autonomous exploration",
+                    note=(
+                        f"Step 3/3 (dr={float(dr):.1f}): no completed NEB edges are available; "
+                        f"running Hessian sample from seed node {int(singleton_node_index)}."
+                    ),
+                    phase="growing",
+                    stage="hessian",
+                    dr=dr,
+                    control_mode=_read_hawaii_control_mode(control_fp),
+                    growing_nodes=[int(singleton_node_index)],
+                )
+                try:
+                    result = run_hessian_sample_for_node(
+                        workspace,
+                        int(singleton_node_index),
+                        dr=float(dr),
+                        max_candidates=int(max_candidates),
+                        progress_fp=progress_fp,
+                    )
+                    added_nodes += int(result.get("added_nodes") or 0)
+                except Exception:
+                    failures += 1
+                finally:
+                    attempted_edge_keys.add(singleton_key)
+                return attempts, failures, added_nodes
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
