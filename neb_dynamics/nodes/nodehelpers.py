@@ -626,16 +626,15 @@ def update_node_cache(node_list, results):
                 if not isinstance(input_keywords, dict):
                     input_keywords = {}
 
-                if 'cis' in input_keywords.keys():
-                    if 'cistarget' in input_keywords.keys():
+                if 'cistarget' in input_keywords.keys(): # excited state calc
+                    if 'cis' in input_keywords.keys(): # the 0th entry is the first excited state
                         ind = int(input_keywords['cistarget']) - 1
                         if ind < 0:
                             print(
                                 "Warning: cistarget is 1-indexed. Subtracting 1 to get 0-indexed. If cistarget was intended to be 1, this will set ind to 0.")
                     else:
-                        print(
-                            "Warning: cistarget needs to be set. defaulting to first excited state.")
-                        ind = 0
+                        ind = int(input_keywords['cistarget']) # the 0th entry is the ground
+
                     energy = result.results.extras['excited_states'][ind]['energy']
                     node._cached_energy = energy
                     node._cached_gradient = result.results.gradient
