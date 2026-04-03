@@ -4,7 +4,7 @@ services:
     runtime: python
     plan: free
     region: ohio
-    buildCommand: git submodule update --init --recursive && pip install uv && uv sync --frozen && uv pip install -e ./retropaths
+    buildCommand: pip install uv && uv sync --frozen
     startCommand: bash ./scripts/start_render_drive.sh
     healthCheckPath: /api/state
     envVars:
@@ -12,8 +12,6 @@ services:
         value: 3.11.11
       - key: MEPD_DRIVE_HOST
         value: 0.0.0.0
-      - key: RETROPATHS_REPO
-        value: /opt/render/project/src/retropaths
       - key: MEPD_DRIVE_WORKDIR
         value: /tmp/mepd-drive
       - key: MEPD_DRIVE_INPUTS

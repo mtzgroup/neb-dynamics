@@ -145,7 +145,7 @@ Default behavior:
 - rewrites that workspace into `/tmp/mepd-drive` before startup
 - uses `examples/example_inputs.toml` for follow-on actions inside the deployed app
 - can hydrate `~/.chemcloud/credentials` from a Render secret at startup
-- clones `retropaths` into `/opt/render/project/retropaths` during the Render build and points `RETROPATHS_REPO` there
+- does not require `retropaths` for deployment; reaction-template growth features remain optional
 
 To deploy on Render:
 
@@ -153,6 +153,8 @@ To deploy on Render:
 2. In Render, create a new Blueprint and point it at this repo.
 3. Set either `CHEMCLOUD_CREDENTIALS_B64` or `CHEMCLOUD_CREDENTIALS_TOML` in the Render dashboard.
 4. Deploy the Blueprint.
+
+If you want reaction-template growth features (`+` in Drive, or `mepd netgen-smiles`) in Render, clone `retropaths` yourself and set `RETROPATHS_REPO` to that checkout path.
 
 To reuse an existing local ChemCloud login without storing your password in Render, base64-encode your local credentials file and paste the result into `CHEMCLOUD_CREDENTIALS_B64`:
 
