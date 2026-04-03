@@ -909,6 +909,8 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "A manual edge request is already in progress." in html
     assert "network-edge-line pending-add" in html
     assert "function computeTreeNetworkLayout(nodes, edges)" in html
+    assert "const hessianGroups = new Map();" in html
+    assert "hessian_provenance_edge" in html
     assert "function runKmcModel()" in html
     assert "pendingLiveActivity" in html
     assert "function renderNetworkToolbar()" in html

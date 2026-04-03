@@ -5968,6 +5968,7 @@ def _drive_html() -> str:
       }
 
       function computeTreeNetworkLayout(nodes, edges) {
+        const clamp = (value, lower, upper) => Math.max(lower, Math.min(upper, value));
         const parentsByNode = new Map();
         const childrenByNode = new Map();
         const nodeIds = nodes.map((node) => Number(node.id));
@@ -6047,6 +6048,7 @@ def _drive_html() -> str:
         const height = Math.max(680, 180 + maxLevelCount * 94);
         const xForDepth = (depth) => 86 + (maxDepth === 0 ? 0 : (depth / maxDepth) * (width - 172));
         const positions = new Map();
+        const levelBands = new Map();
 
         levelDepths.forEach((depth) => {
           const levelNodes = (levelMap.get(depth) || []).slice();
@@ -6055,10 +6057,64 @@ def _drive_html() -> str:
           const gap = count <= 1 ? 0 : Math.min(110, usableHeight / Math.max(count - 1, 1));
           const blockHeight = gap * Math.max(count - 1, 0);
           const startY = (height - blockHeight) / 2;
+          levelBands.set(depth, { startY, gap, count });
           levelNodes.forEach((node, index) => {
             positions.set(Number(node.id), {
               x: xForDepth(depth),
               y: count === 1 ? height / 2 : startY + index * gap,
+            });
+          });
+        });
+
+        const hessianGroups = new Map();
+        nodes.forEach((node) => {
+          const nodeId = Number(node.id);
+          if (!Number.isFinite(nodeId)) return;
+          const data = node && typeof node.data === "object" ? node.data : {};
+          if (String(data.generated_by || "") !== "hessian_sample") return;
+          const provenance = data.hessian_provenance_edge;
+          if (!Array.isArray(provenance) || provenance.length < 2) return;
+          const source = Number(provenance[0]);
+          const target = Number(provenance[1]);
+          if (!Number.isFinite(source) || !Number.isFinite(target)) return;
+          const depth = Number(depthByNode.get(nodeId) || 0);
+          const key = `${depth}|${Math.min(source, target)}|${Math.max(source, target)}`;
+          const group = hessianGroups.get(key) || [];
+          group.push({ nodeId, source, target });
+          hessianGroups.set(key, group);
+        });
+
+        hessianGroups.forEach((group, key) => {
+          if (!Array.isArray(group) || group.length <= 1) return;
+          const [depthText] = String(key || "").split("|");
+          const depth = Number(depthText || 0);
+          const band = levelBands.get(depth);
+          const yMin = band ? Number(band.startY || 0) : 44;
+          const yMax = band
+            ? Number((band.startY || 0) + Math.max(0, (band.count - 1) * (band.gap || 0)))
+            : (height - 44);
+          const sorted = group.slice().sort((left, right) => left.nodeId - right.nodeId);
+          const center = (sorted.length - 1) / 2;
+          const fanStep = Math.min(64, 34 + sorted.length * 2);
+          const xSpread = Math.min(56, 22 + sorted.length * 2);
+
+          sorted.forEach((item, index) => {
+            const sourcePos = positions.get(Number(item.source));
+            const targetPos = positions.get(Number(item.target));
+            const currentPos = positions.get(Number(item.nodeId));
+            if (!sourcePos || !targetPos || !currentPos) return;
+            const rank = index - center;
+            const dx = Number(targetPos.x) - Number(sourcePos.x);
+            const dy = Number(targetPos.y) - Number(sourcePos.y);
+            const dist = Math.max(1, Math.hypot(dx, dy));
+            const normalX = -dy / dist;
+            const normalY = dx / dist;
+            const anchorY = (Number(sourcePos.y) + Number(targetPos.y)) / 2;
+            const nextX = Number(currentPos.x) + rank * xSpread + normalX * rank * fanStep;
+            const nextY = anchorY + normalY * rank * fanStep;
+            positions.set(Number(item.nodeId), {
+              x: clamp(nextX, 44, width - 44),
+              y: clamp(nextY, yMin, yMax || (height - 44)),
             });
           });
         });
