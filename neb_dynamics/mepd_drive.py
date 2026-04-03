@@ -1111,7 +1111,7 @@ def _deployment_program_defaults(program: str) -> tuple[str, str]:
 
 def _normalize_deployment_engine_name(engine_name: str | None) -> str:
     normalized = str(engine_name or "").strip().lower()
-    if normalized in {"chemcloud", "qcop"}:
+    if normalized in {"chemcloud", "qcop", "ase", "qmmm"}:
         return normalized
     return "chemcloud"
 
@@ -1147,12 +1147,20 @@ def _drive_defaults_payload(inputs_fp: Path | None, reactions_fp: Path | None) -
         return defaults
     defaults["engine_name"] = _normalize_deployment_engine_name(getattr(run_inputs, "engine_name", ""))
     program = str(getattr(run_inputs, "program", "") or "").strip().lower()
-    if program in {"crest", "terachem"}:
+    if program:
         defaults["program"] = program
-    program_default_method, program_default_basis = _deployment_program_defaults(defaults["program"])
     configured_method, configured_basis = _extract_program_model_fields(getattr(run_inputs, "program_kwds", None))
-    defaults["method"] = configured_method or program_default_method
-    defaults["basis"] = configured_basis or program_default_basis
+    if defaults["program"] in {"crest", "terachem"}:
+        program_default_method, program_default_basis = _deployment_program_defaults(defaults["program"])
+        defaults["method"] = configured_method or program_default_method
+        defaults["basis"] = configured_basis or program_default_basis
+    else:
+        defaults["method"] = configured_method
+        defaults["basis"] = configured_basis
+    allowed_programs = ["crest", "terachem"]
+    if defaults["program"] and defaults["program"] not in allowed_programs:
+        allowed_programs.append(defaults["program"])
+    defaults["allowed_programs"] = allowed_programs
     return defaults
 
 
@@ -1166,11 +1174,16 @@ def _materialize_deployment_inputs(
     theory_basis: str | None,
 ) -> Path:
     run_inputs = RunInputs.open(template_fp)
-    selected_engine = _normalize_deployment_engine_name(getattr(run_inputs, "engine_name", ""))
+    selected_engine = str(getattr(run_inputs, "engine_name", "") or "").strip().lower()
+    if not selected_engine:
+        selected_engine = _normalize_deployment_engine_name(getattr(run_inputs, "engine_name", ""))
     selected_program = str(theory_program or getattr(run_inputs, "program", "") or "").strip().lower()
-    if selected_program not in {"crest", "terachem"}:
+    if not selected_program:
         selected_program = "terachem"
-    default_method, default_basis = _deployment_program_defaults(selected_program)
+    if selected_program in {"crest", "terachem"}:
+        default_method, default_basis = _deployment_program_defaults(selected_program)
+    else:
+        default_method, default_basis = "", ""
 
     existing_payload: dict[str, Any] = {}
     existing_program_kwds = getattr(run_inputs, "program_kwds", None)
@@ -1183,8 +1196,11 @@ def _materialize_deployment_inputs(
     model_payload = dict(existing_payload.get("model") or {})
     existing_method = str(model_payload.get("method") or "").strip()
     existing_basis = str(model_payload.get("basis") or "").strip()
-    method = str(theory_method or existing_method or default_method).strip() or default_method
-    basis = str(theory_basis or existing_basis or default_basis).strip() or default_basis
+    method = str(theory_method or existing_method or default_method).strip()
+    basis = str(theory_basis or existing_basis or default_basis).strip()
+    if selected_program in {"crest", "terachem"}:
+        method = method or default_method
+        basis = basis or default_basis
     model_payload["method"] = method
     model_payload["basis"] = basis
 
@@ -3488,7 +3504,10 @@ def _drive_html() -> str:
       if (normalized === "crest") {
         return { method: "gfn2", basis: "gfn2" };
       }
-      return { method: "ub3lyp", basis: "sto-3g" };
+      if (normalized === "terachem") {
+        return { method: "ub3lyp", basis: "sto-3g" };
+      }
+      return { method: "", basis: "" };
     }
 
     function syncTheoryModelFieldsToProgram(program, { force = false } = {}) {
@@ -3507,6 +3526,33 @@ def _drive_html() -> str:
         theoryBasisField.value = defaults.basis;
       }
       return defaults;
+    }
+
+    function ensureTheoryProgramOptions(theoryProgramField, defaultsProgram, allowedPrograms) {
+      if (!theoryProgramField) return;
+      const normalizedAllowed = Array.isArray(allowedPrograms)
+        ? allowedPrograms
+            .map((value) => String(value || "").trim().toLowerCase())
+            .filter((value) => value.length > 0)
+        : [];
+      if (defaultsProgram && !normalizedAllowed.includes(defaultsProgram)) {
+        normalizedAllowed.push(defaultsProgram);
+      }
+      if (!normalizedAllowed.length) {
+        normalizedAllowed.push("crest", "terachem");
+      }
+      const existing = new Set(
+        Array.from(theoryProgramField.options || []).map((option) =>
+          String(option.value || "").trim().toLowerCase()
+        )
+      );
+      normalizedAllowed.forEach((program) => {
+        if (existing.has(program)) return;
+        const option = document.createElement("option");
+        option.value = program;
+        option.textContent = program;
+        theoryProgramField.appendChild(option);
+      });
     }
 
     function renderWorkspaceSummary(snapshot) {
@@ -3529,6 +3575,7 @@ def _drive_html() -> str:
       }
       const defaultsProgram = String(defaults.program || "terachem").trim().toLowerCase() || "terachem";
       const defaultsEngine = String(defaults.engine_name || "chemcloud").trim().toLowerCase() || "chemcloud";
+      ensureTheoryProgramOptions(theoryProgramField, defaultsProgram, defaults.allowed_programs);
       const programDefaults = deploymentProgramDefaults(defaultsProgram);
       const defaultsMethod = String(defaults.method || programDefaults.method).trim() || programDefaults.method;
       const defaultsBasis = String(defaults.basis || programDefaults.basis).trim() || programDefaults.basis;

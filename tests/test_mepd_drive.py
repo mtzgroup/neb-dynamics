@@ -72,6 +72,28 @@ def test_drive_defaults_payload_preserves_qcop_engine(monkeypatch, tmp_path):
     assert defaults["basis"] == "gfn2"
 
 
+def test_drive_defaults_payload_preserves_ase_omol25_from_inputs(monkeypatch, tmp_path):
+    inputs_fp = tmp_path / "inputs.toml"
+    inputs_fp.write_text('engine_name = "ase"\n')
+    reactions_fp = tmp_path / "reactions.p"
+    reactions_fp.write_text("placeholder")
+
+    fake_inputs = SimpleNamespace(
+        engine_name="ase",
+        program="omol25",
+        program_kwds={},
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RunInputs.open", lambda _fp: fake_inputs)
+
+    defaults = _drive_defaults_payload(inputs_fp, reactions_fp)
+
+    assert defaults["engine_name"] == "ase"
+    assert defaults["program"] == "omol25"
+    assert "omol25" in defaults["allowed_programs"]
+    assert defaults["method"] == ""
+    assert defaults["basis"] == ""
+
+
 def test_materialize_deployment_inputs_keeps_qcop_engine(monkeypatch, tmp_path):
     template_fp = tmp_path / "template.toml"
     template_fp.write_text('engine_name = "qcop"\n')
@@ -106,6 +128,41 @@ def test_materialize_deployment_inputs_keeps_qcop_engine(monkeypatch, tmp_path):
 
     assert fake_inputs.engine_name == "qcop"
     assert fake_inputs.program == "crest"
+    assert fake_inputs.saved_fp == out_fp
+    assert out_fp.exists()
+
+
+def test_materialize_deployment_inputs_keeps_ase_omol25(monkeypatch, tmp_path):
+    template_fp = tmp_path / "template.toml"
+    template_fp.write_text('engine_name = "ase"\n')
+
+    class _FakeRunInputs:
+        def __init__(self):
+            self.engine_name = "ase"
+            self.program = "omol25"
+            self.program_kwds = {}
+            self.saved_fp = None
+
+        def save(self, fp):
+            self.saved_fp = Path(fp)
+            self.saved_fp.write_text(
+                f'engine_name = "{self.engine_name}"\nprogram = "{self.program}"\n',
+            )
+
+    fake_inputs = _FakeRunInputs()
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RunInputs.open", lambda _fp: fake_inputs)
+
+    out_fp = _materialize_deployment_inputs(
+        template_fp=template_fp,
+        output_dir=tmp_path,
+        run_name="ase-drive",
+        theory_program=None,
+        theory_method=None,
+        theory_basis=None,
+    )
+
+    assert fake_inputs.engine_name == "ase"
+    assert fake_inputs.program == "omol25"
     assert fake_inputs.saved_fp == out_fp
     assert out_fp.exists()
 
