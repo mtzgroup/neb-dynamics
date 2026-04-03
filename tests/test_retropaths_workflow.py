@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -994,6 +995,73 @@ def test_run_hessian_sample_for_edge_requires_completed_chain(monkeypatch, tmp_p
 
     with pytest.raises(ValueError, match="requires a completed NEB chain"):
         run_hessian_sample_for_edge(workspace, 0, 1, dr=0.1)
+
+
+def test_run_hessian_sample_for_edge_uses_completed_attempted_pair_when_queue_item_is_not_completed(
+    monkeypatch, tmp_path
+):
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path),
+        run_name="demo",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+    )
+    workspace.write()
+    queue_payload = {
+        "version": 1,
+        "items": [
+            {
+                "job_id": "0->1",
+                "source_node": 0,
+                "target_node": 1,
+                "attempt_key": "new-attempt",
+                "status": "pending",
+            }
+        ],
+        "attempted_pairs": {
+            "old-attempt": {
+                "job_id": "0->1-old",
+                "source_node": 0,
+                "target_node": 1,
+                "status": "completed",
+                "result_dir": str(tmp_path / "queue_runs" / "pair_0_1_msmep"),
+                "finished_at": "2026-04-03T07:30:00",
+            }
+        },
+    }
+    workspace.queue_fp.write_text(json.dumps(queue_payload), encoding="utf-8")
+
+    pot = Pot(root=Molecule.from_smiles("C"), target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(0, td=_node(0.0), molecule=Molecule.from_smiles("[H][H]"))
+    pot.graph.add_node(1, td=_node(0.8), molecule=Molecule.from_smiles("[H][H]"))
+    pot.graph.add_edge(0, 1, reaction="0->1", list_of_nebs=[])
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow.materialize_drive_graph", lambda _workspace: pot)
+
+    chain = Chain.model_validate({"nodes": [_node(0.0), _node(0.4), _node(0.8)], "parameters": ChainInputs()})
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.TreeNode.read_from_disk",
+        lambda folder_name, charge, multiplicity: SimpleNamespace(output_chain=chain),
+    )
+
+    captured = {}
+
+    def _fake_run_hessian_sample(_workspace, _pot, peak_node, **kwargs):
+        captured["peak_node"] = peak_node
+        captured.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow._run_hessian_sample", _fake_run_hessian_sample)
+
+    result = run_hessian_sample_for_edge(workspace, 0, 1, dr=1.0, max_candidates=10)
+
+    assert result == {"ok": True}
+    assert isinstance(captured["peak_node"], StructureNode)
+    assert captured["source_label"] == "edge 0 -> 1 peak"
+    assert captured["provenance_edge"] == (0, 1)
+    assert captured["dr"] == 1.0
+    assert captured["max_candidates"] == 10
 
 
 def test_run_hessian_sample_for_edge_batches_all_candidates_for_chemcloud(monkeypatch, tmp_path):

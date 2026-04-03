@@ -15,7 +15,7 @@ from collections import Counter
 import numpy as np
 
 from neb_dynamics.chain import Chain
-from neb_dynamics.inputs import RunInputs
+from neb_dynamics.inputs import ChainInputs, RunInputs
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
@@ -996,16 +996,52 @@ def load_completed_queue_chains(
 ) -> dict[tuple[int, int], list[Chain]]:
     queue = RetropathsNEBQueue.read_from_disk(queue_fp)
     chains_by_edge: dict[tuple[int, int], list[Chain]] = {}
+    seen_records: set[tuple[int, int, str, str]] = set()
+    completed_records: list[tuple[int, int, str, str]] = []
 
     for item in queue.items:
-        if item.status != "completed" or not item.result_dir:
+        if item.status != "completed":
             continue
-        history = TreeNode.read_from_disk(
-            folder_name=item.result_dir,
-            charge=charge,
-            multiplicity=multiplicity,
-        )
-        chains_by_edge[(item.source_node, item.target_node)] = [history.output_chain]
+        source_node = int(item.source_node)
+        target_node = int(item.target_node)
+        result_dir = str(item.result_dir or "").strip()
+        output_chain_xyz = str(item.output_chain_xyz or "").strip()
+        record = (source_node, target_node, result_dir, output_chain_xyz)
+        if record in seen_records or (not result_dir and not output_chain_xyz):
+            continue
+        seen_records.add(record)
+        completed_records.append(record)
+
+    for attempt in queue.attempted_pairs.values():
+        if str((attempt or {}).get("status") or "").strip().lower() != "completed":
+            continue
+        with contextlib.suppress(Exception):
+            source_node = int((attempt or {}).get("source_node"))
+            target_node = int((attempt or {}).get("target_node"))
+        result_dir = str((attempt or {}).get("result_dir") or "").strip()
+        output_chain_xyz = str((attempt or {}).get("output_chain_xyz") or "").strip()
+        record = (source_node, target_node, result_dir, output_chain_xyz)
+        if record in seen_records or (not result_dir and not output_chain_xyz):
+            continue
+        seen_records.add(record)
+        completed_records.append(record)
+
+    for source_node, target_node, result_dir, output_chain_xyz in completed_records:
+        chain = None
+        if result_dir:
+            with contextlib.suppress(Exception):
+                history = TreeNode.read_from_disk(
+                    folder_name=result_dir,
+                    charge=charge,
+                    multiplicity=multiplicity,
+                )
+                chain = getattr(history, "output_chain", None)
+        if chain is None and output_chain_xyz:
+            with contextlib.suppress(Exception):
+                chain = Chain.from_xyz(output_chain_xyz, parameters=ChainInputs())
+        if chain is None:
+            continue
+        chains_by_edge.setdefault((source_node, target_node), []).append(chain)
 
     return chains_by_edge
 

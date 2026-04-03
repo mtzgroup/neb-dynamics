@@ -995,6 +995,72 @@ def _load_completed_queue_chain(item: Any) -> Chain | Any | None:
     return getattr(history, "output_chain", None)
 
 
+@dataclass
+class _CompletedQueueEntry:
+    source_node: int
+    target_node: int
+    result_dir: str
+    output_chain_xyz: str = ""
+    finished_at: str = ""
+
+
+def _completed_queue_entries(queue: Any) -> list[_CompletedQueueEntry]:
+    by_edge: dict[tuple[int, int], _CompletedQueueEntry] = {}
+
+    def _entry_score(entry: _CompletedQueueEntry) -> tuple[str, int, int]:
+        return (
+            str(entry.finished_at or ""),
+            1 if str(entry.result_dir or "").strip() else 0,
+            1 if str(entry.output_chain_xyz or "").strip() else 0,
+        )
+
+    def _upsert(entry: _CompletedQueueEntry) -> None:
+        edge_key = (int(entry.source_node), int(entry.target_node))
+        existing = by_edge.get(edge_key)
+        if existing is None or _entry_score(entry) >= _entry_score(existing):
+            by_edge[edge_key] = entry
+
+    for item in list(getattr(queue, "items", []) or []):
+        if str(getattr(item, "status", "") or "").strip().lower() != "completed":
+            continue
+        result_dir = str(getattr(item, "result_dir", "") or "").strip()
+        output_chain_xyz = str(getattr(item, "output_chain_xyz", "") or "").strip()
+        if not result_dir and not output_chain_xyz:
+            continue
+        with contextlib.suppress(Exception):
+            _upsert(
+                _CompletedQueueEntry(
+                    source_node=int(getattr(item, "source_node")),
+                    target_node=int(getattr(item, "target_node")),
+                    result_dir=result_dir,
+                    output_chain_xyz=output_chain_xyz,
+                    finished_at=str(getattr(item, "finished_at", "") or ""),
+                )
+            )
+
+    attempted_pairs = dict(getattr(queue, "attempted_pairs", {}) or {})
+    for attempt in attempted_pairs.values():
+        status = str((attempt or {}).get("status") or "").strip().lower()
+        if status != "completed":
+            continue
+        result_dir = str((attempt or {}).get("result_dir") or "").strip()
+        output_chain_xyz = str((attempt or {}).get("output_chain_xyz") or "").strip()
+        if not result_dir and not output_chain_xyz:
+            continue
+        with contextlib.suppress(Exception):
+            _upsert(
+                _CompletedQueueEntry(
+                    source_node=int((attempt or {}).get("source_node")),
+                    target_node=int((attempt or {}).get("target_node")),
+                    result_dir=result_dir,
+                    output_chain_xyz=output_chain_xyz,
+                    finished_at=str((attempt or {}).get("finished_at") or ""),
+                )
+            )
+
+    return [by_edge[key] for key in sorted(by_edge)]
+
+
 def _completed_queue_result_payload(item: Any) -> dict[str, Any] | None:
     leaf_count = 0
     result_dir = str(getattr(item, "result_dir", "") or "").strip()
@@ -1276,7 +1342,7 @@ def _parse_kmc_initial_conditions(raw: str | None) -> dict[int, float] | None:
         return None
     payload = json.loads(text)
     if not isinstance(payload, dict):
-        raise ValueError("KMC initial conditions must be a JSON object mapping node ids to populations.")
+        raise ValueError("Kinetics initial conditions must be a JSON object mapping node ids to populations.")
     normalized: dict[int, float] = {}
     for key, value in payload.items():
         normalized[int(key)] = float(value)
@@ -1401,14 +1467,13 @@ def _write_completed_queue_visualizations(
     out_dir = workspace.edge_visualizations_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    for item in queue.items:
-        if item.status != "completed" or not item.result_dir:
-            continue
+    for item in _completed_queue_entries(queue):
         filename = f"queue_edge_{int(item.source_node)}_{int(item.target_node)}.html"
         out_fp = out_dir / filename
         meta_fp = out_dir / f"queue_edge_{int(item.source_node)}_{int(item.target_node)}.meta.json"
         cache_key = {
             "result_dir": str(item.result_dir),
+            "output_chain_xyz": str(getattr(item, "output_chain_xyz", "") or ""),
             "finished_at": str(item.finished_at or ""),
         }
         if out_fp.exists() and meta_fp.exists():
@@ -1416,6 +1481,7 @@ def _write_completed_queue_visualizations(
                 meta = json.loads(meta_fp.read_text(encoding="utf-8"))
                 if (
                     meta.get("result_dir") == cache_key["result_dir"]
+                    and str(meta.get("output_chain_xyz") or "") == cache_key["output_chain_xyz"]
                     and meta.get("finished_at") == cache_key["finished_at"]
                     and meta.get("is_elementary_result") is True
                     and "source_structure" in meta
@@ -1523,9 +1589,7 @@ def _read_completed_queue_visualization_metadata(
     out_dir = workspace.edge_visualizations_dir
     if not out_dir.exists():
         return rows
-    for item in queue.items:
-        if item.status != "completed" or not item.result_dir:
-            continue
+    for item in _completed_queue_entries(queue):
         filename = f"queue_edge_{int(item.source_node)}_{int(item.target_node)}.html"
         meta_fp = out_dir / f"queue_edge_{int(item.source_node)}_{int(item.target_node)}.meta.json"
         if not meta_fp.exists():
@@ -1747,7 +1811,10 @@ def _build_drive_payload_fast(
     normalized_product = product_smiles.strip()
     explorer = _build_network_explorer_payload(pot.graph)
     edge_visualizations = _read_edge_visualization_metadata(workspace=workspace, pot=pot)
-    completed_queue_visualizations = _read_completed_queue_visualization_metadata(workspace=workspace, queue=queue)
+    # Fast snapshots should still surface newly completed queue results while an action
+    # (notably Hawaii) is running, otherwise barriers can appear without a viewer link
+    # until an eventual full rebuild occurs.
+    completed_queue_visualizations = _write_completed_queue_visualizations(workspace=workspace, queue=queue)
     viewer_by_edge = {
         str(item.get("edge") or ""): f"edge_visualizations/{item['href']}"
         for item in edge_visualizations
@@ -2739,8 +2806,39 @@ def _run_unattempted_nebs(
                 progress_fp=neb_progress_fp,
                 chain_fp=neb_chain_fp,
             )
-        except Exception:
+        except Exception as exc:
             failures += 1
+            _write_hawaii_progress(
+                workspace,
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                title="Hawaii autonomous exploration",
+                note=(
+                    f"Step 2/3: autosplitting NEB for edge {source_node} -> {target_node} "
+                    f"failed ({index}/{len(pending_items)}): {type(exc).__name__}: {exc}"
+                ),
+                phase="growing",
+                stage="neb",
+                dr=dr,
+                control_mode=_read_hawaii_control_mode(control_fp),
+                growing_nodes=[source_node, target_node],
+            )
+            continue
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=(
+                f"Step 2/3: completed autosplitting NEB for edge {source_node} -> {target_node} "
+                f"({index}/{len(pending_items)})."
+            ),
+            phase="growing",
+            stage="neb",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[],
+        )
     return attempts, failures
 
 
@@ -3875,15 +3973,15 @@ def _drive_html() -> str:
           <div id="panel-kinetics" class="detail-panel">
             <div class="form-grid">
               <div>
-                <label>KMC temperature (K)</label>
+                <label>Kinetics temperature (K)</label>
                 <input id="kmc-temperature" type="number" step="0.1" min="0" value="298.15" />
               </div>
               <div>
-                <label>KMC final time</label>
+                <label>Kinetics final time</label>
                 <input id="kmc-final-time" type="number" step="any" min="0" value="" />
               </div>
               <div>
-                <label>KMC max steps</label>
+                <label>Kinetics max steps</label>
                 <input id="kmc-max-steps" type="number" step="1" min="1" value="200" />
               </div>
               <div>
@@ -3892,7 +3990,7 @@ def _drive_html() -> str:
               </div>
             </div>
             <div style="margin-top:12px;">
-              <button id="run-kmc" class="secondary">Run Kinetic Model</button>
+              <button id="run-kmc" class="secondary">Run Kinetics Model</button>
             </div>
             <div id="kmc-panel" style="margin-top:12px;"></div>
           </div>
@@ -3964,7 +4062,7 @@ def _drive_html() -> str:
       networkNodePositions: {},
       refreshTimer: null,
       kmcResult: null,
-      hessianSampleDr: 0.1,
+      hessianSampleDr: 1.0,
       hessianSampleMaxCandidates: 100,
       hawaiiControlInFlight: false,
     };
@@ -4003,7 +4101,7 @@ def _drive_html() -> str:
 
     function normalizeHessianSampleDr(value) {
       const parsed = Number(value);
-      if (!Number.isFinite(parsed) || parsed <= 0) return 0.1;
+      if (!Number.isFinite(parsed) || parsed <= 0) return 1.0;
       return parsed;
     }
 
@@ -5003,7 +5101,7 @@ def _drive_html() -> str:
       const result = state.kmcResult;
       const defaultsHtml = Array.isArray(kmc.nodes) && kmc.nodes.length
         ? `<div class="code-block">${escapeHtml(JSON.stringify(kmc.nodes, null, 2))}</div>`
-        : `<div class="muted">No KMC-ready NEB barriers are available yet on this network.</div>`;
+        : `<div class="muted">No kinetics-ready NEB barriers are available yet on this network.</div>`;
       const resultHtml = result
         ? `
           <div class="kv-grid" style="margin-bottom:12px;">
@@ -5018,13 +5116,13 @@ def _drive_html() -> str:
         : `<div class="muted">Run the kinetic model to see time evolution over the current NEB-backed network.</div>`;
       panel.innerHTML = `
         <div class="kv-grid" style="margin-bottom:12px;">
-          <div class="kv-card"><strong>KMC Nodes</strong><div>${escapeHtml(Number(kmc.node_count || 0))}</div></div>
-          <div class="kv-card"><strong>KMC Edges</strong><div>${escapeHtml(Number(kmc.edge_count || 0))}</div></div>
+          <div class="kv-card"><strong>Kinetics Nodes</strong><div>${escapeHtml(Number(kmc.node_count || 0))}</div></div>
+          <div class="kv-card"><strong>Kinetics Edges</strong><div>${escapeHtml(Number(kmc.edge_count || 0))}</div></div>
           <div class="kv-card"><strong>Suppressed Edges</strong><div>${escapeHtml(Number(kmc.suppressed_edge_count || 0))}</div></div>
         </div>
-        <div style="margin-bottom:12px;"><strong>Default KMC State</strong></div>
+        <div style="margin-bottom:12px;"><strong>Default Kinetics State</strong></div>
         ${defaultsHtml}
-        <div style="margin-top:12px;"><strong>KMC Result</strong></div>
+        <div style="margin-top:12px;"><strong>Kinetics Result</strong></div>
         ${resultHtml}
       `;
     }
@@ -6478,7 +6576,7 @@ def _drive_html() -> str:
       try {
         setBanner("Running kinetic model...");
         setSubtext("Simulating population flow across the current NEB-backed network.");
-        const result = await postJson("/api/run-kmc", {
+        const result = await postJson("/api/run-kinetics", {
           temperature_kelvin: Number(document.getElementById("kmc-temperature").value || 298.15),
           final_time: document.getElementById("kmc-final-time").value,
           max_steps: Number(document.getElementById("kmc-max-steps").value || 200),
@@ -7662,7 +7760,7 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 return
             if self.path == "/api/hessian-sample":
                 self.server.submit_hessian_sample(
-                    dr=float(payload.get("dr", 0.1)),
+                    dr=float(payload.get("dr", 1.0)),
                     max_candidates=int(payload.get("max_candidates") or 100),
                     node_id=(int(payload["node_id"]) if payload.get("node_id") is not None else None),
                     source_node=(int(payload["source_node"]) if payload.get("source_node") is not None else None),
@@ -7685,7 +7783,7 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 )
                 self._write_json({"ok": True, **result}, HTTPStatus.ACCEPTED)
                 return
-            if self.path == "/api/run-kmc":
+            if self.path in {"/api/run-kmc", "/api/run-kinetics"}:
                 result = self.server.submit_run_kmc(
                     temperature_kelvin=float(payload.get("temperature_kelvin", 298.15)),
                     final_time=(float(payload["final_time"]) if payload.get("final_time") not in {None, ""} else None),

@@ -625,13 +625,43 @@ def _find_completed_chain_for_edge(
     if "queue" not in locals():
         return None
 
+    matching_pairs = {
+        (int(source_node), int(target_node)),
+        (int(target_node), int(source_node)),
+    }
     matching_items: list[Any] = []
     for item in queue.items:
-        if item.status != "completed":
+        if str(getattr(item, "status", "") or "").strip().lower() != "completed":
             continue
         pair = (int(item.source_node), int(item.target_node))
-        if pair in {(int(source_node), int(target_node)), (int(target_node), int(source_node))}:
+        if pair in matching_pairs and (
+            str(getattr(item, "result_dir", "") or "").strip()
+            or str(getattr(item, "output_chain_xyz", "") or "").strip()
+        ):
             matching_items.append(item)
+
+    for attempt in dict(getattr(queue, "attempted_pairs", {}) or {}).values():
+        if str((attempt or {}).get("status") or "").strip().lower() != "completed":
+            continue
+        with contextlib.suppress(Exception):
+            pair = (int((attempt or {}).get("source_node")), int((attempt or {}).get("target_node")))
+        if pair not in matching_pairs:
+            continue
+        result_dir = str((attempt or {}).get("result_dir") or "").strip()
+        output_chain_xyz = str((attempt or {}).get("output_chain_xyz") or "").strip()
+        if not result_dir and not output_chain_xyz:
+            continue
+        with contextlib.suppress(Exception):
+            matching_items.append(
+                types.SimpleNamespace(
+                    source_node=pair[0],
+                    target_node=pair[1],
+                    result_dir=result_dir,
+                    output_chain_xyz=output_chain_xyz,
+                    finished_at=str((attempt or {}).get("finished_at") or ""),
+                )
+            )
+
     if not matching_items:
         return None
 
@@ -1132,74 +1162,112 @@ def apply_reactions_to_node(
 
     hf, RetropathsMolecule, RetropathsPot = _load_retropaths_classes()
     library = hf.pload(workspace.reactions_path)
+    environment_molecule = _global_environment_molecule(pot)
     source_retropaths_molecule = _coerce_retropaths_molecule(source_molecule, RetropathsMolecule)
-    environment_retropaths_molecule = _coerce_retropaths_molecule(
-        _global_environment_molecule(pot),
-        RetropathsMolecule,
-    )
     if source_retropaths_molecule is None:
         raise ValueError(
             f"Node {node_index} could not be converted into a Retropaths-compatible molecular graph."
         )
-    temp_pot = RetropathsPot(
-        root=source_retropaths_molecule,
-        environment=environment_retropaths_molecule or RetropathsMolecule(),
-        rxn_name=f"{workspace.run_name}-node-{node_index}",
-    )
-    temp_pot.grow_this_node(0, library, filter_minor_products=True, use_father_error=False)
 
     added_nodes = 0
     added_edges = 0
     merged_targets: list[int] = []
     generated_targets_for_minimization: set[int] = set()
+    pending_growth_nodes: list[int] = [int(node_index)]
+    queued_growth_nodes = {int(node_index)}
+    expanded_growth_nodes: set[int] = set()
 
-    for result_index in sorted(temp_pot.graph.nodes):
-        if result_index == 0:
-            continue
-        result_attrs = temp_pot.graph.nodes[result_index]
-        result_molecule = result_attrs.get("molecule")
-        if result_molecule is None:
+    while pending_growth_nodes:
+        current_source = int(pending_growth_nodes.pop(0))
+        queued_growth_nodes.discard(current_source)
+        if current_source in expanded_growth_nodes or current_source not in pot.graph.nodes:
             continue
 
-        target_index = _find_matching_node_by_molecule(pot, result_molecule)
-        if target_index is None:
-            target_index = (max(pot.graph.nodes) + 1) if pot.graph.nodes else 0
-            td = structure_node_from_graph_like_molecule(
-                result_molecule,
-                charge=charge,
-                spinmult=multiplicity,
-            )
-            pot.graph.add_node(
-                target_index,
-                molecule=copy_graph_like_molecule(result_molecule),
-                converged=bool(result_attrs.get("converged", False)),
-                td=td,
-                endpoint_optimized=False,
-                generated_by="retropaths_apply_reactions",
-            )
-            added_nodes += 1
-            generated_targets_for_minimization.add(int(target_index))
-        else:
-            target_attrs = pot.graph.nodes[target_index]
-            target_attrs.setdefault("molecule", copy_graph_like_molecule(result_molecule))
-            if target_attrs.get("td") is None:
-                target_attrs["td"] = structure_node_from_graph_like_molecule(
-                    result_molecule,
+        current_source_attrs = pot.graph.nodes[current_source]
+        current_source_molecule = _node_graph_like_molecule(current_source_attrs)
+        current_source_retropaths_molecule = _coerce_retropaths_molecule(
+            current_source_molecule,
+            RetropathsMolecule,
+        )
+        if current_source_retropaths_molecule is None:
+            expanded_growth_nodes.add(current_source)
+            continue
+
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=[current_source],
+            title=f"Applying reaction templates to node {node_index}",
+            note=(
+                f"Growing node {current_source} with the Retropaths template library "
+                "until no new products are added."
+            ),
+            phase="growing",
+        )
+
+        temp_pot = RetropathsPot(
+            root=current_source_retropaths_molecule,
+            environment=_coerce_retropaths_molecule(environment_molecule, RetropathsMolecule) or RetropathsMolecule(),
+            rxn_name=f"{workspace.run_name}-node-{current_source}",
+        )
+        temp_pot.grow_this_node(0, library, filter_minor_products=True, use_father_error=False)
+        expanded_growth_nodes.add(current_source)
+
+        for result_index in sorted(temp_pot.graph.nodes):
+            if result_index == 0:
+                continue
+            result_attrs = temp_pot.graph.nodes[result_index]
+            result_molecule = result_attrs.get("molecule")
+            if result_molecule is None:
+                continue
+
+            result_graph_molecule = copy_graph_like_molecule(result_molecule)
+            target_index = _find_matching_node_by_molecule(pot, result_graph_molecule)
+            target_was_new = target_index is None
+            if target_was_new:
+                target_index = (max(pot.graph.nodes) + 1) if pot.graph.nodes else 0
+                td = structure_node_from_graph_like_molecule(
+                    result_graph_molecule,
                     charge=charge,
                     spinmult=multiplicity,
                 )
-                target_attrs.setdefault("endpoint_optimized", False)
+                pot.graph.add_node(
+                    target_index,
+                    molecule=result_graph_molecule,
+                    converged=bool(result_attrs.get("converged", False)),
+                    td=td,
+                    endpoint_optimized=False,
+                    generated_by="retropaths_apply_reactions",
+                )
+                added_nodes += 1
                 generated_targets_for_minimization.add(int(target_index))
-            elif not bool(target_attrs.get("endpoint_optimized", False)):
-                generated_targets_for_minimization.add(int(target_index))
+            else:
+                target_attrs = pot.graph.nodes[target_index]
+                target_attrs.setdefault("molecule", copy_graph_like_molecule(result_graph_molecule))
+                if target_attrs.get("td") is None:
+                    target_attrs["td"] = structure_node_from_graph_like_molecule(
+                        result_graph_molecule,
+                        charge=charge,
+                        spinmult=multiplicity,
+                    )
+                    target_attrs.setdefault("endpoint_optimized", False)
+                    generated_targets_for_minimization.add(int(target_index))
+                elif not bool(target_attrs.get("endpoint_optimized", False)):
+                    generated_targets_for_minimization.add(int(target_index))
 
-        if not pot.graph.has_edge(target_index, node_index):
-            edge_attrs = dict(temp_pot.graph.edges[(result_index, 0)])
-            edge_attrs.setdefault("list_of_nebs", [])
-            edge_attrs.setdefault("generated_by", "retropaths_apply_reactions")
-            pot.graph.add_edge(target_index, node_index, **edge_attrs)
-            added_edges += 1
-        merged_targets.append(int(target_index))
+            if not pot.graph.has_edge(target_index, current_source):
+                edge_attrs = dict(temp_pot.graph.edges[(result_index, 0)])
+                edge_attrs.setdefault("list_of_nebs", [])
+                edge_attrs.setdefault("generated_by", "retropaths_apply_reactions")
+                pot.graph.add_edge(target_index, current_source, **edge_attrs)
+                added_edges += 1
+            merged_targets.append(int(target_index))
+
+            if target_was_new:
+                target_node = int(target_index)
+                if target_node not in expanded_growth_nodes and target_node not in queued_growth_nodes:
+                    pending_growth_nodes.append(target_node)
+                    queued_growth_nodes.add(target_node)
 
     minimized_targets = 0
     failed_minimizations = 0
@@ -1270,7 +1338,7 @@ def apply_reactions_to_node(
         title=f"Applying reaction templates to node {node_index}",
         note=(
             f"Merged {added_nodes} new node(s), created {added_edges} new edge(s), "
-            f"and optimized {minimized_targets} Retropaths-generated minima "
+            f"expanded {len(expanded_growth_nodes)} node(s), and optimized {minimized_targets} Retropaths-generated minima "
             f"({failed_minimizations} failed)."
         ),
         phase="finished",
@@ -1278,7 +1346,8 @@ def apply_reactions_to_node(
     return {
         "message": (
             f"Applied reactions to node {node_index}: merged {added_nodes} new nodes "
-            f"and {added_edges} new edges. Optimized {minimized_targets} generated minima "
+            f"and {added_edges} new edges after expanding {len(expanded_growth_nodes)} node(s). "
+            f"Optimized {minimized_targets} generated minima "
             f"({failed_minimizations} failed)."
         ),
         "node_index": int(node_index),

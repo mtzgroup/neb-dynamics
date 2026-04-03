@@ -401,6 +401,36 @@ uv run mepd drive --workspace ./allylic_alcohol_drive --no-network-splits
 - Completed queue-pair viewers are cached after first materialization so state polling stays responsive after the first finished NEB.
 - When multiple node minimizations are submitted and the loaded inputs use a ChemCloud-backed engine, drive submits them as one ChemCloud batch instead of serial single-node jobs.
 
+**Drive Kinetics Section (Rate-Equation tab):**
+
+The `Kinetics` panel in Drive runs a deterministic population model over the currently merged Drive graph.
+
+- Data source:
+  The model is built from the active Drive network snapshot (`neb_pot` plus optional network-split overlay).
+- Which edges are used:
+  Directed edges with a numeric `barrier` are converted to rates; edges without barriers are ignored.
+- Suppressed edges:
+  A near-zero barrier edge can be suppressed when its stored NEB chain indicates the source endpoint is already at the chain maximum (guard against suspicious zero barriers).
+- Rate law:
+  Each retained edge uses `k = (k_B T / h) * exp(-barrier_kcal / (R * T))`.
+- Initial conditions:
+  If the input box is empty, defaults are node `0 = 1.0` and all other nodes `= 0.0`.
+  If provided, `Initial Conditions (JSON)` must be a JSON object like `{"0": 1.0, "4": 0.25}`.
+  Missing nodes are filled as `0.0`.
+- Time controls:
+  `Kinetics Final Time` can be left blank; Drive then uses an automatic horizon `10 / max(rate_constant)` from the current graph.
+  `Kinetics Max Steps` is the number of implicit-Euler steps used in the integration.
+- Solver behavior:
+  The simulation integrates a linear rate-equation system (continuous populations), clamps negatives to zero, and renormalizes to conserve total population.
+- What the panel shows:
+  Node/edge/suppressed-edge counts, default initial state, a population-vs-time plot (top 6 final-population nodes), and final populations.
+- Time interpretation:
+  The plot axis is currently labeled `Time (a.u.)`; treat it as relative/arbitrary time unless you have separately validated a physical calibration.
+- Model type note:
+  This is not a stochastic Gillespie trajectory; it is a deterministic ODE-style evolution of populations.
+- API naming note:
+  The preferred endpoint is `/api/run-kinetics`; `/api/run-kmc` is still accepted as a backward-compatible alias.
+
 **Running drive on a remote server over SSH:**
 
 Start the server on the remote machine and bind it to loopback:

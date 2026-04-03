@@ -20,6 +20,7 @@ from neb_dynamics.retropaths_queue import (
     _optimize_single_node,
     build_balanced_endpoints,
     build_retropaths_neb_queue,
+    load_completed_queue_chains,
     pair_is_direct_neb_compatible,
     pair_attempt_key,
     run_retropaths_neb_queue,
@@ -143,6 +144,46 @@ def test_build_retropaths_neb_queue_refreshes_stale_attempt_signature_after_endp
     assert queue.items[0].attempt_key != original_attempt_key
     assert queue.items[0].status == "pending"
     assert original_attempt_key in queue.attempted_pairs
+
+
+def test_load_completed_queue_chains_includes_completed_attempted_pairs(tmp_path, monkeypatch):
+    queue_fp = tmp_path / "queue.json"
+    queue = RetropathsNEBQueue(
+        items=[
+            NEBQueueItem(
+                job_id="1->0",
+                source_node=1,
+                target_node=0,
+                attempt_key="new-attempt",
+                status="pending",
+            )
+        ],
+        attempted_pairs={
+            "old-attempt": {
+                "job_id": "1->0-old",
+                "source_node": 1,
+                "target_node": 0,
+                "status": "completed",
+                "result_dir": str(tmp_path / "old_result"),
+                "finished_at": "2026-04-03T07:00:00",
+            }
+        },
+    )
+    queue.write_to_disk(queue_fp)
+
+    expected_chain = Chain.model_validate(
+        {"nodes": [_node_at_x(0.0), _node_at_x(1.0)], "parameters": ChainInputs()}
+    )
+
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_queue.TreeNode.read_from_disk",
+        lambda folder_name, charge, multiplicity: SimpleNamespace(output_chain=expected_chain),
+    )
+
+    chains_by_edge = load_completed_queue_chains(queue_fp=queue_fp)
+
+    assert (1, 0) in chains_by_edge
+    assert chains_by_edge[(1, 0)][0] is expected_chain
 
 
 def test_pair_is_direct_neb_compatible_rejects_atom_count_mismatch():

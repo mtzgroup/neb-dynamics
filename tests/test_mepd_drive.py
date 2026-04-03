@@ -10,6 +10,7 @@ from neb_dynamics.mepd_drive import (
     _build_neb_live_payload,
     _bootstrap_product_endpoint,
     _build_drive_payload,
+    _build_drive_payload_fast,
     _deployment_program_defaults,
     _drive_defaults_payload,
     _drive_network_version,
@@ -22,6 +23,7 @@ from neb_dynamics.mepd_drive import (
     _optimize_selected_nodes,
     _parse_xyz_text_to_structure,
     _run_hessian_on_completed_edges,
+    _run_unattempted_nebs,
     _write_completed_queue_visualizations,
     MepdDriveServer,
 )
@@ -879,6 +881,11 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="clear-product-path"' in html
     assert 'data-tab="kinetics"' in html
     assert 'id="run-kmc"' in html
+    assert "Kinetics temperature (K)" in html
+    assert "Kinetics final time" in html
+    assert "Kinetics max steps" in html
+    assert "Run Kinetics Model" in html
+    assert "/api/run-kinetics" in html
     assert "function renderLiveActivityContent(activity)" in html
     assert "function renderProductPathPanel(snapshot)" in html
     assert "function computePathHighlight(snapshot, sourceNodeId, productLabel)" in html
@@ -907,6 +914,8 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "queueNanoreactor" in html
     assert "queueHessianSampleFromNode" in html
     assert "queueHessianSampleFromEdge" in html
+    assert "hessianSampleDr: 1.0" in html
+    assert "if (!Number.isFinite(parsed) || parsed <= 0) return 1.0;" in html
     assert "Run Nanoreactor Sampling From This Geometry" in html
     assert "Run Hessian Sample From This Geometry" in html
     assert "Use As Path Source A" in html
@@ -1415,6 +1424,82 @@ def test_write_completed_queue_visualizations_skips_split_results(monkeypatch, t
     assert rows == []
 
 
+def test_write_completed_queue_visualizations_reads_completed_attempted_pairs(monkeypatch, tmp_path):
+    workspace = SimpleNamespace(edge_visualizations_dir=tmp_path / "edge_visualizations")
+    queue = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                source_node=4,
+                target_node=1,
+                status="pending",
+                result_dir=None,
+                output_chain_xyz=None,
+                finished_at=None,
+            )
+        ],
+        attempted_pairs={
+            "attempt-1": {
+                "source_node": 4,
+                "target_node": 1,
+                "status": "completed",
+                "result_dir": str(tmp_path / "result"),
+                "output_chain_xyz": str(tmp_path / "pair_4_1.xyz"),
+                "finished_at": "2026-03-20T10:00:00",
+            }
+        },
+    )
+
+    used = {}
+
+    class _FakeStructure:
+        def __init__(self, xyz):
+            self._xyz = xyz
+            self.symbols = ["H", "H"]
+
+        def to_xyz(self):
+            return self._xyz
+
+    class _FakeChain:
+        def __init__(self):
+            self.nodes = [
+                SimpleNamespace(structure=_FakeStructure("2\nsource\nH 0 0 0\nH 0 0 1\n"), graph="A"),
+                SimpleNamespace(structure=_FakeStructure("2\ntarget\nH 0 0 0\nH 0 0 2\n"), graph="B"),
+            ]
+
+        def get_eA_chain(self):
+            return 3.75
+
+        def __len__(self):
+            return len(self.nodes)
+
+        def __getitem__(self, index):
+            return self.nodes[index]
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.Chain.from_xyz",
+        lambda fp, parameters: used.update({"xyz": str(fp)}) or _FakeChain(),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.TreeNode.read_from_disk",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("TreeNode.read_from_disk should not be used when output_chain_xyz exists")),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.scripts.main_cli._build_chain_visualizer_html",
+        lambda chain, chain_trajectory=None: "<html><body>viewer</body></html>",
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._molecule_visual_payload",
+        lambda molecule_like: {"smiles": str(molecule_like)},
+    )
+
+    rows = _write_completed_queue_visualizations(workspace, queue)
+
+    assert used["xyz"] == str(tmp_path / "pair_4_1.xyz")
+    assert rows[0]["edge"] == "4 -> 1"
+    assert rows[0]["barrier"] == 3.75
+    assert rows[0]["href"] == "queue_edge_4_1.html"
+
+
 def test_build_drive_payload_prefers_completed_queue_structures_for_structures_tab(monkeypatch, tmp_path):
     queue = SimpleNamespace(
         items=[
@@ -1494,6 +1579,69 @@ def test_build_drive_payload_prefers_completed_queue_structures_for_structures_t
 
     assert edge["source_structure"]["xyz_b64"] == "queue-source"
     assert edge["target_structure"]["xyz_b64"] == "queue-target"
+
+
+def test_build_drive_payload_fast_uses_completed_queue_result_without_prerendered_metadata(monkeypatch, tmp_path):
+    queue = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                source_node=0,
+                target_node=1,
+                status="completed",
+                started_at="2026-03-20T12:00:00",
+                finished_at="2026-03-20T12:05:00",
+                error=None,
+                result_dir=str(tmp_path / "result"),
+                output_chain_xyz=None,
+            ),
+        ]
+    )
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0, td=SimpleNamespace(structure="source"), molecule="C")
+    pot.graph.add_node(1, td=SimpleNamespace(structure="target"), molecule="CC")
+    pot.graph.add_edge(0, 1, reaction="r1", barrier=8.25)
+
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "queue.json",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        inputs_fp=tmp_path / "inputs.toml",
+        workdir=str(tmp_path),
+        run_name="drive",
+        root_smiles="C",
+        environment_smiles="",
+        reactions_path=tmp_path / "reactions.p",
+        edge_visualizations_dir=tmp_path / "edge_visualizations",
+    )
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RetropathsNEBQueue.read_from_disk", lambda _fp: queue)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot_compat", lambda _workspace, **kwargs: pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_network_explorer_payload",
+        lambda graph, template_payloads=None, edge_visualizations=None: {
+            "nodes": [
+                {"id": 0, "label": "C", "data": {}},
+                {"id": 1, "label": "CC", "data": {}},
+            ],
+            "edges": [
+                {"source": 0, "target": 1, "reaction": "r1", "barrier": 8.25, "chains": 0, "viewer_href": None, "data": {}, "template": {}},
+            ],
+        },
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._read_edge_visualization_metadata", lambda workspace, pot: [])
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_completed_queue_visualizations",
+        lambda workspace, queue: [{"edge": "0 -> 1", "href": "queue_edge_0_1.html", "barrier": 8.25}],
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._node_structure_payload_fast", lambda _attrs: None)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._inputs_summary_payload", lambda _workspace: {})
+
+    payload = _build_drive_payload_fast(workspace)
+    edge = payload["network"]["edges"][0]
+
+    assert edge["viewer_href"] == "edge_visualizations/queue_edge_0_1.html"
+    assert edge["result_from_completed_queue"] is True
 
 
 def test_snapshot_includes_active_action(monkeypatch, tmp_path):
@@ -2640,7 +2788,7 @@ def test_apply_reactions_to_node_converts_drive_molecules_to_retropaths_compatib
     )
     monkeypatch.setattr(
         "neb_dynamics.retropaths_workflow.copy_graph_like_molecule",
-        lambda mol: SimpleNamespace(copied_smiles=getattr(mol, "_smiles", "")),
+        lambda mol: _DriveMolecule(getattr(mol, "_smiles", "")),
     )
     monkeypatch.setattr(
         "neb_dynamics.retropaths_workflow.structure_node_from_graph_like_molecule",
@@ -2654,8 +2802,115 @@ def test_apply_reactions_to_node_converts_drive_molecules_to_retropaths_compatib
     result = apply_reactions_to_node(workspace, 0, progress_fp=str(progress_fp))
 
     assert result["added_nodes"] == 1
-    assert fake_pot.graph.nodes[1]["molecule"].copied_smiles == "C=CO"
+    assert fake_pot.graph.nodes[1]["molecule"].smiles_from_multiple_molecules() == "C=CO"
     assert "Applied reactions to node 0" in result["message"]
+
+
+def test_apply_reactions_to_node_keeps_growing_new_nodes_until_saturation(monkeypatch, tmp_path):
+    class _DriveMolecule:
+        def __init__(self, smiles):
+            self._smiles = smiles
+
+        def copy(self):
+            return _DriveMolecule(self._smiles)
+
+        def smiles_from_multiple_molecules(self):
+            return self._smiles
+
+    class _FakeRetropathsMolecule:
+        def __init__(self, smiles=""):
+            self._smiles = smiles
+
+        @classmethod
+        def from_smiles(cls, smiles):
+            return cls(smiles)
+
+        def copy(self):
+            return _FakeRetropathsMolecule(self._smiles)
+
+        def substitute_group(self, *_args, **_kwargs):
+            return self
+
+    growth_calls = []
+
+    class _FakeRetropathsPot:
+        def __init__(self, root, environment, rxn_name):
+            assert isinstance(root, _FakeRetropathsMolecule)
+            assert isinstance(environment, _FakeRetropathsMolecule)
+            self.root = root
+            self.environment = environment
+            self.rxn_name = rxn_name
+            self.graph = nx.DiGraph()
+            self.graph.add_node(0, molecule=root)
+
+        def grow_this_node(self, *_args, **_kwargs):
+            growth_calls.append(self.root._smiles)
+            if self.root._smiles == "C=CC":
+                product = _FakeRetropathsMolecule.from_smiles("C=CO")
+                self.graph.add_node(1, molecule=product, converged=False)
+                self.graph.add_edge(1, 0, reaction="step-1")
+            elif self.root._smiles == "C=CO":
+                product = _FakeRetropathsMolecule.from_smiles("C=CN")
+                self.graph.add_node(1, molecule=product, converged=False)
+                self.graph.add_edge(1, 0, reaction="step-2")
+
+    class _FakePot:
+        def __init__(self):
+            self.graph = nx.DiGraph()
+            self.graph.add_node(
+                0,
+                molecule=_DriveMolecule("C=CC"),
+                td=SimpleNamespace(
+                    structure=SimpleNamespace(charge=0, multiplicity=1),
+                    graph=_DriveMolecule("C=CC"),
+                ),
+            )
+
+        def write_to_disk(self, _fp):
+            return None
+
+    workspace = SimpleNamespace(
+        run_name="drive",
+        reactions_path=tmp_path / "reactions.p",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        queue_fp=tmp_path / "neb_queue.json",
+    )
+
+    fake_pot = _FakePot()
+    progress_fp = tmp_path / "apply_recursive.progress.json"
+
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow.materialize_drive_graph", lambda _workspace: fake_pot)
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow._load_retropaths_classes",
+        lambda: (
+            SimpleNamespace(pload=lambda _fp: SimpleNamespace()),
+            _FakeRetropathsMolecule,
+            _FakeRetropathsPot,
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow._global_environment_molecule",
+        lambda _pot: _DriveMolecule("O"),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.copy_graph_like_molecule",
+        lambda mol: _DriveMolecule(getattr(mol, "_smiles", "")),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.structure_node_from_graph_like_molecule",
+        lambda molecule, charge=0, spinmult=1: SimpleNamespace(graph=molecule, structure=SimpleNamespace(charge=charge, multiplicity=spinmult)),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.build_retropaths_neb_queue",
+        lambda pot, queue_fp, overwrite=False: None,
+    )
+
+    result = apply_reactions_to_node(workspace, 0, progress_fp=str(progress_fp))
+
+    assert result["added_nodes"] == 2
+    assert fake_pot.graph.has_edge(1, 0)
+    assert fake_pot.graph.has_edge(2, 1)
+    assert growth_calls == ["C=CC", "C=CO", "C=CN"]
 
 
 def test_run_nanoreactor_for_node_merges_minima(monkeypatch, tmp_path):
@@ -3748,6 +4003,61 @@ def test_hawaii_hessian_falls_back_to_singleton_seed_node_when_no_edges(monkeypa
     assert first == (1, 0, 2)
     assert second == (0, 0, 0)
     assert calls["node"] == 1
+
+
+def test_hawaii_neb_stage_writes_progress_after_each_completed_neb(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+    )
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_nodes_from([0, 1, 2])
+    pot.graph.add_edge(0, 1)
+    pot.graph.add_edge(1, 2)
+    queue = SimpleNamespace(
+        attempted_pairs={},
+        items=[
+            SimpleNamespace(source_node=0, target_node=1, status="pending", attempt_key="0-1"),
+            SimpleNamespace(source_node=1, target_node=2, status="pending", attempt_key="1-2"),
+        ],
+    )
+
+    progress_notes: list[str] = []
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.materialize_drive_graph", lambda _workspace: pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.build_retropaths_neb_queue",
+        lambda **kwargs: queue,
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._run_selected_edge_neb_logged",
+        lambda *args, **kwargs: {"message": "ok"},
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_hawaii_progress",
+        lambda *args, **kwargs: progress_notes.append(str(kwargs.get("note") or "")),
+    )
+
+    attempts, failures = _run_unattempted_nebs(
+        workspace,
+        network_splits=True,
+        progress_fp=str(workspace_dir / "drive_hawaii.progress.json"),
+        control_fp=None,
+        dr=1.0,
+    )
+
+    completed = [note for note in progress_notes if "completed autosplitting NEB" in note]
+    assert attempts == 2
+    assert failures == 0
+    assert len(completed) == 2
+    assert "0 -> 1" in completed[0]
+    assert "1 -> 2" in completed[1]
 
 
 def test_progress_printer_writes_live_chain_payload_file(monkeypatch, tmp_path):
