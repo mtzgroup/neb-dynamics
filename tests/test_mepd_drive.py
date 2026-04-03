@@ -1202,6 +1202,75 @@ def test_build_drive_payload_uses_completed_queue_result_when_no_direct_neb_edge
     assert edge["result_from_completed_queue"] is True
 
 
+def test_build_drive_payload_uses_reverse_completed_queue_result_when_forward_has_barrier(monkeypatch, tmp_path):
+    queue = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                source_node=1,
+                target_node=0,
+                status="completed",
+                started_at="2026-03-18T12:00:00",
+                finished_at="2026-03-18T12:05:00",
+                error=None,
+                result_dir=str(tmp_path / "result"),
+                output_chain_xyz=None,
+            ),
+        ]
+    )
+    retropaths_pot = SimpleNamespace(graph=nx.DiGraph())
+    retropaths_pot.graph.add_node(0)
+    retropaths_pot.graph.add_node(1)
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0, td=SimpleNamespace(structure="xyz"), molecule="C")
+    pot.graph.add_node(1, td=SimpleNamespace(structure="xyz"), molecule="CC")
+    pot.graph.add_edge(0, 1, reaction="r1", barrier=9.75)
+
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "queue.json",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        inputs_fp=tmp_path / "inputs.toml",
+        workdir=str(tmp_path),
+        run_name="drive",
+        root_smiles="C",
+        environment_smiles="",
+        reactions_path=tmp_path / "reactions.p",
+        edge_visualizations_dir=tmp_path / "edge_visualizations",
+    )
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.load_retropaths_pot", lambda _workspace: retropaths_pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RetropathsNEBQueue.read_from_disk", lambda _fp: queue)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot", lambda _workspace, **kwargs: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_edge_visualizations", lambda workspace, pot: [])
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_completed_queue_visualizations",
+        lambda workspace, queue: [{"edge": "1 -> 0", "href": "queue_edge_1_0.html", "barrier": 9.75}],
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_template_payloads", lambda workspace: {})
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RunInputs.open", lambda _fp: SimpleNamespace(engine_name="fake"))
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_network_explorer_payload",
+        lambda graph, template_payloads=None, edge_visualizations=None: {
+            "nodes": [
+                {"id": 0, "label": "C", "data": {}},
+                {"id": 1, "label": "CC", "data": {}},
+            ],
+            "edges": [
+                {"source": 0, "target": 1, "reaction": "r1", "barrier": 9.75, "chains": 0, "viewer_href": None, "data": {}, "template": {}},
+            ],
+        },
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._node_structure_payload", lambda _attrs: None)
+
+    payload = _build_drive_payload(workspace)
+    edge = payload["network"]["edges"][0]
+
+    assert edge["barrier"] == 9.75
+    assert edge["viewer_href"] == "edge_visualizations/queue_edge_1_0.html"
+    assert edge["result_from_completed_queue"] is True
+
+
 def test_build_drive_payload_prefers_completed_queue_viewer_over_reconstructed_edge_viewer(monkeypatch, tmp_path):
     queue = SimpleNamespace(
         items=[
@@ -1642,6 +1711,69 @@ def test_build_drive_payload_fast_uses_completed_queue_result_without_prerendere
     edge = payload["network"]["edges"][0]
 
     assert edge["viewer_href"] == "edge_visualizations/queue_edge_0_1.html"
+    assert edge["result_from_completed_queue"] is True
+
+
+def test_build_drive_payload_fast_uses_reverse_completed_queue_result_when_forward_has_barrier(monkeypatch, tmp_path):
+    queue = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                source_node=1,
+                target_node=0,
+                status="completed",
+                started_at="2026-03-20T12:00:00",
+                finished_at="2026-03-20T12:05:00",
+                error=None,
+                result_dir=str(tmp_path / "result"),
+                output_chain_xyz=None,
+            ),
+        ]
+    )
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0, td=SimpleNamespace(structure="source"), molecule="C")
+    pot.graph.add_node(1, td=SimpleNamespace(structure="target"), molecule="CC")
+    pot.graph.add_edge(0, 1, reaction="r1", barrier=8.25)
+
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "queue.json",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        inputs_fp=tmp_path / "inputs.toml",
+        workdir=str(tmp_path),
+        run_name="drive",
+        root_smiles="C",
+        environment_smiles="",
+        reactions_path=tmp_path / "reactions.p",
+        edge_visualizations_dir=tmp_path / "edge_visualizations",
+    )
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RetropathsNEBQueue.read_from_disk", lambda _fp: queue)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot_compat", lambda _workspace, **kwargs: pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_network_explorer_payload",
+        lambda graph, template_payloads=None, edge_visualizations=None: {
+            "nodes": [
+                {"id": 0, "label": "C", "data": {}},
+                {"id": 1, "label": "CC", "data": {}},
+            ],
+            "edges": [
+                {"source": 0, "target": 1, "reaction": "r1", "barrier": 8.25, "chains": 0, "viewer_href": None, "data": {}, "template": {}},
+            ],
+        },
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._read_edge_visualization_metadata", lambda workspace, pot: [])
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_completed_queue_visualizations",
+        lambda workspace, queue: [{"edge": "1 -> 0", "href": "queue_edge_1_0.html", "barrier": 8.25}],
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._node_structure_payload_fast", lambda _attrs: None)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._inputs_summary_payload", lambda _workspace: {})
+
+    payload = _build_drive_payload_fast(workspace)
+    edge = payload["network"]["edges"][0]
+
+    assert edge["viewer_href"] == "edge_visualizations/queue_edge_1_0.html"
     assert edge["result_from_completed_queue"] is True
 
 

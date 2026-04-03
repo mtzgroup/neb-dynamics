@@ -1336,6 +1336,20 @@ def _resolve_display_edge_attrs(graph, source: int, target: int) -> tuple[dict[s
     return attrs, False
 
 
+def _lookup_edge_payload_with_reverse(
+    payload_by_edge: dict[str, Any],
+    *,
+    source: int,
+    target: int,
+    prefer_reverse: bool = False,
+) -> Any | None:
+    forward_key = f"{int(source)} -> {int(target)}"
+    reverse_key = f"{int(target)} -> {int(source)}"
+    first_key = reverse_key if prefer_reverse else forward_key
+    second_key = forward_key if prefer_reverse else reverse_key
+    return payload_by_edge.get(first_key) or payload_by_edge.get(second_key)
+
+
 def _parse_kmc_initial_conditions(raw: str | None) -> dict[int, float] | None:
     text = str(raw or "").strip()
     if not text:
@@ -1688,8 +1702,11 @@ def _build_drive_payload(
         attrs = pot.graph.edges[(source, target)]
         display_attrs, used_reverse_result = _resolve_display_edge_attrs(pot.graph, source, target)
         queue_item = queue_by_edge.get((source, target))
-        queue_result = queue_result_by_edge.get(f"{source} -> {target}") or (
-            queue_result_by_edge.get(f"{target} -> {source}") if used_reverse_result else None
+        queue_result = _lookup_edge_payload_with_reverse(
+            queue_result_by_edge,
+            source=source,
+            target=target,
+            prefer_reverse=used_reverse_result,
         )
         viewer_edge_key = f"{target} -> {source}" if used_reverse_result else f"{source} -> {target}"
         viewer_row = viewer_row_by_edge.get(viewer_edge_key)
@@ -1850,8 +1867,11 @@ def _build_drive_payload_fast(
         attrs = pot.graph.edges[(source, target)]
         display_attrs, used_reverse_result = _resolve_display_edge_attrs(pot.graph, source, target)
         queue_item = queue_by_edge.get((source, target))
-        queue_result = queue_result_by_edge.get(f"{source} -> {target}") or (
-            queue_result_by_edge.get(f"{target} -> {source}") if used_reverse_result else None
+        queue_result = _lookup_edge_payload_with_reverse(
+            queue_result_by_edge,
+            source=source,
+            target=target,
+            prefer_reverse=used_reverse_result,
         )
         viewer_edge_key = f"{target} -> {source}" if used_reverse_result else f"{source} -> {target}"
         edge["neb_backed"] = bool(display_attrs.get("list_of_nebs"))
@@ -1993,8 +2013,11 @@ def _build_drive_payload_fast_neb(
         target = int(edge["target"])
         display_attrs, used_reverse_result = _resolve_display_edge_attrs(pot.graph, source, target)
         queue_item = queue_by_edge.get((source, target))
-        queue_result = queue_result_by_edge.get(f"{source} -> {target}") or (
-            queue_result_by_edge.get(f"{target} -> {source}") if used_reverse_result else None
+        queue_result = _lookup_edge_payload_with_reverse(
+            queue_result_by_edge,
+            source=source,
+            target=target,
+            prefer_reverse=used_reverse_result,
         )
         viewer_edge_key = f"{target} -> {source}" if used_reverse_result else f"{source} -> {target}"
         edge["neb_backed"] = bool((source, target) == active_edge) or bool(display_attrs.get("list_of_nebs"))
