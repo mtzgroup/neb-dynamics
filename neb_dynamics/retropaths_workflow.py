@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import base64
 import contextlib
+import inspect
 import importlib
 import io
 import json
@@ -538,8 +539,60 @@ def _hessian_sample_support_status(run_inputs: RunInputs) -> tuple[bool, str]:
     return True, ""
 
 
-def _compute_hessian_result_for_sampling(engine: Any, node: StructureNode) -> Any:
+def _hessian_use_bigchem_flag(run_inputs: RunInputs) -> bool | None:
+    env_override = str(os.getenv("MEPD_HESSIAN_USE_BIGCHEM", "") or "").strip().lower()
+    if env_override in {"1", "true", "yes", "on"}:
+        return True
+    if env_override in {"0", "false", "no", "off"}:
+        return False
+
+    engine_name = str(getattr(run_inputs, "engine_name", "") or "").strip().lower()
+    if engine_name == "chemcloud":
+        return True
+    if engine_name == "qcop":
+        return False
+    engine = getattr(run_inputs, "engine", None)
+    compute_program = str(getattr(engine, "compute_program", "") or "").strip().lower()
+    if compute_program == "chemcloud":
+        return True
+    if compute_program == "qcop":
+        return False
+    return None
+
+
+def _resolve_hessian_use_bigchem(
+    run_inputs: RunInputs,
+    requested_use_bigchem: bool | None,
+) -> bool | None:
+    auto = _hessian_use_bigchem_flag(run_inputs)
+    if auto is True:
+        return True
+    if requested_use_bigchem is not None:
+        return bool(requested_use_bigchem)
+    return auto
+
+
+def _compute_hessian_result_for_sampling(
+    engine: Any,
+    node: StructureNode,
+    *,
+    use_bigchem: bool | None = None,
+) -> Any:
     if hasattr(engine, "_compute_hessian_result"):
+        if use_bigchem is not None:
+            with contextlib.suppress(Exception):
+                signature = inspect.signature(engine._compute_hessian_result)
+                params = signature.parameters.values()
+                accepts_use_bigchem = "use_bigchem" in signature.parameters
+                accepts_kwargs = any(
+                    parameter.kind == inspect.Parameter.VAR_KEYWORD
+                    for parameter in params
+                )
+                if accepts_use_bigchem or accepts_kwargs:
+                    return engine._compute_hessian_result(
+                        node,
+                        use_bigchem=bool(use_bigchem),
+                    )
         return engine._compute_hessian_result(node)
     hessian = np.asarray(engine.compute_hessian(node), dtype=float)
     return build_hessian_result_from_matrix(node=node, hessian=hessian)
@@ -767,6 +820,7 @@ def _run_hessian_sample(
     *,
     dr: float,
     max_candidates: int,
+    use_bigchem: bool | None = None,
     source_label: str,
     growing_nodes: list[int],
     provenance_node_index: int | None = None,
@@ -797,7 +851,14 @@ def _run_hessian_sample(
     )
 
     try:
-        hessres = _compute_hessian_result_for_sampling(engine, seed_node)
+        hessres = _compute_hessian_result_for_sampling(
+            engine,
+            seed_node,
+            use_bigchem=_resolve_hessian_use_bigchem(
+                run_inputs,
+                requested_use_bigchem=use_bigchem,
+            ),
+        )
     except Exception as exc:
         hessres = getattr(exc, "program_output", None)
         if hessres is None:
@@ -1065,6 +1126,7 @@ def run_hessian_sample_for_node(
     *,
     dr: float,
     max_candidates: int = 100,
+    use_bigchem: bool | None = None,
     progress_fp: str | None = None,
 ) -> dict[str, Any]:
     pot = materialize_drive_graph(workspace)
@@ -1080,6 +1142,7 @@ def run_hessian_sample_for_node(
         source_td,
         dr=float(dr),
         max_candidates=int(max_candidates),
+        use_bigchem=use_bigchem,
         source_label=f"node {int(node_index)}",
         growing_nodes=[int(node_index)],
         provenance_node_index=int(node_index),
@@ -1094,6 +1157,7 @@ def run_hessian_sample_for_edge(
     *,
     dr: float,
     max_candidates: int = 100,
+    use_bigchem: bool | None = None,
     progress_fp: str | None = None,
 ) -> dict[str, Any]:
     pot = materialize_drive_graph(workspace)
@@ -1123,6 +1187,7 @@ def run_hessian_sample_for_edge(
         peak_node,
         dr=float(dr),
         max_candidates=int(max_candidates),
+        use_bigchem=use_bigchem,
         source_label=f"edge {int(source_node)} -> {int(target_node)} peak",
         growing_nodes=[int(source_node), int(target_node)],
         provenance_edge=(int(source_node), int(target_node)),

@@ -918,6 +918,9 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "queueHessianSampleFromNode" in html
     assert "queueHessianSampleFromEdge" in html
     assert "hessianSampleDr: 1.0" in html
+    assert "hessianSampleUseBigchem: false" in html
+    assert "hessian-sample-use-bigchem" in html
+    assert "Force BigChem (QCOP override)" in html
     assert "if (!Number.isFinite(parsed) || parsed <= 0) return 1.0;" in html
     assert "Run Nanoreactor Sampling From This Geometry" in html
     assert "Run Hessian Sample From This Geometry" in html
@@ -3404,6 +3407,121 @@ def test_optimize_selected_nodes_batches_chemcloud_requests(monkeypatch, tmp_pat
     assert "Finished geometry 1/2: node 0" in progress_messages
 
 
+def test_optimize_selected_nodes_chemcloud_batch_empty_trajectory_does_not_fallback_serial(monkeypatch, tmp_path):
+    node_updates = []
+    batch_calls = []
+
+    class _FakePot:
+        def __init__(self):
+            self.graph = nx.DiGraph()
+            self.graph.add_node(0, td=SimpleNamespace(has_molecular_graph=False, graph="g0"))
+            self.graph.add_node(1, td=SimpleNamespace(has_molecular_graph=False, graph="g1"))
+
+        def write_to_disk(self, _fp):
+            return None
+
+    class _FakeEngine:
+        compute_program = "chemcloud"
+
+        def compute_geometry_optimizations(self, nodes, keywords=None):
+            batch_calls.append({"nodes": list(nodes), "keywords": dict(keywords or {})})
+            return [
+                [],
+                [SimpleNamespace(energy=2.0), SimpleNamespace(energy=3.0, graph=None, has_molecular_graph=False)],
+            ]
+
+    fake_pot = _FakePot()
+    workspace = SimpleNamespace(inputs_fp=str(tmp_path / "inputs.toml"), neb_pot_fp=tmp_path / "neb_pot.json")
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.RunInputs.open",
+        lambda _fp: SimpleNamespace(engine=_FakeEngine(), engine_name="chemcloud"),
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive.Pot.read_from_disk", lambda _fp: fake_pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._run_geometry_optimization_with_trajectory",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Serial optimization fallback should not run for ChemCloud batch responses.")
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._persist_endpoint_optimization_result",
+        lambda workspace, node_index, optimized_td: None,
+    )
+
+    result = _optimize_selected_nodes(
+        workspace,
+        None,
+        progress=lambda _msg: None,
+        on_node_update=node_updates.append,
+    )
+
+    assert result["node_indices"] == [0, 1]
+    assert len(batch_calls) == 1
+    assert fake_pot.graph.nodes[0]["endpoint_optimized"] is False
+    assert (
+        fake_pot.graph.nodes[0]["endpoint_optimization_error"]
+        == "ChemCloud batch optimization returned an empty trajectory."
+    )
+    assert fake_pot.graph.nodes[1]["endpoint_optimized"] is True
+    assert any(update["node_id"] == 0 and update["status"] == "failed" for update in node_updates)
+    assert any(update["node_id"] == 1 and update["status"] == "completed" for update in node_updates)
+
+
+def test_optimize_selected_nodes_chemcloud_batch_submission_error_does_not_fallback_serial(monkeypatch, tmp_path):
+    node_updates = []
+    batch_calls = {"count": 0}
+
+    class _FakePot:
+        def __init__(self):
+            self.graph = nx.DiGraph()
+            self.graph.add_node(0, td=SimpleNamespace(has_molecular_graph=False, graph="g0"))
+            self.graph.add_node(1, td=SimpleNamespace(has_molecular_graph=False, graph="g1"))
+
+        def write_to_disk(self, _fp):
+            return None
+
+    class _FakeEngine:
+        compute_program = "chemcloud"
+
+        def compute_geometry_optimizations(self, nodes, keywords=None):
+            batch_calls["count"] += 1
+            raise RuntimeError("batch failed")
+
+    fake_pot = _FakePot()
+    workspace = SimpleNamespace(inputs_fp=str(tmp_path / "inputs.toml"), neb_pot_fp=tmp_path / "neb_pot.json")
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.RunInputs.open",
+        lambda _fp: SimpleNamespace(engine=_FakeEngine(), engine_name="chemcloud"),
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive.Pot.read_from_disk", lambda _fp: fake_pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._run_geometry_optimization_with_trajectory",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("Serial optimization fallback should not run for ChemCloud batch submission errors.")
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._persist_endpoint_optimization_result",
+        lambda workspace, node_index, optimized_td: None,
+    )
+
+    _ = _optimize_selected_nodes(
+        workspace,
+        None,
+        progress=lambda _msg: None,
+        on_node_update=node_updates.append,
+    )
+
+    assert batch_calls["count"] == 1
+    assert fake_pot.graph.nodes[0]["endpoint_optimized"] is False
+    assert fake_pot.graph.nodes[1]["endpoint_optimized"] is False
+    assert "RuntimeError: batch failed" in fake_pot.graph.nodes[0]["endpoint_optimization_error"]
+    assert "RuntimeError: batch failed" in fake_pot.graph.nodes[1]["endpoint_optimization_error"]
+    assert sum(update["status"] == "failed" for update in node_updates) >= 2
+
+
 def test_build_drive_payload_marks_nanoreactor_available_for_chemcloud_crest(monkeypatch, tmp_path):
     queue = SimpleNamespace(items=[])
     retropaths_pot = SimpleNamespace(graph=nx.DiGraph())
@@ -3950,11 +4068,13 @@ def test_submit_hessian_sample_forwards_max_candidates_to_workflow(monkeypatch, 
         *,
         dr,
         max_candidates,
+        use_bigchem=None,
         progress_fp=None,
     ):
         forwarded["node_id"] = int(node_id)
         forwarded["dr"] = float(dr)
         forwarded["max_candidates"] = int(max_candidates)
+        forwarded["use_bigchem"] = use_bigchem
         forwarded["progress_fp"] = str(progress_fp or "")
         return {"message": "ok"}
 
@@ -3973,12 +4093,14 @@ def test_submit_hessian_sample_forwards_max_candidates_to_workflow(monkeypatch, 
         _fake_run_hessian_sample_for_node,
     )
 
-    server.submit_hessian_sample(node_id=3, dr=0.15, max_candidates=42)
+    server.submit_hessian_sample(node_id=3, dr=0.15, max_candidates=42, use_bigchem=True)
 
     assert forwarded["node_id"] == 3
     assert forwarded["dr"] == 0.15
     assert forwarded["max_candidates"] == 42
+    assert forwarded["use_bigchem"] is True
     assert server.runtime.active_action["max_candidates"] == 42
+    assert server.runtime.active_action["use_bigchem"] is True
 
 
 def test_submit_hawaii_control_go_starts_when_idle(monkeypatch, tmp_path):

@@ -975,6 +975,86 @@ def test_run_hessian_sample_for_node_accepts_compute_hessian_only_engine(monkeyp
     assert out["added_nodes"] >= 1
 
 
+def test_compute_hessian_result_for_sampling_sets_use_bigchem_true_for_chemcloud():
+    calls: list[bool] = []
+
+    class _Engine:
+        def _compute_hessian_result(self, _node, use_bigchem=True):
+            calls.append(bool(use_bigchem))
+            return {"ok": True}
+
+    run_inputs = SimpleNamespace(engine_name="chemcloud", engine=_Engine())
+    out = workflow._compute_hessian_result_for_sampling(
+        run_inputs.engine,
+        _node(0.0),
+        use_bigchem=workflow._hessian_use_bigchem_flag(run_inputs),
+    )
+
+    assert out == {"ok": True}
+    assert calls == [True]
+
+
+def test_hessian_use_bigchem_flag_env_override_false(monkeypatch):
+    monkeypatch.setenv("MEPD_HESSIAN_USE_BIGCHEM", "false")
+    run_inputs = SimpleNamespace(engine_name="chemcloud", engine=SimpleNamespace(compute_program="chemcloud"))
+    assert workflow._hessian_use_bigchem_flag(run_inputs) is False
+
+
+def test_hessian_use_bigchem_flag_env_override_true(monkeypatch):
+    monkeypatch.setenv("MEPD_HESSIAN_USE_BIGCHEM", "true")
+    run_inputs = SimpleNamespace(engine_name="qcop", engine=SimpleNamespace(compute_program="qcop"))
+    assert workflow._hessian_use_bigchem_flag(run_inputs) is True
+
+
+def test_compute_hessian_result_for_sampling_sets_use_bigchem_false_for_qcop():
+    calls: list[bool] = []
+
+    class _Engine:
+        def _compute_hessian_result(self, _node, use_bigchem=True):
+            calls.append(bool(use_bigchem))
+            return {"ok": True}
+
+    run_inputs = SimpleNamespace(engine_name="qcop", engine=_Engine())
+    out = workflow._compute_hessian_result_for_sampling(
+        run_inputs.engine,
+        _node(0.0),
+        use_bigchem=workflow._hessian_use_bigchem_flag(run_inputs),
+    )
+
+    assert out == {"ok": True}
+    assert calls == [False]
+
+
+def test_compute_hessian_result_for_sampling_ignores_use_bigchem_when_engine_signature_lacks_it():
+    called = {"n": 0}
+
+    class _Engine:
+        def _compute_hessian_result(self, _node):
+            called["n"] += 1
+            return {"ok": True}
+
+    out = workflow._compute_hessian_result_for_sampling(
+        _Engine(),
+        _node(0.0),
+        use_bigchem=True,
+    )
+
+    assert out == {"ok": True}
+    assert called["n"] == 1
+
+
+def test_resolve_hessian_use_bigchem_allows_qcop_user_override_true():
+    run_inputs = SimpleNamespace(engine_name="qcop", engine=SimpleNamespace(compute_program="qcop"))
+    resolved = workflow._resolve_hessian_use_bigchem(run_inputs, requested_use_bigchem=True)
+    assert resolved is True
+
+
+def test_resolve_hessian_use_bigchem_keeps_chemcloud_true_when_user_sets_false():
+    run_inputs = SimpleNamespace(engine_name="chemcloud", engine=SimpleNamespace(compute_program="chemcloud"))
+    resolved = workflow._resolve_hessian_use_bigchem(run_inputs, requested_use_bigchem=False)
+    assert resolved is True
+
+
 def test_run_hessian_sample_for_edge_requires_completed_chain(monkeypatch, tmp_path):
     workspace = RetropathsWorkspace(
         workdir=str(tmp_path),

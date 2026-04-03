@@ -199,6 +199,16 @@ def _run_geometry_optimization_batch_with_trajectories(
     if not nodes:
         return []
 
+    def _failed_node(node: Any) -> Any:
+        fallback = node.copy() if hasattr(node, "copy") else node
+        with contextlib.suppress(Exception):
+            fallback._cached_energy = None
+        with contextlib.suppress(Exception):
+            fallback._cached_gradient = None
+        with contextlib.suppress(Exception):
+            fallback._cached_result = None
+        return fallback
+
     batch_optimizer = getattr(run_inputs.engine, "compute_geometry_optimizations", None)
     compute_program = str(getattr(run_inputs.engine, "compute_program", "") or "").lower()
     engine_name = str(getattr(run_inputs, "engine_name", "") or "").lower()
@@ -217,26 +227,46 @@ def _run_geometry_optimization_batch_with_trajectories(
             )
         except TypeError:
             trajectories = batch_optimizer(nodes)
+    except Exception as exc:
+        error = f"{type(exc).__name__}: {exc}"
+        return [(_failed_node(node), error, None) for node in nodes]
 
-        optimized_nodes: list[tuple[Any, str | None, list[Any] | None]] = []
-        for original, traj in zip(nodes, trajectories):
-            optimized = traj[-1]
-            if getattr(original, "has_molecular_graph", False):
-                optimized.graph = structure_to_molecule(optimized.structure)
-                optimized.has_molecular_graph = True
-            else:
-                optimized.graph = original.graph
-                optimized.has_molecular_graph = original.has_molecular_graph
-            optimized_nodes.append((optimized, None, traj))
-        if len(optimized_nodes) == len(nodes):
-            return optimized_nodes
+    try:
+        trajectory_list = list(trajectories)
     except Exception:
-        pass
+        trajectory_list = [trajectories]
 
-    return [
-        _run_geometry_optimization_with_trajectory(node=node, run_inputs=run_inputs)
-        for node in nodes
-    ]
+    if len(trajectory_list) < len(nodes):
+        trajectory_list = trajectory_list + [[] for _ in range(len(nodes) - len(trajectory_list))]
+    elif len(trajectory_list) > len(nodes):
+        trajectory_list = trajectory_list[: len(nodes)]
+
+    optimized_nodes: list[tuple[Any, str | None, list[Any] | None]] = []
+    for original, traj in zip(nodes, trajectory_list):
+        try:
+            traj_list = list(traj) if traj is not None else []
+        except Exception:
+            traj_list = [traj]
+
+        if not traj_list:
+            optimized_nodes.append(
+                (
+                    _failed_node(original),
+                    "ChemCloud batch optimization returned an empty trajectory.",
+                    [],
+                )
+            )
+            continue
+
+        optimized = traj_list[-1]
+        if getattr(original, "has_molecular_graph", False):
+            optimized.graph = structure_to_molecule(optimized.structure)
+            optimized.has_molecular_graph = True
+        else:
+            optimized.graph = original.graph
+            optimized.has_molecular_graph = original.has_molecular_graph
+        optimized_nodes.append((optimized, None, traj_list))
+    return optimized_nodes
 
 
 def _resolve_minimize_target_indices(
@@ -2531,6 +2561,19 @@ def _normalize_hawaii_control_mode(value: Any) -> str:
     return "go"
 
 
+def _coerce_optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return bool(value)
+
+
 def _hawaii_control_fp_for_workspace(workspace: RetropathsWorkspace | None) -> Path | None:
     if workspace is None:
         return None
@@ -2980,8 +3023,24 @@ def _run_hessian_on_completed_edges(
                         progress_fp=progress_fp,
                     )
                     added_nodes += int(result.get("added_nodes") or 0)
-                except Exception:
+                except Exception as exc:
                     failures += 1
+                    _write_hawaii_progress(
+                        workspace,
+                        network_splits=network_splits,
+                        pot=pot,
+                        progress_fp=progress_fp,
+                        title="Hawaii autonomous exploration",
+                        note=(
+                            f"Step 3/3 (dr={float(dr):.1f}): Hessian sample for seed node "
+                            f"{int(singleton_node_index)} failed: {type(exc).__name__}: {exc}"
+                        ),
+                        phase="growing",
+                        stage="hessian",
+                        dr=dr,
+                        control_mode=_read_hawaii_control_mode(control_fp),
+                        growing_nodes=[int(singleton_node_index)],
+                    )
                 finally:
                     attempted_edge_keys.add(singleton_key)
                 return attempts, failures, added_nodes
@@ -3032,8 +3091,25 @@ def _run_hessian_on_completed_edges(
             )
             added_nodes += int(result.get("added_nodes") or 0)
             pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
-        except Exception:
+        except Exception as exc:
             failures += 1
+            _write_hawaii_progress(
+                workspace,
+                network_splits=network_splits,
+                pot=pot,
+                progress_fp=progress_fp,
+                title="Hawaii autonomous exploration",
+                note=(
+                    f"Step 3/3 (dr={float(dr):.1f}): Hessian sample for edge "
+                    f"{source_node} -> {target_node} failed ({index}/{len(candidates)}): "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+                phase="growing",
+                stage="hessian",
+                dr=dr,
+                control_mode=_read_hawaii_control_mode(control_fp),
+                growing_nodes=[source_node, target_node],
+            )
         finally:
             attempted_edge_keys.add(edge_key)
     return attempts, failures, added_nodes
@@ -4113,6 +4189,7 @@ def _drive_html() -> str:
       kmcResult: null,
       hessianSampleDr: 1.0,
       hessianSampleMaxCandidates: 100,
+      hessianSampleUseBigchem: false,
       hawaiiControlInFlight: false,
     };
 
@@ -4182,6 +4259,16 @@ def _drive_html() -> str:
       return value;
     }
 
+    function getHessianSampleUseBigchem() {
+      const input = document.getElementById("hessian-sample-use-bigchem");
+      const value = Boolean(input ? input.checked : state.hessianSampleUseBigchem);
+      state.hessianSampleUseBigchem = value;
+      if (input) {
+        input.checked = value;
+      }
+      return value;
+    }
+
     function bindHessianSampleDrInput() {
       const drInput = document.getElementById("hessian-sample-dr");
       if (drInput) {
@@ -4208,6 +4295,16 @@ def _drive_html() -> str:
           });
           maxInput.addEventListener("blur", () => {
             getHessianSampleMaxCandidates();
+          });
+        }
+      }
+      const useBigchemInput = document.getElementById("hessian-sample-use-bigchem");
+      if (useBigchemInput) {
+        useBigchemInput.checked = Boolean(state.hessianSampleUseBigchem);
+        if (useBigchemInput.dataset.bound !== "true") {
+          useBigchemInput.dataset.bound = "true";
+          useBigchemInput.addEventListener("change", () => {
+            getHessianSampleUseBigchem();
           });
         }
       }
@@ -5563,7 +5660,7 @@ def _drive_html() -> str:
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="minimize-node" onclick="queueMinimizeNode(${Number(node.id)})" ${node.minimizable ? "" : "disabled"}>Queue Minimization For This Geometry</button></div>
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="apply-reactions" onclick="queueApplyReactions(${Number(node.id)})" ${node.can_apply_reactions ? "" : "disabled"}>Apply Reactions To This Node</button></div>
           <div style="margin-bottom:10px;"><button class="secondary" data-drive-action="nanoreactor" onclick="queueNanoreactor(${Number(node.id)})" ${node.can_nanoreactor ? "" : "disabled"}>Run Nanoreactor Sampling From This Geometry</button></div>
-          <div style="margin-bottom:10px; display:grid; grid-template-columns:minmax(0, 140px) minmax(0, 180px) minmax(0, 1fr); gap:8px; align-items:end;">
+          <div style="margin-bottom:10px; display:grid; grid-template-columns:minmax(0, 140px) minmax(0, 180px) minmax(0, 220px) minmax(0, 1fr); gap:8px; align-items:end;">
             <div>
               <label for="hessian-sample-dr">Hessian sample dr</label>
               <input id="hessian-sample-dr" type="number" step="0.01" min="0.0001" value="${escapeHtml(state.hessianSampleDr)}" />
@@ -5571,6 +5668,12 @@ def _drive_html() -> str:
             <div>
               <label for="hessian-sample-max-candidates">Max minimizations</label>
               <input id="hessian-sample-max-candidates" type="number" step="1" min="1" value="${escapeHtml(state.hessianSampleMaxCandidates)}" />
+            </div>
+            <div>
+              <label for="hessian-sample-use-bigchem" style="display:flex; align-items:center; gap:8px;">
+                <input id="hessian-sample-use-bigchem" type="checkbox" ${state.hessianSampleUseBigchem ? "checked" : ""} />
+                <span>Force BigChem (QCOP override)</span>
+              </label>
             </div>
             <button class="secondary" data-drive-action="hessian-sample-node" onclick="queueHessianSampleFromNode(${Number(node.id)})" ${node.can_hessian_sample ? "" : "disabled"}>Run Hessian Sample From This Geometry</button>
           </div>
@@ -5614,7 +5717,7 @@ def _drive_html() -> str:
         <div style="margin-bottom:10px;">
           <button class="primary" data-drive-action="run-neb" onclick="queueEdgeNeb(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_queue_neb ? "" : "disabled"}>Queue Autosplitting NEB For This Edge</button>
         </div>
-        <div style="margin-bottom:10px; display:grid; grid-template-columns:minmax(0, 140px) minmax(0, 180px) minmax(0, 1fr); gap:8px; align-items:end;">
+        <div style="margin-bottom:10px; display:grid; grid-template-columns:minmax(0, 140px) minmax(0, 180px) minmax(0, 220px) minmax(0, 1fr); gap:8px; align-items:end;">
           <div>
             <label for="hessian-sample-dr">Hessian sample dr</label>
             <input id="hessian-sample-dr" type="number" step="0.01" min="0.0001" value="${escapeHtml(state.hessianSampleDr)}" />
@@ -5622,6 +5725,12 @@ def _drive_html() -> str:
           <div>
             <label for="hessian-sample-max-candidates">Max minimizations</label>
             <input id="hessian-sample-max-candidates" type="number" step="1" min="1" value="${escapeHtml(state.hessianSampleMaxCandidates)}" />
+          </div>
+          <div>
+            <label for="hessian-sample-use-bigchem" style="display:flex; align-items:center; gap:8px;">
+              <input id="hessian-sample-use-bigchem" type="checkbox" ${state.hessianSampleUseBigchem ? "checked" : ""} />
+              <span>Force BigChem (QCOP override)</span>
+            </label>
           </div>
           <button class="secondary" data-drive-action="hessian-sample-edge" onclick="queueHessianSampleFromEdge(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_hessian_sample ? "" : "disabled"}>Run Hessian Sample From Edge Peak</button>
         </div>
@@ -5972,6 +6081,14 @@ def _drive_html() -> str:
         const parentsByNode = new Map();
         const childrenByNode = new Map();
         const nodeIds = nodes.map((node) => Number(node.id));
+        const edgeSignature = edges
+          .map((edge) => `${Number(edge.source)}>${Number(edge.target)}`)
+          .sort()
+          .join(",");
+        const layoutVersion = `${nodeIds.slice().sort((a, b) => a - b).join(",")}::${edgeSignature}`;
+        const previousPositions = state.networkNodePositions && typeof state.networkNodePositions === "object"
+          ? state.networkNodePositions
+          : {};
         edges.forEach((edge) => {
           const source = Number(edge.source);
           const target = Number(edge.target);
@@ -6059,9 +6176,13 @@ def _drive_html() -> str:
           const startY = (height - blockHeight) / 2;
           levelBands.set(depth, { startY, gap, count });
           levelNodes.forEach((node, index) => {
+            const nodeId = Number(node.id);
+            const saved = previousPositions[String(nodeId)] || previousPositions[nodeId];
+            const savedX = Number(saved?.x);
+            const savedY = Number(saved?.y);
             positions.set(Number(node.id), {
-              x: xForDepth(depth),
-              y: count === 1 ? height / 2 : startY + index * gap,
+              x: Number.isFinite(savedX) ? clamp(savedX, 44, width - 44) : xForDepth(depth),
+              y: Number.isFinite(savedY) ? clamp(savedY, 44, height - 44) : (count === 1 ? height / 2 : startY + index * gap),
             });
           });
         });
@@ -6119,12 +6240,119 @@ def _drive_html() -> str:
           });
         });
 
-        return { width, height, positions };
+        const uniqueLinks = [];
+        const uniqueLinkKeys = new Set();
+        edges.forEach((edge) => {
+          const source = Number(edge.source);
+          const target = Number(edge.target);
+          if (!Number.isFinite(source) || !Number.isFinite(target) || source === target) return;
+          const key = source < target ? `${source}|${target}` : `${target}|${source}`;
+          if (uniqueLinkKeys.has(key)) return;
+          uniqueLinkKeys.add(key);
+          uniqueLinks.push([source, target]);
+        });
+
+        if (nodeIds.length > 1) {
+          const widthInner = Math.max(1, width - 88);
+          const heightInner = Math.max(1, height - 88);
+          const area = widthInner * heightInner;
+          const k = Math.max(8, Math.sqrt(area / Math.max(1, nodeIds.length)));
+          const iterations = Math.max(28, Math.min(130, 26 + nodeIds.length * 2));
+          let temperature = Math.max(14, Math.min(width, height) * 0.11);
+          const basePositions = new Map();
+          nodeIds.forEach((nodeId) => {
+            const current = positions.get(nodeId);
+            if (!current) return;
+            basePositions.set(nodeId, { x: Number(current.x), y: Number(current.y) });
+          });
+
+          for (let iter = 0; iter < iterations; iter += 1) {
+            const disp = new Map();
+            nodeIds.forEach((nodeId) => disp.set(nodeId, { x: 0, y: 0 }));
+
+            for (let i = 0; i < nodeIds.length; i += 1) {
+              const idA = nodeIds[i];
+              const posA = positions.get(idA);
+              if (!posA) continue;
+              for (let j = i + 1; j < nodeIds.length; j += 1) {
+                const idB = nodeIds[j];
+                const posB = positions.get(idB);
+                if (!posB) continue;
+                let dx = Number(posA.x) - Number(posB.x);
+                let dy = Number(posA.y) - Number(posB.y);
+                let dist = Math.hypot(dx, dy);
+                if (!Number.isFinite(dist) || dist < 0.01) {
+                  const jitter = ((i + 1) * (j + 3) * 17 + iter * 13) % 13;
+                  const angle = (jitter / 13) * Math.PI * 2;
+                  dx = Math.cos(angle) * 0.5;
+                  dy = Math.sin(angle) * 0.5;
+                  dist = Math.hypot(dx, dy);
+                }
+                const nx = dx / dist;
+                const ny = dy / dist;
+                const repulse = Math.min(340, (k * k) / Math.max(dist, 1.0));
+                const dispA = disp.get(idA);
+                const dispB = disp.get(idB);
+                dispA.x += nx * repulse;
+                dispA.y += ny * repulse;
+                dispB.x -= nx * repulse;
+                dispB.y -= ny * repulse;
+              }
+            }
+
+            uniqueLinks.forEach(([sourceId, targetId]) => {
+              const sourcePos = positions.get(sourceId);
+              const targetPos = positions.get(targetId);
+              if (!sourcePos || !targetPos) return;
+              const dx = Number(sourcePos.x) - Number(targetPos.x);
+              const dy = Number(sourcePos.y) - Number(targetPos.y);
+              const dist = Math.max(0.01, Math.hypot(dx, dy));
+              const nx = dx / dist;
+              const ny = dy / dist;
+              const attract = Math.min(360, (dist * dist) / Math.max(1.0, k));
+              const sourceDisp = disp.get(sourceId);
+              const targetDisp = disp.get(targetId);
+              sourceDisp.x -= nx * attract;
+              sourceDisp.y -= ny * attract;
+              targetDisp.x += nx * attract;
+              targetDisp.y += ny * attract;
+            });
+
+            nodeIds.forEach((nodeId) => {
+              const pos = positions.get(nodeId);
+              const base = basePositions.get(nodeId) || pos;
+              const force = disp.get(nodeId);
+              if (!pos || !base || !force) return;
+              if (nodeId === rootId) {
+                pos.x = Number(base.x);
+                pos.y = Number(base.y);
+                return;
+              }
+              const depth = Number(depthByNode.get(nodeId) || 0);
+              const depthAnchorX = xForDepth(depth);
+              force.x += (depthAnchorX - Number(pos.x)) * 0.21;
+              force.y += (Number(base.y) - Number(pos.y)) * 0.1;
+              force.x += (width / 2 - Number(pos.x)) * 0.008;
+              force.y += (height / 2 - Number(pos.y)) * 0.008;
+              const dispMag = Math.max(1e-6, Math.hypot(force.x, force.y));
+              const step = Math.min(temperature, dispMag);
+              const nextX = Number(pos.x) + (force.x / dispMag) * step;
+              const nextY = Number(pos.y) + (force.y / dispMag) * step;
+              pos.x = clamp(nextX, 44, width - 44);
+              pos.y = clamp(nextY, 44, height - 44);
+            });
+
+            temperature = Math.max(0.8, temperature * 0.94);
+          }
+        }
+
+        return { width, height, positions, layoutVersion };
       }
 
       const layout = computeTreeNetworkLayout(nodes, edges);
       const width = layout.width;
       const height = layout.height;
+      state.networkLayoutVersion = String(layout.layoutVersion || "");
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       const make = (tag) => document.createElementNS(ns, tag);
       const viewport = make("g");
@@ -6362,6 +6590,12 @@ def _drive_html() -> str:
         });
       }
       applySimPositions();
+      state.networkNodePositions = Object.fromEntries(
+        simNodes.map((simNode) => [
+          String(simNode.id),
+          { x: Number(simNode.x), y: Number(simNode.y) },
+        ])
+      );
 
       const pending = state.pendingEdgeAddition;
       if (pending) {
@@ -6629,6 +6863,7 @@ def _drive_html() -> str:
     async function queueHessianSampleFromNode(nodeId) {
       const dr = getHessianSampleDr();
       const maxCandidates = getHessianSampleMaxCandidates();
+      const useBigchem = getHessianSampleUseBigchem();
       try {
         setBanner(`Running Hessian sample from node ${nodeId} (dr=${dr}, max=${maxCandidates})...`);
         setSubtext("The selected minimum will be displaced along Hessian normal modes by ±dr, then up to the requested number of candidates will be optimized and merged as unique minima.");
@@ -6638,7 +6873,12 @@ def _drive_html() -> str:
           `Sampling minima from node ${Number(nodeId)} with dr=${dr}, max=${maxCandidates}.`
         );
         renderLiveActivity(state.snapshot);
-        await postJson("/api/hessian-sample", { node_id: Number(nodeId), dr: Number(dr), max_candidates: Number(maxCandidates) });
+        await postJson("/api/hessian-sample", {
+          node_id: Number(nodeId),
+          dr: Number(dr),
+          max_candidates: Number(maxCandidates),
+          use_bigchem: Boolean(useBigchem),
+        });
         setBanner(`Hessian-sample request accepted for node ${nodeId}.`);
         void refreshState();
       } catch (error) {
@@ -6652,6 +6892,7 @@ def _drive_html() -> str:
     async function queueHessianSampleFromEdge(sourceNode, targetNode) {
       const dr = getHessianSampleDr();
       const maxCandidates = getHessianSampleMaxCandidates();
+      const useBigchem = getHessianSampleUseBigchem();
       try {
         setBanner(`Running Hessian sample from edge ${sourceNode} -> ${targetNode} peak (dr=${dr}, max=${maxCandidates})...`);
         setSubtext("The highest-energy geometry on the completed edge chain will be displaced by ±dr, then up to the requested number of candidates will be optimized and merged as minima.");
@@ -6666,6 +6907,7 @@ def _drive_html() -> str:
           target_node: Number(targetNode),
           dr: Number(dr),
           max_candidates: Number(maxCandidates),
+          use_bigchem: Boolean(useBigchem),
         });
         setBanner(`Hessian-sample request accepted for edge ${sourceNode} -> ${targetNode}.`);
         void refreshState();
@@ -7408,6 +7650,7 @@ class MepdDriveServer(ThreadingHTTPServer):
         *,
         dr: float,
         max_candidates: int = 100,
+        use_bigchem: bool | None = None,
         node_id: int | None = None,
         source_node: int | None = None,
         target_node: int | None = None,
@@ -7437,6 +7680,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                     int(node_id),
                     dr=float(dr),
                     max_candidates=int(max_candidates),
+                    use_bigchem=use_bigchem,
                     progress_fp=progress_fp,
                 )
 
@@ -7446,6 +7690,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "label": label,
                 "dr": float(dr),
                 "max_candidates": int(max_candidates),
+                "use_bigchem": (bool(use_bigchem) if use_bigchem is not None else None),
                 "node_id": int(node_id),
                 "progress_fp": progress_fp,
             }
@@ -7470,6 +7715,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                     int(target_node),
                     dr=float(dr),
                     max_candidates=int(max_candidates),
+                    use_bigchem=use_bigchem,
                     progress_fp=progress_fp,
                 )
 
@@ -7479,6 +7725,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "label": label,
                 "dr": float(dr),
                 "max_candidates": int(max_candidates),
+                "use_bigchem": (bool(use_bigchem) if use_bigchem is not None else None),
                 "source_node": int(source_node),
                 "target_node": int(target_node),
                 "progress_fp": progress_fp,
@@ -7867,6 +8114,7 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 self.server.submit_hessian_sample(
                     dr=float(payload.get("dr", 1.0)),
                     max_candidates=int(payload.get("max_candidates") or 100),
+                    use_bigchem=_coerce_optional_bool(payload.get("use_bigchem")),
                     node_id=(int(payload["node_id"]) if payload.get("node_id") is not None else None),
                     source_node=(int(payload["source_node"]) if payload.get("source_node") is not None else None),
                     target_node=(int(payload["target_node"]) if payload.get("target_node") is not None else None),

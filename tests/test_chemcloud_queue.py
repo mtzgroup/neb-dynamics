@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 
 import numpy as np
 import pytest
@@ -262,6 +263,59 @@ def test_qcop_engine_bigchem_hessian_accepts_direct_programoutput(monkeypatch):
 
     out = eng._compute_hessian_result(node=node, use_bigchem=True)
     assert out is returned
+
+
+def test_qcop_engine_bigchem_hessian_uses_configured_get_timeout(monkeypatch):
+    captured = {}
+
+    class _FutureLike:
+        def get(self, timeout=None):
+            captured["timeout"] = timeout
+            return "ok"
+
+    def _fake_cc_compute(*args, **kwargs):
+        return _FutureLike()
+
+    monkeypatch.setenv("MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    eng = QCOPEngine(compute_program="chemcloud")
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0], [0.8, 0.0, 0.0]]),
+            symbols=["H", "H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    out = eng._compute_hessian_result(node=node, use_bigchem=True)
+    assert out == "ok"
+    assert captured["timeout"] == pytest.approx(12.5)
+
+
+def test_qcop_engine_bigchem_hessian_times_out_when_future_get_has_no_timeout_arg(monkeypatch):
+    class _FutureLike:
+        def get(self):
+            time.sleep(0.2)
+            return "late"
+
+    def _fake_cc_compute(*args, **kwargs):
+        return _FutureLike()
+
+    monkeypatch.setenv("MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS", "0.01")
+    monkeypatch.setattr(qcop_module, "cc_compute", _fake_cc_compute)
+    eng = QCOPEngine(compute_program="chemcloud")
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0], [0.8, 0.0, 0.0]]),
+            symbols=["H", "H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    with pytest.raises(TimeoutError, match="Timed out waiting for BigChem Hessian result"):
+        eng._compute_hessian_result(node=node, use_bigchem=True)
 
 
 def test_qcop_engine_chemcloud_batches_geometry_optimizations_with_file_only_trajectory_entries(monkeypatch):

@@ -6,6 +6,7 @@ import contextlib
 from dataclasses import dataclass
 from typing import List, Union
 import os
+import threading
 from pathlib import Path
 import tempfile
 import time
@@ -103,6 +104,16 @@ def _env_int(name: str, default: int) -> int:
         return default
     try:
         return int(raw)
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or raw == "":
+        return default
+    try:
+        return float(raw)
     except ValueError:
         return default
 
@@ -412,7 +423,44 @@ class QCOPEngine(Engine):
             fres = cc_compute("bigchem", dpi)
             # ChemCloud client return type can be future-like (with .get()) or a
             # direct ProgramOutput, depending on installed client/version.
-            output = fres.get() if hasattr(fres, "get") else fres
+            if hasattr(fres, "get"):
+                timeout_seconds = _env_float("MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS", 1800.0)
+                if timeout_seconds > 0:
+                    get_method = fres.get
+                    supports_timeout = False
+                    with contextlib.suppress(Exception):
+                        supports_timeout = "timeout" in inspect.signature(get_method).parameters
+                    if supports_timeout:
+                        output = get_method(timeout=timeout_seconds)
+                    else:
+                        captured: dict[str, object] = {}
+
+                        def _get_result_without_timeout() -> None:
+                            try:
+                                captured["result"] = get_method()
+                            except Exception as exc:
+                                captured["error"] = exc
+
+                        waiter = threading.Thread(
+                            target=_get_result_without_timeout,
+                            name="qcop-bigchem-hessian-get",
+                            daemon=True,
+                        )
+                        waiter.start()
+                        waiter.join(timeout_seconds)
+                        if waiter.is_alive():
+                            raise TimeoutError(
+                                "Timed out waiting for BigChem Hessian result "
+                                f"after {timeout_seconds:.1f}s. Increase "
+                                "MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS if needed."
+                            )
+                        if "error" in captured:
+                            raise captured["error"]  # type: ignore[misc]
+                        output = captured.get("result")
+                else:
+                    output = fres.get()
+            else:
+                output = fres
         else:
             proginp = ProgramInput(
                 structure=node.structure,
