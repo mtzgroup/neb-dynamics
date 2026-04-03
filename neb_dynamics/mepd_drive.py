@@ -4079,23 +4079,51 @@ def _drive_html() -> str:
           </div>
         </div>
         <div class="exploration-shell">
-          <div class="section-head">
-            <h2>Exploration</h2>
-            <div class="muted">Queue NEBs, minimizations, reaction-template application, nanoreactor sampling, Hessian minima exploration, and inspect the selected graph item.</div>
+          <div class="tool-tabs">
+            <button class="tool-tab active" data-tool-tab="exploration-shell" data-tool-target="exploration">Exploration</button>
+            <button class="tool-tab" data-tool-tab="exploration-shell" data-tool-target="kinetics">Kinetics</button>
           </div>
-          <div id="detail-title" style="font-size:22px; margin-bottom:6px;">Select a node or edge</div>
-          <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
-          <div class="detail-tabs">
-            <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
-            <button class="detail-tab" data-tab="template-data">Template Data</button>
-            <button class="detail-tab" data-tab="structures">Structures</button>
-            <button class="detail-tab" data-tab="kinetics">Kinetics</button>
-            <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
+          <div id="tool-panel-exploration-shell-exploration" class="tool-panel active">
+            <div class="section-head">
+              <h2>Exploration</h2>
+              <div class="muted">Queue NEBs, minimizations, reaction-template application, nanoreactor sampling, Hessian minima exploration, and inspect the selected graph item.</div>
+            </div>
+            <div id="detail-title" style="font-size:22px; margin-bottom:6px;">Select a node or edge</div>
+            <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
+            <div class="detail-tabs">
+              <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
+              <button class="detail-tab" data-tab="template-data">Template Data</button>
+              <button class="detail-tab" data-tab="structures">Structures</button>
+              <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
+            </div>
+            <div id="panel-targeted" class="detail-panel active"></div>
+            <div id="panel-template-data" class="detail-panel"></div>
+            <div id="panel-structures" class="detail-panel"></div>
+            <div id="panel-manual-edge" class="detail-panel">
+              <div class="form-grid">
+                <div>
+                  <label>Manual edge source node</label>
+                  <input id="manual-edge-source" type="number" min="0" placeholder="Source node id" />
+                </div>
+                <div>
+                  <label>Manual edge target node</label>
+                  <input id="manual-edge-target" type="number" min="0" placeholder="Target node id" />
+                </div>
+                <div>
+                  <label>Manual edge label</label>
+                  <input id="manual-edge-label" type="text" placeholder="Optional reaction label" />
+                </div>
+                <div style="display:flex; align-items:end;">
+                  <button id="add-manual-edge" class="secondary" style="width:100%;">Attempt To Add Manual Edge</button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div id="panel-targeted" class="detail-panel active"></div>
-          <div id="panel-template-data" class="detail-panel"></div>
-          <div id="panel-structures" class="detail-panel"></div>
-          <div id="panel-kinetics" class="detail-panel">
+          <div id="tool-panel-exploration-shell-kinetics" class="tool-panel">
+            <div class="section-head">
+              <h2>Kinetics</h2>
+              <div class="muted">Run a kinetic Monte Carlo model from the current network.</div>
+            </div>
             <div class="form-grid">
               <div>
                 <label>Kinetics temperature (K)</label>
@@ -4118,25 +4146,6 @@ def _drive_html() -> str:
               <button id="run-kmc" class="secondary">Run Kinetics Model</button>
             </div>
             <div id="kmc-panel" style="margin-top:12px;"></div>
-          </div>
-          <div id="panel-manual-edge" class="detail-panel">
-            <div class="form-grid">
-              <div>
-                <label>Manual edge source node</label>
-                <input id="manual-edge-source" type="number" min="0" placeholder="Source node id" />
-              </div>
-              <div>
-                <label>Manual edge target node</label>
-                <input id="manual-edge-target" type="number" min="0" placeholder="Target node id" />
-              </div>
-              <div>
-                <label>Manual edge label</label>
-                <input id="manual-edge-label" type="text" placeholder="Optional reaction label" />
-              </div>
-              <div style="display:flex; align-items:end;">
-                <button id="add-manual-edge" class="secondary" style="width:100%;">Attempt To Add Manual Edge</button>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -4179,7 +4188,7 @@ def _drive_html() -> str:
       connectSourceNodeId: null,
       manualEdgeRequestInFlight: false,
       pathSourceNodeId: 0,
-      selectedProductLabel: "",
+      selectedProductKey: "",
       pathHighlight: null,
       pendingLiveActivity: null,
       pendingEdgeAddition: null,
@@ -4766,58 +4775,59 @@ def _drive_html() -> str:
       const source = Number(sourceNodeId);
       const directedSearch = buildShortestPathSearch(nodes, edges, source, true);
       const undirectedSearch = buildShortestPathSearch(nodes, edges, source, false);
-      const groups = new Map();
+      const records = [];
       nodes.forEach((node) => {
         const nodeId = Number(node.id);
         if (nodeId === source) return;
         const label = String(node.label || node.id);
-        const existing = groups.get(label) || { label, nodeIds: [], labels: [], nearestDistance: null, mode: "", reachable: false };
-        existing.nodeIds.push(nodeId);
-        existing.labels.push(String(node.label || node.id));
         const directedDistance = directedSearch.distances.get(nodeId);
         const undirectedDistance = undirectedSearch.distances.get(nodeId);
-        const distance = directedDistance != null ? Number(directedDistance) : (undirectedDistance != null ? Number(undirectedDistance) : null);
+        const nearestDistance = directedDistance != null ? Number(directedDistance) : (
+          undirectedDistance != null ? Number(undirectedDistance) : null
+        );
         const mode = directedDistance != null ? "directed" : (undirectedDistance != null ? "undirected" : "");
-        if (distance != null && (existing.nearestDistance == null || distance < existing.nearestDistance)) {
-          existing.nearestDistance = distance;
-          existing.mode = mode;
-          existing.reachable = true;
-        }
-        groups.set(label, existing);
+        records.push({
+          key: String(nodeId),
+          nodeId,
+          label,
+          displayLabel: `${label} (${nodeId})`,
+          nearestDistance,
+          mode,
+          reachable: nearestDistance != null,
+        });
       });
-      return Array.from(groups.values()).sort((a, b) => {
+      return records.sort((a, b) => {
         const aReachable = a.reachable ? 0 : 1;
         const bReachable = b.reachable ? 0 : 1;
         if (aReachable !== bReachable) return aReachable - bReachable;
         if ((a.nearestDistance ?? Infinity) !== (b.nearestDistance ?? Infinity)) {
           return (a.nearestDistance ?? Infinity) - (b.nearestDistance ?? Infinity);
         }
-        if (a.nodeIds.length !== b.nodeIds.length) return b.nodeIds.length - a.nodeIds.length;
-        return String(a.label).localeCompare(String(b.label));
+        const labelCmp = String(a.label).localeCompare(String(b.label));
+        if (labelCmp !== 0) return labelCmp;
+        return Number(a.nodeId) - Number(b.nodeId);
       });
     }
 
-    function computePathHighlight(snapshot, sourceNodeId, productLabel) {
+    function computePathHighlight(snapshot, sourceNodeId, productKey) {
       const network = getDriveNetwork(snapshot);
       const nodes = Array.isArray(network?.nodes) ? network.nodes : [];
       const edges = Array.isArray(network?.edges) ? network.edges : [];
       const source = Number(sourceNodeId);
-      const label = String(productLabel || "").trim();
-      if (!nodes.length || !label) return null;
-      const matchingTargetIds = nodes
-        .filter((node) => Number(node.id) !== source && String(node.label || node.id) === label)
-        .map((node) => Number(node.id));
-      if (!matchingTargetIds.length) return null;
+      const targetNodeId = Number(productKey);
+      if (!nodes.length || !Number.isFinite(targetNodeId)) return null;
+      const targetNode = nodes.find((node) => Number(node.id) === targetNodeId);
+      if (!targetNode || targetNodeId === source) return null;
+      const targetLabel = String(targetNode.label || targetNode.id);
 
       let search = buildShortestPathSearch(nodes, edges, source, true);
-      let reachableTargets = matchingTargetIds.filter((nodeId) => search.distances.has(nodeId));
-      if (!reachableTargets.length) {
+      if (!search.distances.has(targetNodeId)) {
         search = buildShortestPathSearch(nodes, edges, source, false);
-        reachableTargets = matchingTargetIds.filter((nodeId) => search.distances.has(nodeId));
       }
-      if (!reachableTargets.length) {
+      if (!search.distances.has(targetNodeId)) {
         return {
-          productLabel: label,
+          productKey: String(targetNodeId),
+          productLabel: targetLabel,
           sourceNodeId: source,
           targetNodeIds: [],
           pathNodeIds: [],
@@ -4827,24 +4837,16 @@ def _drive_html() -> str:
         };
       }
 
-      const minDistance = Math.min(...reachableTargets.map((nodeId) => Number(search.distances.get(nodeId) || Infinity)));
-      const nearestTargets = reachableTargets.filter((nodeId) => Number(search.distances.get(nodeId)) === minDistance);
-      const paths = [];
-      nearestTargets.forEach((targetNodeId) => {
-        enumerateShortestPaths(search.parents, source, targetNodeId, 24).forEach((path) => {
-          if (!paths.some((candidate) => candidate.join("->") === path.join("->"))) {
-            paths.push(path);
-          }
-        });
-      });
+      const paths = enumerateShortestPaths(search.parents, source, targetNodeId, 24);
       const pathNodeIds = Array.from(new Set(paths.flatMap((path) => path.map((nodeId) => Number(nodeId)))));
       const edgePairs = Array.from(new Set(paths.flatMap((path) => (
         path.slice(1).map((nodeId, index) => canonicalEdgePairKey(path[index], nodeId))
       ))));
       return {
-        productLabel: label,
+        productKey: String(targetNodeId),
+        productLabel: targetLabel,
         sourceNodeId: source,
-        targetNodeIds: nearestTargets,
+        targetNodeIds: [targetNodeId],
         pathNodeIds,
         edgePairs,
         paths,
@@ -4856,26 +4858,26 @@ def _drive_html() -> str:
       state.pathSourceNodeId = Number(nodeId);
       const snapshot = state.snapshot;
       const records = buildProductRecords(snapshot, state.pathSourceNodeId);
-      if (state.selectedProductLabel && !records.some((record) => record.label === state.selectedProductLabel)) {
-        state.selectedProductLabel = "";
+      if (state.selectedProductKey && !records.some((record) => record.key === state.selectedProductKey)) {
+        state.selectedProductKey = "";
       }
-      state.pathHighlight = state.selectedProductLabel
-        ? computePathHighlight(snapshot, state.pathSourceNodeId, state.selectedProductLabel)
+      state.pathHighlight = state.selectedProductKey
+        ? computePathHighlight(snapshot, state.pathSourceNodeId, state.selectedProductKey)
         : null;
       renderProductPathPanel(snapshot);
       if (snapshot?.drive?.network) renderNetwork(snapshot);
     }
 
     function clearProductPathHighlight() {
-      state.selectedProductLabel = "";
+      state.selectedProductKey = "";
       state.pathHighlight = null;
       renderProductPathPanel(state.snapshot);
       if (state.snapshot?.drive?.network) renderNetwork(state.snapshot);
     }
 
-    function selectProductPath(label) {
-      state.selectedProductLabel = String(label || "");
-      state.pathHighlight = computePathHighlight(state.snapshot, state.pathSourceNodeId, state.selectedProductLabel);
+    function selectProductPath(productKey) {
+      state.selectedProductKey = String(productKey || "");
+      state.pathHighlight = computePathHighlight(state.snapshot, state.pathSourceNodeId, state.selectedProductKey);
       renderProductPathPanel(state.snapshot);
       if (state.snapshot?.drive?.network) renderNetwork(state.snapshot);
     }
@@ -4904,17 +4906,18 @@ def _drive_html() -> str:
         </option>
       `).join("");
 
-      if (state.selectedProductLabel && !records.some((record) => record.label === state.selectedProductLabel)) {
-        state.selectedProductLabel = "";
+      if (state.selectedProductKey && !records.some((record) => record.key === state.selectedProductKey)) {
+        state.selectedProductKey = "";
       }
-      state.pathHighlight = state.selectedProductLabel
-        ? computePathHighlight(snapshot, sourceNodeId, state.selectedProductLabel)
+      state.pathHighlight = state.selectedProductKey
+        ? computePathHighlight(snapshot, sourceNodeId, state.selectedProductKey)
         : null;
+      const selectedRecord = records.find((record) => record.key === state.selectedProductKey) || null;
 
       if (!records.length) {
         summaryEl.innerHTML = `No created products are available beyond structure A (<strong>${escapeHtml(sourceNode?.label || sourceNodeId)}</strong>).`;
         listEl.innerHTML = "";
-      } else if (state.pathHighlight && state.selectedProductLabel) {
+      } else if (state.pathHighlight && state.selectedProductKey) {
         const overlay = state.pathHighlight;
         const pathCount = Array.isArray(overlay.paths) ? overlay.paths.length : 0;
         const targetCount = Array.isArray(overlay.targetNodeIds) ? overlay.targetNodeIds.length : 0;
@@ -4923,34 +4926,33 @@ def _drive_html() -> str:
           : "Highlighting shortest directed route(s).";
         summaryEl.innerHTML = `
           <div><strong>A:</strong> ${escapeHtml(sourceNode?.label || sourceNodeId)} (node ${escapeHtml(sourceNodeId)})</div>
-          <div><strong>Product:</strong> ${escapeHtml(state.selectedProductLabel)}</div>
+          <div><strong>Product:</strong> ${escapeHtml(selectedRecord?.displayLabel || state.selectedProductKey)}</div>
           <div><strong>Matches:</strong> ${escapeHtml(targetCount)} nearest node(s), ${escapeHtml(pathCount)} shortest path(s).</div>
           <div class="muted" style="margin-top:6px;">${escapeHtml(modeNote)}</div>
         `;
       } else {
         summaryEl.innerHTML = `
           <div><strong>A:</strong> ${escapeHtml(sourceNode?.label || sourceNodeId)} (node ${escapeHtml(sourceNodeId)})</div>
-          <div class="muted" style="margin-top:6px;">${escapeHtml(records.length)} unique product label(s) are currently reachable or present in the graph. Select one to highlight path(s) on the network.</div>
+          <div class="muted" style="margin-top:6px;">${escapeHtml(records.length)} product node(s) are currently reachable or present in the graph. Select one to highlight path(s) on the network.</div>
         `;
       }
 
       listEl.innerHTML = records.map((record) => `
         <button
-          class="product-row ${record.label === state.selectedProductLabel ? "active" : ""} ${record.reachable ? "" : "unreachable"}"
+          class="product-row ${record.key === state.selectedProductKey ? "active" : ""} ${record.reachable ? "" : "unreachable"}"
           type="button"
-          data-product-label="${escapeHtml(record.label)}"
+          data-product-key="${escapeHtml(record.key)}"
         >
-          <span class="product-row-title">${escapeHtml(record.label)}</span>
+          <span class="product-row-title">${escapeHtml(record.displayLabel)}</span>
           <span class="product-row-meta">
-            ${escapeHtml(record.nodeIds.length)} node(s)
-            ${record.reachable ? ` • nearest in ${escapeHtml(record.nearestDistance)} step(s)` : " • no route from current A"}
+            ${record.reachable ? `nearest in ${escapeHtml(record.nearestDistance)} step(s)` : "no route from current A"}
           </span>
         </button>
       `).join("");
 
       sourceSelect.onchange = (event) => setPathSourceNode(event.target.value);
-      listEl.querySelectorAll("[data-product-label]").forEach((button) => {
-        button.addEventListener("click", () => selectProductPath(button.getAttribute("data-product-label") || ""));
+      listEl.querySelectorAll("[data-product-key]").forEach((button) => {
+        button.addEventListener("click", () => selectProductPath(button.getAttribute("data-product-key") || ""));
       });
     }
 

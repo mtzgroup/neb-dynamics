@@ -880,7 +880,9 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="path-source-node"' in html
     assert 'id="product-path-list"' in html
     assert 'id="clear-product-path"' in html
-    assert 'data-tab="kinetics"' in html
+    assert 'data-tool-tab="exploration-shell"' in html
+    assert 'data-tool-target="kinetics"' in html
+    assert ">Kinetics</h2>" in html
     assert 'id="run-kmc"' in html
     assert "Kinetics temperature (K)" in html
     assert "Kinetics final time" in html
@@ -889,7 +891,7 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "/api/run-kinetics" in html
     assert "function renderLiveActivityContent(activity)" in html
     assert "function renderProductPathPanel(snapshot)" in html
-    assert "function computePathHighlight(snapshot, sourceNodeId, productLabel)" in html
+    assert "function computePathHighlight(snapshot, sourceNodeId, productKey)" in html
     assert "function buildOptimisticGrowthActivity(nodeId, title, note)" in html
     assert "pendingEdgeAddition" in html
     assert "function setPendingEdgeAddition(sourceNodeId, targetNodeId)" in html
