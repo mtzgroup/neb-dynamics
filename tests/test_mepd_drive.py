@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import networkx as nx
+import numpy as np
 from qcio import ProgramArgs, Structure
 
 from neb_dynamics.mepd_drive import (
@@ -2762,6 +2763,134 @@ def test_build_drive_payload_marks_hessian_sample_available_when_engine_supports
             engine_name="qcop",
             program="xtb",
             engine=_Engine(),
+            path_min_method="neb",
+            path_min_inputs={},
+            chain_inputs={},
+            gi_inputs={},
+            optimizer_kwds={},
+            program_kwds={},
+            nanoreactor_inputs={},
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_network_explorer_payload",
+        lambda graph, template_payloads=None, edge_visualizations=None: {
+            "nodes": [{"id": 0, "label": "A", "data": {}}],
+            "edges": [],
+        },
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._node_structure_payload", lambda attrs: {"xyz_b64": "node-xyz"})
+
+    payload = _build_drive_payload(workspace)
+
+    assert payload["network"]["nodes"][0]["can_hessian_sample"] is True
+
+
+def test_build_drive_payload_marks_hessian_sample_available_when_engine_supports_compute_hessian(monkeypatch, tmp_path):
+    queue = SimpleNamespace(items=[])
+    retropaths_pot = SimpleNamespace(graph=nx.DiGraph())
+    retropaths_pot.graph.add_node(0)
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0, td=SimpleNamespace(structure=SimpleNamespace(symbols=["H"])), molecule="mol")
+
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "queue.json",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        inputs_fp=tmp_path / "inputs.toml",
+        workdir=str(tmp_path),
+        run_name="drive",
+        root_smiles="C",
+        environment_smiles="",
+        reactions_path=tmp_path / "reactions.p",
+        edge_visualizations_dir=tmp_path / "edge_visualizations",
+    )
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.load_retropaths_pot", lambda _workspace: retropaths_pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RetropathsNEBQueue.read_from_disk", lambda _fp: queue)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot", lambda _workspace, **kwargs: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_edge_visualizations", lambda workspace, pot: [])
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_completed_queue_visualizations", lambda workspace, queue: [])
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_template_payloads", lambda workspace: {})
+
+    class _Engine:
+        def compute_hessian(self, _node):
+            return np.eye(3)
+
+        def compute_geometry_optimization(self, _node):
+            return []
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.RunInputs.open",
+        lambda _fp: SimpleNamespace(
+            engine_name="qcop",
+            program="xtb",
+            engine=_Engine(),
+            path_min_method="neb",
+            path_min_inputs={},
+            chain_inputs={},
+            gi_inputs={},
+            optimizer_kwds={},
+            program_kwds={},
+            nanoreactor_inputs={},
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_network_explorer_payload",
+        lambda graph, template_payloads=None, edge_visualizations=None: {
+            "nodes": [{"id": 0, "label": "A", "data": {}}],
+            "edges": [],
+        },
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._node_structure_payload", lambda attrs: {"xyz_b64": "node-xyz"})
+
+    payload = _build_drive_payload(workspace)
+
+    assert payload["network"]["nodes"][0]["can_hessian_sample"] is True
+
+
+def test_build_drive_payload_marks_hessian_sample_available_for_ase_omol25_compute_hessian(monkeypatch, tmp_path):
+    queue = SimpleNamespace(items=[])
+    retropaths_pot = SimpleNamespace(graph=nx.DiGraph())
+    retropaths_pot.graph.add_node(0)
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0, td=SimpleNamespace(structure=SimpleNamespace(symbols=["H"])), molecule="mol")
+
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "queue.json",
+        neb_pot_fp=tmp_path / "neb_pot.json",
+        inputs_fp=tmp_path / "inputs.toml",
+        workdir=str(tmp_path),
+        run_name="drive",
+        root_smiles="C",
+        environment_smiles="",
+        reactions_path=tmp_path / "reactions.p",
+        edge_visualizations_dir=tmp_path / "edge_visualizations",
+    )
+    workspace.queue_fp.write_text("{}")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.load_retropaths_pot", lambda _workspace: retropaths_pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.RetropathsNEBQueue.read_from_disk", lambda _fp: queue)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot", lambda _workspace, **kwargs: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_edge_visualizations", lambda workspace, pot: [])
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_completed_queue_visualizations", lambda workspace, queue: [])
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_template_payloads", lambda workspace: {})
+
+    class _ASEEngine:
+        def compute_hessian(self, _node):
+            return np.eye(3)
+
+        def compute_geometry_optimization(self, _node):
+            return []
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.RunInputs.open",
+        lambda _fp: SimpleNamespace(
+            engine_name="ase",
+            program="omol25",
+            engine=_ASEEngine(),
             path_min_method="neb",
             path_min_inputs={},
             chain_inputs={},

@@ -24,6 +24,7 @@ from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_fil
 from neb_dynamics.nodes.nodehelpers import displace_by_dr
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.chain import Chain
+from neb_dynamics.engines.engine import build_hessian_result_from_matrix
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.neb import NEB
 from neb_dynamics.nodes.node import StructureNode
@@ -460,6 +461,13 @@ def _extract_normal_modes_from_hessian_result(
     if len(normal_modes) == 0:
         raise ValueError("No normal modes found in Hessian result.")
     return [np.array(mode) for mode in normal_modes], [float(freq) for freq in frequencies]
+
+
+def _compute_hessian_result_for_sampling(engine, node: StructureNode):
+    if hasattr(engine, "_compute_hessian_result"):
+        return engine._compute_hessian_result(node)
+    hessian = np.asarray(engine.compute_hessian(node), dtype=float)
+    return build_hessian_result_from_matrix(node=node, hessian=hessian)
 
 
 def _resolve_command_base_path(geometry: str, name: str | None) -> Path:
@@ -2392,15 +2400,16 @@ def hessian_sample(
     node = StructureNode(structure=struct)
 
     engine = program_input.engine
-    if not hasattr(engine, "_compute_hessian_result"):
+    if not (hasattr(engine, "_compute_hessian_result") or hasattr(engine, "compute_hessian")):
         console.print(
-            "[bold red]✗ ERROR:[/bold red] This engine does not expose `_compute_hessian_result`, which is required for normal-mode sampling."
+            "[bold red]✗ ERROR:[/bold red] This engine does not expose Hessian computation "
+            "(`_compute_hessian_result` or `compute_hessian`), which is required for normal-mode sampling."
         )
         raise typer.Exit(1)
 
     with console.status("[bold cyan]Computing Hessian...[/bold cyan]"):
         try:
-            hessres = engine._compute_hessian_result(node)
+            hessres = _compute_hessian_result_for_sampling(engine, node)
         except Exception as exc:
             hessres = getattr(exc, "program_output", None)
             if hessres is None:
@@ -2654,7 +2663,7 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
             struct = Structure(**s_dict)
 
             node = StructureNode(structure=struct)
-            hessres = program_input.engine._compute_hessian_result(node)
+            hessres = _compute_hessian_result_for_sampling(program_input.engine, node)
 
         except Exception as e:
             hessres = e.program_output

@@ -854,6 +854,52 @@ def test_run_hessian_sample_for_node_rejects_nonpositive_dr(monkeypatch, tmp_pat
         run_hessian_sample_for_node(workspace, 0, dr=0.0)
 
 
+def test_run_hessian_sample_for_node_accepts_compute_hessian_only_engine(monkeypatch, tmp_path):
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path),
+        run_name="demo",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+    )
+    workspace.write()
+
+    pot = Pot(root=Molecule.from_smiles("C"), target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(0, td=_node(0.3), molecule=Molecule.from_smiles("[H][H]"))
+
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow.materialize_drive_graph", lambda _workspace: pot)
+
+    class _Engine:
+        def compute_hessian(self, node):
+            return np.eye(node.coords.size)
+
+        def compute_geometry_optimization(self, node, keywords=None):
+            optimized = node.copy()
+            optimized.graph = Molecule.from_smiles("C")
+            optimized.has_molecular_graph = True
+            optimized._cached_energy = 0.0
+            optimized._cached_gradient = np.zeros_like(optimized.coords).tolist()
+            return [optimized]
+
+    fake_inputs = SimpleNamespace(
+        engine=_Engine(),
+        engine_name="ase",
+        program="omol25",
+        chain_inputs=ChainInputs(),
+        network_inputs=SimpleNamespace(
+            collapse_node_rms_thre=5.0,
+            collapse_node_ene_thre=5.0,
+        ),
+    )
+    monkeypatch.setattr(workflow.RunInputs, "open", staticmethod(lambda _fp: fake_inputs))
+
+    out = run_hessian_sample_for_node(workspace, 0, dr=0.1, max_candidates=2)
+
+    assert isinstance(out, dict)
+    assert out["added_nodes"] >= 1
+
+
 def test_run_hessian_sample_for_edge_requires_completed_chain(monkeypatch, tmp_path):
     workspace = RetropathsWorkspace(
         workdir=str(tmp_path),

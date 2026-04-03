@@ -17,6 +17,7 @@ from typing import Any, Callable
 import numpy as np
 
 from neb_dynamics.chain import Chain
+from neb_dynamics.engines.engine import build_hessian_result_from_matrix
 from neb_dynamics.helper_functions import parse_nma_freq_data
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.inputs import RunInputs
@@ -524,10 +525,10 @@ def _hessian_sample_support_status(run_inputs: RunInputs) -> tuple[bool, str]:
     engine = getattr(run_inputs, "engine", None)
     if engine is None:
         return False, "The inputs file did not construct an engine, so Hessian sampling cannot be started."
-    if not hasattr(engine, "_compute_hessian_result"):
+    if not (hasattr(engine, "_compute_hessian_result") or hasattr(engine, "compute_hessian")):
         return (
             False,
-            "The configured engine does not expose `_compute_hessian_result`, which is required for Hessian sampling.",
+            "The configured engine does not expose Hessian computation (`_compute_hessian_result` or `compute_hessian`).",
         )
     if not (hasattr(engine, "compute_geometry_optimization") or hasattr(engine, "compute_geometry_optimizations")):
         return (
@@ -535,6 +536,13 @@ def _hessian_sample_support_status(run_inputs: RunInputs) -> tuple[bool, str]:
             "The configured engine does not expose geometry-optimization methods needed for Hessian sampling.",
         )
     return True, ""
+
+
+def _compute_hessian_result_for_sampling(engine: Any, node: StructureNode) -> Any:
+    if hasattr(engine, "_compute_hessian_result"):
+        return engine._compute_hessian_result(node)
+    hessian = np.asarray(engine.compute_hessian(node), dtype=float)
+    return build_hessian_result_from_matrix(node=node, hessian=hessian)
 
 
 def _extract_normal_modes_from_hessian_result(
@@ -759,7 +767,7 @@ def _run_hessian_sample(
     )
 
     try:
-        hessres = engine._compute_hessian_result(seed_node)
+        hessres = _compute_hessian_result_for_sampling(engine, seed_node)
     except Exception as exc:
         hessres = getattr(exc, "program_output", None)
         if hessres is None:

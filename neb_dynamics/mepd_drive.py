@@ -1085,9 +1085,12 @@ def _inputs_summary_payload(workspace: RetropathsWorkspace) -> dict[str, Any]:
     if engine is None:
         summary["can_hessian_sample"] = False
         summary["hessian_sample_note"] = "The inputs file did not construct an engine, so Hessian sampling cannot be started."
-    elif not hasattr(engine, "_compute_hessian_result"):
+    elif not (hasattr(engine, "_compute_hessian_result") or hasattr(engine, "compute_hessian")):
         summary["can_hessian_sample"] = False
-        summary["hessian_sample_note"] = "The configured engine does not expose `_compute_hessian_result`."
+        summary["hessian_sample_note"] = (
+            "The configured engine does not expose Hessian computation "
+            "(`_compute_hessian_result` or `compute_hessian`)."
+        )
     elif not (hasattr(engine, "compute_geometry_optimization") or hasattr(engine, "compute_geometry_optimizations")):
         summary["can_hessian_sample"] = False
         summary["hessian_sample_note"] = "The configured engine does not expose geometry-optimization methods."

@@ -247,3 +247,42 @@ def test_hessian_sample_refuses_chemcloud_engine_name_with_non_chemcloud_compute
             name="mismatch",
             max_candidates=2,
         )
+
+
+def test_hessian_sample_supports_ase_omol25_with_compute_hessian_fallback(monkeypatch, tmp_path):
+    class _FakeASEEngine:
+        def compute_hessian(self, node):
+            ndof = int(np.asarray(node.coords).size)
+            return np.eye(ndof, dtype=float)
+
+        def compute_geometry_optimization(self, node, keywords=None):
+            return [_node_at_x(0.4)]
+
+    fake_run_inputs = SimpleNamespace(
+        engine=_FakeASEEngine(),
+        engine_name="ase",
+        program="omol25",
+        chain_inputs=ChainInputs(node_rms_thre=5.0, node_ene_thre=5.0),
+        write_qcio=False,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(lambda _fp: fake_run_inputs))
+    monkeypatch.setattr(main_cli, "_render_runinputs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main_cli.Structure, "open", staticmethod(lambda _fp: _structure_at_x(0.0)))
+    monkeypatch.setattr(
+        main_cli,
+        "is_identical",
+        lambda a, b, **kwargs: np.allclose(a.coords, b.coords),
+    )
+
+    main_cli.hessian_sample(
+        geometry="seed.xyz",
+        inputs="dummy.toml",
+        name="ase_omol25",
+        max_candidates=2,
+    )
+
+    payload = json.loads((tmp_path / "ase_omol25_hessian_sample_summary.json").read_text())
+    assert payload["displaced_candidates"] == 2
+    assert payload["optimized_candidates"] == 2
