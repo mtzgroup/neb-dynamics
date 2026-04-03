@@ -220,6 +220,7 @@ def test_drive_command_launches_server(monkeypatch, tmp_path):
 
     assert Path(calls["inputs_fp"]).name == "inputs.toml"
     assert calls["open_browser"] is False
+    assert calls["hawaii"] is False
     assert calls["served"] is True
     assert calls["shutdown"] is True
     assert calls["closed"] is True
@@ -265,6 +266,39 @@ def test_drive_command_passes_smiles_bootstrap_options(monkeypatch, tmp_path):
     assert calls["multiplicity"] == 2
     assert calls["run_name"] == "smiles-run"
     assert Path(calls["inputs_fp"]).name == "inputs.toml"
+    assert calls["hawaii"] is False
+    assert calls["served"] is True
+
+
+def test_drive_command_passes_hawaii_flag(monkeypatch, tmp_path):
+    calls = {}
+
+    class _FakeServer:
+        server_address = ("127.0.0.1", 48123)
+
+        def serve_forever(self):
+            calls["served"] = True
+
+        def shutdown(self):
+            calls["shutdown"] = True
+
+        def server_close(self):
+            calls["closed"] = True
+
+    monkeypatch.setattr(
+        main_cli,
+        "launch_mepd_drive",
+        lambda **kwargs: calls.update(kwargs) or _FakeServer(),
+    )
+
+    main_cli.drive(
+        inputs=str(tmp_path / "inputs.toml"),
+        directory=str(tmp_path / "drive"),
+        hawaii=True,
+        no_open=True,
+    )
+
+    assert calls["hawaii"] is True
     assert calls["served"] is True
 
 
@@ -505,6 +539,83 @@ def test_initialize_workspace_job_bootstraps_minimal_network_when_retropaths_mis
         int(item.get("source_node", -1)) == 0 and int(item.get("target_node", -1)) == 1
         for item in queue_payload.get("items", [])
     )
+
+
+def test_initialize_workspace_job_force_minimizes_input_structures(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "drive-run"
+    inputs_fp = tmp_path / "inputs.toml"
+    inputs_fp.write_text("engine_name = 'chemcloud'\nprogram = 'xtb'\n")
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C=C",
+        environment_smiles="",
+        inputs_fp=str(inputs_fp),
+        reactions_fp="",
+        timeout_seconds=30,
+        max_nodes=40,
+        max_depth=4,
+        max_parallel_nebs=1,
+    )
+
+    def _fake_create_workspace(**kwargs):
+        workspace.directory.mkdir(parents=True, exist_ok=True)
+        workspace.write()
+        return workspace
+
+    def _fake_prepare(_workspace):
+        pot = Pot(root=Molecule.from_smiles("C=C"), target=Molecule())
+        pot.graph = nx.DiGraph()
+        pot.graph.add_node(
+            0,
+            molecule=Molecule.from_smiles("C=C"),
+            td=structure_node_from_graph_like_molecule(Molecule.from_smiles("C=C")),
+            endpoint_optimized=False,
+            generated_by="drive_bootstrap",
+        )
+        pot.graph.add_node(
+            1,
+            molecule=Molecule.from_smiles("CC"),
+            td=structure_node_from_graph_like_molecule(Molecule.from_smiles("CC")),
+            endpoint_optimized=False,
+            generated_by="drive_product_smiles",
+        )
+        pot.graph.add_edge(0, 1, reaction="Product target", list_of_nebs=[])
+        pot.write_to_disk(workspace.neb_pot_fp)
+        workspace.queue_fp.write_text('{"items": [], "attempted_pairs": {}, "version": 1}')
+        workspace.retropaths_pot_fp.write_text("{}")
+        return pot, SimpleNamespace()
+
+    captured: dict[str, object] = {}
+
+    def _fake_optimize(_workspace, node_indices, progress=None, on_node_update=None):
+        captured["indices"] = list(node_indices or [])
+        return {"message": "ok", "node_indices": list(node_indices or [])}
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.create_workspace", _fake_create_workspace)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.prepare_neb_workspace", _fake_prepare)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._apply_bootstrap_species_overrides",
+        lambda _workspace, reactant, product: None,
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._optimize_selected_nodes", _fake_optimize)
+
+    result = _initialize_workspace_job(
+        reactant={"smiles": "C=C", "charge": 0, "multiplicity": 1},
+        product={"smiles": "CC", "charge": 0, "multiplicity": 1},
+        run_name="drive-run",
+        workspace_dir=str(workspace_dir),
+        inputs_fp=str(inputs_fp),
+        reactions_fp=None,
+        timeout_seconds=30,
+        max_nodes=40,
+        max_depth=4,
+        max_parallel_nebs=1,
+        seed_only=False,
+    )
+
+    assert result["message"] == "Initialized workspace drive-run."
+    assert captured["indices"] == [0, 1]
 
 
 def test_bootstrap_product_endpoint_adds_target_node_and_queue(tmp_path):
@@ -1807,7 +1918,7 @@ def test_submit_initialize_defers_process_pool_submission_off_request_path(monke
 
     monkeypatch.setattr(
         "neb_dynamics.mepd_drive._resolve_species_input",
-        lambda smiles="", xyz_text="": {"smiles": smiles} if smiles else None,
+        lambda smiles="", xyz_text="", charge=0, multiplicity=1: {"smiles": smiles} if smiles else None,
     )
     monkeypatch.setattr(
         "neb_dynamics.mepd_drive._materialize_deployment_inputs",
@@ -1861,7 +1972,7 @@ def test_submit_initialize_defaults_to_seed_only_when_product_is_supplied(monkey
 
     monkeypatch.setattr(
         "neb_dynamics.mepd_drive._resolve_species_input",
-        lambda smiles="", xyz_text="": {"smiles": smiles} if smiles else {},
+        lambda smiles="", xyz_text="", charge=0, multiplicity=1: {"smiles": smiles} if smiles else {},
     )
     monkeypatch.setattr(
         "neb_dynamics.mepd_drive._materialize_deployment_inputs",
@@ -1947,6 +2058,51 @@ def test_launch_mepd_drive_loads_existing_workspace_on_startup(monkeypatch, tmp_
     assert captured["initial_state"] == loaded
     assert captured["inputs_fp"] is None
     assert captured["network_splits"] is True
+
+
+def test_launch_mepd_drive_autostarts_hawaii_when_workspace_is_loaded(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "existing-run"
+    workspace_dir.mkdir()
+    (workspace_dir / "workspace.json").write_text("{}")
+
+    loaded = {
+        "workspace": {
+            "workdir": str(workspace_dir),
+            "run_name": "existing-run",
+            "root_smiles": "C=C",
+            "environment_smiles": "",
+            "inputs_fp": str(tmp_path / "inputs.toml"),
+            "reactions_fp": "",
+            "timeout_seconds": 30,
+            "max_nodes": 40,
+            "max_depth": 4,
+            "max_parallel_nebs": 1,
+        },
+        "reactant": {"smiles": "C=C"},
+        "product": None,
+        "message": "Loaded existing workspace existing-run.",
+    }
+    called = {"hawaii": 0}
+
+    class _FakeServer:
+        def __init__(self, _server_address, **_kwargs):
+            self.server_address = ("127.0.0.1", 48123)
+
+        def submit_hawaii(self):
+            called["hawaii"] += 1
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_existing_workspace_job", lambda path, **kwargs: loaded)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.MepdDriveServer", _FakeServer)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.webbrowser.open", lambda _url: True)
+
+    main_cli.launch_mepd_drive(
+        directory=str(workspace_dir),
+        inputs_fp=None,
+        hawaii=True,
+        open_browser=False,
+    )
+
+    assert called["hawaii"] == 1
 
 
 def test_launch_mepd_drive_loads_network_splits_directory_on_startup(monkeypatch, tmp_path):
@@ -2041,6 +2197,48 @@ def test_launch_mepd_drive_bootstraps_smiles_workspace_on_startup(monkeypatch, t
     assert captured["base_directory"] == (tmp_path / "drive").resolve()
     assert captured["inputs_fp"] == (tmp_path / "inputs.toml").resolve()
     assert captured["network_splits"] is True
+
+
+def test_launch_mepd_drive_hawaii_smiles_defers_initialization_to_server(monkeypatch, tmp_path):
+    captured = {"initialize_payloads": []}
+
+    class _FakeServer:
+        def __init__(self, _server_address, **kwargs):
+            captured.update(kwargs)
+            self.server_address = ("127.0.0.1", 48123)
+
+        def submit_initialize(self, payload):
+            captured["initialize_payloads"].append(dict(payload))
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._initialize_workspace_job",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("launch should defer initialization in hawaii smiles mode")),
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive.MepdDriveServer", _FakeServer)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.webbrowser.open", lambda _url: True)
+
+    server = main_cli.launch_mepd_drive(
+        directory=str(tmp_path / "drive" / "smiles-run"),
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        smiles="C=C",
+        product_smiles="CC",
+        environment_smiles="O",
+        charge=1,
+        multiplicity=2,
+        run_name="smiles-run",
+        hawaii=True,
+        open_browser=False,
+    )
+
+    assert server.server_address == ("127.0.0.1", 48123)
+    assert captured["initial_state"] is None
+    assert len(captured["initialize_payloads"]) == 1
+    payload = captured["initialize_payloads"][0]
+    assert payload["reactant_smiles"] == "C=C"
+    assert payload["product_smiles"] == "CC"
+    assert payload["auto_start_hawaii"] is True
+    assert payload["charge"] == 1
+    assert payload["multiplicity"] == 2
 
 
 def test_build_drive_payload_tolerates_missing_inputs_and_retropaths(monkeypatch, tmp_path):
@@ -2231,6 +2429,29 @@ def test_build_growth_live_payload_reads_progress_file(tmp_path):
     assert payload["note"] == "Growing node 0."
 
 
+def test_build_growth_live_payload_supports_hawaii_type(tmp_path):
+    progress_fp = tmp_path / "hawaii-growth.json"
+    progress_fp.write_text(
+        """{
+  "title": "Hawaii autonomous exploration",
+  "note": "Cycle 1 running.",
+  "phase": "growing",
+  "network": {
+    "nodes": [{"id": 0, "label": "0", "growing": false}],
+    "edges": []
+  }
+}"""
+    )
+
+    payload = _build_growth_live_payload(
+        {"type": "hawaii", "status": "running", "progress_fp": str(progress_fp)}
+    )
+
+    assert payload["type"] == "growth"
+    assert payload["title"] == "Hawaii autonomous exploration"
+    assert payload["note"] == "Cycle 1 running."
+
+
 def test_snapshot_includes_live_activity_for_running_initialize(monkeypatch, tmp_path):
     server = object.__new__(MepdDriveServer)
     server.state_lock = __import__("threading").Lock()
@@ -2268,6 +2489,74 @@ def test_snapshot_includes_live_activity_for_running_initialize(monkeypatch, tmp
     assert snapshot["busy"] is True
     assert snapshot["live_activity"]["type"] == "growth"
     assert snapshot["live_activity"]["network"]["nodes"][0]["growing"] is True
+
+
+def test_snapshot_includes_neb_live_activity_for_running_hawaii_neb_stage(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    workspace = SimpleNamespace(
+        queue_fp=tmp_path / "neb_queue.json",
+        directory=tmp_path,
+        workdir=str(tmp_path),
+    )
+    workspace.queue_fp.write_text("{}")
+
+    class _PendingFuture:
+        def done(self):
+            return False
+
+    hawaii_progress_fp = tmp_path / "drive_hawaii.progress.json"
+    hawaii_progress_fp.write_text(
+        """{
+  "title": "Hawaii autonomous exploration",
+  "note": "Step 2/3: running autosplitting NEB for edge 2 -> 1 (3/3).",
+  "phase": "growing",
+  "stage": "neb",
+  "neb": {
+    "source_node": 2,
+    "target_node": 1,
+    "progress_fp": "neb.progress.log",
+    "chain_fp": "neb.chain.json"
+  },
+  "network": {"nodes": [], "edges": []}
+}"""
+    )
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._build_drive_payload_fast",
+        lambda workspace, product_smiles="", active_job_label="", active_action=None, **kwargs: {"queue": {}, "workspace": {}, "network": {}},
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._read_chain_payload",
+        lambda _fp: {
+            "ascii_plot": "plot",
+            "caption": "step 4",
+            "plot": {"x": [0.0, 1.0], "y": [0.0, 2.0]},
+            "history": [{"x": [0.0, 1.0], "y": [0.5, 2.5], "caption": "step 3"}],
+        },
+    )
+
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        reactant={"smiles": "C=C.O"},
+        product=None,
+        last_message="Running Hawaii autonomous exploration...",
+        last_error="",
+        future=_PendingFuture(),
+        busy_label="Running Hawaii autonomous exploration...",
+        active_action={
+            "type": "hawaii",
+            "status": "running",
+            "label": "Running Hawaii autonomous exploration...",
+            "progress_fp": str(hawaii_progress_fp),
+        },
+    )
+
+    snapshot = server.snapshot()
+
+    assert snapshot["live_activity"]["type"] == "neb"
+    assert snapshot["live_activity"]["plot"]["x"] == [0.0, 1.0]
+    assert snapshot["live_activity"]["history"][0]["caption"] == "step 3"
 
 
 def test_apply_reactions_to_node_converts_drive_molecules_to_retropaths_compatible_graphs(monkeypatch, tmp_path):
@@ -3299,6 +3588,100 @@ def test_submit_hessian_sample_forwards_max_candidates_to_workflow(monkeypatch, 
     assert forwarded["dr"] == 0.15
     assert forwarded["max_candidates"] == 42
     assert server.runtime.active_action["max_candidates"] == 42
+
+
+def test_submit_hawaii_control_go_starts_when_idle(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = SimpleNamespace(
+        directory=workspace_dir,
+        workdir=str(workspace_dir),
+    )
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        future=None,
+        active_action=None,
+        last_error="",
+        last_message="",
+    )
+    called = {"start": 0}
+    server.submit_hawaii = lambda: called.__setitem__("start", called["start"] + 1)
+
+    result = server.submit_hawaii_control(mode="go")
+
+    assert called["start"] == 1
+    assert result["mode"] == "go"
+    assert result["running"] is True
+
+
+def test_submit_hawaii_control_yellow_updates_mode_when_running(tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    control_fp = workspace_dir / "drive_hawaii.control.json"
+    control_fp.write_text('{"mode":"go"}')
+
+    class _PendingFuture:
+        def done(self):
+            return False
+
+    workspace = SimpleNamespace(
+        directory=workspace_dir,
+        workdir=str(workspace_dir),
+    )
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        future=_PendingFuture(),
+        active_action={"type": "hawaii", "status": "running", "control_fp": str(control_fp)},
+        last_error="",
+        last_message="",
+    )
+
+    result = server.submit_hawaii_control(mode="yellow")
+    payload = __import__("json").loads(control_fp.read_text())
+
+    assert result["mode"] == "yellow"
+    assert payload["mode"] == "yellow"
+    assert "current stage" in server.runtime.last_message
+
+
+def test_submit_hawaii_control_red_resets_process_pool_when_running(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    control_fp = workspace_dir / "drive_hawaii.control.json"
+    control_fp.write_text('{"mode":"go"}')
+
+    class _PendingFuture:
+        def done(self):
+            return False
+
+    workspace = SimpleNamespace(
+        directory=workspace_dir,
+        workdir=str(workspace_dir),
+    )
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        future=_PendingFuture(),
+        active_action={"type": "hawaii", "status": "running", "control_fp": str(control_fp)},
+        last_error="",
+        last_message="",
+    )
+
+    called = {"reset": 0}
+    server._reset_process_executor = lambda: called.__setitem__("reset", called["reset"] + 1)
+
+    result = server.submit_hawaii_control(mode="red")
+    payload = __import__("json").loads(control_fp.read_text())
+
+    assert result["mode"] == "red"
+    assert payload["mode"] == "red"
+    assert called["reset"] == 1
+    assert "immediately" in server.runtime.last_message
 
 
 def test_progress_printer_writes_live_chain_payload_file(monkeypatch, tmp_path):

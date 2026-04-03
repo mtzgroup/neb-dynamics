@@ -730,6 +730,80 @@ def test_apply_reactions_to_node_uses_canonical_child_structure(monkeypatch, tmp
     assert pot.graph.nodes[1]["endpoint_optimized"] is False
 
 
+def test_apply_reactions_to_node_optimizes_generated_products_when_inputs_available(monkeypatch, tmp_path):
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path),
+        run_name="demo",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+    )
+    workspace.write()
+    Path(workspace.inputs_fp).write_text("engine_name = 'chemcloud'\nprogram = 'xtb'\n")
+
+    source_td = structure_node_from_graph_like_molecule(Molecule.from_smiles("C"))
+    pot = Pot(root=Molecule.from_smiles("C"), target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(0, molecule=Molecule.from_smiles("C"), td=source_td, converged=False)
+
+    class _FakeRetropathsPot:
+        def __init__(self, root, environment, rxn_name=None):
+            self.graph = nx.DiGraph()
+            self.graph.add_node(0, molecule=root, converged=False)
+
+        def grow_this_node(self, leaf, library, filter_minor_products=True, use_father_error=False):
+            self.graph.add_node(1, molecule=Molecule.from_smiles("CC"), converged=False)
+            self.graph.add_edge(1, 0, reaction="Fake Growth")
+
+    class _FakeRunInputs:
+        def __init__(self):
+            self.engine = SimpleNamespace()
+
+    calls = {"batch": 0}
+
+    def _fake_batch(nodes, run_inputs):
+        calls["batch"] += 1
+        out = []
+        for node in nodes:
+            optimized = node.copy()
+            optimized._cached_energy = 0.0
+            optimized._cached_gradient = np.zeros_like(optimized.coords).tolist()
+            out.append((optimized, None))
+        return out
+
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.load_partial_annotated_pot",
+        lambda _workspace: pot,
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.build_retropaths_neb_queue",
+        lambda pot, queue_fp, overwrite=False: SimpleNamespace(find_item=lambda *_args, **_kwargs: None),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow._load_retropaths_classes",
+        lambda: (
+            SimpleNamespace(pload=lambda _fp: {"Fake Growth": object()}),
+            Molecule,
+            _FakeRetropathsPot,
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.RunInputs.open",
+        lambda _fp: _FakeRunInputs(),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow._optimize_endpoint_batch",
+        _fake_batch,
+    )
+
+    result = apply_reactions_to_node(workspace, 0)
+
+    assert calls["batch"] == 1
+    assert result["optimized_generated_minima"] == 1
+    assert result["failed_generated_minima"] == 0
+    assert pot.graph.nodes[1]["endpoint_optimized"] is True
+
+
 def test_build_network_explorer_payload_handles_cyclic_metadata():
     graph = nx.DiGraph()
     node_cycle: dict[str, object] = {}

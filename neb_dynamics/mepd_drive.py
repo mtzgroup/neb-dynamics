@@ -57,6 +57,7 @@ from neb_dynamics.retropaths_workflow import (
     create_workspace,
     load_partial_annotated_pot,
     load_retropaths_pot,
+    materialize_drive_graph,
     prepare_neb_workspace,
     run_hessian_sample_for_edge,
     run_hessian_sample_for_node,
@@ -416,7 +417,7 @@ def _build_neb_live_payload(
 
 
 def _build_growth_live_payload(active_action: dict[str, Any] | None) -> dict[str, Any] | None:
-    if active_action is None or active_action.get("type") not in {"initialize", "apply-reactions", "nanoreactor", "hessian-sample"}:
+    if active_action is None or active_action.get("type") not in {"initialize", "apply-reactions", "nanoreactor", "hessian-sample", "hawaii"}:
         return None
     progress = _read_growth_progress(active_action.get("progress_fp")) or {}
     return {
@@ -426,6 +427,33 @@ def _build_growth_live_payload(active_action: dict[str, Any] | None) -> dict[str
         "phase": str(progress.get("phase") or "growing"),
         "network": dict(progress.get("network") or {"nodes": [], "edges": []}),
     }
+
+
+def _build_hawaii_live_payload(
+    active_action: dict[str, Any] | None,
+    workspace: RetropathsWorkspace | None = None,
+) -> dict[str, Any] | None:
+    if active_action is None or active_action.get("type") != "hawaii":
+        return None
+    progress = _read_growth_progress(active_action.get("progress_fp")) or {}
+    stage = str(progress.get("stage") or "").strip().lower()
+    if stage == "neb":
+        neb = dict(progress.get("neb") or {})
+        source_node = neb.get("source_node")
+        target_node = neb.get("target_node")
+        synthetic_action = {
+            "type": "neb",
+            "status": "running",
+            "label": str(progress.get("note") or active_action.get("label") or "Hawaii autosplitting NEB"),
+            "source_node": (int(source_node) if source_node is not None else -1),
+            "target_node": (int(target_node) if target_node is not None else -1),
+            "progress_fp": str(neb.get("progress_fp") or ""),
+            "chain_fp": str(neb.get("chain_fp") or ""),
+        }
+        neb_payload = _build_neb_live_payload(synthetic_action, workspace)
+        if neb_payload is not None:
+            return neb_payload
+    return _build_growth_live_payload(active_action)
 
 
 def _read_log_tail(log_fp: Any, max_chars: int = 12000) -> str:
@@ -2058,6 +2086,17 @@ def _initialize_workspace_job(
             required_partial = [*required_core, workspace.retropaths_pot_fp]
             if not all(fp.exists() for fp in required_partial):
                 raise
+    try:
+        _force_minimize_initial_input_structures(workspace)
+    except Exception as exc:
+        minimization_error = (
+            "Initial input-structure minimization failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        if init_error:
+            init_error = f"{init_error}; {minimization_error}"
+        else:
+            init_error = minimization_error
     payload = _workspace_snapshot_payload(
         workspace,
         reactant=reactant,
@@ -2267,6 +2306,39 @@ def _optimize_selected_nodes(
     }
 
 
+def _initial_input_minimization_targets(workspace: RetropathsWorkspace) -> list[int]:
+    if not workspace.neb_pot_fp.exists():
+        return []
+    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    targets: set[int] = set()
+    if 0 in pot.graph.nodes and pot.graph.nodes[0].get("td") is not None:
+        targets.add(0)
+    for node_index in pot.graph.nodes:
+        attrs = pot.graph.nodes[node_index]
+        if attrs.get("td") is None:
+            continue
+        if str(attrs.get("generated_by") or "") == "drive_product_smiles":
+            targets.add(int(node_index))
+    return sorted(int(node_index) for node_index in targets)
+
+
+def _force_minimize_initial_input_structures(workspace: RetropathsWorkspace) -> dict[str, Any] | None:
+    inputs_fp_value = getattr(workspace, "inputs_fp", None)
+    if not inputs_fp_value:
+        return None
+    inputs_fp = Path(str(inputs_fp_value)).expanduser()
+    if not inputs_fp.exists():
+        return None
+    node_indices = _initial_input_minimization_targets(workspace)
+    if not node_indices:
+        return None
+    return _optimize_selected_nodes(
+        workspace,
+        node_indices=node_indices,
+        progress=lambda _message: None,
+    )
+
+
 def _run_selected_edge_neb(
     workspace: RetropathsWorkspace,
     *,
@@ -2360,6 +2432,612 @@ def _run_selected_edge_neb(
     if network_splits:
         load_partial_annotated_pot(workspace)
     return {"message": f"Autosplitting NEB completed for edge {source_node} -> {target_node}."}
+
+
+def _normalize_hawaii_control_mode(value: Any) -> str:
+    mode = str(value or "").strip().lower()
+    if mode in {"go", "yellow", "red"}:
+        return mode
+    return "go"
+
+
+def _hawaii_control_fp_for_workspace(workspace: RetropathsWorkspace | None) -> Path | None:
+    if workspace is None:
+        return None
+    directory = getattr(workspace, "directory", None)
+    if directory is None:
+        workdir = getattr(workspace, "workdir", None)
+        if not workdir:
+            return None
+        directory = Path(str(workdir))
+    return (Path(directory) / "drive_hawaii.control.json").resolve()
+
+
+def _read_hawaii_control_payload(control_fp: Any) -> dict[str, Any]:
+    if not control_fp:
+        return {"mode": "go"}
+    try:
+        payload = json.loads(Path(str(control_fp)).read_text(encoding="utf-8"))
+    except Exception:
+        return {"mode": "go"}
+    payload["mode"] = _normalize_hawaii_control_mode(payload.get("mode"))
+    return payload
+
+
+def _read_hawaii_control_mode(control_fp: Any) -> str:
+    payload = _read_hawaii_control_payload(control_fp)
+    return _normalize_hawaii_control_mode(payload.get("mode"))
+
+
+def _write_hawaii_control_payload(
+    control_fp: Any,
+    *,
+    mode: str,
+    source: str,
+    note: str = "",
+) -> dict[str, Any]:
+    payload = {
+        "mode": _normalize_hawaii_control_mode(mode),
+        "source": str(source or ""),
+        "note": str(note or ""),
+        "updated_at": int(time.time()),
+    }
+    if not control_fp:
+        return payload
+    fp = Path(str(control_fp))
+    fp.parent.mkdir(parents=True, exist_ok=True)
+    fp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return payload
+
+
+class _HawaiiImmediateStop(RuntimeError):
+    pass
+
+
+def _raise_if_hawaii_stop_now(control_fp: Any) -> None:
+    if _read_hawaii_control_mode(control_fp) == "red":
+        raise _HawaiiImmediateStop("Hawaii stoplight set to red.")
+
+
+def _hawaii_edge_key(source_node: int, target_node: int) -> str:
+    source = int(source_node)
+    target = int(target_node)
+    if source <= target:
+        return f"{source}-{target}"
+    return f"{target}-{source}"
+
+
+def _write_hawaii_progress(
+    workspace: RetropathsWorkspace,
+    *,
+    network_splits: bool,
+    progress_fp: str | None,
+    title: str,
+    note: str,
+    phase: str,
+    stage: str = "",
+    dr: float | None = None,
+    control_mode: str = "go",
+    growing_nodes: list[int] | None = None,
+    neb_source_node: int | None = None,
+    neb_target_node: int | None = None,
+    neb_progress_fp: str | None = None,
+    neb_chain_fp: str | None = None,
+) -> None:
+    if not progress_fp:
+        return
+    with contextlib.suppress(Exception):
+        pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+        growing = {int(node_id) for node_id in (growing_nodes or [])}
+        payload = {
+            "title": str(title),
+            "note": str(note),
+            "phase": str(phase),
+            "stage": str(stage or ""),
+            "dr": (float(dr) if dr is not None else None),
+            "control_mode": _normalize_hawaii_control_mode(control_mode),
+            "neb": (
+                {
+                    "source_node": (int(neb_source_node) if neb_source_node is not None else None),
+                    "target_node": (int(neb_target_node) if neb_target_node is not None else None),
+                    "progress_fp": str(neb_progress_fp or ""),
+                    "chain_fp": str(neb_chain_fp or ""),
+                }
+                if (
+                    neb_source_node is not None
+                    or neb_target_node is not None
+                    or neb_progress_fp
+                    or neb_chain_fp
+                )
+                else {}
+            ),
+            "network": {
+                "nodes": [
+                    {
+                        "id": int(node_index),
+                        "label": str(node_index),
+                        "growing": int(node_index) in growing,
+                    }
+                    for node_index in sorted(int(n) for n in pot.graph.nodes)
+                ],
+                "edges": [
+                    {
+                        "source": int(source_node),
+                        "target": int(target_node),
+                    }
+                    for source_node, target_node in sorted(
+                        (int(source), int(target))
+                        for source, target in pot.graph.edges
+                    )
+                ],
+            },
+        }
+        progress_path = Path(progress_fp)
+        progress_path.parent.mkdir(parents=True, exist_ok=True)
+        progress_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def _hawaii_node_count(workspace: RetropathsWorkspace, *, network_splits: bool) -> int:
+    pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+    return int(pot.graph.number_of_nodes())
+
+
+def _connect_all_unconnected_nodes(
+    workspace: RetropathsWorkspace,
+    *,
+    network_splits: bool,
+    progress_fp: str | None,
+    control_fp: str | None = None,
+    dr: float | None = None,
+) -> int:
+    _raise_if_hawaii_stop_now(control_fp)
+    pot = materialize_drive_graph(workspace)
+    node_ids = sorted(int(node_index) for node_index in pot.graph.nodes)
+    missing_edges: list[tuple[int, int]] = []
+    for offset, source_node in enumerate(node_ids):
+        for target_node in node_ids[offset + 1:]:
+            if pot.graph.has_edge(source_node, target_node) or pot.graph.has_edge(target_node, source_node):
+                continue
+            missing_edges.append((int(source_node), int(target_node)))
+
+    if not missing_edges:
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note="Step 1/3: all current nodes are already connected by at least one edge.",
+            phase="growing",
+            stage="connect",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[],
+        )
+        return 0
+
+    for index, (source_node, target_node) in enumerate(missing_edges, start=1):
+        _raise_if_hawaii_stop_now(control_fp)
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=(
+                f"Step 1/3: connecting missing edge {source_node} -> {target_node} "
+                f"({index}/{len(missing_edges)})."
+            ),
+            phase="growing",
+            stage="connect",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[source_node, target_node],
+        )
+        add_manual_edge(
+            workspace,
+            source_node=int(source_node),
+            target_node=int(target_node),
+            reaction_label=f"Hawaii auto edge {source_node}->{target_node}",
+        )
+    return len(missing_edges)
+
+
+def _run_unattempted_nebs(
+    workspace: RetropathsWorkspace,
+    *,
+    network_splits: bool,
+    progress_fp: str | None,
+    control_fp: str | None = None,
+    dr: float | None = None,
+) -> tuple[int, int]:
+    _raise_if_hawaii_stop_now(control_fp)
+    pot = materialize_drive_graph(workspace)
+    queue = build_retropaths_neb_queue(
+        pot=pot,
+        queue_fp=workspace.queue_fp,
+        overwrite=False,
+    )
+    attempted_keys = set(str(key) for key in queue.attempted_pairs.keys())
+    pending_items = [
+        item
+        for item in queue.items
+        if str(item.status) == "pending"
+        and str(item.attempt_key or "").strip()
+        and str(item.attempt_key) not in attempted_keys
+    ]
+    pending_items.sort(key=lambda item: (int(item.source_node), int(item.target_node)))
+
+    attempts = 0
+    failures = 0
+    if not pending_items:
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note="Step 2/3: no unattempted NEB queue items remain.",
+            phase="growing",
+            stage="neb",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[],
+        )
+        return attempts, failures
+
+    for index, item in enumerate(pending_items, start=1):
+        _raise_if_hawaii_stop_now(control_fp)
+        attempts += 1
+        source_node = int(item.source_node)
+        target_node = int(item.target_node)
+        neb_log_fp = str(
+            (
+                workspace.directory
+                / f"drive_hawaii_neb_{source_node}_{target_node}.log"
+            ).resolve()
+        )
+        neb_progress_fp = str(
+            (
+                workspace.directory
+                / f"drive_hawaii_neb_{source_node}_{target_node}.progress.json"
+            ).resolve()
+        )
+        neb_chain_fp = str(
+            (
+                workspace.directory
+                / f"drive_hawaii_neb_{source_node}_{target_node}.chain.json"
+            ).resolve()
+        )
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=(
+                f"Step 2/3: running autosplitting NEB for edge {source_node} -> {target_node} "
+                f"({index}/{len(pending_items)})."
+            ),
+            phase="growing",
+            stage="neb",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[source_node, target_node],
+            neb_source_node=source_node,
+            neb_target_node=target_node,
+            neb_progress_fp=neb_progress_fp,
+            neb_chain_fp=neb_chain_fp,
+        )
+        try:
+            _run_selected_edge_neb_logged(
+                dict(workspace.__dict__),
+                source_node=source_node,
+                target_node=target_node,
+                network_splits=network_splits,
+                log_fp=neb_log_fp,
+                progress_fp=neb_progress_fp,
+                chain_fp=neb_chain_fp,
+            )
+        except Exception:
+            failures += 1
+    return attempts, failures
+
+
+def _has_completed_neb_data_for_pair(
+    pot: Pot,
+    queue: RetropathsNEBQueue,
+    *,
+    source_node: int,
+    target_node: int,
+) -> bool:
+    if pot.graph.has_edge(source_node, target_node):
+        attrs = dict(pot.graph.edges[(source_node, target_node)])
+        if bool(attrs.get("list_of_nebs")):
+            return True
+    if pot.graph.has_edge(target_node, source_node):
+        attrs = dict(pot.graph.edges[(target_node, source_node)])
+        if bool(attrs.get("list_of_nebs")):
+            return True
+    forward_item = queue.find_item(source_node, target_node)
+    reverse_item = queue.find_item(target_node, source_node)
+    if forward_item is not None and str(forward_item.status) == "completed":
+        return True
+    if reverse_item is not None and str(reverse_item.status) == "completed":
+        return True
+    return False
+
+
+def _run_hessian_on_completed_edges(
+    workspace: RetropathsWorkspace,
+    *,
+    network_splits: bool,
+    progress_fp: str | None,
+    dr: float,
+    max_candidates: int,
+    attempted_edge_keys: set[str],
+    control_fp: str | None = None,
+) -> tuple[int, int, int]:
+    _raise_if_hawaii_stop_now(control_fp)
+    pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+    queue = build_retropaths_neb_queue(
+        pot=pot,
+        queue_fp=workspace.queue_fp,
+        overwrite=False,
+    )
+
+    candidates: list[tuple[int, int, str]] = []
+    seen_keys: set[str] = set()
+    for source_node, target_node in sorted(
+        (int(source), int(target))
+        for source, target in pot.graph.edges
+    ):
+        edge_key = _hawaii_edge_key(source_node, target_node)
+        if edge_key in seen_keys:
+            continue
+        seen_keys.add(edge_key)
+        if edge_key in attempted_edge_keys:
+            continue
+        if not _has_completed_neb_data_for_pair(
+            pot,
+            queue,
+            source_node=source_node,
+            target_node=target_node,
+        ):
+            continue
+        candidates.append((source_node, target_node, edge_key))
+
+    attempts = 0
+    failures = 0
+    added_nodes = 0
+    if not candidates:
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=(
+                f"Step 3/3 (dr={float(dr):.1f}): no untried edges with completed NEB data are available."
+            ),
+            phase="growing",
+            stage="hessian",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[],
+        )
+        return attempts, failures, added_nodes
+
+    for index, (source_node, target_node, edge_key) in enumerate(candidates, start=1):
+        _raise_if_hawaii_stop_now(control_fp)
+        attempts += 1
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=(
+                f"Step 3/3 (dr={float(dr):.1f}): Hessian sample for edge "
+                f"{source_node} -> {target_node} ({index}/{len(candidates)})."
+            ),
+            phase="growing",
+            stage="hessian",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[source_node, target_node],
+        )
+        try:
+            result = run_hessian_sample_for_edge(
+                workspace,
+                source_node=source_node,
+                target_node=target_node,
+                dr=float(dr),
+                max_candidates=int(max_candidates),
+                progress_fp=progress_fp,
+            )
+            added_nodes += int(result.get("added_nodes") or 0)
+        except Exception:
+            failures += 1
+        finally:
+            attempted_edge_keys.add(edge_key)
+    return attempts, failures, added_nodes
+
+
+def _run_hawaii_autonomy(
+    workspace_data: dict[str, Any],
+    *,
+    network_splits: bool = True,
+    progress_fp: str | None = None,
+    control_fp: str | None = None,
+    max_hessian_candidates: int = 100,
+) -> dict[str, Any]:
+    workspace = RetropathsWorkspace(**workspace_data)
+    dr_schedule = (1.0, 2.0, 3.0)
+    attempted_hessian_by_dr: dict[str, set[str]] = {
+        f"{float(dr):.1f}": set()
+        for dr in dr_schedule
+    }
+    cycle_index = 0
+    total_connected_edges = 0
+    total_neb_attempts = 0
+    total_neb_failures = 0
+    total_hessian_attempts = 0
+    total_hessian_failures = 0
+    total_new_minima = 0
+
+    _write_hawaii_progress(
+        workspace,
+        network_splits=network_splits,
+        progress_fp=progress_fp,
+        title="Hawaii autonomous exploration",
+        note="Starting autonomous connect/NEB/Hessian exploration.",
+        phase="growing",
+        stage="connect",
+        dr=dr_schedule[0],
+        control_mode=_read_hawaii_control_mode(control_fp),
+        growing_nodes=[],
+    )
+
+    dr_index = 0
+    stopped_immediately = False
+    try:
+        while dr_index < len(dr_schedule):
+            _raise_if_hawaii_stop_now(control_fp)
+            cycle_index += 1
+            dr = float(dr_schedule[dr_index])
+            before_nodes = _hawaii_node_count(workspace, network_splits=network_splits)
+            _write_hawaii_progress(
+                workspace,
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                title="Hawaii autonomous exploration",
+                note=(
+                    f"Cycle {cycle_index}: running autonomous sequence with Hessian dr={float(dr):.1f}."
+                ),
+                phase="growing",
+                stage="connect",
+                dr=dr,
+                control_mode=_read_hawaii_control_mode(control_fp),
+                growing_nodes=[],
+            )
+
+            connected_edges = _connect_all_unconnected_nodes(
+                workspace,
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                control_fp=control_fp,
+                dr=dr,
+            )
+            total_connected_edges += int(connected_edges)
+            if _read_hawaii_control_mode(control_fp) == "yellow":
+                break
+
+            neb_attempts, neb_failures = _run_unattempted_nebs(
+                workspace,
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                control_fp=control_fp,
+                dr=dr,
+            )
+            total_neb_attempts += int(neb_attempts)
+            total_neb_failures += int(neb_failures)
+            if _read_hawaii_control_mode(control_fp) == "yellow":
+                break
+
+            hessian_attempts, hessian_failures, hessian_added_nodes = _run_hessian_on_completed_edges(
+                workspace,
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                dr=float(dr),
+                max_candidates=int(max_hessian_candidates),
+                attempted_edge_keys=attempted_hessian_by_dr[f"{float(dr):.1f}"],
+                control_fp=control_fp,
+            )
+            total_hessian_attempts += int(hessian_attempts)
+            total_hessian_failures += int(hessian_failures)
+            if _read_hawaii_control_mode(control_fp) == "yellow":
+                break
+
+            after_nodes = _hawaii_node_count(workspace, network_splits=network_splits)
+            discovered_minima = max(0, int(after_nodes - before_nodes))
+            if discovered_minima <= 0:
+                discovered_minima = int(hessian_added_nodes)
+
+            if discovered_minima > 0:
+                total_new_minima += int(discovered_minima)
+                _write_hawaii_progress(
+                    workspace,
+                    network_splits=network_splits,
+                    progress_fp=progress_fp,
+                    title="Hawaii autonomous exploration",
+                    note=(
+                        f"Cycle {cycle_index}, dr={float(dr):.1f}: discovered {int(discovered_minima)} "
+                        "new minima. Restarting from step 1 (connect stage)."
+                    ),
+                    phase="growing",
+                    stage="connect",
+                    dr=dr,
+                    control_mode=_read_hawaii_control_mode(control_fp),
+                    growing_nodes=[],
+                )
+                continue
+
+            _write_hawaii_progress(
+                workspace,
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                title="Hawaii autonomous exploration",
+                note=(
+                    f"Cycle {cycle_index}, dr={float(dr):.1f}: no new minima found; "
+                    "escalating displacement if available."
+                ),
+                phase="growing",
+                stage="connect",
+                dr=dr,
+                control_mode=_read_hawaii_control_mode(control_fp),
+                growing_nodes=[],
+            )
+            dr_index += 1
+    except _HawaiiImmediateStop:
+        stopped_immediately = True
+
+    final_mode = _read_hawaii_control_mode(control_fp)
+    if stopped_immediately or final_mode == "red":
+        final_note = "Hawaii stopped immediately (red stoplight)."
+        phase = "finished"
+    elif final_mode == "yellow":
+        final_note = "Hawaii paused after finishing the current stage (yellow stoplight)."
+        phase = "finished"
+    elif dr_index >= len(dr_schedule):
+        final_note = "Autonomous loop finished because no new minima were found at dr=1.0, 2.0, or 3.0."
+        phase = "finished"
+    else:
+        final_note = "Hawaii autonomous exploration stopped."
+        phase = "finished"
+
+    _write_hawaii_progress(
+        workspace,
+        network_splits=network_splits,
+        progress_fp=progress_fp,
+        title="Hawaii autonomous exploration",
+        note=final_note,
+        phase=phase,
+        stage="finished",
+        dr=(dr_schedule[min(dr_index, len(dr_schedule) - 1)] if dr_schedule else None),
+        control_mode=final_mode,
+        growing_nodes=[],
+    )
+    return {
+        "message": (
+            f"{final_note} "
+            f"Connected edges: {total_connected_edges}. "
+            f"NEB attempts: {total_neb_attempts} (failures: {total_neb_failures}). "
+            f"Hessian attempts: {total_hessian_attempts} (failures: {total_hessian_failures}). "
+            f"New minima discovered: {total_new_minima}."
+        ),
+        "cycles": int(cycle_index),
+        "connected_edges": int(total_connected_edges),
+        "neb_attempts": int(total_neb_attempts),
+        "neb_failures": int(total_neb_failures),
+        "hessian_attempts": int(total_hessian_attempts),
+        "hessian_failures": int(total_hessian_failures),
+        "new_minima": int(total_new_minima),
+    }
 
 
 def _run_selected_edge_neb_logged(
@@ -2901,6 +3579,24 @@ def _drive_html() -> str:
       border-radius: var(--radius-md);
       background: linear-gradient(180deg, rgba(14, 26, 44, 0.95), rgba(10, 20, 34, 0.9));
     }
+    .stoplight-shell {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(14, 26, 44, 0.95), rgba(10, 20, 34, 0.9));
+      padding: 12px;
+    }
+    .stoplight-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+    .stoplight-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .stoplight-button {
+      min-width: 110px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .stoplight-button.go { border-color: rgba(126, 240, 199, 0.42); background: rgba(126, 240, 199, 0.1); }
+    .stoplight-button.yellow { border-color: rgba(255, 209, 102, 0.46); background: rgba(255, 209, 102, 0.1); }
+    .stoplight-button.red { border-color: rgba(255, 122, 143, 0.5); background: rgba(255, 122, 143, 0.12); }
+    .stoplight-button.active { box-shadow: inset 0 0 0 1px rgba(238, 244, 255, 0.4); }
     .kv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
     .kv-card {
       border: 1px solid var(--line);
@@ -2970,6 +3666,18 @@ def _drive_html() -> str:
       <div class="muted" style="margin-bottom:12px;">Set inputs, build a seed network, then manually grow and explore the graph while inspecting logs from a single workspace.</div>
       <div id="job-banner" class="message">Idle.</div>
       <div id="job-subtext" class="muted" style="margin-top:8px;">No action submitted yet.</div>
+      <div id="hawaii-stoplight" class="stoplight-shell">
+        <div class="stoplight-head">
+          <div><strong>Hawaii Stoplight</strong></div>
+          <div id="hawaii-mode" class="muted">Mode: GO</div>
+        </div>
+        <div class="stoplight-row">
+          <button id="hawaii-go" class="stoplight-button go">Green: GO</button>
+          <button id="hawaii-yellow" class="stoplight-button yellow">Yellow: Stop After Stage</button>
+          <button id="hawaii-red" class="stoplight-button red">Red: Stop Now</button>
+        </div>
+        <div id="hawaii-note" class="muted" style="margin-top:8px;">Green starts autonomous mode or keeps it running. Yellow lets the current stage finish. Red stops immediately.</div>
+      </div>
     </div>
 
     <div class="panel">
@@ -3216,6 +3924,7 @@ def _drive_html() -> str:
       kmcResult: null,
       hessianSampleDr: 0.1,
       hessianSampleMaxCandidates: 100,
+      hawaiiControlInFlight: false,
     };
 
     function setManualEdgeEndpoint(which, nodeId) {
@@ -3397,6 +4106,43 @@ def _drive_html() -> str:
 
     function setSubtext(text) {
       document.getElementById("job-subtext").textContent = text;
+    }
+
+    function renderHawaiiStoplight(snapshot) {
+      const payload = snapshot?.hawaii || {};
+      const mode = String(payload.mode || "go").toLowerCase();
+      const running = Boolean(payload.running);
+      const stage = String(payload.stage || "").trim();
+      const dr = payload.dr == null ? "" : `dr=${Number(payload.dr).toFixed(1)}`;
+      const modeLabel = mode === "yellow" ? "YELLOW" : mode === "red" ? "RED" : "GO";
+      const modeEl = document.getElementById("hawaii-mode");
+      const noteEl = document.getElementById("hawaii-note");
+      const goBtn = document.getElementById("hawaii-go");
+      const yellowBtn = document.getElementById("hawaii-yellow");
+      const redBtn = document.getElementById("hawaii-red");
+      if (modeEl) {
+        modeEl.textContent = `Mode: ${modeLabel}${running ? " (running)" : " (idle)"}`;
+      }
+      if (noteEl) {
+        const stageText = stage ? ` Stage: ${stage}.` : "";
+        const drText = dr ? ` ${dr}.` : "";
+        const detail = String(payload.note || "").trim();
+        noteEl.textContent = detail
+          ? `${detail}${stageText}${drText}`
+          : `Green starts autonomous mode or keeps it running. Yellow lets the current stage finish. Red stops immediately.${stageText}${drText}`;
+      }
+      if (goBtn) {
+        goBtn.classList.toggle("active", mode === "go");
+        goBtn.disabled = state.hawaiiControlInFlight;
+      }
+      if (yellowBtn) {
+        yellowBtn.classList.toggle("active", mode === "yellow");
+        yellowBtn.disabled = state.hawaiiControlInFlight || !running;
+      }
+      if (redBtn) {
+        redBtn.classList.toggle("active", mode === "red");
+        redBtn.disabled = state.hawaiiControlInFlight || !running;
+      }
     }
 
     function clearPendingLiveActivity() {
@@ -5425,7 +6171,9 @@ def _drive_html() -> str:
         clearTimeout(state.refreshTimer);
         state.refreshTimer = null;
       }
-      const delayMs = snapshot?.busy ? 2000 : 5000;
+      const isHawaii = String(snapshot?.active_action?.type || "") === "hawaii"
+        && String(snapshot?.active_action?.status || "") === "running";
+      const delayMs = isHawaii ? 750 : (snapshot?.busy ? 2000 : 5000);
       state.refreshTimer = setTimeout(refreshState, delayMs);
     }
 
@@ -5457,6 +6205,8 @@ def _drive_html() -> str:
             setSubtext("Nanoreactor sampling is running from the selected node. Distinct minimized products will be merged into the graph after the backend finishes.");
           } else if (activeAction.type === "hessian-sample") {
             setSubtext("Hessian sampling is running from the selected node or edge peak. Displaced-mode minima will be merged into the graph when the backend finishes.");
+          } else if (activeAction.type === "hawaii") {
+            setSubtext("Hawaii autonomous exploration is running. Use the stoplight controls to continue, stop after stage, or stop immediately.");
           } else {
             setSubtext("Background work is running. The network and counters will refresh automatically.");
           }
@@ -5465,6 +6215,7 @@ def _drive_html() -> str:
         }
         setButtonsDisabled(Boolean(snapshot.busy));
         renderWorkspaceSummary(snapshot);
+        renderHawaiiStoplight(snapshot);
         renderInputsPanels(snapshot);
         renderStats(snapshot);
         renderProductPathPanel(snapshot);
@@ -5737,6 +6488,31 @@ def _drive_html() -> str:
       }
     }
 
+    async function setHawaiiStoplight(mode) {
+      const normalized = String(mode || "").trim().toLowerCase();
+      if (!["go", "yellow", "red"].includes(normalized)) return;
+      try {
+        state.hawaiiControlInFlight = true;
+        renderHawaiiStoplight(state.snapshot);
+        const bannerLabel = normalized === "go"
+          ? "Sending GREEN (GO) to Hawaii mode..."
+          : normalized === "yellow"
+            ? "Sending YELLOW stop request to Hawaii mode..."
+            : "Sending RED immediate stop request to Hawaii mode...";
+        setBanner(bannerLabel);
+        setSubtext("Updating Hawaii stoplight control...");
+        const result = await postJson("/api/hawaii-control", { mode: normalized });
+        setBanner(result.message || "Hawaii stoplight updated.");
+        void refreshState();
+      } catch (error) {
+        setBanner(error.message || String(error), true);
+        setSubtext("Failed to update Hawaii stoplight.");
+      } finally {
+        state.hawaiiControlInFlight = false;
+        renderHawaiiStoplight(state.snapshot);
+      }
+    }
+
     function beginConnectMode(nodeId) {
       if (state.manualEdgeRequestInFlight) {
         setSubtext("Wait for the current manual edge request to finish.");
@@ -5801,6 +6577,7 @@ def _drive_html() -> str:
     window.setManualEdgeEndpoint = setManualEdgeEndpoint;
     window.beginConnectMode = beginConnectMode;
     window.setPathSourceNode = setPathSourceNode;
+    window.setHawaiiStoplight = setHawaiiStoplight;
 
     document.getElementById("initialize-seed").addEventListener("click", () => initializeDrive(false));
     document.getElementById("initialize-grow").addEventListener("click", () => initializeDrive(true));
@@ -5809,6 +6586,9 @@ def _drive_html() -> str:
     document.getElementById("add-manual-edge").addEventListener("click", addManualEdge);
     document.getElementById("run-kmc").addEventListener("click", runKmcModel);
     document.getElementById("clear-product-path").addEventListener("click", clearProductPathHighlight);
+    document.getElementById("hawaii-go").addEventListener("click", () => setHawaiiStoplight("go"));
+    document.getElementById("hawaii-yellow").addEventListener("click", () => setHawaiiStoplight("yellow"));
+    document.getElementById("hawaii-red").addEventListener("click", () => setHawaiiStoplight("red"));
 
     const d3Script = document.createElement("script");
     d3Script.src = "https://d3js.org/d3.v3.min.js";
@@ -5892,6 +6672,23 @@ class MepdDriveServer(ThreadingHTTPServer):
                         runtime=runtime,
                     )
 
+    def _reset_process_executor(self) -> None:
+        old_executor = getattr(self, "process_executor", None)
+        if old_executor is not None:
+            processes = dict(getattr(old_executor, "_processes", {}) or {})
+            for process in processes.values():
+                with contextlib.suppress(Exception):
+                    process.terminate()
+            for process in processes.values():
+                with contextlib.suppress(Exception):
+                    process.join(timeout=1.0)
+            with contextlib.suppress(Exception):
+                old_executor.shutdown(wait=False, cancel_futures=True)
+        self.process_executor = ProcessPoolExecutor(
+            max_workers=1,
+            mp_context=multiprocessing.get_context("spawn"),
+        )
+
     def _resolve_inputs_fp(self, payload: dict[str, Any]) -> Path:
         configured = getattr(self, "inputs_fp", None)
         payload_value = str(payload.get("inputs_path") or "").strip()
@@ -5931,6 +6728,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "apply-reactions",
                 "nanoreactor",
                 "hessian-sample",
+                "hawaii",
                 "load-workspace",
             }
         ):
@@ -5950,7 +6748,7 @@ class MepdDriveServer(ThreadingHTTPServer):
         product_smiles = str((runtime.product or {}).get("smiles") or "")
         active_action = runtime.active_action or {}
         version_key = _drive_network_version(workspace)
-        if builder_name.startswith("fast-"):
+        if builder_name.startswith("fast-") and builder_name != "fast-hawaii":
             version_key = f"{builder_name}-active"
         action_progress_key: tuple[Any, ...] = ()
         if builder_name.startswith("fast-") and builder_name != "fast-neb":
@@ -5969,6 +6767,14 @@ class MepdDriveServer(ThreadingHTTPServer):
                     if isinstance(job, dict)
                 ),
             )
+            if builder_name == "fast-hawaii":
+                progress_fp = active_action.get("progress_fp")
+                progress_stat = ("missing",)
+                if progress_fp:
+                    with contextlib.suppress(Exception):
+                        stat = Path(str(progress_fp)).stat()
+                        progress_stat = (int(stat.st_mtime_ns), int(stat.st_size))
+                action_progress_key = (*action_progress_key, progress_stat)
         elif builder_name == "fast-neb":
             action_progress_key = (
                 str(active_action.get("status") or ""),
@@ -6049,6 +6855,14 @@ class MepdDriveServer(ThreadingHTTPServer):
             result = future.result()
         except Exception as exc:
             with self.state_lock:
+                active_action = self.runtime.active_action or {}
+                active_type = str(active_action.get("type") or "")
+                control_fp = active_action.get("control_fp") if isinstance(active_action, dict) else None
+                if active_type == "hawaii" and _read_hawaii_control_mode(control_fp) == "red":
+                    self.runtime.last_error = ""
+                    self.runtime.last_message = "Hawaii autonomous exploration stopped immediately."
+                    self.runtime.active_action = None
+                    return
                 self.runtime.last_error = _format_user_facing_error(exc)
                 self.runtime.last_message = "Last action failed."
                 if self.runtime.active_action is not None:
@@ -6068,9 +6882,14 @@ class MepdDriveServer(ThreadingHTTPServer):
 
     def submit_initialize(self, payload: dict[str, Any]) -> None:
         self._assert_idle()
+        charge = int(payload.get("charge", 0) or 0)
+        multiplicity = int(payload.get("multiplicity", 1) or 1)
+        auto_start_hawaii = bool(payload.get("auto_start_hawaii", False))
         reactant = _resolve_species_input(
             smiles=str(payload.get("reactant_smiles") or ""),
             xyz_text=str(payload.get("reactant_xyz") or ""),
+            charge=charge,
+            multiplicity=multiplicity,
         )
         if not reactant:
             raise ValueError("A reactant SMILES or reactant XYZ block is required.")
@@ -6078,6 +6897,8 @@ class MepdDriveServer(ThreadingHTTPServer):
         product = _resolve_species_input(
             smiles=str(payload.get("product_smiles") or ""),
             xyz_text=str(payload.get("product_xyz") or ""),
+            charge=charge,
+            multiplicity=multiplicity,
         )
         if str(payload.get("mode") or "reactant") == "reactant-product" and not product:
             raise ValueError("Reactant/product mode requires a product SMILES or product XYZ block.")
@@ -6136,6 +6957,13 @@ class MepdDriveServer(ThreadingHTTPServer):
                 self.runtime.last_message = str(result.get("message") or "Action completed.")
                 self.runtime.last_error = str(result.get("error") or "")
                 self.runtime.active_action = None
+            if auto_start_hawaii:
+                try:
+                    self.submit_hawaii()
+                except Exception as exc:
+                    with self.state_lock:
+                        self.runtime.last_error = _format_user_facing_error(exc)
+                        self.runtime.last_message = "Last action failed."
 
         future = self._submit_process_action(
             _initialize_workspace_job,
@@ -6417,6 +7245,111 @@ class MepdDriveServer(ThreadingHTTPServer):
         with self.state_lock:
             self.runtime.active_action = action_payload
 
+    def submit_hawaii(self) -> None:
+        self._assert_idle()
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize or load a workspace before running --hawaii automation.")
+
+        progress_fp = str((workspace.directory / "drive_hawaii.progress.json").resolve())
+        control_fp = str((workspace.directory / "drive_hawaii.control.json").resolve())
+        _write_hawaii_control_payload(
+            control_fp,
+            mode="go",
+            source="server",
+            note="Hawaii started.",
+        )
+        label = "Running Hawaii autonomous exploration..."
+        future = self._submit_process_action(
+            _run_hawaii_autonomy,
+            dict(workspace.__dict__),
+            network_splits=getattr(self, "network_splits", True),
+            progress_fp=progress_fp,
+            control_fp=control_fp,
+            max_hessian_candidates=100,
+            label=label,
+        )
+        future.add_done_callback(self._finish_future)
+        with self.state_lock:
+            self.runtime.active_action = {
+                "type": "hawaii",
+                "status": "running",
+                "label": label,
+                "progress_fp": progress_fp,
+                "control_fp": control_fp,
+            }
+
+    def submit_hawaii_control(self, *, mode: str) -> dict[str, Any]:
+        normalized_mode = _normalize_hawaii_control_mode(mode)
+        with self.state_lock:
+            workspace = self.runtime.workspace
+            active_action = dict(self.runtime.active_action) if isinstance(self.runtime.active_action, dict) else None
+            future = self.runtime.future
+
+        if workspace is None:
+            raise ValueError("Initialize or load a workspace before controlling Hawaii mode.")
+        control_fp = str(_hawaii_control_fp_for_workspace(workspace))
+        running_hawaii = bool(
+            future is not None
+            and not future.done()
+            and active_action is not None
+            and str(active_action.get("type") or "") == "hawaii"
+            and str(active_action.get("status") or "") == "running"
+        )
+
+        if normalized_mode == "go" and not running_hawaii:
+            self.submit_hawaii()
+            return {
+                "message": "Hawaii autonomous exploration started.",
+                "mode": "go",
+                "running": True,
+            }
+
+        _write_hawaii_control_payload(
+            control_fp,
+            mode=normalized_mode,
+            source="server",
+            note=f"Stoplight set to {normalized_mode}.",
+        )
+
+        if not running_hawaii:
+            with self.state_lock:
+                self.runtime.last_error = ""
+                self.runtime.last_message = (
+                    "Hawaii stoplight set to GO."
+                    if normalized_mode == "go"
+                    else f"Hawaii stoplight set to {normalized_mode.upper()}."
+                )
+            return {
+                "message": self.runtime.last_message,
+                "mode": normalized_mode,
+                "running": False,
+            }
+
+        if normalized_mode == "red":
+            with self.state_lock:
+                self.runtime.last_error = ""
+                self.runtime.last_message = "Stopping Hawaii autonomous exploration immediately..."
+            self._reset_process_executor()
+            return {
+                "message": "Stopping Hawaii autonomous exploration immediately.",
+                "mode": "red",
+                "running": True,
+            }
+
+        with self.state_lock:
+            self.runtime.last_error = ""
+            if normalized_mode == "yellow":
+                self.runtime.last_message = "Hawaii will stop after the current stage finishes."
+            else:
+                self.runtime.last_message = "Hawaii stoplight set to GO."
+        return {
+            "message": self.runtime.last_message,
+            "mode": normalized_mode,
+            "running": True,
+        }
+
     def submit_run_neb(self, *, source_node: int, target_node: int) -> None:
         self._assert_idle()
         with self.state_lock:
@@ -6552,13 +7485,39 @@ class MepdDriveServer(ThreadingHTTPServer):
                 getattr(self, "inputs_fp", None),
                 getattr(self, "reactions_fp", None),
             ),
+            "hawaii": {
+                "running": False,
+                "mode": "go",
+                "stage": "",
+                "dr": None,
+                "note": "",
+            },
         }
+        if runtime.workspace is not None:
+            control_fp = _hawaii_control_fp_for_workspace(runtime.workspace)
+            mode = _read_hawaii_control_mode(control_fp)
+            active_action = runtime.active_action or {}
+            progress = _read_growth_progress(active_action.get("progress_fp")) if str(active_action.get("type") or "") == "hawaii" else {}
+            snapshot["hawaii"] = {
+                "running": bool(
+                    runtime.future is not None
+                    and not runtime.future.done()
+                    and str(active_action.get("type") or "") == "hawaii"
+                    and str(active_action.get("status") or "") == "running"
+                ),
+                "mode": mode,
+                "stage": str((progress or {}).get("stage") or ""),
+                "dr": (float((progress or {}).get("dr")) if (progress or {}).get("dr") is not None else None),
+                "note": str((progress or {}).get("note") or ""),
+            }
         if runtime.active_action is not None and runtime.active_action.get("status") == "running":
             with contextlib.suppress(Exception):
                 if runtime.active_action.get("type") == "neb":
                     snapshot["live_activity"] = _build_neb_live_payload(runtime.active_action, runtime.workspace)
                 elif runtime.active_action.get("type") == "minimize":
                     snapshot["live_activity"] = _build_minimize_live_payload(runtime.active_action)
+                elif runtime.active_action.get("type") == "hawaii":
+                    snapshot["live_activity"] = _build_hawaii_live_payload(runtime.active_action, runtime.workspace)
                 elif runtime.active_action.get("type") in {"initialize", "apply-reactions", "nanoreactor", "hessian-sample"}:
                     snapshot["live_activity"] = _build_growth_live_payload(runtime.active_action)
         if runtime.workspace is not None and runtime.workspace.queue_fp.exists():
@@ -6693,6 +7652,12 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 )
                 self._write_json({"ok": True, **result}, HTTPStatus.OK)
                 return
+            if self.path == "/api/hawaii-control":
+                result = self.server.submit_hawaii_control(
+                    mode=str(payload.get("mode") or "go"),
+                )
+                self._write_json({"ok": True, **result}, HTTPStatus.OK)
+                return
         except Exception as exc:
             error_message = _format_user_facing_error(exc)
             with contextlib.suppress(Exception):
@@ -6724,10 +7689,12 @@ def launch_mepd_drive(
     max_depth: int = 4,
     max_parallel_nebs: int = 1,
     network_splits: bool = True,
+    hawaii: bool = False,
     open_browser: bool = True,
 ) -> MepdDriveServer:
     explicit_directory = Path(directory).resolve() if directory else None
     startup_workspace_path = workspace_path
+    deferred_initialize_payload: dict[str, Any] | None = None
     if (
         startup_workspace_path is None
         and explicit_directory is not None
@@ -6760,30 +7727,48 @@ def launch_mepd_drive(
         else:
             base_directory = (Path.cwd() / "mepd-drive").resolve()
             run_dir = (base_directory / resolved_run_name).resolve()
-        initial_state = _initialize_workspace_job(
-            reactant={
-                "smiles": str(smiles).strip(),
+        if hawaii:
+            deferred_initialize_payload = {
+                "mode": "reactant-product" if str(product_smiles or "").strip() else "reactant",
+                "reactant_smiles": str(smiles).strip(),
+                "reactant_xyz": "",
+                "product_smiles": str(product_smiles).strip() if str(product_smiles or "").strip() else "",
+                "product_xyz": "",
+                "run_name": resolved_run_name,
+                "inputs_fp": str(resolved_inputs),
+                "reactions_fp": str(Path(reactions_fp).expanduser().resolve()) if reactions_fp else "",
+                "environment_smiles": str(environment_smiles or ""),
                 "charge": int(charge),
                 "multiplicity": int(multiplicity),
-            },
-            product={
-                "smiles": str(product_smiles).strip(),
-                "charge": int(charge),
-                "multiplicity": int(multiplicity),
-            } if str(product_smiles or "").strip() else None,
-            run_name=resolved_run_name,
-            workspace_dir=str(run_dir),
-            inputs_fp=str(resolved_inputs),
-            reactions_fp=str(Path(reactions_fp).expanduser().resolve()) if reactions_fp else None,
-            environment_smiles=str(environment_smiles or ""),
-            timeout_seconds=timeout_seconds,
-            max_nodes=max_nodes,
-            max_depth=max_depth,
-            max_parallel_nebs=max_parallel_nebs,
-            seed_only=bool(str(product_smiles or "").strip()),
-            network_splits=network_splits,
-            progress_fp=None,
-        )
+                "seed_only": bool(str(product_smiles or "").strip()),
+                "auto_start_hawaii": True,
+            }
+            initial_state = None
+        else:
+            initial_state = _initialize_workspace_job(
+                reactant={
+                    "smiles": str(smiles).strip(),
+                    "charge": int(charge),
+                    "multiplicity": int(multiplicity),
+                },
+                product={
+                    "smiles": str(product_smiles).strip(),
+                    "charge": int(charge),
+                    "multiplicity": int(multiplicity),
+                } if str(product_smiles or "").strip() else None,
+                run_name=resolved_run_name,
+                workspace_dir=str(run_dir),
+                inputs_fp=str(resolved_inputs),
+                reactions_fp=str(Path(reactions_fp).expanduser().resolve()) if reactions_fp else None,
+                environment_smiles=str(environment_smiles or ""),
+                timeout_seconds=timeout_seconds,
+                max_nodes=max_nodes,
+                max_depth=max_depth,
+                max_parallel_nebs=max_parallel_nebs,
+                seed_only=bool(str(product_smiles or "").strip()),
+                network_splits=network_splits,
+                progress_fp=None,
+            )
     else:
         base_directory = explicit_directory if explicit_directory is not None else (Path.cwd() / "mepd-drive").resolve()
     base_directory.mkdir(parents=True, exist_ok=True)
@@ -6801,4 +7786,8 @@ def launch_mepd_drive(
     )
     if open_browser:
         webbrowser.open(f"http://{host}:{server.server_address[1]}/")
+    if deferred_initialize_payload is not None and hasattr(server, "submit_initialize"):
+        server.submit_initialize(deferred_initialize_payload)
+    elif hawaii and initial_state is not None and hasattr(server, "submit_hawaii"):
+        server.submit_hawaii()
     return server

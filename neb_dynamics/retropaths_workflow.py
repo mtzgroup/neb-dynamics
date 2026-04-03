@@ -1151,6 +1151,7 @@ def apply_reactions_to_node(
     added_nodes = 0
     added_edges = 0
     merged_targets: list[int] = []
+    generated_targets_for_minimization: set[int] = set()
 
     for result_index in sorted(temp_pot.graph.nodes):
         if result_index == 0:
@@ -1177,6 +1178,7 @@ def apply_reactions_to_node(
                 generated_by="retropaths_apply_reactions",
             )
             added_nodes += 1
+            generated_targets_for_minimization.add(int(target_index))
         else:
             target_attrs = pot.graph.nodes[target_index]
             target_attrs.setdefault("molecule", copy_graph_like_molecule(result_molecule))
@@ -1187,6 +1189,9 @@ def apply_reactions_to_node(
                     spinmult=multiplicity,
                 )
                 target_attrs.setdefault("endpoint_optimized", False)
+                generated_targets_for_minimization.add(int(target_index))
+            elif not bool(target_attrs.get("endpoint_optimized", False)):
+                generated_targets_for_minimization.add(int(target_index))
 
         if not pot.graph.has_edge(target_index, node_index):
             edge_attrs = dict(temp_pot.graph.edges[(result_index, 0)])
@@ -1196,6 +1201,66 @@ def apply_reactions_to_node(
             added_edges += 1
         merged_targets.append(int(target_index))
 
+    minimized_targets = 0
+    failed_minimizations = 0
+    pending_generated_targets = sorted(
+        int(node_id)
+        for node_id in generated_targets_for_minimization
+        if int(node_id) in pot.graph.nodes
+        and pot.graph.nodes[int(node_id)].get("td") is not None
+        and not bool(pot.graph.nodes[int(node_id)].get("endpoint_optimized", False))
+    )
+    inputs_fp_value = getattr(workspace, "inputs_fp", None)
+    inputs_fp = Path(str(inputs_fp_value)).expanduser() if inputs_fp_value else None
+    if pending_generated_targets and inputs_fp is not None and inputs_fp.exists():
+        _write_growth_progress(
+            progress_fp,
+            graph=pot.graph,
+            growing_nodes=[int(node_index)],
+            title=f"Applying reaction templates to node {node_index}",
+            note=(
+                f"Optimizing {len(pending_generated_targets)} Retropaths-generated "
+                "structure(s) into minima."
+            ),
+            phase="optimizing",
+        )
+        run_inputs = RunInputs.open(inputs_fp)
+        pending_nodes = [pot.graph.nodes[int(node_id)]["td"] for node_id in pending_generated_targets]
+        for node_id, (optimized_td, error) in zip(
+            pending_generated_targets,
+            _optimize_endpoint_batch(nodes=pending_nodes, run_inputs=run_inputs),
+        ):
+            node_attrs = pot.graph.nodes[int(node_id)]
+            result_fp = None
+            if error is None:
+                result_fp = _persist_endpoint_optimization_result(
+                    workspace=workspace,
+                    node_index=int(node_id),
+                    optimized_td=optimized_td,
+                )
+                if result_fp is not None:
+                    optimized_td = _strip_cached_result(optimized_td)
+            node_attrs["td"] = optimized_td
+            node_attrs["endpoint_optimized"] = error is None
+            if error is None:
+                minimized_targets += 1
+                node_attrs.pop("endpoint_optimization_error", None)
+                if result_fp is not None:
+                    node_attrs["endpoint_optimization_result_fp"] = result_fp
+            else:
+                failed_minimizations += 1
+                node_attrs["endpoint_optimization_error"] = error
+                node_attrs.pop("endpoint_optimization_result_fp", None)
+    elif pending_generated_targets:
+        for node_id in pending_generated_targets:
+            node_attrs = pot.graph.nodes[int(node_id)]
+            node_attrs["endpoint_optimized"] = False
+            node_attrs["endpoint_optimization_error"] = (
+                "Skipped Retropaths-product minimization because no inputs file was found."
+            )
+            node_attrs.pop("endpoint_optimization_result_fp", None)
+        failed_minimizations = len(pending_generated_targets)
+
     pot.write_to_disk(workspace.neb_pot_fp)
     build_retropaths_neb_queue(pot=pot, queue_fp=workspace.queue_fp, overwrite=False)
     _write_growth_progress(
@@ -1203,17 +1268,24 @@ def apply_reactions_to_node(
         graph=pot.graph,
         growing_nodes=[],
         title=f"Applying reaction templates to node {node_index}",
-        note=f"Merged {added_nodes} new node(s) and {added_edges} new edge(s).",
+        note=(
+            f"Merged {added_nodes} new node(s), created {added_edges} new edge(s), "
+            f"and optimized {minimized_targets} Retropaths-generated minima "
+            f"({failed_minimizations} failed)."
+        ),
         phase="finished",
     )
     return {
         "message": (
             f"Applied reactions to node {node_index}: merged {added_nodes} new nodes "
-            f"and {added_edges} new edges."
+            f"and {added_edges} new edges. Optimized {minimized_targets} generated minima "
+            f"({failed_minimizations} failed)."
         ),
         "node_index": int(node_index),
         "added_nodes": int(added_nodes),
         "added_edges": int(added_edges),
+        "optimized_generated_minima": int(minimized_targets),
+        "failed_generated_minima": int(failed_minimizations),
         "targets": merged_targets,
     }
 
