@@ -3638,13 +3638,29 @@ def _drive_html() -> str:
       padding: 14px;
       box-shadow: var(--shadow);
     }
-    .exploration-shell {
+    .exploration-shell, .kinetics-shell {
       border: 1px solid var(--line);
       border-radius: var(--radius-lg);
       background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
       padding: 14px;
       box-shadow: var(--shadow);
     }
+    .kinetics-shell { margin-top: 16px; }
+    .json-textarea {
+      min-height: 160px;
+      font-family: "IBM Plex Mono", "SFMono-Regular", Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre;
+      tab-size: 2;
+    }
+    .json-input-controls {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+    .json-input-controls button { min-height: 32px; padding: 6px 10px; }
     .path-browser-head { display: flex; align-items: start; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
     .path-browser-head h3 { margin: 0; font-size: 17px; }
     .path-browser-controls { display: grid; gap: 10px; margin-bottom: 12px; }
@@ -4079,75 +4095,77 @@ def _drive_html() -> str:
           </div>
         </div>
         <div class="exploration-shell">
-          <div class="tool-tabs">
-            <button class="tool-tab active" data-tool-tab="exploration-shell" data-tool-target="exploration">Exploration</button>
-            <button class="tool-tab" data-tool-tab="exploration-shell" data-tool-target="kinetics">Kinetics</button>
+          <div class="section-head">
+            <h2>Exploration</h2>
+            <div class="muted">Queue NEBs, minimizations, reaction-template application, nanoreactor sampling, Hessian minima exploration, and inspect the selected graph item.</div>
           </div>
-          <div id="tool-panel-exploration-shell-exploration" class="tool-panel active">
-            <div class="section-head">
-              <h2>Exploration</h2>
-              <div class="muted">Queue NEBs, minimizations, reaction-template application, nanoreactor sampling, Hessian minima exploration, and inspect the selected graph item.</div>
-            </div>
-            <div id="detail-title" style="font-size:22px; margin-bottom:6px;">Select a node or edge</div>
-            <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
-            <div class="detail-tabs">
-              <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
-              <button class="detail-tab" data-tab="template-data">Template Data</button>
-              <button class="detail-tab" data-tab="structures">Structures</button>
-              <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
-            </div>
-            <div id="panel-targeted" class="detail-panel active"></div>
-            <div id="panel-template-data" class="detail-panel"></div>
-            <div id="panel-structures" class="detail-panel"></div>
-            <div id="panel-manual-edge" class="detail-panel">
-              <div class="form-grid">
-                <div>
-                  <label>Manual edge source node</label>
-                  <input id="manual-edge-source" type="number" min="0" placeholder="Source node id" />
-                </div>
-                <div>
-                  <label>Manual edge target node</label>
-                  <input id="manual-edge-target" type="number" min="0" placeholder="Target node id" />
-                </div>
-                <div>
-                  <label>Manual edge label</label>
-                  <input id="manual-edge-label" type="text" placeholder="Optional reaction label" />
-                </div>
-                <div style="display:flex; align-items:end;">
-                  <button id="add-manual-edge" class="secondary" style="width:100%;">Attempt To Add Manual Edge</button>
-                </div>
-              </div>
-            </div>
+          <div id="detail-title" style="font-size:22px; margin-bottom:6px;">Select a node or edge</div>
+          <div id="detail-summary" class="muted">Click a node to inspect its geometry or click an edge to inspect the targeted reaction, template data, and queue NEB work.</div>
+          <div class="detail-tabs">
+            <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
+            <button class="detail-tab" data-tab="template-data">Template Data</button>
+            <button class="detail-tab" data-tab="structures">Structures</button>
+            <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
           </div>
-          <div id="tool-panel-exploration-shell-kinetics" class="tool-panel">
-            <div class="section-head">
-              <h2>Kinetics</h2>
-              <div class="muted">Run a kinetic Monte Carlo model from the current network.</div>
-            </div>
+          <div id="panel-targeted" class="detail-panel active"></div>
+          <div id="panel-template-data" class="detail-panel"></div>
+          <div id="panel-structures" class="detail-panel"></div>
+          <div id="panel-manual-edge" class="detail-panel">
             <div class="form-grid">
               <div>
-                <label>Kinetics temperature (K)</label>
-                <input id="kmc-temperature" type="number" step="0.1" min="0" value="298.15" />
+                <label>Manual edge source node</label>
+                <input id="manual-edge-source" type="number" min="0" placeholder="Source node id" />
               </div>
               <div>
-                <label>Kinetics final time</label>
-                <input id="kmc-final-time" type="number" step="any" min="0" value="" />
+                <label>Manual edge target node</label>
+                <input id="manual-edge-target" type="number" min="0" placeholder="Target node id" />
               </div>
               <div>
-                <label>Kinetics max steps</label>
-                <input id="kmc-max-steps" type="number" step="1" min="1" value="200" />
+                <label>Manual edge label</label>
+                <input id="manual-edge-label" type="text" placeholder="Optional reaction label" />
               </div>
-              <div>
-                <label>Initial conditions JSON</label>
-                <textarea id="kmc-initial-conditions" placeholder='{"0": 1.0, "4": 0.25}'></textarea>
+              <div style="display:flex; align-items:end;">
+                <button id="add-manual-edge" class="secondary" style="width:100%;">Attempt To Add Manual Edge</button>
               </div>
             </div>
-            <div style="margin-top:12px;">
-              <button id="run-kmc" class="secondary">Run Kinetics Model</button>
-            </div>
-            <div id="kmc-panel" style="margin-top:12px;"></div>
           </div>
         </div>
+      </div>
+      <div id="kinetics-shell" class="kinetics-shell">
+        <div class="section-head">
+          <h2>Kinetics</h2>
+          <div class="muted">Run a kinetic Monte Carlo model from the current network.</div>
+        </div>
+        <div class="form-grid">
+          <div>
+            <label>Kinetics temperature (K)</label>
+            <input id="kmc-temperature" type="number" step="0.1" min="0" value="298.15" />
+          </div>
+          <div>
+            <label>Kinetics final time</label>
+            <input id="kmc-final-time" type="number" step="any" min="0" value="" />
+          </div>
+          <div>
+            <label>Kinetics max steps</label>
+            <input id="kmc-max-steps" type="number" step="1" min="1" value="200" />
+          </div>
+          <div>
+            <label>Initial conditions JSON</label>
+            <textarea
+              id="kmc-initial-conditions"
+              class="json-textarea"
+              spellcheck="false"
+              placeholder='{\n  "0": 1.0,\n  "4": 0.25\n}'
+            ></textarea>
+            <div class="json-input-controls">
+              <button id="format-kmc-json" class="secondary" type="button">Format JSON</button>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;">
+          <button id="run-kmc" class="secondary">Run Kinetics Model</button>
+        </div>
+        <div id="kmc-panel" style="margin-top:12px;"></div>
       </div>
     </div>
 
@@ -6259,7 +6277,13 @@ def _drive_html() -> str:
           const heightInner = Math.max(1, height - 88);
           const area = widthInner * heightInner;
           const k = Math.max(8, Math.sqrt(area / Math.max(1, nodeIds.length)));
-          const iterations = Math.max(28, Math.min(130, 26 + nodeIds.length * 2));
+          const largeGraph = nodeIds.length > 120;
+          const iterations = largeGraph
+            ? Math.max(8, Math.min(24, 8 + Math.floor(nodeIds.length / 28)))
+            : Math.max(24, Math.min(84, 20 + nodeIds.length));
+          const repulsionPairBudget = largeGraph
+            ? Math.min(2600, Math.max(400, nodeIds.length * 12))
+            : 0;
           let temperature = Math.max(14, Math.min(width, height) * 0.11);
           const basePositions = new Map();
           nodeIds.forEach((nodeId) => {
@@ -6272,14 +6296,17 @@ def _drive_html() -> str:
             const disp = new Map();
             nodeIds.forEach((nodeId) => disp.set(nodeId, { x: 0, y: 0 }));
 
-            for (let i = 0; i < nodeIds.length; i += 1) {
-              const idA = nodeIds[i];
-              const posA = positions.get(idA);
-              if (!posA) continue;
-              for (let j = i + 1; j < nodeIds.length; j += 1) {
+            if (largeGraph) {
+              const count = nodeIds.length;
+              for (let pair = 0; pair < repulsionPairBudget; pair += 1) {
+                const i = (pair * 37 + iter * 19) % count;
+                const j = (pair * 53 + iter * 29 + 1) % count;
+                if (i === j) continue;
+                const idA = nodeIds[i];
                 const idB = nodeIds[j];
+                const posA = positions.get(idA);
                 const posB = positions.get(idB);
-                if (!posB) continue;
+                if (!posA || !posB) continue;
                 let dx = Number(posA.x) - Number(posB.x);
                 let dy = Number(posA.y) - Number(posB.y);
                 let dist = Math.hypot(dx, dy);
@@ -6292,13 +6319,44 @@ def _drive_html() -> str:
                 }
                 const nx = dx / dist;
                 const ny = dy / dist;
-                const repulse = Math.min(340, (k * k) / Math.max(dist, 1.0));
+                const repulse = Math.min(280, (k * k) / Math.max(dist, 1.0));
                 const dispA = disp.get(idA);
                 const dispB = disp.get(idB);
+                if (!dispA || !dispB) continue;
                 dispA.x += nx * repulse;
                 dispA.y += ny * repulse;
                 dispB.x -= nx * repulse;
                 dispB.y -= ny * repulse;
+              }
+            } else {
+              for (let i = 0; i < nodeIds.length; i += 1) {
+                const idA = nodeIds[i];
+                const posA = positions.get(idA);
+                if (!posA) continue;
+                for (let j = i + 1; j < nodeIds.length; j += 1) {
+                  const idB = nodeIds[j];
+                  const posB = positions.get(idB);
+                  if (!posB) continue;
+                  let dx = Number(posA.x) - Number(posB.x);
+                  let dy = Number(posA.y) - Number(posB.y);
+                  let dist = Math.hypot(dx, dy);
+                  if (!Number.isFinite(dist) || dist < 0.01) {
+                    const jitter = ((i + 1) * (j + 3) * 17 + iter * 13) % 13;
+                    const angle = (jitter / 13) * Math.PI * 2;
+                    dx = Math.cos(angle) * 0.5;
+                    dy = Math.sin(angle) * 0.5;
+                    dist = Math.hypot(dx, dy);
+                  }
+                  const nx = dx / dist;
+                  const ny = dy / dist;
+                  const repulse = Math.min(340, (k * k) / Math.max(dist, 1.0));
+                  const dispA = disp.get(idA);
+                  const dispB = disp.get(idB);
+                  dispA.x += nx * repulse;
+                  dispA.y += ny * repulse;
+                  dispB.x -= nx * repulse;
+                  dispB.y -= ny * repulse;
+                }
               }
             }
 
@@ -6921,8 +6979,32 @@ def _drive_html() -> str:
       }
     }
 
+    function formatKmcInitialConditionsInput({ showErrors = true } = {}) {
+      const input = document.getElementById("kmc-initial-conditions");
+      if (!input) return false;
+      const raw = String(input.value || "").trim();
+      if (!raw) {
+        input.value = "{}";
+        return true;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        input.value = JSON.stringify(parsed, null, 2);
+        return true;
+      } catch (error) {
+        if (showErrors) {
+          setBanner("Initial conditions must be valid JSON.", true);
+          setSubtext('Use a JSON object like {"0": 1.0, "4": 0.25}.');
+        }
+        return false;
+      }
+    }
+
     async function runKmcModel() {
       try {
+        if (!formatKmcInitialConditionsInput({ showErrors: true })) {
+          return;
+        }
         setBanner("Running kinetic model...");
         setSubtext("Simulating population flow across the current NEB-backed network.");
         const result = await postJson("/api/run-kinetics", {
@@ -7073,6 +7155,12 @@ def _drive_html() -> str:
     document.getElementById("load-workspace").addEventListener("click", loadWorkspace);
     document.getElementById("minimize-all").addEventListener("click", queueMinimizeAll);
     document.getElementById("add-manual-edge").addEventListener("click", addManualEdge);
+    document.getElementById("format-kmc-json").addEventListener("click", () => {
+      formatKmcInitialConditionsInput({ showErrors: true });
+    });
+    document.getElementById("kmc-initial-conditions").addEventListener("blur", () => {
+      formatKmcInitialConditionsInput({ showErrors: false });
+    });
     document.getElementById("run-kmc").addEventListener("click", runKmcModel);
     document.getElementById("clear-product-path").addEventListener("click", clearProductPathHighlight);
     document.getElementById("hawaii-go").addEventListener("click", () => setHawaiiStoplight("go"));

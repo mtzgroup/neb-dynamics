@@ -880,8 +880,9 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="path-source-node"' in html
     assert 'id="product-path-list"' in html
     assert 'id="clear-product-path"' in html
-    assert 'data-tool-tab="exploration-shell"' in html
-    assert 'data-tool-target="kinetics"' in html
+    assert 'id="kinetics-shell"' in html
+    assert 'id="format-kmc-json"' in html
+    assert 'class="json-textarea"' in html
     assert ">Kinetics</h2>" in html
     assert 'id="run-kmc"' in html
     assert "Kinetics temperature (K)" in html
@@ -914,6 +915,7 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "const hessianGroups = new Map();" in html
     assert "hessian_provenance_edge" in html
     assert "function runKmcModel()" in html
+    assert "function formatKmcInitialConditionsInput({ showErrors = true } = {})" in html
     assert "pendingLiveActivity" in html
     assert "function renderNetworkToolbar()" in html
     assert "queueNanoreactor" in html
