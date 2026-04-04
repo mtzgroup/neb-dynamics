@@ -124,11 +124,13 @@ def _format_drive_access_panel(
     actual_port: int,
     ssh_login: str | None = None,
     local_port: int | None = None,
+    access_url: str | None = None,
 ) -> Panel:
     local_port = int(local_port or actual_port)
+    ui_url = str(access_url or f"http://{actual_host}:{actual_port}/")
     lines = [
         "[bold cyan]MEPD Drive[/bold cyan]",
-        f"[white]http://{actual_host}:{actual_port}/[/white]",
+        f"[white]{ui_url}[/white]",
         "[dim]Press Ctrl+C to stop the server.[/dim]",
     ]
     if ssh_login:
@@ -137,7 +139,7 @@ def _format_drive_access_panel(
                 "",
                 "[bold]SSH Tunnel[/bold]",
                 f"[white]ssh -N -L {local_port}:127.0.0.1:{actual_port} {ssh_login}[/white]",
-                f"[dim]Then open http://127.0.0.1:{local_port}/ on your laptop.[/dim]",
+                f"[dim]Then open {ui_url.replace(f'http://{actual_host}:{actual_port}/', f'http://127.0.0.1:{local_port}/')} on your laptop.[/dim]",
             ]
         )
     return Panel.fit("\n".join(lines), border_style="cyan")
@@ -3135,12 +3137,17 @@ def drive(
         open_browser=not no_open,
     )
     actual_host, actual_port = server.server_address[:2]
+    access_url = f"http://{actual_host}:{actual_port}/"
+    ui_token = str(getattr(server, "ui_token", "") or "").strip()
+    if ui_token:
+        access_url = f"{access_url}?token={ui_token}"
     console.print(
         _format_drive_access_panel(
             actual_host=actual_host,
             actual_port=actual_port,
             ssh_login=ssh_login,
             local_port=local_port,
+            access_url=access_url,
         )
     )
     try:

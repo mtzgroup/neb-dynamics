@@ -462,7 +462,14 @@ class RunInputs:
             ase_progs = ['omol25']
             assert self.program in ase_progs, f"{self.program} not yet supported with ASEEngine. Use one of {ase_progs} instead."
             if self.program == 'omol25':
-                from fairchem.core import pretrained_mlip, FAIRChemCalculator
+                try:
+                    from fairchem.core import pretrained_mlip, FAIRChemCalculator
+                except ModuleNotFoundError as exc:
+                    raise ModuleNotFoundError(
+                        "ASE program 'omol25' requires 'fairchem-core'. "
+                        "Install a compatible fairchem-core build (currently unavailable on Python 3.14) "
+                        "or use a different engine/program."
+                    ) from exc
                 predictor = pretrained_mlip.load_predict_unit(
                     "/home/diptarka/fairchem/esen_sm_conserving_all.pt", device="cuda")
                 calc = FAIRChemCalculator(predictor, task_name="omol")

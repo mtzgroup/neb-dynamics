@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import hmac
 import json
 import multiprocessing
 import os
+import re
+import secrets
 import shutil
 import threading
 import time
@@ -16,6 +19,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import parse_qs, urlsplit
 
 from qcio import ProgramArgs, Structure
 
@@ -66,6 +70,49 @@ from neb_dynamics.retropaths_workflow import (
 )
 
 _MERGED_DRIVE_POT_CACHE: dict[tuple[str, bool], Pot] = {}
+_RUN_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+
+
+def _is_within_directory(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+def _validate_run_name(raw_run_name: str) -> str:
+    run_name = str(raw_run_name or "").strip()
+    if not run_name:
+        raise ValueError("Run name cannot be empty.")
+    if not _RUN_NAME_PATTERN.fullmatch(run_name):
+        raise ValueError(
+            "Run name may contain only letters, digits, '.', '-', '_' and must not include path separators."
+        )
+    return run_name
+
+
+def _validate_workspace_path_for_init(
+    workspace_path: Path,
+    *,
+    allowed_base_dir: Path | None,
+) -> None:
+    resolved_workspace = workspace_path.resolve()
+    if resolved_workspace == resolved_workspace.parent:
+        raise ValueError("Refusing to initialize workspace at filesystem root.")
+    if allowed_base_dir is not None:
+        resolved_base = allowed_base_dir.resolve()
+        if not _is_within_directory(resolved_workspace, resolved_base):
+            raise ValueError(
+                f"Workspace path `{resolved_workspace}` escapes base directory `{resolved_base}`."
+            )
+        if resolved_workspace == resolved_base:
+            raise ValueError("Workspace path must be a subdirectory of the configured drive base directory.")
+
+
+def _is_loopback_host(host: str) -> bool:
+    normalized = str(host or "").strip().lower()
+    return normalized in {"127.0.0.1", "localhost", "::1"}
 
 
 def _drive_merge_version(workspace: RetropathsWorkspace) -> str:
@@ -1297,6 +1344,7 @@ def _materialize_deployment_inputs(
     theory_method: str | None,
     theory_basis: str | None,
 ) -> Path:
+    run_name = _validate_run_name(run_name)
     run_inputs = RunInputs.open(template_fp)
     selected_engine = str(getattr(run_inputs, "engine_name", "") or "").strip().lower()
     if not selected_engine:
@@ -2150,8 +2198,14 @@ def _initialize_workspace_job(
     seed_only: bool = False,
     network_splits: bool = True,
     progress_fp: str | None = None,
+    allowed_base_dir: str | None = None,
 ) -> dict[str, Any]:
     workspace_path = Path(workspace_dir).resolve()
+    allowed_base = Path(allowed_base_dir).resolve() if allowed_base_dir else None
+    _validate_workspace_path_for_init(
+        workspace_path,
+        allowed_base_dir=allowed_base,
+    )
     if workspace_path.exists():
         shutil.rmtree(workspace_path)
     workspace = create_workspace(
@@ -2257,6 +2311,18 @@ def _workspace_snapshot_payload(
         "product": product,
         "message": message or f"Loaded workspace {workspace.run_name}.",
     }
+
+
+def _workspace_charge_multiplicity(workspace: RetropathsWorkspace) -> tuple[int, int]:
+    with contextlib.suppress(Exception):
+        pot = Pot.read_from_disk(workspace.neb_pot_fp)
+        for node_index in pot.graph.nodes:
+            td = pot.graph.nodes[node_index].get("td")
+            structure = getattr(td, "structure", None)
+            if structure is None:
+                continue
+            return int(structure.charge), int(structure.multiplicity)
+    return 0, 1
 
 
 def _optimize_selected_nodes(
@@ -3454,9 +3520,15 @@ def _materialize_workspace_from_network_splits(path: Path) -> RetropathsWorkspac
 def _load_existing_workspace_job(workspace_path: str, *, network_splits: bool = True) -> dict[str, Any]:
     path = Path(workspace_path).expanduser().resolve()
     workspace_dir = path.parent if path.is_file() else path
+    resolved_workspace_dir = workspace_dir.resolve()
     workspace_json_fp = workspace_dir / "workspace.json"
     if workspace_json_fp.exists():
         workspace = RetropathsWorkspace.read(workspace_dir)
+        configured_workdir = Path(str(workspace.workdir)).expanduser().resolve()
+        if configured_workdir != resolved_workspace_dir:
+            raise ValueError(
+                "workspace.json `workdir` does not match the selected workspace directory."
+            )
     else:
         workspace = _materialize_workspace_from_network_splits(path)
         if workspace is None:
@@ -3474,11 +3546,12 @@ def _load_existing_workspace_job(workspace_path: str, *, network_splits: bool = 
     if missing:
         raise ValueError(f"Workspace is missing required files: {', '.join(missing)}")
     with contextlib.suppress(Exception):
+        charge, multiplicity = _workspace_charge_multiplicity(workspace)
         queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
         if queue.recover_stale_running_items(
             output_dir=workspace.queue_output_dir,
-            charge=0,
-            multiplicity=1,
+            charge=charge,
+            multiplicity=multiplicity,
         ):
             queue.write_to_disk(workspace.queue_fp)
     # Rebuild the annotated overlay immediately so completed NEB results
@@ -4196,6 +4269,23 @@ def _drive_html() -> str:
 
   <script>
     const ns = "http://www.w3.org/2000/svg";
+    const DRIVE_URL_TOKEN = (() => {
+      try {
+        return String(new URLSearchParams(window.location.search).get("token") || "");
+      } catch (_error) {
+        return "";
+      }
+    })();
+    if (DRIVE_URL_TOKEN) {
+      try {
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("token");
+        window.history.replaceState({}, document.title, cleanUrl.toString());
+      } catch (_error) {}
+    }
+    function authHeaders() {
+      return DRIVE_URL_TOKEN ? { "X-MEPD-Token": DRIVE_URL_TOKEN } : {};
+    }
     const state = {
       snapshot: null,
       selected: null,
@@ -4517,7 +4607,7 @@ def _drive_html() -> str:
     async function postJson(url, payload) {
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders() },
         body: JSON.stringify(payload || {}),
       });
       let data = {};
@@ -6718,7 +6808,7 @@ def _drive_html() -> str:
 
     async function refreshState() {
       try {
-        const response = await fetch("/api/state");
+        const response = await fetch("/api/state", { headers: authHeaders() });
         const snapshot = await readJsonResponse(response);
         if (!response.ok) throw new Error(snapshot.error || `State refresh failed: ${response.status}`);
         if (snapshot.active_action && snapshot.active_action.status === "running") {
@@ -7203,6 +7293,9 @@ class MepdDriveServer(ThreadingHTTPServer):
         max_parallel_nebs: int,
         network_splits: bool = True,
         initial_state: dict[str, Any] | None = None,
+        require_api_token: bool = False,
+        api_token: str | None = None,
+        max_request_bytes: int = 1_000_000,
     ):
         self.base_directory = base_directory
         self.inputs_fp = inputs_fp
@@ -7212,6 +7305,10 @@ class MepdDriveServer(ThreadingHTTPServer):
         self.max_depth = max_depth
         self.max_parallel_nebs = max_parallel_nebs
         self.network_splits = bool(network_splits)
+        self.require_api_token = bool(require_api_token)
+        self.api_token = str(api_token or "")
+        self.ui_token = self.api_token if self.require_api_token else ""
+        self.max_request_bytes = int(max_request_bytes)
         self.state_lock = threading.Lock()
         self.runtime = _DriveRuntimeState()
         self._drive_payload_cache_key: tuple[Any, ...] | None = None
@@ -7489,7 +7586,9 @@ class MepdDriveServer(ThreadingHTTPServer):
             seed_only = bool(payload_seed_only)
         initialize_label = "Seeding workspace network..." if seed_only else "Building Retropaths network..."
 
-        run_name = str(payload.get("run_name") or "").strip() or f"mepd-drive-{int(time.time())}"
+        run_name = _validate_run_name(
+            str(payload.get("run_name") or "").strip() or f"mepd-drive-{int(time.time())}"
+        )
         workspace_dir = (self.base_directory / run_name).resolve()
         progress_fp: str | None = None
         if not seed_only:
@@ -7558,6 +7657,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             seed_only=seed_only,
             network_splits=getattr(self, "network_splits", True),
             progress_fp=progress_fp,
+            allowed_base_dir=str(self.base_directory.resolve()),
             label=initialize_label,
         )
         future.add_done_callback(_finish_initialize)
@@ -7574,6 +7674,11 @@ class MepdDriveServer(ThreadingHTTPServer):
         workspace_path = str(payload.get("workspace_path") or "").strip()
         if not workspace_path:
             raise ValueError("A workspace path is required.")
+        if bool(getattr(self, "require_api_token", False)):
+            requested_path = Path(workspace_path).expanduser().resolve()
+            requested_workspace_dir = requested_path.parent if requested_path.is_file() else requested_path
+            if not _is_within_directory(requested_workspace_dir, self.base_directory.resolve()):
+                raise ValueError("Workspace path must be within the configured drive base directory.")
 
         def _finish_load(future: Future) -> None:
             with self.state_lock:
@@ -7945,10 +8050,11 @@ class MepdDriveServer(ThreadingHTTPServer):
             overwrite=False,
         )
         with contextlib.suppress(Exception):
+            charge, multiplicity = _workspace_charge_multiplicity(workspace)
             if queue.recover_stale_running_items(
                 output_dir=workspace.queue_output_dir,
-                charge=0,
-                multiplicity=1,
+                charge=charge,
+                multiplicity=multiplicity,
             ):
                 queue.write_to_disk(workspace.queue_fp)
                 if getattr(self, "network_splits", True):
@@ -8108,8 +8214,9 @@ class MepdDriveServer(ThreadingHTTPServer):
                     workspace=runtime.workspace,
                     runtime=runtime,
                 )
-            except Exception:
-                with contextlib.suppress(Exception):
+            except Exception as exc:
+                snapshot["drive_error"] = _format_user_facing_error(exc)
+                try:
                     snapshot["drive"] = _call_drive_payload_builder(
                         _build_drive_payload_fast,
                         runtime.workspace,
@@ -8118,6 +8225,11 @@ class MepdDriveServer(ThreadingHTTPServer):
                         active_action=runtime.active_action,
                         network_splits=getattr(self, "network_splits", True),
                     )
+                except Exception as fast_exc:
+                    snapshot["drive_error"] = (
+                        f"{snapshot.get('drive_error', '')}; fallback failed: "
+                        f"{_format_user_facing_error(fast_exc)}"
+                    ).strip("; ")
         return snapshot
 
     def server_close(self) -> None:
@@ -8129,6 +8241,32 @@ class MepdDriveServer(ThreadingHTTPServer):
 class _DriveHandler(BaseHTTPRequestHandler):
     server: MepdDriveServer
 
+    def _split_request_path(self) -> tuple[str, dict[str, list[str]]]:
+        parsed = urlsplit(self.path)
+        return parsed.path, parse_qs(parsed.query, keep_blank_values=False)
+
+    def _request_token(self) -> str:
+        bearer = str(self.headers.get("Authorization") or "").strip()
+        if bearer.lower().startswith("bearer "):
+            return bearer[7:].strip()
+        header_token = str(self.headers.get("X-MEPD-Token") or "").strip()
+        if header_token:
+            return header_token
+        _path, query = self._split_request_path()
+        token_values = query.get("token") or []
+        if token_values:
+            return str(token_values[0]).strip()
+        return ""
+
+    def _is_authorized(self) -> bool:
+        if not bool(getattr(self.server, "require_api_token", False)):
+            return True
+        expected = str(getattr(self.server, "api_token", "") or "")
+        provided = self._request_token()
+        if not expected or not provided:
+            return False
+        return hmac.compare_digest(provided, expected)
+
     def _write_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(int(status))
@@ -8138,12 +8276,30 @@ class _DriveHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _read_json(self) -> dict[str, Any]:
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Invalid Content-Length header.") from exc
+        if length < 0:
+            raise ValueError("Invalid negative Content-Length header.")
+        max_request_bytes = int(getattr(self.server, "max_request_bytes", 1_000_000) or 1_000_000)
+        if length > max_request_bytes:
+            raise ValueError(
+                f"Request body too large ({length} bytes). Limit is {max_request_bytes} bytes."
+            )
         raw = self.rfile.read(length) if length else b"{}"
+        if len(raw) > max_request_bytes:
+            raise ValueError(
+                f"Request body too large ({len(raw)} bytes). Limit is {max_request_bytes} bytes."
+            )
         return json.loads(raw.decode("utf-8") or "{}")
 
     def do_GET(self) -> None:
-        if self.path == "/":
+        route_path, _query = self._split_request_path()
+        if route_path == "/":
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
             body = _drive_html().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -8151,17 +8307,24 @@ class _DriveHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
-        if self.path == "/api/state":
+        if route_path == "/api/state":
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
             self._write_json(self.server.snapshot())
             return
-        if self.path.startswith("/edge_visualizations/"):
+        if route_path.startswith("/edge_visualizations/"):
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
             with self.server.state_lock:
                 workspace = self.server.runtime.workspace
             if workspace is None:
                 self.send_error(404)
                 return
-            target = (workspace.edge_visualizations_dir / Path(self.path).name).resolve()
-            if not target.exists():
+            edge_dir = workspace.edge_visualizations_dir.resolve()
+            target = (edge_dir / Path(route_path).name).resolve()
+            if not _is_within_directory(target, edge_dir) or not target.is_file():
                 self.send_error(404)
                 return
             body = target.read_bytes()
@@ -8175,32 +8338,36 @@ class _DriveHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            route_path, _query = self._split_request_path()
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
             payload = self._read_json()
-            if self.path == "/api/initialize":
+            if route_path == "/api/initialize":
                 self.server.submit_initialize(payload)
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
-            if self.path == "/api/load-workspace":
+            if route_path == "/api/load-workspace":
                 self.server.submit_load_workspace(payload)
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
-            if self.path == "/api/minimize":
+            if route_path == "/api/minimize":
                 self.server.submit_minimize([int(value) for value in payload.get("node_ids", [])])
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
-            if self.path == "/api/apply-reactions":
+            if route_path == "/api/apply-reactions":
                 self.server.submit_apply_reactions(
                     node_id=int(payload["node_id"]),
                 )
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
-            if self.path == "/api/nanoreactor":
+            if route_path == "/api/nanoreactor":
                 self.server.submit_nanoreactor(
                     node_id=int(payload["node_id"]),
                 )
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
-            if self.path == "/api/hessian-sample":
+            if route_path == "/api/hessian-sample":
                 self.server.submit_hessian_sample(
                     dr=float(payload.get("dr", 1.0)),
                     max_candidates=int(payload.get("max_candidates") or 100),
@@ -8211,14 +8378,14 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 )
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
-            if self.path == "/api/run-neb":
+            if route_path == "/api/run-neb":
                 self.server.submit_run_neb(
                     source_node=int(payload["source_node"]),
                     target_node=int(payload["target_node"]),
                 )
                 self._write_json({"ok": True}, HTTPStatus.ACCEPTED)
                 return
-            if self.path == "/api/add-edge":
+            if route_path == "/api/add-edge":
                 result = self.server.submit_add_edge(
                     source_node=int(payload["source_node"]),
                     target_node=int(payload["target_node"]),
@@ -8226,7 +8393,7 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 )
                 self._write_json({"ok": True, **result}, HTTPStatus.ACCEPTED)
                 return
-            if self.path in {"/api/run-kmc", "/api/run-kinetics"}:
+            if route_path in {"/api/run-kmc", "/api/run-kinetics"}:
                 result = self.server.submit_run_kmc(
                     temperature_kelvin=float(payload.get("temperature_kelvin", 298.15)),
                     final_time=(float(payload["final_time"]) if payload.get("final_time") not in {None, ""} else None),
@@ -8235,7 +8402,7 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 )
                 self._write_json({"ok": True, **result}, HTTPStatus.OK)
                 return
-            if self.path == "/api/hawaii-control":
+            if route_path == "/api/hawaii-control":
                 result = self.server.submit_hawaii_control(
                     mode=str(payload.get("mode") or "go"),
                 )
@@ -8278,6 +8445,8 @@ def launch_mepd_drive(
     explicit_directory = Path(directory).resolve() if directory else None
     startup_workspace_path = workspace_path
     deferred_initialize_payload: dict[str, Any] | None = None
+    require_api_token = not _is_loopback_host(host)
+    api_token = secrets.token_urlsafe(24) if require_api_token else None
     if (
         startup_workspace_path is None
         and explicit_directory is not None
@@ -8303,7 +8472,9 @@ def launch_mepd_drive(
         resolved_inputs = Path(str(inputs_fp)).expanduser().resolve() if inputs_fp else None
         if resolved_inputs is None:
             raise ValueError("An inputs TOML path is required to start drive from SMILES.")
-        resolved_run_name = str(run_name or "").strip() or f"mepd-drive-{int(time.time())}"
+        resolved_run_name = _validate_run_name(
+            str(run_name or "").strip() or f"mepd-drive-{int(time.time())}"
+        )
         if explicit_directory is not None:
             run_dir = explicit_directory
             base_directory = run_dir.parent
@@ -8351,6 +8522,7 @@ def launch_mepd_drive(
                 seed_only=bool(str(product_smiles or "").strip()),
                 network_splits=network_splits,
                 progress_fp=None,
+                allowed_base_dir=str(base_directory.resolve()),
             )
     else:
         base_directory = explicit_directory if explicit_directory is not None else (Path.cwd() / "mepd-drive").resolve()
@@ -8366,9 +8538,14 @@ def launch_mepd_drive(
         max_parallel_nebs=max_parallel_nebs,
         network_splits=network_splits,
         initial_state=initial_state,
+        require_api_token=require_api_token,
+        api_token=api_token,
     )
     if open_browser:
-        webbrowser.open(f"http://{host}:{server.server_address[1]}/")
+        url = f"http://{host}:{server.server_address[1]}/"
+        if require_api_token and api_token:
+            url = f"{url}?token={api_token}"
+        webbrowser.open(url)
     if deferred_initialize_payload is not None and hasattr(server, "submit_initialize"):
         server.submit_initialize(deferred_initialize_payload)
     elif hawaii and initial_state is not None and hasattr(server, "submit_hawaii"):

@@ -71,17 +71,40 @@ class Molecule(nx.Graph):
     @classmethod
     def from_serializable(cls, data):
         molecule = cls()
-        if isinstance(data, dict):
-            if 'nodes' in data and 'edges' in data:
-                for node, attrs in data['nodes']:
-                    molecule.add_node(node, **attrs)
-                for edge in data['edges']:
-                    molecule.add_edge(*edge[:2], **edge[2])
-            elif 'directed' in data and 'multigraph' in data and 'graph' in data:
-                for node in data['nodes']:
-                    molecule.add_node(node.pop('id'), **node)
-                for link in data['links']:
-                    molecule.add_edge(link['source'], link['target'], **link)
+        if not isinstance(data, dict):
+            return molecule
+
+        # Support both legacy and modern node-link payload styles from networkx.
+        nodes_payload = data.get("nodes", [])
+        for node_entry in nodes_payload:
+            if isinstance(node_entry, dict):
+                attrs = dict(node_entry)
+                node_id = attrs.pop("id", None)
+                if node_id is None:
+                    continue
+                molecule.add_node(node_id, **attrs)
+            elif isinstance(node_entry, (list, tuple)) and len(node_entry) == 2:
+                node_id, attrs = node_entry
+                attrs = attrs if isinstance(attrs, dict) else {}
+                molecule.add_node(node_id, **attrs)
+
+        edge_payload = data.get("links")
+        if not isinstance(edge_payload, list):
+            edge_payload = data.get("edges", [])
+        for edge_entry in edge_payload:
+            if isinstance(edge_entry, dict):
+                attrs = dict(edge_entry)
+                source = attrs.pop("source", None)
+                target = attrs.pop("target", None)
+                attrs.pop("key", None)
+                if source is None or target is None:
+                    continue
+                molecule.add_edge(source, target, **attrs)
+            elif isinstance(edge_entry, (list, tuple)) and len(edge_entry) >= 2:
+                source = edge_entry[0]
+                target = edge_entry[1]
+                attrs = edge_entry[2] if len(edge_entry) > 2 and isinstance(edge_entry[2], dict) else {}
+                molecule.add_edge(source, target, **attrs)
         return molecule
 
     def indices_are_identical(self, b: Molecule):

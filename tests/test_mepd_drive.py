@@ -4,8 +4,10 @@ from types import SimpleNamespace
 import networkx as nx
 import numpy as np
 from qcio import ProgramArgs, Structure
+import io
 
 from neb_dynamics.mepd_drive import (
+    _DriveHandler,
     _build_growth_live_payload,
     _build_neb_live_payload,
     _bootstrap_product_endpoint,
@@ -24,6 +26,7 @@ from neb_dynamics.mepd_drive import (
     _parse_xyz_text_to_structure,
     _run_hessian_on_completed_edges,
     _run_unattempted_nebs,
+    _validate_run_name,
     _write_hawaii_progress,
     _write_completed_queue_visualizations,
     MepdDriveServer,
@@ -386,6 +389,15 @@ def test_format_drive_access_panel_includes_ssh_tunnel():
     assert "http://127.0.0.1:9000/" in rendered
 
 
+def test_validate_run_name_rejects_path_traversal():
+    try:
+        _validate_run_name("../../etc/passwd")
+    except ValueError as exc:
+        assert "Run name" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for path traversal run name")
+
+
 def test_initialize_workspace_job_clears_existing_workspace(monkeypatch, tmp_path):
     workspace_dir = tmp_path / "drive-run"
     workspace_dir.mkdir()
@@ -432,6 +444,28 @@ def test_initialize_workspace_job_clears_existing_workspace(monkeypatch, tmp_pat
     assert created["directory"] == workspace_dir.resolve()
     assert stale.exists() is False
     assert result["workspace"]["root_smiles"] == "C=C"
+
+
+def test_initialize_workspace_job_rejects_workspace_outside_allowed_base(tmp_path):
+    outside_dir = tmp_path.parent / "outside-drive-dir"
+    try:
+        _initialize_workspace_job(
+            reactant={"smiles": "C=C"},
+            product=None,
+            run_name="drive-run",
+            workspace_dir=str(outside_dir),
+            inputs_fp=str(tmp_path / "inputs.toml"),
+            reactions_fp=None,
+            timeout_seconds=30,
+            max_nodes=40,
+            max_depth=4,
+            max_parallel_nebs=1,
+            allowed_base_dir=str(tmp_path),
+        )
+    except ValueError as exc:
+        assert "escapes base directory" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError when workspace path escapes allowed base directory")
 
 
 def test_initialize_workspace_job_returns_partial_workspace_on_growth_error(monkeypatch, tmp_path):
@@ -723,6 +757,41 @@ def test_load_existing_workspace_job_reads_workspace(monkeypatch, tmp_path):
     assert result["reactant"]["smiles"] == "C=C"
 
 
+def test_load_existing_workspace_job_rejects_workdir_mismatch(tmp_path):
+    workspace_dir = tmp_path / "drive-run"
+    workspace_dir.mkdir()
+    other_dir = tmp_path / "other-run"
+    other_dir.mkdir()
+    (workspace_dir / "workspace.json").write_text(
+        """
+{
+  "workdir": "%s",
+  "run_name": "drive-run",
+  "root_smiles": "C=C",
+  "environment_smiles": "",
+  "inputs_fp": "%s",
+  "reactions_fp": "",
+  "timeout_seconds": 30,
+  "max_nodes": 40,
+  "max_depth": 4,
+  "max_parallel_nebs": 1
+}
+"""
+        % (other_dir, tmp_path / "inputs.toml")
+    )
+    (workspace_dir / "neb_pot.json").write_text("{}")
+    (workspace_dir / "neb_queue.json").write_text('{"items": [], "attempted_pairs": {}, "version": 1}')
+    (workspace_dir / "retropaths_pot.json").write_text("{}")
+
+    try:
+        _load_existing_workspace_job(str(workspace_dir))
+    except ValueError as exc:
+        assert "workdir" in str(exc).lower()
+        assert "selected workspace directory" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for mismatched workspace workdir")
+
+
 def test_load_existing_workspace_job_rebuilds_annotated_overlay(monkeypatch, tmp_path):
     workspace_dir = tmp_path / "drive-run"
     workspace_dir.mkdir()
@@ -859,6 +928,32 @@ def test_drive_server_rejects_overlapping_actions():
         raise AssertionError("Expected _assert_idle to reject overlapping actions.")
 
 
+def test_submit_load_workspace_rejects_path_outside_base_in_token_mode(tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server.base_directory = (tmp_path / "base").resolve()
+    server.base_directory.mkdir(parents=True, exist_ok=True)
+    server.require_api_token = True
+    server.runtime = SimpleNamespace(
+        future=None,
+        busy_label="",
+        active_action=None,
+        last_error="",
+        last_message="Idle.",
+    )
+
+    outside_workspace = (tmp_path.parent / "outside-drive" / "workspace.json").resolve()
+    outside_workspace.parent.mkdir(parents=True, exist_ok=True)
+    outside_workspace.write_text("{}", encoding="utf-8")
+
+    try:
+        server.submit_load_workspace({"workspace_path": str(outside_workspace)})
+    except ValueError as exc:
+        assert "within the configured drive base directory" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for load-workspace path outside base directory")
+
+
 def test_drive_html_renders_inline_live_activity_mount():
     html = _drive_html()
 
@@ -884,6 +979,8 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="format-kmc-json"' in html
     assert 'class="json-textarea"' in html
     assert ">Kinetics</h2>" in html
+    assert "X-MEPD-Token" in html
+    assert "history.replaceState" in html
     assert 'id="run-kmc"' in html
     assert "Kinetics temperature (K)" in html
     assert "Kinetics final time" in html
@@ -2351,6 +2448,51 @@ def test_launch_mepd_drive_loads_existing_workspace_on_startup(monkeypatch, tmp_
     assert captured["network_splits"] is True
 
 
+def test_launch_mepd_drive_requires_token_on_non_loopback_host(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "existing-run"
+    workspace_dir.mkdir()
+    (workspace_dir / "workspace.json").write_text("{}")
+
+    loaded = {
+        "workspace": {
+            "workdir": str(workspace_dir),
+            "run_name": "existing-run",
+            "root_smiles": "C=C",
+            "environment_smiles": "",
+            "inputs_fp": str(tmp_path / "inputs.toml"),
+            "reactions_fp": "",
+            "timeout_seconds": 30,
+            "max_nodes": 40,
+            "max_depth": 4,
+            "max_parallel_nebs": 1,
+        },
+        "reactant": {"smiles": "C=C"},
+        "product": None,
+        "message": "Loaded existing workspace existing-run.",
+    }
+    captured = {}
+
+    class _FakeServer:
+        def __init__(self, _server_address, **kwargs):
+            captured.update(kwargs)
+            self.server_address = ("0.0.0.0", 48123)
+            self.ui_token = kwargs.get("api_token", "")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_existing_workspace_job", lambda path, **kwargs: loaded)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.MepdDriveServer", _FakeServer)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.webbrowser.open", lambda _url: True)
+
+    main_cli.launch_mepd_drive(
+        directory=str(workspace_dir),
+        inputs_fp=None,
+        host="0.0.0.0",
+        open_browser=False,
+    )
+
+    assert captured["require_api_token"] is True
+    assert bool(captured["api_token"])
+
+
 def test_launch_mepd_drive_autostarts_hawaii_when_workspace_is_loaded(monkeypatch, tmp_path):
     workspace_dir = tmp_path / "existing-run"
     workspace_dir.mkdir()
@@ -2530,6 +2672,51 @@ def test_launch_mepd_drive_hawaii_smiles_defers_initialization_to_server(monkeyp
     assert payload["auto_start_hawaii"] is True
     assert payload["charge"] == 1
     assert payload["multiplicity"] == 2
+
+
+def test_drive_handler_read_json_rejects_oversized_payload():
+    fake_handler = SimpleNamespace(
+        headers={"Content-Length": "2000001"},
+        rfile=io.BytesIO(b"{}"),
+        server=SimpleNamespace(max_request_bytes=1_000_000),
+    )
+    try:
+        _DriveHandler._read_json(fake_handler)  # type: ignore[arg-type]
+    except ValueError as exc:
+        assert "too large" in str(exc).lower()
+    else:
+        raise AssertionError("Expected ValueError for oversized request payload")
+
+
+def test_drive_handler_edge_visualization_rejects_symlink_escape(tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    edge_dir = workspace_dir / "edge_visualizations"
+    edge_dir.mkdir(parents=True)
+    secret_fp = tmp_path / "secret.html"
+    secret_fp.write_text("<html>secret</html>", encoding="utf-8")
+    (edge_dir / "edge_1_0.html").symlink_to(secret_fp)
+
+    sent_errors: list[int] = []
+
+    fake_handler = SimpleNamespace(
+        server=SimpleNamespace(
+            state_lock=__import__("threading").Lock(),
+            runtime=SimpleNamespace(workspace=SimpleNamespace(edge_visualizations_dir=edge_dir)),
+        ),
+        wfile=io.BytesIO(),
+        _split_request_path=lambda: ("/edge_visualizations/edge_1_0.html", {}),
+        _is_authorized=lambda: True,
+        _write_json=lambda payload, status=None: None,
+        send_error=lambda code: sent_errors.append(int(code)),
+        send_response=lambda code: None,
+        send_header=lambda key, value: None,
+        end_headers=lambda: None,
+    )
+
+    _DriveHandler.do_GET(fake_handler)  # type: ignore[arg-type]
+
+    assert sent_errors == [404]
+    assert fake_handler.wfile.getvalue() == b""
 
 
 def test_build_drive_payload_tolerates_missing_inputs_and_retropaths(monkeypatch, tmp_path):

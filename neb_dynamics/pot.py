@@ -201,12 +201,25 @@ class Pot(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
+    @staticmethod
+    def _graph_link_entries(graph_payload: dict) -> list[dict]:
+        if not isinstance(graph_payload, dict):
+            return []
+        links = graph_payload.get("links")
+        if isinstance(links, list):
+            return links
+        edges = graph_payload.get("edges")
+        if isinstance(edges, list):
+            return edges
+        return []
+
     def model_dump(self, **kwargs):
         data = super().model_dump(**kwargs)
+        graph_payload = data.get("graph") or {}
         # Convert Molecule objects in graph nodes to serializable format
         data['root'] = data['root'].to_serializable()
         data['target'] = data['target'].to_serializable()
-        for node_data in data['graph']['nodes']:
+        for node_data in graph_payload.get("nodes", []):
             if 'molecule' in node_data and node_data['molecule'] is not None:
                 node_data['molecule'] = node_data['molecule'].to_serializable()
             if 'environment' in node_data and node_data['environment'] is not None:
@@ -219,12 +232,16 @@ class Pot(BaseModel):
                 if node_data['td'].get('graph') is not None:
                     node_data['td']['graph'] = node_data['td']['graph'].to_serializable()
 
-        link_data = data['graph']["links"]
-        for i, _ in enumerate(link_data):
-            list_of_nebs = link_data[i].get('list_of_nebs', [])
+        link_data = self._graph_link_entries(graph_payload)
+        for i, link in enumerate(link_data):
+            list_of_nebs = link.get('list_of_nebs', [])
             link_data[i]['list_of_nebs'] = list_of_nebs
-            edge_key = (link_data[i]['source'], link_data[i]['target'])
-            reverse_edge_key = (link_data[i]['target'], link_data[i]['source'])
+            source = link.get("source")
+            target = link.get("target")
+            if source is None or target is None:
+                continue
+            edge_key = (source, target)
+            reverse_edge_key = (target, source)
             edge_attrs = {}
             if self.graph.has_edge(*edge_key):
                 edge_attrs = self.graph.edges[edge_key]
@@ -242,6 +259,10 @@ class Pot(BaseModel):
         return data
 
     def model_post_init(self, __context):
+        # Only synthesize the root node for newly-created empty graphs.
+        # Deserialized graphs should retain their persisted node attributes.
+        if self.graph.number_of_nodes() > 0:
+            return
         multiplied_root = self.root * self.multiplier
         self.root = multiplied_root
         self.graph.add_node(
@@ -250,11 +271,19 @@ class Pot(BaseModel):
 
     @field_serializer("graph")
     def serialize_graph(self, graph: nx.DiGraph, _info):
-        return nx.node_link_data(graph)
+        try:
+            return nx.node_link_data(graph, edges="links")
+        except TypeError:
+            return nx.node_link_data(graph)
 
     @classmethod
     def from_dict(cls, data):
-        graph = nx.node_link_graph(data['graph'])
+        graph_payload = data.get("graph") or {}
+        edge_key = "links" if "links" in graph_payload else "edges"
+        try:
+            graph = nx.node_link_graph(graph_payload, edges=edge_key)
+        except TypeError:
+            graph = nx.node_link_graph(graph_payload)
         for node, node_data in graph.nodes(data=True):
             if 'molecule' in node_data:
                 node_data['molecule'] = Molecule.from_serializable(
@@ -276,14 +305,15 @@ class Pot(BaseModel):
                 node_data['td'] = StructureNode.from_serializable(
                     node_data['td'])
 
-        link_data = data['graph']['links']
+        link_data = cls._graph_link_entries(graph_payload)
         for i, _ in enumerate(link_data):
-            for j, _ in enumerate(link_data[i]['list_of_nebs']):
-                nodes = link_data[i]['list_of_nebs'][j]['nodes']
+            list_of_nebs = link_data[i].get("list_of_nebs") or []
+            link_data[i]["list_of_nebs"] = list_of_nebs
+            for j, _ in enumerate(list_of_nebs):
+                nodes = list_of_nebs[j].get("nodes", [])
                 nodes = [StructureNode.from_serializable(n) for n in nodes]
-                link_data[i]['list_of_nebs'][j]['nodes'] = nodes
-                link_data[i]['list_of_nebs'][j] = Chain.model_validate(
-                    link_data[i]['list_of_nebs'][j])
+                list_of_nebs[j]['nodes'] = nodes
+                list_of_nebs[j] = Chain.model_validate(list_of_nebs[j])
 
         root = Molecule.from_serializable(data['root'])
         target = Molecule.from_serializable(data['target'])
@@ -904,9 +934,11 @@ class Pot(BaseModel):
         d["root"] = self.root.smiles
 
         d["target"] = self.target.smiles
-        d["graph"] = nx.node_link_data(
-            pot_graph_serializer_from_molecules_to_smiles(self.graph)
-        )
+        serialized_graph = pot_graph_serializer_from_molecules_to_smiles(self.graph)
+        try:
+            d["graph"] = nx.node_link_data(serialized_graph, edges="links")
+        except TypeError:
+            d["graph"] = nx.node_link_data(serialized_graph)
         d["encountered_species"] = self.encountered_species
         d["average_node_degree"] = self.average_node_degree
         d["clustering_coefficient"] = self.clustering_coefficient
