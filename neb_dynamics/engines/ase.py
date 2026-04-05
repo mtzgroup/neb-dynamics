@@ -158,6 +158,56 @@ class ASEEngine(Engine):
             print(f"Error in ASE calculation: {e}")
             raise ElectronicStructureError(msg="Electronic structure failed.")
 
+    def _compute_gradient_from_atoms(self, atoms: Atoms) -> NDArray:
+        """Return dE/dx in Hartree/Bohr for an ASE Atoms object."""
+        grad_ev_ang = self.calculator.get_forces(atoms=atoms) * (-1.0)
+        return (grad_ev_ang / ANGSTROM_TO_BOHR) / Hartree
+
+    def compute_hessian(
+        self,
+        node: StructureNode,
+        step_size: float | None = None,
+    ) -> NDArray:
+        """
+        Compute Hessian via central differences of gradients.
+
+        This is significantly faster than the default Engine fallback because
+        it scales as O(3N) gradient evaluations rather than O((3N)^2) energy
+        evaluations.
+        """
+        if not isinstance(node, StructureNode):
+            return super().compute_hessian(node=node, step_size=step_size)
+
+        h = float(step_size if step_size is not None else self.finite_difference_hessian_step_size)
+        if h <= 0:
+            raise ValueError("finite-difference Hessian step size must be positive.")
+
+        coords_bohr = np.asarray(node.coords, dtype=float)
+        refshape = coords_bohr.shape
+        x0 = coords_bohr.reshape(-1)
+        ndof = x0.size
+        if ndof == 0:
+            raise ValueError("Cannot compute Hessian for a node with zero coordinates.")
+
+        atoms_template = structure_to_ase_atoms(node.structure)
+        hessian = np.zeros((ndof, ndof), dtype=float)
+        for i in range(ndof):
+            disp = np.zeros(ndof, dtype=float)
+            disp[i] = h
+
+            atoms_plus = atoms_template.copy()
+            atoms_plus.positions = (x0 + disp).reshape(refshape) / ANGSTROM_TO_BOHR
+            grad_plus = self._compute_gradient_from_atoms(atoms_plus).reshape(-1)
+
+            atoms_minus = atoms_template.copy()
+            atoms_minus.positions = (x0 - disp).reshape(refshape) / ANGSTROM_TO_BOHR
+            grad_minus = self._compute_gradient_from_atoms(atoms_minus).reshape(-1)
+
+            hessian[:, i] = (grad_plus - grad_minus) / (2.0 * h)
+
+        # Enforce symmetry to damp numerical finite-difference noise.
+        return 0.5 * (hessian + hessian.T)
+
     def compute_geometry_optimization(self, node: StructureNode, keywords={}) -> list[StructureNode]:
         """
         Computes a geometry optimization using ASE calculation and optimizer
