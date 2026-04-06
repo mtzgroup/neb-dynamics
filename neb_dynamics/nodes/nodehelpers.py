@@ -625,13 +625,13 @@ def update_node_cache(node_list, results):
                 if not isinstance(input_keywords, dict):
                     input_keywords = {}
 
-                if 'cistarget' in input_keywords.keys(): # excited state calc
+                if 'cistarget' in input_keywords.keys():  # excited state calc
                     ind = int(input_keywords['cistarget']) - 1
                     if ind < 0:
                         print(
                             "Warning: cistarget is 1-indexed. Subtracting 1 to get 0-indexed. If cistarget was intended to be 1, this will set ind to 0.")
 
-                    if 'cis' in input_keywords.keys(): # the 0th entry is the first excited state
+                    if 'cis' in input_keywords.keys():  # the 0th entry is the first excited state
                         energy = result.results.extras['excited_states'][ind]['energy']
 
                     else:
@@ -640,7 +640,8 @@ def update_node_cache(node_list, results):
 
                         # Update the extras in your existing results object
                         result.results.extras.update(hhtda_data)
-                        energy = result.results.extras['ground_state_energy'] # despite the name this is actually the target state energy
+                        ground_energy = result.results.extras['ground_state_energy']
+                        energy = result.results.extras['excited_states']['energies_au'][ind]+ground_energy
 
                     node._cached_energy = energy
                     node._cached_gradient = result.results.gradient
