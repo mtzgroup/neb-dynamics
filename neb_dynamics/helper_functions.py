@@ -747,3 +747,41 @@ def parse_qmmm_gradients(text):
                 continue
 
     return np.array(qm_grads), np.array(mm_grads)
+
+
+def parse_hhtda_to_dict(stdout_text):
+    """
+    Parses hh-TDA output and returns a dictionary structured for qcio's 'extras'.
+    """
+    # Regex to find the hh-TDA table
+    table_pattern = r"Root\s+Mult\.\s+Total Energy \(a\.u\.\).*\n-+\n([\s\S]*?)\n\n"
+    match = re.search(table_pattern, stdout_text)
+
+    if not match:
+        return {}
+
+    rows = match.group(1).strip().split('\n')
+
+    # Root 1 is the ground state reference
+    ground_energy = float(rows[0].split()[2])
+
+    # Lists to hold the parsed values
+    ex_energies_au = []
+    ex_energies_ev = []
+    oscillators = []
+
+    for row in rows[1:]: # Skip Root 1
+        cols = row.split()
+        if len(cols) >= 7:
+            ex_energies_au.append(float(cols[3]))
+            ex_energies_ev.append(float(cols[4]))
+            oscillators.append(float(cols[6]))
+
+    return {
+        "excited_states": {
+            "energies_au": ex_energies_au,
+            "energies_ev": ex_energies_ev,
+            "oscillator_strengths": oscillators,
+        },
+        "ground_state_energy": ground_energy
+    }

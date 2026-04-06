@@ -1,13 +1,12 @@
 import numpy as np
 from neb_dynamics.nodes.node import Node, XYNode
+from neb_dynamics.helper_functions import parse_hhtda_to_dict
 from neb_dynamics.qcio_structure_helpers import split_structure_into_frags
 from neb_dynamics.geodesic_interpolation2.coord_utils import align_geom
 from neb_dynamics.errors import EnergiesNotComputedError
-# from neb_dynamics.molecule import Molecule
-# from neb_dynamics.qcio_structure_helpers import molecule_to_structure
+
 import traceback
 from qcinf import structure_to_smiles
-# from rxnmapper import RXNMapper
 
 # Rich imports for flashy CLI output
 try:
@@ -627,15 +626,22 @@ def update_node_cache(node_list, results):
                     input_keywords = {}
 
                 if 'cistarget' in input_keywords.keys(): # excited state calc
-                    if 'cis' in input_keywords.keys(): # the 0th entry is the first excited state
-                        ind = int(input_keywords['cistarget']) - 1
-                        if ind < 0:
-                            print(
-                                "Warning: cistarget is 1-indexed. Subtracting 1 to get 0-indexed. If cistarget was intended to be 1, this will set ind to 0.")
-                    else:
-                        ind = int(input_keywords['cistarget']) # the 0th entry is the ground
+                    ind = int(input_keywords['cistarget']) - 1
+                    if ind < 0:
+                        print(
+                            "Warning: cistarget is 1-indexed. Subtracting 1 to get 0-indexed. If cistarget was intended to be 1, this will set ind to 0.")
 
-                    energy = result.results.extras['excited_states'][ind]['energy']
+                    if 'cis' in input_keywords.keys(): # the 0th entry is the first excited state
+                        energy = result.results.extras['excited_states'][ind]['energy']
+
+                    else:
+                        # reparse it because qccodec doesnt actually support this yet.
+                        hhtda_data = parse_hhtda_to_dict(result.stdout)
+
+                        # Update the extras in your existing results object
+                        result.results.extras.update(hhtda_data)
+                        energy = result.results.extras['ground_state_energy'] # despite the name this is actually the target state energy
+
                     node._cached_energy = energy
                     node._cached_gradient = result.results.gradient
                 else:

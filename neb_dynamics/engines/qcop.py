@@ -156,22 +156,25 @@ def _configure_chemcloud_client(queue: str) -> None:
 
 def _resolve_nanoreactor_inputs(nanoreactor_inputs: dict[str, object] | None) -> dict[str, object]:
     resolved = dict(nanoreactor_inputs or {})
-    preset_name = str(resolved.get("preset", "conservative") or "conservative").strip().lower()
+    preset_name = str(resolved.get("preset", "conservative")
+                      or "conservative").strip().lower()
     preset = TERACHEM_NANOREACTOR_PRESETS.get(preset_name)
     if preset is None:
         supported = ", ".join(sorted(TERACHEM_NANOREACTOR_PRESETS))
-        raise ValueError(f"Unsupported nanoreactor preset `{preset_name}`. Available presets: {supported}.")
+        raise ValueError(
+            f"Unsupported nanoreactor preset `{preset_name}`. Available presets: {supported}.")
     resolved = {**dict(preset.get("values", {})), **resolved}
     resolved["preset"] = preset_name
-    resolved.setdefault("preset_description", str(preset.get("description", "")))
+    resolved.setdefault("preset_description", str(
+        preset.get("description", "")))
     return resolved
 
 
 @dataclass
 class QCOPEngine(Engine):
     program_args: ProgramArgs = ProgramArgs(
-        model={"method": "GFN2xTB", "basis": "GFN2xTB"},)
-    program: str = "xtb"
+        model={"method": "gfn2", "basis": "gfn2"},)
+    program: str = "crest"
     geometry_optimizer: str = "geometric"
     compute_program: str = "qcop"
     chemcloud_queue: str | None = None
@@ -191,7 +194,8 @@ class QCOPEngine(Engine):
 
     @staticmethod
     def _is_retryable_chemcloud_error(exc: Exception) -> bool:
-        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        status_code = getattr(
+            getattr(exc, "response", None), "status_code", None)
         if status_code is not None:
             return int(status_code) >= 500
         msg = str(exc).lower()
@@ -424,12 +428,14 @@ class QCOPEngine(Engine):
             # ChemCloud client return type can be future-like (with .get()) or a
             # direct ProgramOutput, depending on installed client/version.
             if hasattr(fres, "get"):
-                timeout_seconds = _env_float("MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS", 1800.0)
+                timeout_seconds = _env_float(
+                    "MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS", 1800.0)
                 if timeout_seconds > 0:
                     get_method = fres.get
                     supports_timeout = False
                     with contextlib.suppress(Exception):
-                        supports_timeout = "timeout" in inspect.signature(get_method).parameters
+                        supports_timeout = "timeout" in inspect.signature(
+                            get_method).parameters
                     if supports_timeout:
                         output = get_method(timeout=timeout_seconds)
                     else:
@@ -710,7 +716,8 @@ class QCOPEngine(Engine):
             if trajectory:
                 nodes: list[StructureNode] = []
                 for entry in trajectory:
-                    struct = getattr(getattr(entry, "input_data", None), "structure", None)
+                    struct = getattr(
+                        getattr(entry, "input_data", None), "structure", None)
                     if struct is not None:
                         node = StructureNode(structure=struct)
                         results = getattr(entry, "results", None)
@@ -798,7 +805,8 @@ class QCOPEngine(Engine):
         multiplicity = int(node.structure.multiplicity)
         max_candidates = int(nanoreactor_inputs.get("max_candidates", 12))
         cmdline_args = ["structure.xyz", "-msreact"]
-        msreact_input = str(nanoreactor_inputs.get("crest_msinput", "") or "").strip()
+        msreact_input = str(nanoreactor_inputs.get(
+            "crest_msinput", "") or "").strip()
         if msreact_input:
             cmdline_args.extend(["--msinput", "msreact.inp"])
         if nanoreactor_inputs.get("crest_msmolbar"):
@@ -810,9 +818,11 @@ class QCOPEngine(Engine):
         if nanoreactor_inputs.get("crest_msnoiso"):
             cmdline_args.append("--msnoiso")
         if "crest_msnbonds" in nanoreactor_inputs:
-            cmdline_args.extend(["--msnbonds", str(int(nanoreactor_inputs["crest_msnbonds"]))])
+            cmdline_args.extend(
+                ["--msnbonds", str(int(nanoreactor_inputs["crest_msnbonds"]))])
         if "crest_msnshifts" in nanoreactor_inputs:
-            cmdline_args.extend(["--msnshifts", str(int(nanoreactor_inputs["crest_msnshifts"]))])
+            cmdline_args.extend(
+                ["--msnshifts", str(int(nanoreactor_inputs["crest_msnshifts"]))])
         if charge:
             cmdline_args.extend(["--chrg", str(charge)])
         if multiplicity > 1:
@@ -820,20 +830,23 @@ class QCOPEngine(Engine):
 
         files: dict[str, str] = {"structure.xyz": node.structure.to_xyz()}
         if msreact_input:
-            files["msreact.inp"] = msreact_input + ("\n" if not msreact_input.endswith("\n") else "")
+            files["msreact.inp"] = msreact_input + \
+                ("\n" if not msreact_input.endswith("\n") else "")
 
         output = self.compute_func(
             "crest",
             FileInput(files=files, cmdline_args=cmdline_args),
             collect_files=True,
         )
-        products_xyz = self._file_text_from_output(output, ("crest_msreact_products.xyz",))
+        products_xyz = self._file_text_from_output(
+            output, ("crest_msreact_products.xyz",))
         if not products_xyz:
             raise ExternalProgramError(
                 program="crest",
                 message="CREST nanoreactor run completed but no `crest_msreact_products.xyz` output was returned.",
             )
-        structures = Structure.from_xyz_multi(products_xyz, charge=charge, multiplicity=multiplicity)
+        structures = Structure.from_xyz_multi(
+            products_xyz, charge=charge, multiplicity=multiplicity)
         return self._structure_nodes_from_structures(structures[:max_candidates])
 
     def _compute_terachem_nanoreactor_candidates(
@@ -844,8 +857,10 @@ class QCOPEngine(Engine):
     ) -> list[StructureNode]:
         nanoreactor_inputs = _resolve_nanoreactor_inputs(nanoreactor_inputs)
         model = dict(getattr(self.program_args, "model", {}) or {})
-        method = str(nanoreactor_inputs.get("terachem_method", model.get("method", "uhf")))
-        basis = str(nanoreactor_inputs.get("terachem_basis", model.get("basis", "3-21g")))
+        method = str(nanoreactor_inputs.get(
+            "terachem_method", model.get("method", "uhf")))
+        basis = str(nanoreactor_inputs.get(
+            "terachem_basis", model.get("basis", "3-21g")))
         max_candidates = int(nanoreactor_inputs.get("max_candidates", 12))
         frame_stride = int(nanoreactor_inputs.get("terachem_frame_stride", 10))
         tcin_lines = [
@@ -889,13 +904,15 @@ class QCOPEngine(Engine):
             ),
             collect_files=True,
         )
-        trajectory_xyz = self._file_text_from_output(output, ("scr/coors.xyz", "coors.xyz"))
+        trajectory_xyz = self._file_text_from_output(
+            output, ("scr/coors.xyz", "coors.xyz"))
         if not trajectory_xyz:
             raise ExternalProgramError(
                 program="terachem",
                 message="TeraChem nanoreactor run completed but no `scr/coors.xyz` trajectory was returned.",
             )
-        log_text = self._file_text_from_output(output, ("scr/log.xls", "log.xls"))
+        log_text = self._file_text_from_output(
+            output, ("scr/log.xls", "log.xls"))
         frames = Structure.from_xyz_multi(
             trajectory_xyz,
             charge=int(node.structure.charge),
@@ -924,7 +941,8 @@ class QCOPEngine(Engine):
                 max_candidates=max_candidates,
                 frame_stride=frame_stride,
             )
-            selected_frames = [frames[idx] for idx in selected_indices if 0 <= idx < len(frames)]
+            selected_frames = [frames[idx]
+                               for idx in selected_indices if 0 <= idx < len(frames)]
         else:
             selected_frames = frames[:: max(frame_stride, 1)][:max_candidates]
         return self._structure_nodes_from_structures(selected_frames)
