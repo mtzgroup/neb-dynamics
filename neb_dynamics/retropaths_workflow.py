@@ -15,6 +15,7 @@ from pathlib import Path
 from time import time
 from typing import Any, Callable
 
+import networkx as nx
 import numpy as np
 
 from neb_dynamics.chain import Chain
@@ -288,7 +289,7 @@ def _write_growth_progress(
             "nodes": [
                 {
                     "id": int(node_index),
-                    "label": str(node_index),
+                    "label": _node_label_for_explorer(node_index, graph.nodes[node_index]),
                     "growing": int(node_index) in growing,
                 }
                 for node_index in sorted(graph.nodes)
@@ -463,13 +464,58 @@ def _node_graph_like_molecule(node_attrs: dict[str, Any]) -> Molecule | None:
     return None
 
 
-def _molecule_key(molecule: Molecule | None) -> str:
+def _molecule_smiles_key(molecule: Molecule | None) -> str:
     if molecule is None:
         return ""
     with contextlib.suppress(Exception):
-        return str(molecule.smiles_from_multiple_molecules())
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            smiles = str(molecule.smiles_from_multiple_molecules())
+        if smiles:
+            return smiles
     with contextlib.suppress(Exception):
-        return str(molecule.force_smiles())
+        smiles = _quiet_force_smiles(molecule)
+        if smiles:
+            return smiles
+    return ""
+
+
+def _molecule_graph_key(molecule: Molecule | None) -> str:
+    if molecule is None:
+        return ""
+    with contextlib.suppress(Exception):
+        graph = nx.Graph()
+        for node_index, attrs in molecule.nodes(data=True):
+            element = str(attrs.get("element") or attrs.get("symbol") or "")
+            charge = int(attrs.get("charge", 0))
+            neighbors = attrs.get("neighbors")
+            node_label = f"{element}:{charge}"
+            if neighbors is not None:
+                with contextlib.suppress(Exception):
+                    node_label = f"{node_label}:{int(neighbors)}"
+            graph.add_node(str(node_index), label=node_label)
+        for atom1, atom2, attrs in molecule.edges(data=True):
+            bond_order = str(attrs.get("bond_order") or attrs.get("order") or "")
+            graph.add_edge(str(atom1), str(atom2), label=bond_order)
+        if graph.number_of_nodes() == 0:
+            return ""
+        return str(
+            nx.weisfeiler_lehman_graph_hash(
+                graph,
+                node_attr="label",
+                edge_attr="label",
+            )
+        )
+    return ""
+
+
+def _molecule_key(molecule: Molecule | None) -> str:
+    smiles = _molecule_smiles_key(molecule)
+    if smiles:
+        return smiles
+    graph_key = _molecule_graph_key(molecule)
+    if graph_key:
+        return f"graph:{graph_key}"
     return ""
 
 
@@ -489,7 +535,7 @@ def _coerce_retropaths_molecule(molecule: Any, MoleculeCls: Any) -> Any | None:
         return None
     if isinstance(molecule, MoleculeCls):
         return molecule.copy()
-    smiles = _molecule_key(molecule)
+    smiles = _molecule_smiles_key(molecule)
     if smiles:
         with contextlib.suppress(Exception):
             return MoleculeCls.from_smiles(smiles)
@@ -618,7 +664,35 @@ def _extract_normal_modes_from_hessian_result(
     return [np.array(mode) for mode in normal_modes], [float(freq) for freq in frequencies]
 
 
-def _load_completed_queue_chain(item: Any) -> Chain | Any | None:
+def _node_structure_charge_multiplicity(node: StructureNode | None) -> tuple[int, int] | None:
+    if node is None:
+        return None
+    structure = getattr(node, "structure", None)
+    if structure is None:
+        return None
+    with contextlib.suppress(Exception):
+        return int(structure.charge), int(structure.multiplicity)
+    return None
+
+
+def _resolve_edge_charge_multiplicity(
+    *,
+    source_td: StructureNode | None,
+    target_td: StructureNode | None,
+) -> tuple[int, int]:
+    for candidate in (source_td, target_td):
+        resolved = _node_structure_charge_multiplicity(candidate)
+        if resolved is not None:
+            return resolved
+    return 0, 1
+
+
+def _load_completed_queue_chain(
+    item: Any,
+    *,
+    charge: int = 0,
+    multiplicity: int = 1,
+) -> Chain | Any | None:
     chain = None
     output_chain_xyz = str(getattr(item, "output_chain_xyz", "") or "").strip()
     if output_chain_xyz:
@@ -626,6 +700,8 @@ def _load_completed_queue_chain(item: Any) -> Chain | Any | None:
             chain = Chain.from_xyz(
                 output_chain_xyz,
                 ChainInputs(),
+                charge=int(charge),
+                spinmult=int(multiplicity),
             )
     if chain is not None:
         return chain
@@ -635,8 +711,8 @@ def _load_completed_queue_chain(item: Any) -> Chain | Any | None:
     with contextlib.suppress(Exception):
         history = TreeNode.read_from_disk(
             folder_name=result_dir,
-            charge=0,
-            multiplicity=1,
+            charge=int(charge),
+            multiplicity=int(multiplicity),
         )
         return getattr(history, "output_chain", None)
     return None
@@ -720,7 +796,17 @@ def _find_completed_chain_for_edge(
 
     matching_items.sort(key=lambda item: str(getattr(item, "finished_at", "") or ""))
     for item in reversed(matching_items):
-        chain = _load_completed_queue_chain(item)
+        source_attrs = dict(pot.graph.nodes.get(int(item.source_node), {}))
+        target_attrs = dict(pot.graph.nodes.get(int(item.target_node), {}))
+        charge, multiplicity = _resolve_edge_charge_multiplicity(
+            source_td=source_attrs.get("td"),
+            target_td=target_attrs.get("td"),
+        )
+        chain = _load_completed_queue_chain(
+            item,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
         candidate = _coerce_chain_candidate(chain)
         if candidate is None:
             continue
@@ -2058,6 +2144,11 @@ def _node_label_for_explorer(node_index: int, attrs: dict[str, Any]) -> str:
         if hasattr(molecule, "smiles"):
             with contextlib.suppress(Exception):
                 return str(molecule.smiles)
+        fallback = _molecule_key(molecule)
+        if fallback:
+            if fallback.startswith("graph:"):
+                return f"graph:{fallback.split(':', 1)[1][:10]}"
+            return fallback
     return str(node_index)
 
 
@@ -2306,7 +2397,23 @@ def prepare_optimized_neb_pot_from_pot(
     return pot
 
 
-def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
+def load_partial_annotated_pot(
+    workspace: RetropathsWorkspace,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> Pot:
+    def _emit_progress(message: str, current_item: int, total_items: int) -> None:
+        if progress is None:
+            return
+        with contextlib.suppress(Exception):
+            progress(
+                {
+                    "message": message,
+                    "current_item": int(max(0, current_item)),
+                    "total_items": int(max(0, total_items)),
+                }
+            )
+
+    _emit_progress("Reading queue and base network...", 0, 0)
     source_pot = Pot.read_from_disk(workspace.neb_pot_fp)
     queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
 
@@ -2324,22 +2431,27 @@ def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
     collapse_rms_thre = float(run_inputs.network_inputs.collapse_node_rms_thre)
     collapse_ene_thre = float(run_inputs.network_inputs.collapse_node_ene_thre)
     chains_by_edge: dict[tuple[int, int], list[Chain]] = {}
+    completed_items = [
+        item
+        for item in queue.items
+        if item.status == "completed" and bool(item.result_dir)
+    ]
+    total_items = len(completed_items)
+    _emit_progress("Scanning completed NEB items...", 0, total_items)
 
-    for item in queue.items:
-        if item.status != "completed" or not item.result_dir:
-            continue
-
+    for item_index, item in enumerate(completed_items, start=1):
+        _emit_progress(
+            f"Annotating completed NEB item {item_index}/{total_items}...",
+            item_index - 1,
+            total_items,
+        )
         result_dir = Path(item.result_dir)
         if not result_dir.exists() or not (result_dir / "adj_matrix.txt").exists():
-            continue
-
-        history = TreeNode.read_from_disk(
-            folder_name=result_dir,
-            charge=0,
-            multiplicity=1,
-        )
-        leaf_chains = _history_leaf_chains(history)
-        if not leaf_chains:
+            _emit_progress(
+                f"Skipping missing result payload {item_index}/{total_items}.",
+                item_index,
+                total_items,
+            )
             continue
 
         source_attrs = source_pot.graph.nodes.get(item.source_node, {})
@@ -2348,6 +2460,25 @@ def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
         target_td = target_attrs.get("td")
         source_graph = source_attrs.get("molecule")
         target_graph = target_attrs.get("molecule")
+        chain_charge, chain_multiplicity = _resolve_edge_charge_multiplicity(
+            source_td=source_td,
+            target_td=target_td,
+        )
+
+        history = TreeNode.read_from_disk(
+            folder_name=result_dir,
+            charge=int(chain_charge),
+            multiplicity=int(chain_multiplicity),
+        )
+        leaf_chains = _history_leaf_chains(history)
+        if not leaf_chains:
+            _emit_progress(
+                f"No leaf chains found for item {item_index}/{total_items}.",
+                item_index,
+                total_items,
+            )
+            continue
+
         candidates = [
             (item.source_node, source_td, source_graph),
             (item.target_node, target_td, target_graph),
@@ -2395,10 +2526,18 @@ def load_partial_annotated_pot(workspace: RetropathsWorkspace) -> Pot:
                     total_leaves=total_leaves,
                 )
                 pot.graph.add_edge(start_index, end_index, **edge_attrs)
+        _emit_progress(
+            f"Annotated completed NEB item {item_index}/{total_items}.",
+            item_index,
+            total_items,
+        )
 
     from neb_dynamics.retropaths_compat import annotate_pot_with_neb_results
+    _emit_progress("Applying NEB result annotations...", total_items, total_items)
     annotate_pot_with_neb_results(pot=pot, chains_by_edge=chains_by_edge)
+    _emit_progress("Writing annotated network overlay...", total_items, total_items)
     pot.write_to_disk(workspace.annotated_neb_pot_fp)
+    _emit_progress("Annotated overlay ready.", total_items, total_items)
     return pot
 
 
@@ -2460,11 +2599,13 @@ def build_status_html(
         pot=pot,
         temperature_kelvin=kmc_temperature_kelvin,
         initial_conditions=normalized_initial_conditions,
+        include_labels=False,
     )
     kmc_default_result = simulate_kmc(
         pot=pot,
         temperature_kelvin=kmc_temperature_kelvin,
         initial_conditions=normalized_initial_conditions,
+        payload=kmc_payload,
     )
     kmc_labels = {
         int(node["id"]): str(node["label"])
