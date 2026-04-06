@@ -49,6 +49,7 @@ from neb_dynamics.retropaths_workflow import (
     _history_leaf_chains,
     _json_safe,
     _load_template_payloads,
+    _node_label_for_explorer,
     _persist_endpoint_optimization_result,
     _quiet_force_smiles,
     _strip_cached_result,
@@ -148,11 +149,33 @@ def _merge_drive_pot_compat(workspace: RetropathsWorkspace, *, network_splits: b
     return pot
 
 
-def _load_existing_workspace_job_compat(workspace_path: str, *, network_splits: bool) -> dict[str, Any]:
+def _load_existing_workspace_job_compat(
+    workspace_path: str,
+    *,
+    network_splits: bool,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
     try:
-        return _load_existing_workspace_job(workspace_path, network_splits=network_splits)
+        return _load_existing_workspace_job(
+            workspace_path,
+            network_splits=network_splits,
+            progress=progress,
+        )
     except TypeError:
         return _load_existing_workspace_job(workspace_path)
+
+
+def _load_partial_annotated_pot_compat(
+    workspace: RetropathsWorkspace,
+    *,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> Pot:
+    if progress is None:
+        return load_partial_annotated_pot(workspace)
+    try:
+        return load_partial_annotated_pot(workspace, progress=progress)
+    except TypeError:
+        return load_partial_annotated_pot(workspace)
 
 
 def _call_drive_payload_builder(
@@ -1442,7 +1465,7 @@ def _parse_kmc_initial_conditions(raw: str | None) -> dict[int, float] | None:
 
 
 def _kmc_defaults_payload(pot: Pot) -> dict[str, Any]:
-    payload = build_kmc_payload(pot)
+    payload = build_kmc_payload(pot, include_labels=False)
     return {
         "available": True,
         "temperature_kelvin": float(payload["temperature_kelvin"]),
@@ -1471,11 +1494,19 @@ def _run_kmc_payload(
     initial_conditions: dict[int, float] | None,
     network_splits: bool = True,
 ) -> dict[str, Any]:
-    pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+    pot: Pot | None = None
+    if network_splits:
+        annotated_fp = getattr(workspace, "annotated_neb_pot_fp", None)
+        if annotated_fp is not None and annotated_fp.exists():
+            with contextlib.suppress(Exception):
+                pot = Pot.read_from_disk(annotated_fp)
+    if pot is None:
+        pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
     payload = build_kmc_payload(
         pot,
         temperature_kelvin=float(temperature_kelvin),
         initial_conditions=initial_conditions,
+        include_labels=False,
     )
     result = simulate_kmc(
         pot,
@@ -1483,6 +1514,7 @@ def _run_kmc_payload(
         initial_conditions=initial_conditions,
         max_steps=int(max_steps),
         final_time=float(final_time) if final_time is not None else None,
+        payload=payload,
     )
     labels = {
         int(node["id"]): str(node.get("label") or node["id"])
@@ -2759,7 +2791,10 @@ def _write_hawaii_progress(
                 "nodes": [
                     {
                         "id": int(node_index),
-                        "label": str(node_index),
+                        "label": _node_label_for_explorer(
+                            int(node_index),
+                            progress_pot.graph.nodes[int(node_index)],
+                        ),
                         "growing": int(node_index) in growing,
                     }
                     for node_index in sorted(int(n) for n in progress_pot.graph.nodes)
@@ -3517,7 +3552,27 @@ def _materialize_workspace_from_network_splits(path: Path) -> RetropathsWorkspac
     return workspace
 
 
-def _load_existing_workspace_job(workspace_path: str, *, network_splits: bool = True) -> dict[str, Any]:
+def _load_existing_workspace_job(
+    workspace_path: str,
+    *,
+    network_splits: bool = True,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    total_steps = 6 if network_splits else 4
+
+    def _emit_progress(message: str, completed_steps: float) -> None:
+        if progress is None:
+            return
+        with contextlib.suppress(Exception):
+            progress(
+                {
+                    "message": message,
+                    "completed_steps": float(max(0.0, min(float(total_steps), completed_steps))),
+                    "total_steps": float(total_steps),
+                }
+            )
+
+    _emit_progress("Resolving workspace path...", 0)
     path = Path(workspace_path).expanduser().resolve()
     workspace_dir = path.parent if path.is_file() else path
     resolved_workspace_dir = workspace_dir.resolve()
@@ -3536,6 +3591,7 @@ def _load_existing_workspace_job(workspace_path: str, *, network_splits: bool = 
                 "Workspace path must point to a drive workspace directory, a workspace.json file, "
                 "a *_network_splits directory, or a *_network.json artifact."
             )
+    _emit_progress("Workspace metadata loaded.", 1)
     required = [
         workspace.workspace_fp,
         workspace.neb_pot_fp,
@@ -3545,6 +3601,7 @@ def _load_existing_workspace_job(workspace_path: str, *, network_splits: bool = 
     missing = [str(fp) for fp in required if not fp.exists()]
     if missing:
         raise ValueError(f"Workspace is missing required files: {', '.join(missing)}")
+    _emit_progress("Verified required workspace files.", 2)
     with contextlib.suppress(Exception):
         charge, multiplicity = _workspace_charge_multiplicity(workspace)
         queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
@@ -3554,14 +3611,33 @@ def _load_existing_workspace_job(workspace_path: str, *, network_splits: bool = 
             multiplicity=multiplicity,
         ):
             queue.write_to_disk(workspace.queue_fp)
+    _emit_progress("Queue state checked.", 3)
     # Rebuild the annotated overlay immediately so completed NEB results
     # are visible as soon as the workspace is opened in drive.
     if network_splits:
-        load_partial_annotated_pot(workspace)
-    return _workspace_snapshot_payload(
+        _emit_progress("Rebuilding annotated network overlay...", 4)
+
+        def _overlay_progress(payload: dict[str, Any]) -> None:
+            if progress is None:
+                return
+            total_items = int(payload.get("total_items", 0) or 0)
+            current_item = int(payload.get("current_item", 0) or 0)
+            message = str(payload.get("message") or "Rebuilding annotated network overlay...")
+            if total_items > 0:
+                fraction = max(0.0, min(1.0, float(current_item) / float(total_items)))
+                completed = 4.0 + fraction
+            else:
+                completed = 4.0
+            _emit_progress(message, completed)
+
+        _load_partial_annotated_pot_compat(workspace, progress=_overlay_progress)
+        _emit_progress("Annotated network overlay rebuilt.", 5)
+    _emit_progress("Finalizing workspace snapshot...", total_steps - 1)
+    result = _workspace_snapshot_payload(
         workspace,
         message=f"Loaded existing workspace {workspace.run_name}.",
     )
+    return result
 
 
 def _drive_html() -> str:
@@ -8441,7 +8517,23 @@ def launch_mepd_drive(
     network_splits: bool = True,
     hawaii: bool = False,
     open_browser: bool = True,
+    startup_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> MepdDriveServer:
+    startup_base_steps = 6 if network_splits else 4
+    startup_total_steps = startup_base_steps + 2
+
+    def _emit_startup_progress(message: str, completed_steps: float) -> None:
+        if startup_progress is None:
+            return
+        with contextlib.suppress(Exception):
+            startup_progress(
+                {
+                    "message": message,
+                    "completed_steps": float(completed_steps),
+                    "total_steps": float(startup_total_steps),
+                }
+            )
+
     explicit_directory = Path(directory).resolve() if directory else None
     startup_workspace_path = workspace_path
     deferred_initialize_payload: dict[str, Any] | None = None
@@ -8467,7 +8559,12 @@ def launch_mepd_drive(
         ):
             workspace_dir = workspace_dir.parent
         base_directory = workspace_dir.parent
-        initial_state = _load_existing_workspace_job_compat(str(workspace_dir), network_splits=network_splits)
+        initial_state = _load_existing_workspace_job_compat(
+            str(workspace_dir),
+            network_splits=network_splits,
+            progress=startup_progress,
+        )
+        _emit_startup_progress("Workspace snapshot loaded. Starting Drive server...", startup_base_steps)
     elif smiles:
         resolved_inputs = Path(str(inputs_fp)).expanduser().resolve() if inputs_fp else None
         if resolved_inputs is None:
@@ -8527,6 +8624,7 @@ def launch_mepd_drive(
     else:
         base_directory = explicit_directory if explicit_directory is not None else (Path.cwd() / "mepd-drive").resolve()
     base_directory.mkdir(parents=True, exist_ok=True)
+    _emit_startup_progress("Initializing Drive server...", startup_base_steps + 1)
     server = MepdDriveServer(
         (host, int(port)),
         base_directory=base_directory,
@@ -8541,6 +8639,7 @@ def launch_mepd_drive(
         require_api_token=require_api_token,
         api_token=api_token,
     )
+    _emit_startup_progress("Drive server ready.", startup_total_steps)
     if open_browser:
         url = f"http://{host}:{server.server_address[1]}/"
         if require_api_token and api_token:
