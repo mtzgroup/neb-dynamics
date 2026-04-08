@@ -65,7 +65,7 @@ timestep = 0.5
 | `engine_name` | `str` | `"chemcloud"` | Supported: `"qcop"`, `"chemcloud"`, `"ase"` |
 | `program` | `str` | `"xtb"` | Common values: `"xtb"`, `"crest"`, `"terachem"`; `ase` currently only supports `"omol25"` |
 | `chemcloud_queue` | `str \| null` | `null` | Queue passed to `QCOPEngine` when using `engine_name = "chemcloud"` |
-| `path_min_method` | `str` | `"NEB"` | Supported: `"NEB"`, `"FNEB"`, `"MLPGI"` |
+| `path_min_method` | `str` | `"NEB"` | Supported: `"NEB"`, `"FNEB"`, `"MLPGI"`, `"NEB-DLF"` |
 | `path_min_inputs` | `table` | branch-dependent defaults | See below |
 | `chain_inputs` | `table` | `ChainInputs()` defaults | See below |
 | `gi_inputs` | `table` | `GIInputs()` defaults | See below |
@@ -142,6 +142,23 @@ Any provided values override these defaults.
 
 `MLPGI` uses an empty default table on this branch. Keys are effectively
 backend-specific passthrough.
+
+## `path_min_inputs` for `NEB-DLF`
+
+`NEB-DLF` runs TeraChem DL-Find NEB through `QCOPEngine` (`program = "terachem"`).
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `nstep` | `200` | DL-Find max steps |
+| `min_image` | `null` | If `null`, uses current chain image count |
+| `min_nebk` | `0.01` | DL-Find NEB spring constant |
+| `max_nebk` | `null` | Optional spring cap |
+| `new_minimizer` | `"no"` | Keep DL-Find pathway in TeraChem |
+| `skip_identical_graphs` | `true` | MSMEP endpoint short-circuit |
+| `do_elem_step_checks` | `true` | Run autosplitting elementary-step checks |
+| `collect_files` | `true` | Required to parse `nebpath.xyz`/`nebinfo` |
+| `dlfind_keywords` | `{}` | Extra DL-Find/TeraChem keyword passthrough |
+| `v` | `false` | Verbose progress |
 
 ## `chain_inputs`
 

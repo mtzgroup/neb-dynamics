@@ -182,7 +182,7 @@ mepd make-default-inputs --name inputs.toml
 | Option | Description |
 |--------|-------------|
 | `--name` | Path to output TOML file |
-| `--path-min-method`, `-pmm` | Path minimization method: `neb` or `fneb` (default: neb) |
+| `--path-min-method`, `-pmm` | Path minimization method: `neb`, `fneb`, `mlpgi`, or `neb-dlf` (default: neb) |
 
 ---
 

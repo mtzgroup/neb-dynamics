@@ -11,6 +11,7 @@ from neb_dynamics.pot import Pot
 K_BOLTZMANN = 1.380649e-23
 PLANCK = 6.62607015e-34
 R_GAS_KCAL = 0.00198720425864083
+_NODE_LABEL_CACHE: dict[tuple[int, int], str] = {}
 
 
 def _quiet_force_smiles(molecule_like) -> str:
@@ -42,13 +43,22 @@ def normalize_initial_conditions(
 
 
 def node_label(pot: Pot, node_index: int) -> str:
-    node_attrs = pot.graph.nodes[node_index]
+    node_id = int(node_index)
+    cache_key = (id(pot), node_id)
+    cached_label = _NODE_LABEL_CACHE.get(cache_key)
+    if cached_label:
+        return cached_label
+
+    node_attrs = pot.graph.nodes[node_id]
+
     molecule = node_attrs.get("molecule")
     if molecule is not None:
         try:
             smiles = _quiet_force_smiles(molecule)
             if smiles:
-                return f"{node_index}: {smiles}"
+                label = f"{node_id}: {smiles}"
+                _NODE_LABEL_CACHE[cache_key] = label
+                return label
         except Exception:
             pass
     td = node_attrs.get("td")
@@ -57,10 +67,14 @@ def node_label(pot: Pot, node_index: int) -> str:
         try:
             smiles = _quiet_force_smiles(graph)
             if smiles:
-                return f"{node_index}: {smiles}"
+                label = f"{node_id}: {smiles}"
+                _NODE_LABEL_CACHE[cache_key] = label
+                return label
         except Exception:
             pass
-    return str(node_index)
+    label = str(node_id)
+    _NODE_LABEL_CACHE[cache_key] = label
+    return label
 
 
 def edge_rate_constant(barrier_kcal: float, temperature_kelvin: float) -> float:
@@ -108,6 +122,7 @@ def build_kmc_payload(
     pot: Pot,
     temperature_kelvin: float = 298.15,
     initial_conditions: dict[int, float] | None = None,
+    include_labels: bool = True,
 ) -> dict:
     normalized_initial = normalize_initial_conditions(
         pot=pot, initial_conditions=initial_conditions
@@ -115,7 +130,11 @@ def build_kmc_payload(
     nodes = [
         {
             "id": int(node_index),
-            "label": node_label(pot, int(node_index)),
+            "label": (
+                node_label(pot, int(node_index))
+                if include_labels
+                else str(int(node_index))
+            ),
             "initial": float(normalized_initial.get(int(node_index), 0.0)),
         }
         for node_index in sorted(pot.graph.nodes)
@@ -194,7 +213,8 @@ def _implicit_euler_step(state: np.ndarray, dt: float, matrix: np.ndarray) -> np
         return state.copy()
 
     lhs = np.eye(matrix.shape[0], dtype=float) - (dt * matrix)
-    next_state = np.linalg.solve(lhs, state)
+    step_operator = np.linalg.inv(lhs)
+    next_state = step_operator @ state
     next_state[next_state < 0.0] = 0.0
     total = next_state.sum()
     if total > 0.0:
@@ -211,23 +231,31 @@ def simulate_kmc(
     max_steps: int = 200,
     final_time: float | None = None,
     seed: int | None = None,
+    payload: dict | None = None,
 ) -> dict:
     del seed
-    payload = build_kmc_payload(
-        pot=pot,
-        temperature_kelvin=temperature_kelvin,
-        initial_conditions=initial_conditions,
-    )
+    if payload is None:
+        payload = build_kmc_payload(
+            pot=pot,
+            temperature_kelvin=temperature_kelvin,
+            initial_conditions=initial_conditions,
+            include_labels=False,
+        )
     node_ids, matrix = _rate_matrix(payload)
     state = np.array(
         [float(payload["initial_conditions"].get(node_id, 0.0)) for node_id in node_ids],
         dtype=float,
     )
+    initial_total = float(state.sum())
     n_steps = max(int(max_steps), 1)
     end_time = float(final_time if final_time is not None else payload["default_end_time"])
     if end_time < 0.0:
         raise ValueError("final_time must be non-negative")
     dt = end_time / n_steps if n_steps > 0 else 0.0
+    step_operator = None
+    if dt > 0.0:
+        lhs = np.eye(matrix.shape[0], dtype=float) - (dt * matrix)
+        step_operator = np.linalg.inv(lhs)
 
     history = [
         {
@@ -238,8 +266,12 @@ def simulate_kmc(
     ]
     time = 0.0
     for _ in range(n_steps):
-        if dt > 0.0:
-            state = _implicit_euler_step(state=state, dt=dt, matrix=matrix)
+        if step_operator is not None:
+            state = step_operator @ state
+            state[state < 0.0] = 0.0
+            total = state.sum()
+            if total > 0.0 and initial_total > 0.0:
+                state *= initial_total / total
         time += dt
         history.append(
             {

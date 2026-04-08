@@ -220,8 +220,11 @@ class Engine(ABC):
             grad_mag = np.linalg.norm(grad) / np.sqrt(natom)
             # print(f"Step {curr_step}: Gradient magnitude {grad_mag:.4e}")
             if grad_mag > ss:
-                print(
-                    f"Step {curr_step}: Gradient magnitude {grad_mag:.4e} greater than step size {ss:.4e}. Scaling down step size."
+                logging.getLogger(__name__).debug(
+                    "Step %s: gradient magnitude %.4e greater than step size %.4e; scaling step.",
+                    curr_step,
+                    grad_mag,
+                    ss,
                 )
                 # normalize the gradient
 

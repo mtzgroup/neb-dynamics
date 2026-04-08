@@ -22,8 +22,11 @@ from neb_dynamics.mepd_drive import (
     _initialize_workspace_job,
     _load_existing_workspace_job,
     _merge_drive_pot,
+    _normalize_hawaii_discovery_tools,
     _optimize_selected_nodes,
     _parse_xyz_text_to_structure,
+    _run_discovery_cycle,
+    _run_hawaii_autonomy,
     _run_hessian_on_completed_edges,
     _run_unattempted_nebs,
     _validate_run_name,
@@ -277,6 +280,63 @@ def test_drive_command_passes_smiles_bootstrap_options(monkeypatch, tmp_path):
     assert calls["served"] is True
 
 
+def test_drive_command_passes_xyz_bootstrap_options(monkeypatch, tmp_path):
+    calls = {}
+
+    class _FakeServer:
+        server_address = ("127.0.0.1", 48123)
+
+        def serve_forever(self):
+            calls["served"] = True
+
+        def shutdown(self):
+            calls["shutdown"] = True
+
+        def server_close(self):
+            calls["closed"] = True
+
+    monkeypatch.setattr(
+        main_cli,
+        "launch_mepd_drive",
+        lambda **kwargs: calls.update(kwargs) or _FakeServer(),
+    )
+
+    start_xyz = tmp_path / "start.xyz"
+    end_xyz = tmp_path / "end.xyz"
+    start_xyz.write_text("2\nstart\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
+    end_xyz.write_text("2\nend\nH 0.0 0.0 0.0\nH 0.0 0.0 1.00\n")
+
+    main_cli.drive(
+        start_xyz_fp=str(start_xyz),
+        end_xyz_fp=str(end_xyz),
+        inputs=str(tmp_path / "inputs.toml"),
+        directory=str(tmp_path / "drive"),
+        no_open=True,
+    )
+
+    assert calls["start_xyz_fp"] == str(start_xyz)
+    assert calls["end_xyz_fp"] == str(end_xyz)
+    assert Path(calls["inputs_fp"]).name == "inputs.toml"
+    assert calls["served"] is True
+
+
+def test_drive_command_rejects_end_xyz_without_start_or_smiles(tmp_path):
+    end_xyz = tmp_path / "end.xyz"
+    end_xyz.write_text("2\nend\nH 0.0 0.0 0.0\nH 0.0 0.0 1.00\n")
+
+    try:
+        main_cli.drive(
+            end_xyz_fp=str(end_xyz),
+            inputs=str(tmp_path / "inputs.toml"),
+            directory=str(tmp_path / "drive"),
+            no_open=True,
+        )
+    except Exception as exc:
+        assert "--end-xyz-fp requires --start-xyz-fp or --smiles." in str(exc)
+    else:
+        raise AssertionError("Expected an error when --end-xyz-fp is provided without --start-xyz-fp or --smiles.")
+
+
 def test_drive_command_passes_hawaii_flag(monkeypatch, tmp_path):
     calls = {}
 
@@ -306,6 +366,41 @@ def test_drive_command_passes_hawaii_flag(monkeypatch, tmp_path):
     )
 
     assert calls["hawaii"] is True
+    assert calls["hawaii_discovery_tools"] is None
+    assert calls["served"] is True
+
+
+def test_drive_command_passes_hawaii_discovery_tools(monkeypatch, tmp_path):
+    calls = {}
+
+    class _FakeServer:
+        server_address = ("127.0.0.1", 48123)
+
+        def serve_forever(self):
+            calls["served"] = True
+
+        def shutdown(self):
+            calls["shutdown"] = True
+
+        def server_close(self):
+            calls["closed"] = True
+
+    monkeypatch.setattr(
+        main_cli,
+        "launch_mepd_drive",
+        lambda **kwargs: calls.update(kwargs) or _FakeServer(),
+    )
+
+    main_cli.drive(
+        inputs=str(tmp_path / "inputs.toml"),
+        directory=str(tmp_path / "drive"),
+        hawaii=True,
+        hawaii_discovery_tools="hessian-sample,retropaths",
+        no_open=True,
+    )
+
+    assert calls["hawaii"] is True
+    assert calls["hawaii_discovery_tools"] == "hessian-sample,retropaths"
     assert calls["served"] is True
 
 
@@ -373,6 +468,7 @@ def test_drive_command_loads_existing_workspace_without_inputs(monkeypatch, tmp_
 
     assert calls["workspace_path"] == str(workspace_dir.resolve())
     assert calls["inputs_fp"] is None
+    assert callable(calls["startup_progress"])
     assert calls["served"] is True
 
 
@@ -757,6 +853,44 @@ def test_load_existing_workspace_job_reads_workspace(monkeypatch, tmp_path):
     assert result["reactant"]["smiles"] == "C=C"
 
 
+def test_load_existing_workspace_job_reports_progress(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "drive-run"
+    workspace_dir.mkdir()
+    workspace_json = workspace_dir / "workspace.json"
+    workspace_json.write_text(
+        """
+{
+  "workdir": "%s",
+  "run_name": "drive-run",
+  "root_smiles": "C=C",
+  "environment_smiles": "",
+  "inputs_fp": "%s",
+  "reactions_fp": "",
+  "timeout_seconds": 30,
+  "max_nodes": 40,
+  "max_depth": 4,
+  "max_parallel_nebs": 1
+}
+"""
+        % (workspace_dir, tmp_path / "inputs.toml")
+    )
+    (workspace_dir / "neb_pot.json").write_text("{}")
+    (workspace_dir / "neb_queue.json").write_text('{"items": [], "attempted_pairs": {}, "version": 1}')
+    (workspace_dir / "retropaths_pot.json").write_text("{}")
+
+    events = []
+    _load_existing_workspace_job(
+        str(workspace_dir),
+        network_splits=False,
+        progress=lambda payload: events.append(dict(payload)),
+    )
+
+    assert events
+    assert float(events[0]["completed_steps"]) == 0.0
+    assert float(events[-1]["completed_steps"]) < float(events[-1]["total_steps"])
+    assert "Finalizing workspace snapshot" in str(events[-1]["message"])
+
+
 def test_load_existing_workspace_job_rejects_workdir_mismatch(tmp_path):
     workspace_dir = tmp_path / "drive-run"
     workspace_dir.mkdir()
@@ -978,6 +1112,10 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert 'id="kinetics-shell"' in html
     assert 'id="format-kmc-json"' in html
     assert 'class="json-textarea"' in html
+    assert 'id="hawaii-discovery-hessian"' in html
+    assert 'id="hawaii-discovery-retropaths"' in html
+    assert 'id="hawaii-discovery-nanoreactor"' in html
+    assert 'id="hawaii-discovery-summary"' in html
     assert ">Kinetics</h2>" in html
     assert "X-MEPD-Token" in html
     assert "history.replaceState" in html
@@ -987,6 +1125,7 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "Kinetics max steps" in html
     assert "Run Kinetics Model" in html
     assert "/api/run-kinetics" in html
+    assert "discovery_tools: selectedDiscoveryTools" in html
     assert "function renderLiveActivityContent(activity)" in html
     assert "function renderProductPathPanel(snapshot)" in html
     assert "function computePathHighlight(snapshot, sourceNodeId, productKey)" in html
@@ -1018,6 +1157,9 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "queueNanoreactor" in html
     assert "queueHessianSampleFromNode" in html
     assert "queueHessianSampleFromEdge" in html
+    assert "toggleManualNodeInsertMode" in html
+    assert "insertManualNodeAtGraphCoords" in html
+    assert "/api/add-node" in html
     assert "hessianSampleDr: 1.0" in html
     assert "hessianSampleUseBigchem: false" in html
     assert "hessian-sample-use-bigchem" in html
@@ -1035,6 +1177,11 @@ def test_drive_html_renders_inline_live_activity_mount():
     assert "function beginConnectMode(nodeId)" in html
     assert "No NEB-derived edge data is available yet for this edge." in html
     assert "<strong>Viewer:</strong>" in html
+    assert 'id="manual-node-xyz"' in html
+    assert 'id="manual-node-charge"' in html
+    assert 'id="manual-node-multiplicity"' in html
+    assert 'id="insert-manual-node-mode"' in html
+    assert "Insert Node On Next Network Click" in html
 
 
 def test_run_kmc_payload_returns_population_plot(monkeypatch):
@@ -1045,7 +1192,7 @@ def test_run_kmc_payload_returns_population_plot(monkeypatch):
     monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot", lambda workspace, **kwargs: pot)
     monkeypatch.setattr(
         "neb_dynamics.mepd_drive.build_kmc_payload",
-        lambda pot, temperature_kelvin=298.15, initial_conditions=None: {
+        lambda pot, temperature_kelvin=298.15, initial_conditions=None, include_labels=True: {
             "temperature_kelvin": temperature_kelvin,
             "nodes": [
                 {"id": 0, "label": "0: A", "initial": 1.0},
@@ -1059,7 +1206,7 @@ def test_run_kmc_payload_returns_population_plot(monkeypatch):
     )
     monkeypatch.setattr(
         "neb_dynamics.mepd_drive.simulate_kmc",
-        lambda pot, temperature_kelvin=298.15, initial_conditions=None, max_steps=200, final_time=None: {
+        lambda pot, temperature_kelvin=298.15, initial_conditions=None, max_steps=200, final_time=None, payload=None: {
             "temperature_kelvin": temperature_kelvin,
             "final_time": final_time if final_time is not None else 5.0,
             "max_steps": max_steps,
@@ -1083,6 +1230,55 @@ def test_run_kmc_payload_returns_population_plot(monkeypatch):
     assert result["plot"]["x"] == [0.0, 1.0]
     assert result["plot"]["series"][0]["label"] == "1: B"
     assert result["dominant_node"]["label"] == "1: B"
+
+
+def test_run_kmc_payload_prefers_annotated_file_for_kmc(monkeypatch, tmp_path):
+    annotated_fp = tmp_path / "neb_pot_annotated.json"
+    annotated_fp.write_text("{}")
+
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0)
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.Pot.read_from_disk",
+        lambda fp: pot if Path(fp) == annotated_fp else (_ for _ in ()).throw(RuntimeError("unexpected path")),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._merge_drive_pot",
+        lambda workspace, **kwargs: (_ for _ in ()).throw(RuntimeError("merge fallback should not run")),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.build_kmc_payload",
+        lambda pot, temperature_kelvin=298.15, initial_conditions=None, include_labels=True: {
+            "temperature_kelvin": temperature_kelvin,
+            "nodes": [{"id": 0, "label": "0", "initial": 1.0}],
+            "edges": [],
+            "suppressed_edges": [],
+            "initial_conditions": {0: 1.0},
+            "default_end_time": 1.0,
+        },
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.simulate_kmc",
+        lambda pot, temperature_kelvin=298.15, initial_conditions=None, max_steps=200, final_time=None, payload=None: {
+            "temperature_kelvin": temperature_kelvin,
+            "final_time": final_time if final_time is not None else 1.0,
+            "max_steps": max_steps,
+            "history": [{"time": 0.0, "populations": {0: 1.0}}],
+            "final_populations": {0: 1.0},
+        },
+    )
+
+    result = _run_kmc_payload(
+        SimpleNamespace(annotated_neb_pot_fp=annotated_fp),
+        temperature_kelvin=298.15,
+        final_time=None,
+        max_steps=5,
+        initial_conditions=None,
+    )
+
+    assert result["temperature_kelvin"] == 298.15
+    assert result["summary"][0]["node_id"] == 0
 
 
 def test_build_drive_payload_hides_unstarted_queue_items(monkeypatch, tmp_path):
@@ -2448,6 +2644,50 @@ def test_launch_mepd_drive_loads_existing_workspace_on_startup(monkeypatch, tmp_
     assert captured["network_splits"] is True
 
 
+def test_launch_mepd_drive_emits_startup_progress_for_existing_workspace(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "existing-run"
+    workspace_dir.mkdir()
+    (workspace_dir / "workspace.json").write_text("{}")
+
+    loaded = {
+        "workspace": {
+            "workdir": str(workspace_dir),
+            "run_name": "existing-run",
+            "root_smiles": "C=C",
+            "environment_smiles": "",
+            "inputs_fp": str(tmp_path / "inputs.toml"),
+            "reactions_fp": "",
+            "timeout_seconds": 30,
+            "max_nodes": 40,
+            "max_depth": 4,
+            "max_parallel_nebs": 1,
+        },
+        "reactant": {"smiles": "C=C"},
+        "product": None,
+        "message": "Loaded existing workspace existing-run.",
+    }
+
+    class _FakeServer:
+        def __init__(self, _server_address, **_kwargs):
+            self.server_address = ("127.0.0.1", 48123)
+
+    events: list[dict[str, float | str]] = []
+    monkeypatch.setattr("neb_dynamics.mepd_drive._load_existing_workspace_job", lambda path, **kwargs: loaded)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.MepdDriveServer", _FakeServer)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.webbrowser.open", lambda _url: True)
+
+    main_cli.launch_mepd_drive(
+        directory=str(workspace_dir),
+        inputs_fp=None,
+        open_browser=False,
+        startup_progress=lambda payload: events.append(dict(payload)),
+    )
+
+    assert events
+    assert float(events[-1]["completed_steps"]) == float(events[-1]["total_steps"])
+    assert "Drive server ready" in str(events[-1]["message"])
+
+
 def test_launch_mepd_drive_requires_token_on_non_loopback_host(monkeypatch, tmp_path):
     workspace_dir = tmp_path / "existing-run"
     workspace_dir.mkdir()
@@ -2632,6 +2872,67 @@ def test_launch_mepd_drive_bootstraps_smiles_workspace_on_startup(monkeypatch, t
     assert captured["network_splits"] is True
 
 
+def test_launch_mepd_drive_bootstraps_xyz_workspace_on_startup(monkeypatch, tmp_path):
+    captured = {"initialize_kwargs": None}
+    initialized = {
+        "workspace": {
+            "workdir": str(tmp_path / "drive" / "xyz-run"),
+            "run_name": "xyz-run",
+            "root_smiles": "C=C",
+            "environment_smiles": "",
+            "inputs_fp": str(tmp_path / "inputs.toml"),
+            "reactions_fp": "",
+            "timeout_seconds": 30,
+            "max_nodes": 40,
+            "max_depth": 4,
+            "max_parallel_nebs": 1,
+        },
+        "reactant": {"smiles": "C=C", "charge": 1, "multiplicity": 2},
+        "product": {"smiles": "CC", "charge": 1, "multiplicity": 2},
+        "message": "Initialized workspace xyz-run.",
+    }
+
+    class _FakeServer:
+        def __init__(self, _server_address, **kwargs):
+            captured.update(kwargs)
+            self.server_address = ("127.0.0.1", 48123)
+
+    def _capture_initialize(**kwargs):
+        captured["initialize_kwargs"] = kwargs
+        return initialized
+
+    start_xyz = tmp_path / "start.xyz"
+    end_xyz = tmp_path / "end.xyz"
+    start_xyz.write_text("2\nstart\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n")
+    end_xyz.write_text("2\nend\nH 0.0 0.0 0.0\nH 0.0 0.0 1.00\n")
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._initialize_workspace_job", _capture_initialize)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.MepdDriveServer", _FakeServer)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.webbrowser.open", lambda _url: True)
+
+    server = main_cli.launch_mepd_drive(
+        directory=str(tmp_path / "drive" / "xyz-run"),
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        start_xyz_fp=str(start_xyz),
+        end_xyz_fp=str(end_xyz),
+        charge=1,
+        multiplicity=2,
+        run_name="xyz-run",
+        open_browser=False,
+    )
+
+    assert server.server_address == ("127.0.0.1", 48123)
+    assert captured["initial_state"] == initialized
+    assert captured["base_directory"] == (tmp_path / "drive").resolve()
+    assert captured["inputs_fp"] == (tmp_path / "inputs.toml").resolve()
+    assert captured["network_splits"] is True
+    init_kwargs = captured["initialize_kwargs"]
+    assert init_kwargs is not None
+    assert bool(init_kwargs["reactant"]["xyz_b64"])
+    assert bool(init_kwargs["product"]["xyz_b64"])
+    assert init_kwargs["seed_only"] is True
+
+
 def test_launch_mepd_drive_hawaii_smiles_defers_initialization_to_server(monkeypatch, tmp_path):
     captured = {"initialize_payloads": []}
 
@@ -2672,6 +2973,52 @@ def test_launch_mepd_drive_hawaii_smiles_defers_initialization_to_server(monkeyp
     assert payload["auto_start_hawaii"] is True
     assert payload["charge"] == 1
     assert payload["multiplicity"] == 2
+
+
+def test_launch_mepd_drive_hawaii_xyz_defers_initialization_to_server(monkeypatch, tmp_path):
+    captured = {"initialize_payloads": []}
+
+    class _FakeServer:
+        def __init__(self, _server_address, **kwargs):
+            captured.update(kwargs)
+            self.server_address = ("127.0.0.1", 48123)
+
+        def submit_initialize(self, payload):
+            captured["initialize_payloads"].append(dict(payload))
+
+    start_xyz = tmp_path / "start.xyz"
+    end_xyz = tmp_path / "end.xyz"
+    start_xyz_text = "2\nstart\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n"
+    end_xyz_text = "2\nend\nH 0.0 0.0 0.0\nH 0.0 0.0 1.00\n"
+    start_xyz.write_text(start_xyz_text)
+    end_xyz.write_text(end_xyz_text)
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._initialize_workspace_job",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("launch should defer initialization in hawaii xyz mode")),
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive.MepdDriveServer", _FakeServer)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.webbrowser.open", lambda _url: True)
+
+    server = main_cli.launch_mepd_drive(
+        directory=str(tmp_path / "drive" / "xyz-run"),
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        start_xyz_fp=str(start_xyz),
+        end_xyz_fp=str(end_xyz),
+        run_name="xyz-run",
+        hawaii=True,
+        open_browser=False,
+    )
+
+    assert server.server_address == ("127.0.0.1", 48123)
+    assert captured["initial_state"] is None
+    assert len(captured["initialize_payloads"]) == 1
+    payload = captured["initialize_payloads"][0]
+    assert payload["reactant_xyz"] == start_xyz_text
+    assert payload["product_xyz"] == end_xyz_text
+    assert payload["mode"] == "reactant-product"
+    assert payload["seed_only"] is True
+    assert payload["auto_start_hawaii"] is True
 
 
 def test_drive_handler_read_json_rejects_oversized_payload():
@@ -4320,6 +4667,58 @@ def test_submit_hawaii_control_go_starts_when_idle(monkeypatch, tmp_path):
     assert result["running"] is True
 
 
+def test_submit_hawaii_control_go_forwards_discovery_tools_when_provided(tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = SimpleNamespace(
+        directory=workspace_dir,
+        workdir=str(workspace_dir),
+    )
+    server.runtime = SimpleNamespace(
+        workspace=workspace,
+        future=None,
+        active_action=None,
+        last_error="",
+        last_message="",
+    )
+    captured = {"tools": None}
+
+    def _fake_submit_hawaii(*, discovery_tools=None):
+        captured["tools"] = list(discovery_tools or [])
+
+    server.submit_hawaii = _fake_submit_hawaii
+
+    result = server.submit_hawaii_control(mode="go", discovery_tools=["retropaths", "nanoreactor"])
+
+    assert captured["tools"] == ["retropaths", "nanoreactor"]
+    assert result["mode"] == "go"
+    assert result["running"] is True
+    assert result["discovery_tools"] == ["retropaths", "nanoreactor"]
+
+
+def test_normalize_hawaii_discovery_tools_handles_defaults_and_validation():
+    assert _normalize_hawaii_discovery_tools(None) == ["hessian-sample"]
+    assert _normalize_hawaii_discovery_tools("") == []
+    assert _normalize_hawaii_discovery_tools("hessian,retropaths nanoreactor") == [
+        "hessian-sample",
+        "retropaths",
+        "nanoreactor",
+    ]
+    assert _normalize_hawaii_discovery_tools(["hessian_sample", "retropaths", "retropaths"]) == [
+        "hessian-sample",
+        "retropaths",
+    ]
+
+    try:
+        _normalize_hawaii_discovery_tools(["bad-tool"])
+    except ValueError as exc:
+        assert "Unsupported Hawaii discovery tool" in str(exc)
+    else:
+        raise AssertionError("Expected invalid Hawaii discovery tool to raise ValueError.")
+
+
 def test_submit_hawaii_control_yellow_updates_mode_when_running(tmp_path):
     server = object.__new__(MepdDriveServer)
     server.state_lock = __import__("threading").Lock()
@@ -4451,6 +4850,104 @@ def test_hawaii_hessian_falls_back_to_singleton_seed_node_when_no_edges(monkeypa
     assert first == (1, 0, 2)
     assert second == (0, 0, 0)
     assert calls["node"] == 1
+
+
+def test_run_discovery_cycle_aggregates_node_tool_stats(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+    )
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0)
+
+    calls = {"tools": []}
+
+    def _fake_run_node_discovery_tool(*_args, **kwargs):
+        calls["tools"].append(str(kwargs.get("tool_label")))
+        label = str(kwargs.get("tool_label") or "")
+        if "Retropaths" in label:
+            return 2, 1, 3
+        return 1, 0, 2
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot_compat", lambda *_args, **_kwargs: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_hawaii_progress", lambda *args, **kwargs: None)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._run_node_discovery_tool", _fake_run_node_discovery_tool)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.ensure_retropaths_available", lambda **_kwargs: None)
+
+    stats = _run_discovery_cycle(
+        workspace,
+        discovery_tools=["retropaths", "nanoreactor"],
+        network_splits=True,
+        progress_fp=None,
+        dr=1.0,
+        max_hessian_candidates=10,
+        attempted_hessian_edge_keys=set(),
+        attempted_node_keys_by_tool={"retropaths": set(), "nanoreactor": set()},
+        control_fp=None,
+    )
+
+    assert calls["tools"] == ["Retropaths template growth", "Nanoreactor sampling"]
+    assert stats["attempts"] == 3
+    assert stats["failures"] == 1
+    assert stats["added_nodes"] == 5
+    assert stats["retropaths_attempts"] == 2
+    assert stats["retropaths_failures"] == 1
+    assert stats["nanoreactor_attempts"] == 1
+    assert stats["nanoreactor_failures"] == 0
+
+
+def test_hawaii_autonomy_with_no_discovery_tools_runs_connect_refinement_until_stable(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+    )
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0)
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot_compat", lambda *_args, **_kwargs: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._connect_all_unconnected_nodes", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._run_unattempted_nebs", lambda *_args, **_kwargs: (0, 0))
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._run_discovery_cycle",
+        lambda *_args, **_kwargs: {
+            "attempts": 0,
+            "failures": 0,
+            "added_nodes": 0,
+            "hessian_attempts": 0,
+            "hessian_failures": 0,
+            "retropaths_attempts": 0,
+            "retropaths_failures": 0,
+            "nanoreactor_attempts": 0,
+            "nanoreactor_failures": 0,
+        },
+    )
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_hawaii_progress", lambda *args, **kwargs: None)
+
+    result = _run_hawaii_autonomy(
+        dict(workspace.__dict__),
+        network_splits=True,
+        progress_fp=None,
+        control_fp=None,
+        discovery_tools=[],
+    )
+
+    assert result["cycles"] == 1
+    assert result["discovery_tools"] == []
+    assert result["discovery_attempts"] == 0
+    assert result["new_minima"] == 0
+    assert "steady state" in result["message"]
 
 
 def test_hawaii_neb_stage_writes_progress_after_each_completed_neb(monkeypatch, tmp_path):
@@ -4743,6 +5240,45 @@ def test_submit_minimize_rejects_already_optimized_node(monkeypatch, tmp_path):
         assert False, "submit_minimize should reject an already optimized node"
     except ValueError as exc:
         assert "already geometry-optimized" in str(exc)
+
+
+def test_submit_add_node_updates_message_and_cache_hint(monkeypatch, tmp_path):
+    server = object.__new__(MepdDriveServer)
+    server.state_lock = __import__("threading").Lock()
+    server.runtime = SimpleNamespace(
+        workspace=SimpleNamespace(),
+        last_error="stale",
+        last_message="Idle.",
+        future=None,
+        busy_label="",
+    )
+    server._prefer_fast_payload_once = False
+    server._prefer_fast_payload_until = 0.0
+
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.add_manual_node",
+        lambda workspace, xyz_text, charge, multiplicity: {
+            "message": "Added manual node 4 from XYZ.",
+            "node_id": 4,
+            "added": True,
+        },
+    )
+
+    result = server.submit_add_node(
+        xyz_text="""2
+manual
+H 0.0 0.0 0.0
+H 0.0 0.0 0.74
+""",
+        charge=0,
+        multiplicity=1,
+    )
+
+    assert result["node_id"] == 4
+    assert server.runtime.last_error == ""
+    assert server.runtime.last_message == "Added manual node 4 from XYZ."
+    assert server._prefer_fast_payload_once is True
+    assert server._prefer_fast_payload_until > 0.0
 
 
 def test_submit_run_neb_surfaces_non_queueable_edge(monkeypatch, tmp_path):

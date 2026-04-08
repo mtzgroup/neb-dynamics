@@ -43,8 +43,7 @@ except ImportError:
     _rich_available = False
 
 
-ob_log_handler = pybel.ob.OBMessageHandler()
-ob_log_handler.SetOutputLevel(0)
+pybel.ob.obErrorLog.SetOutputLevel(0)
 IS_ELEM_STEP = ElemStepResults(
     is_elem_step=True,
     is_concave=True,

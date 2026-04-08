@@ -17,6 +17,22 @@ def test_runinputs_fsm_can_save_defaults(tmp_path):
     assert 'path_min_method = "fsm"' in text
 
 
+def test_runinputs_neb_dlf_has_expected_defaults():
+    inputs = RunInputs(
+        engine_name="qcop",
+        program="terachem",
+        path_min_method="neb-dlf",
+    )
+
+    defaults = vars(inputs.path_min_inputs)
+    assert defaults["nstep"] == 200
+    assert defaults["min_nebk"] == 0.01
+    assert defaults["do_elem_step_checks"] is True
+    assert defaults["skip_identical_graphs"] is True
+    assert defaults["collect_files"] is True
+    assert isinstance(defaults["dlfind_keywords"], dict)
+
+
 def test_runinputs_ase_omol25_reports_missing_fairchem(monkeypatch):
     import builtins
 

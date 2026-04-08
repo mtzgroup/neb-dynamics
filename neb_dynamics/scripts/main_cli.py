@@ -70,6 +70,7 @@ from neb_dynamics.retropaths_workflow import (
     create_workspace,
     ensure_retropaths_available,
     prepare_neb_workspace,
+    refine_drive_workspace_network,
     run_netgen_smiles_workflow,
     summarize_queue,
     write_status_html,
@@ -145,7 +146,23 @@ def _format_drive_access_panel(
     return Panel.fit("\n".join(lines), border_style="cyan")
 
 
-ob_log_handler = openbabel.OBMessageHandler()
+openbabel.obErrorLog.SetOutputLevel(0)
+
+
+@contextlib.contextmanager
+def _suppress_rdkit_valence_warnings():
+    try:
+        from rdkit import RDLogger  # type: ignore
+    except Exception:
+        yield
+        return
+    with contextlib.suppress(Exception):
+        RDLogger.DisableLog("rdApp.*")
+    try:
+        yield
+    finally:
+        with contextlib.suppress(Exception):
+            RDLogger.EnableLog("rdApp.*")
 
 
 def _parse_kmc_initial_condition_overrides(
@@ -171,8 +188,6 @@ def _parse_kmc_initial_condition_overrides(
         parsed[node_index] = value
     return parsed
 
-
-ob_log_handler.SetOutputLevel(0)
 
 app = typer.Typer(
     rich_markup_mode="rich",
@@ -2965,7 +2980,7 @@ def make_default_inputs(
             "--name", help='path to output toml file')] = None,
         path_min_method: Annotated[str, typer.Option("--path-min-method", "-pmm",
                                                      help='name of path minimization.\
-                                                          Options are: [neb, fneb]')] = "neb"):
+                                                          Options are: [neb, fneb, mlpgi, neb-dlf]')] = "neb"):
     console.print(BANNER)
     if name is None:
         name = Path(Path(os.getcwd()) / 'default_inputs')
@@ -3137,85 +3152,204 @@ def status_cmd(
         webbrowser.open(status_fp.resolve().as_uri())
 
 
+@app.command("drive-refine")
+def drive_refine(
+    workspace: Annotated[str, typer.Option("--workspace", "-w", help="Path to a drive workspace directory or workspace.json")] = None,
+    inputs: Annotated[str, typer.Option("--inputs", "-i", help="RunInputs TOML for TS/IRC refinement")] = None,
+    output_directory: Annotated[str, typer.Option("--output-directory", "-o", help="Directory for the refined workspace")] = None,
+    name: Annotated[str, typer.Option("--name", help="Run name for the refined workspace")] = None,
+    use_bigchem: Annotated[bool, typer.Option("--use-bigchem/--no-use-bigchem", help="Use BigChem for Hessian-backed TS/IRC steps when supported")] = False,
+    write_status_html_output: Annotated[bool, typer.Option("--write-status-html/--no-write-status-html", help="Generate full status.html for refined workspace (slower)")] = False,
+):
+    console.print(BANNER)
+    if workspace is None:
+        raise typer.BadParameter("--workspace/-w is required.")
+    if inputs is None:
+        raise typer.BadParameter("--inputs/-i is required.")
+
+    workspace_path = Path(workspace).expanduser().resolve()
+    workspace_dir = workspace_path.parent if workspace_path.name == "workspace.json" else workspace_path
+    workspace_json = workspace_dir / "workspace.json"
+    if not workspace_json.exists():
+        raise typer.BadParameter(f"No workspace.json found at: {workspace_dir}")
+
+    source_workspace = RetropathsWorkspace.read(workspace_dir)
+    with Progress(
+        SpinnerColumn(style="cyan"),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=36),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Preparing refinement...", total=1)
+
+        def _on_progress(event: dict[str, object]) -> None:
+            message = str(event.get("message") or "Running refinement...")
+            total = int(event.get("total") or 1)
+            current = int(event.get("current") or 0)
+            total = max(1, total)
+            current = max(0, min(total, current))
+            progress.update(
+                task,
+                description=message,
+                total=total,
+                completed=current,
+            )
+
+        with _suppress_rdkit_valence_warnings():
+            summary = refine_drive_workspace_network(
+                source_workspace,
+                refinement_inputs_fp=Path(inputs).expanduser().resolve(),
+                refined_workspace_dir=(Path(output_directory).expanduser().resolve() if output_directory else None),
+                refined_run_name=name,
+                use_bigchem=use_bigchem,
+                write_status_html_output=write_status_html_output,
+                progress=_on_progress,
+            )
+        progress.update(task, description="Refinement complete.", total=1, completed=1)
+
+    table = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    table.add_column(style="bold cyan")
+    table.add_column(style="white")
+    table.add_row("Source Workspace", str(summary["source_workspace"]))
+    table.add_row("Refined Workspace", str(summary["workspace"]))
+    table.add_row("Inputs", str(summary["inputs_fp"]))
+    table.add_row("Edges Scanned", str(summary["edges_scanned"]))
+    table.add_row("Edges With Chains", str(summary["edges_with_chains"]))
+    table.add_row("TS Attempted", str(summary["ts_guesses_attempted"]))
+    table.add_row("TS Submitted", str(summary.get("ts_jobs_submitted", summary["ts_guesses_attempted"])))
+    table.add_row("TS Converged", str(summary["ts_converged"]))
+    table.add_row("TS Failed", str(summary.get("ts_failed", 0)))
+    if summary.get("ts_top_errors"):
+        table.add_row("TS Top Error", str(summary.get("ts_top_errors", [""])[0]))
+    if summary.get("ts_failure_log"):
+        table.add_row("TS Failure Log", str(summary["ts_failure_log"]))
+    table.add_row("IRC Submitted", str(summary.get("irc_jobs_submitted", summary["ts_converged"])))
+    table.add_row("IRC Converged", str(summary["irc_converged"]))
+    table.add_row("IRC Failed", str(summary.get("irc_failed", 0)))
+    if summary.get("irc_top_errors"):
+        table.add_row("IRC Top Error", str(summary.get("irc_top_errors", [""])[0]))
+    if summary.get("irc_failure_log"):
+        table.add_row("IRC Failure Log", str(summary["irc_failure_log"]))
+    table.add_row("ChemCloud Parallel", str(bool(summary.get("chemcloud_parallel", False))))
+    table.add_row("Use BigChem", str(bool(summary.get("use_bigchem", False))))
+    table.add_row("Added Nodes", str(summary["added_nodes"]))
+    table.add_row("Added Edges", str(summary["added_edges"]))
+    table.add_row("Final Nodes", str(summary["final_nodes"]))
+    table.add_row("Final Edges", str(summary["final_edges"]))
+    table.add_row("Queue Items", str(summary["queue_items"]))
+    table.add_row("Artifacts", str(summary["artifacts_dir"]))
+    console.print(Panel(table, title="[bold green]✓ drive-refine Complete[/bold green]", border_style="green"))
+
+
 @app.command("drive")
 def drive(
-    inputs: Annotated[str, typer.Option(
-        "--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
-    smiles: Annotated[str, typer.Option(
-        "--smiles", "-s", help="Root reactant SMILES to bootstrap a drive workspace before opening the UI")] = None,
-    product_smiles: Annotated[str, typer.Option(
-        "--product-smiles", "--end", help="Optional product / end SMILES to bootstrap a target node and queued NEB edge")] = None,
-    environment: Annotated[str, typer.Option(
-        "--environment", "-e", help="Environment SMILES for SMILES-based drive initialization")] = "",
-    charge: Annotated[int, typer.Option(
-        "--charge", help="Total charge for SMILES-bootstrapped drive endpoint structures")] = 0,
-    multiplicity: Annotated[int, typer.Option(
-        "--multiplicity", help="Spin multiplicity for SMILES-bootstrapped drive endpoint structures")] = 1,
-    name: Annotated[str, typer.Option(
-        "--name", help="Run name / workspace name for SMILES-based drive initialization")] = None,
-    workspace: Annotated[str, typer.Option(
-        "--workspace", help="Existing workspace directory or workspace.json to load on startup")] = None,
-    reactions_fp: Annotated[str, typer.Option(
-        "--reactions-fp", help="Path to retropaths reactions.p file")] = None,
-    directory: Annotated[str, typer.Option(
-        "--directory", "-d", help="Directory where MEPD Drive workspaces should be created")] = None,
-    host: Annotated[str, typer.Option(
-        "--host", help="Host interface for the local drive server")] = "127.0.0.1",
-    port: Annotated[int, typer.Option(
-        "--port", help="Port for the local drive server (0 selects a free port)")] = 0,
-    ssh_login: Annotated[str, typer.Option(
-        "--ssh-login", help="SSH target to print a ready-made tunnel command, e.g. user@cluster")] = None,
-    local_port: Annotated[int, typer.Option(
-        "--local-port", help="Laptop-side port for the printed SSH tunnel command")] = None,
-    timeout_seconds: Annotated[int, typer.Option(
-        "--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
-    max_nodes: Annotated[int, typer.Option(
-        "--max-nodes", help="Retropaths maximum number of nodes")] = 40,
-    max_depth: Annotated[int, typer.Option(
-        "--max-depth", help="Retropaths maximum search depth")] = 4,
-    max_parallel_nebs: Annotated[int, typer.Option(
-        "--max-parallel-nebs", help="Number of autosplitting NEBs to run concurrently")] = 1,
-    network_splits: Annotated[bool, typer.Option(
-        "--network-splits/--no-network-splits", help="Use recursive autosplit results to build the displayed network overlay")] = False,
-    hawaii: Annotated[bool, typer.Option(
-        "--hawaii/--no-hawaii", help="Run autonomous connect/NEB/Hessian exploration loop on startup")] = False,
-    no_open: Annotated[bool, typer.Option(
-        "--no-open", help="Do not auto-open the browser")] = False,
+    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES to bootstrap a drive workspace before opening the UI")] = None,
+    product_smiles: Annotated[str, typer.Option("--product-smiles", "--end", help="Optional product / end SMILES to bootstrap a target node and queued NEB edge")] = None,
+    start_xyz_fp: Annotated[str, typer.Option("--start-xyz-fp", "--start-xyz", "--reactant-xyz-fp", help="Path to reactant/start XYZ file used to seed endpoint geometry")] = None,
+    end_xyz_fp: Annotated[str, typer.Option("--end-xyz-fp", "--end-xyz", "--product-xyz-fp", help="Path to product/end XYZ file used to seed endpoint geometry")] = None,
+    environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES for SMILES-based drive initialization")] = "",
+    charge: Annotated[int, typer.Option("--charge", help="Total charge for SMILES-bootstrapped drive endpoint structures")] = 0,
+    multiplicity: Annotated[int, typer.Option("--multiplicity", help="Spin multiplicity for SMILES-bootstrapped drive endpoint structures")] = 1,
+    name: Annotated[str, typer.Option("--name", help="Run name / workspace name for SMILES-based drive initialization")] = None,
+    workspace: Annotated[str, typer.Option("--workspace", help="Existing workspace directory or workspace.json to load on startup")] = None,
+    reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
+    directory: Annotated[str, typer.Option("--directory", "-d", help="Directory where MEPD Drive workspaces should be created")] = None,
+    host: Annotated[str, typer.Option("--host", help="Host interface for the local drive server")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Port for the local drive server (0 selects a free port)")] = 0,
+    ssh_login: Annotated[str, typer.Option("--ssh-login", help="SSH target to print a ready-made tunnel command, e.g. user@cluster")] = None,
+    local_port: Annotated[int, typer.Option("--local-port", help="Laptop-side port for the printed SSH tunnel command")] = None,
+    timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
+    max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
+    max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
+    max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of autosplitting NEBs to run concurrently")] = 1,
+    network_splits: Annotated[bool, typer.Option("--network-splits/--no-network-splits", help="Use recursive autosplit results to build the displayed network overlay")] = True,
+    hawaii: Annotated[bool, typer.Option("--hawaii/--no-hawaii", help="Run autonomous connect/NEB/Hessian exploration loop on startup")] = False,
+    hawaii_discovery_tools: Annotated[str, typer.Option("--hawaii-discovery-tools", help="Comma-separated Hawaii discovery tools: hessian-sample, retropaths, nanoreactor. Empty string disables discovery.")] = None,
+    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the browser")] = False,
 ):
     console.print(BANNER)
     workspace_path = str(workspace or "").strip() or None
     requested_dir = Path(directory).resolve() if directory else None
+    has_xyz_bootstrap = bool(str(start_xyz_fp or "").strip())
     if workspace_path is None and requested_dir is not None and (requested_dir / "workspace.json").exists():
         workspace_path = str(requested_dir)
 
-    if smiles and workspace_path:
+    if (smiles or has_xyz_bootstrap) and workspace_path:
         raise typer.BadParameter(
-            "Choose either --smiles/--inputs to bootstrap a new drive workspace or --workspace/--directory to load an existing one, not both.")
-    if smiles and inputs is None:
-        raise typer.BadParameter(
-            "--inputs/-i is required when using --smiles.")
+            "Choose either bootstrap inputs (--smiles/--start-xyz-fp/--inputs) or --workspace/--directory to load an existing run, not both."
+        )
+    if (smiles or has_xyz_bootstrap) and inputs is None:
+        raise typer.BadParameter("--inputs/-i is required when using --smiles or --start-xyz-fp.")
+    if end_xyz_fp and not has_xyz_bootstrap and not smiles:
+        raise typer.BadParameter("--end-xyz-fp requires --start-xyz-fp or --smiles.")
 
-    server = launch_mepd_drive(
-        directory=directory,
-        inputs_fp=inputs,
-        workspace_path=workspace_path,
-        smiles=smiles,
-        product_smiles=product_smiles,
-        environment_smiles=environment,
-        charge=charge,
-        multiplicity=multiplicity,
-        run_name=name,
-        reactions_fp=reactions_fp,
-        host=host,
-        port=port,
-        timeout_seconds=timeout_seconds,
-        max_nodes=max_nodes,
-        max_depth=max_depth,
-        max_parallel_nebs=max_parallel_nebs,
-        network_splits=network_splits,
-        hawaii=hawaii,
-        open_browser=not no_open,
-    )
+    launch_kwargs = {
+        "directory": directory,
+        "inputs_fp": inputs,
+        "workspace_path": workspace_path,
+        "smiles": smiles,
+        "product_smiles": product_smiles,
+        "start_xyz_fp": start_xyz_fp,
+        "end_xyz_fp": end_xyz_fp,
+        "environment_smiles": environment,
+        "charge": charge,
+        "multiplicity": multiplicity,
+        "run_name": name,
+        "reactions_fp": reactions_fp,
+        "host": host,
+        "port": port,
+        "timeout_seconds": timeout_seconds,
+        "max_nodes": max_nodes,
+        "max_depth": max_depth,
+        "max_parallel_nebs": max_parallel_nebs,
+        "network_splits": network_splits,
+        "hawaii": hawaii,
+        "hawaii_discovery_tools": hawaii_discovery_tools,
+        "open_browser": not no_open,
+    }
+
+    if workspace_path:
+        startup_total = 6 if network_splits else 4
+        with Progress(
+            SpinnerColumn(style="cyan"),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=36),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Resolving workspace path...", total=startup_total)
+            progress_state = {"total": float(startup_total), "completed": 0.0}
+
+            def _on_startup_progress(event: dict):
+                message = str(event.get("message") or "Loading workspace...")
+                total_steps = float(event.get("total_steps") or startup_total)
+                completed_steps = float(event.get("completed_steps") or 0.0)
+                progress_state["total"] = max(progress_state["total"], total_steps)
+                progress_state["completed"] = max(
+                    0.0, min(progress_state["total"], completed_steps)
+                )
+                progress.update(
+                    task,
+                    description=message,
+                    total=max(1.0, progress_state["total"]),
+                    completed=progress_state["completed"],
+                )
+
+            launch_kwargs["startup_progress"] = _on_startup_progress
+            server = launch_mepd_drive(**launch_kwargs)
+            final_total = max(float(startup_total), float(progress_state["total"]))
+            progress.update(
+                task,
+                description="Workspace loaded.",
+                total=final_total,
+                completed=final_total,
+            )
+    else:
+        server = launch_mepd_drive(**launch_kwargs)
     actual_host, actual_port = server.server_address[:2]
     access_url = f"http://{actual_host}:{actual_port}/"
     ui_token = str(getattr(server, "ui_token", "") or "").strip()

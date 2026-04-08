@@ -496,6 +496,10 @@ class QMMMEngine(Engine):
                 self.ref_node = ref_node
                 self.active_atom_indices = np.array(active_atom_indices, dtype=int)
 
+            def copy_scratch(self, src, dest):
+                del src, dest
+                return None
+
             def calc_new(self, coords, dirname):
                 curr_coords = np.array(coords, dtype=float).reshape((-1, 3))
                 full_coords = np.array(self.ref_node.coords, dtype=float).copy()

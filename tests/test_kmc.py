@@ -1,6 +1,7 @@
 import math
 
 import networkx as nx
+import pytest
 
 from neb_dynamics.kmc import (
     build_kmc_payload,
@@ -117,6 +118,25 @@ def test_simulate_kmc_handles_stiff_rates_without_trapping_population():
 
     assert result["final_populations"][1] > 0.99
     assert result["final_populations"][0] < 0.01
+
+
+def test_simulate_kmc_reuses_prebuilt_payload(monkeypatch):
+    pot = _pot_with_barrier()
+    payload = build_kmc_payload(pot, temperature_kelvin=300.0)
+
+    monkeypatch.setattr(
+        "neb_dynamics.kmc.build_kmc_payload",
+        lambda *args, **kwargs: pytest.fail("build_kmc_payload should not be called when payload is provided"),
+    )
+    result = simulate_kmc(
+        pot,
+        temperature_kelvin=300.0,
+        initial_conditions={0: 1.0, 1: 0.0},
+        max_steps=2,
+        payload=payload,
+    )
+
+    assert result["max_steps"] == 2
 
 
 def test_build_kmc_payload_suppresses_suspicious_zero_barrier_edge():

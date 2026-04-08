@@ -55,6 +55,7 @@ from neb_dynamics.retropaths_workflow import (
     _strip_cached_result,
     _write_edge_visualizations,
     add_manual_edge,
+    add_manual_node,
     apply_reactions_to_node,
     ensure_retropaths_available,
     initialize_workspace_with_progress,
@@ -72,6 +73,15 @@ from neb_dynamics.retropaths_workflow import (
 
 _MERGED_DRIVE_POT_CACHE: dict[tuple[str, bool], Pot] = {}
 _RUN_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_HAWAII_DISCOVERY_TOOL_ALLOWED = ("hessian-sample", "retropaths", "nanoreactor")
+_HAWAII_DISCOVERY_TOOL_DEFAULT = ("hessian-sample",)
+_HAWAII_DISCOVERY_TOOL_ALIASES = {
+    "hessian": "hessian-sample",
+    "hessian-sample": "hessian-sample",
+    "hessian_sample": "hessian-sample",
+    "retropaths": "retropaths",
+    "nanoreactor": "nanoreactor",
+}
 
 
 def _is_within_directory(path: Path, root: Path) -> bool:
@@ -91,6 +101,57 @@ def _validate_run_name(raw_run_name: str) -> str:
             "Run name may contain only letters, digits, '.', '-', '_' and must not include path separators."
         )
     return run_name
+
+
+def _normalize_hawaii_discovery_tools(
+    value: Any,
+    *,
+    default: tuple[str, ...] | None = _HAWAII_DISCOVERY_TOOL_DEFAULT,
+) -> list[str]:
+    if value is None:
+        return list(default or [])
+
+    source_items: list[Any] = []
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        parsed: Any = None
+        if text.startswith("["):
+            with contextlib.suppress(Exception):
+                parsed = json.loads(text)
+        if isinstance(parsed, (list, tuple, set)):
+            source_items = list(parsed)
+        else:
+            source_items = [token for token in re.split(r"[\s,]+", text) if token]
+    elif isinstance(value, (list, tuple, set)):
+        source_items = list(value)
+    else:
+        source_items = [value]
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    invalid: list[str] = []
+    for raw in source_items:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        canonical = _HAWAII_DISCOVERY_TOOL_ALIASES.get(text.lower(), text.lower())
+        if canonical not in _HAWAII_DISCOVERY_TOOL_ALLOWED:
+            invalid.append(text)
+            continue
+        if canonical in seen:
+            continue
+        seen.add(canonical)
+        normalized.append(canonical)
+
+    if invalid:
+        allowed = ", ".join(_HAWAII_DISCOVERY_TOOL_ALLOWED)
+        invalid_list = ", ".join(invalid)
+        raise ValueError(
+            f"Unsupported Hawaii discovery tool(s): {invalid_list}. Allowed tools: {allowed}."
+        )
+    return normalized
 
 
 def _validate_workspace_path_for_init(
@@ -659,6 +720,21 @@ def _parse_xyz_text_to_structure(
         charge=charge,
         multiplicity=multiplicity,
     )
+
+
+def _read_xyz_file_text(path_value: str | None, *, label: str) -> str:
+    raw = str(path_value or "").strip()
+    if not raw:
+        return ""
+    fp = Path(raw).expanduser().resolve()
+    if not fp.exists():
+        raise FileNotFoundError(f"{label} XYZ file was not found: {fp}")
+    if not fp.is_file():
+        raise ValueError(f"{label} XYZ path is not a file: {fp}")
+    try:
+        return fp.read_text(encoding="utf-8")
+    except Exception as exc:
+        raise ValueError(f"Could not read {label} XYZ file `{fp}`: {type(exc).__name__}: {exc}") from exc
 
 
 def _molecule_visual_payload(molecule_like: Any) -> dict[str, Any] | None:
@@ -2692,6 +2768,11 @@ def _read_hawaii_control_payload(control_fp: Any) -> dict[str, Any]:
     except Exception:
         return {"mode": "go"}
     payload["mode"] = _normalize_hawaii_control_mode(payload.get("mode"))
+    if "discovery_tools" in payload:
+        payload["discovery_tools"] = _normalize_hawaii_discovery_tools(
+            payload.get("discovery_tools"),
+            default=None,
+        )
     return payload
 
 
@@ -2706,13 +2787,23 @@ def _write_hawaii_control_payload(
     mode: str,
     source: str,
     note: str = "",
+    discovery_tools: Any = None,
 ) -> dict[str, Any]:
+    existing_payload: dict[str, Any] = {}
+    if control_fp:
+        existing_payload = _read_hawaii_control_payload(control_fp)
     payload = {
         "mode": _normalize_hawaii_control_mode(mode),
         "source": str(source or ""),
         "note": str(note or ""),
         "updated_at": int(time.time()),
     }
+    tools_value = discovery_tools if discovery_tools is not None else existing_payload.get("discovery_tools")
+    if tools_value is not None:
+        payload["discovery_tools"] = _normalize_hawaii_discovery_tools(
+            tools_value,
+            default=None,
+        )
     if not control_fp:
         return payload
     fp = Path(str(control_fp))
@@ -3216,6 +3307,242 @@ def _run_hessian_on_completed_edges(
     return attempts, failures, added_nodes
 
 
+def _hawaii_node_key(node_index: int) -> str:
+    return f"node-{int(node_index)}"
+
+
+def _run_node_discovery_tool(
+    workspace: RetropathsWorkspace,
+    *,
+    tool_label: str,
+    run_for_node: Callable[[int], dict[str, Any]],
+    attempted_node_keys: set[str],
+    network_splits: bool,
+    progress_fp: str | None,
+    dr: float | None,
+    control_fp: str | None = None,
+) -> tuple[int, int, int]:
+    _raise_if_hawaii_stop_now(control_fp)
+    pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+    candidates: list[tuple[int, str]] = []
+    for node_index in sorted(int(node_id) for node_id in pot.graph.nodes):
+        node_key = _hawaii_node_key(node_index)
+        if node_key in attempted_node_keys:
+            continue
+        candidates.append((node_index, node_key))
+
+    attempts = 0
+    failures = 0
+    added_nodes = 0
+    if not candidates:
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            pot=pot,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=f"Step 3/3: {tool_label} has no untried node seeds remaining.",
+            phase="growing",
+            stage="discovery",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[],
+        )
+        return attempts, failures, added_nodes
+
+    for index, (node_index, node_key) in enumerate(candidates, start=1):
+        _raise_if_hawaii_stop_now(control_fp)
+        attempts += 1
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            pot=pot,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=(
+                f"Step 3/3: running {tool_label} from node {int(node_index)} "
+                f"({index}/{len(candidates)})."
+            ),
+            phase="growing",
+            stage="discovery",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[int(node_index)],
+        )
+        try:
+            result = run_for_node(int(node_index))
+            added_nodes += int(result.get("added_nodes") or 0)
+            pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+        except Exception as exc:
+            failures += 1
+            _write_hawaii_progress(
+                workspace,
+                network_splits=network_splits,
+                pot=pot,
+                progress_fp=progress_fp,
+                title="Hawaii autonomous exploration",
+                note=(
+                    f"Step 3/3: {tool_label} failed from node {int(node_index)} "
+                    f"({index}/{len(candidates)}): {type(exc).__name__}: {exc}"
+                ),
+                phase="growing",
+                stage="discovery",
+                dr=dr,
+                control_mode=_read_hawaii_control_mode(control_fp),
+                growing_nodes=[int(node_index)],
+            )
+        finally:
+            attempted_node_keys.add(node_key)
+    return attempts, failures, added_nodes
+
+
+def _run_discovery_cycle(
+    workspace: RetropathsWorkspace,
+    *,
+    discovery_tools: list[str],
+    network_splits: bool,
+    progress_fp: str | None,
+    dr: float,
+    max_hessian_candidates: int,
+    attempted_hessian_edge_keys: set[str],
+    attempted_node_keys_by_tool: dict[str, set[str]],
+    control_fp: str | None = None,
+) -> dict[str, int]:
+    stats = {
+        "attempts": 0,
+        "failures": 0,
+        "added_nodes": 0,
+        "hessian_attempts": 0,
+        "hessian_failures": 0,
+        "retropaths_attempts": 0,
+        "retropaths_failures": 0,
+        "nanoreactor_attempts": 0,
+        "nanoreactor_failures": 0,
+    }
+    if not discovery_tools:
+        pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            pot=pot,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note="Step 3/3: discovery stage skipped (no discovery tools configured).",
+            phase="growing",
+            stage="discovery",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[],
+        )
+        return stats
+
+    for tool_index, tool_name in enumerate(discovery_tools, start=1):
+        _raise_if_hawaii_stop_now(control_fp)
+        tool_note = (
+            f"Step 3/3: discovery tool {tool_index}/{len(discovery_tools)} "
+            f"({tool_name}) is running."
+        )
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=tool_note,
+            phase="growing",
+            stage="discovery",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=[],
+        )
+
+        if tool_name == "hessian-sample":
+            attempts, failures, added_nodes = _run_hessian_on_completed_edges(
+                workspace,
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                dr=float(dr),
+                max_candidates=int(max_hessian_candidates),
+                attempted_edge_keys=attempted_hessian_edge_keys,
+                control_fp=control_fp,
+            )
+            stats["hessian_attempts"] += int(attempts)
+            stats["hessian_failures"] += int(failures)
+        elif tool_name == "retropaths":
+            try:
+                ensure_retropaths_available(feature="Hawaii Retropaths discovery")
+            except Exception as exc:
+                attempts, failures, added_nodes = 0, 1, 0
+                _write_hawaii_progress(
+                    workspace,
+                    network_splits=network_splits,
+                    progress_fp=progress_fp,
+                    title="Hawaii autonomous exploration",
+                    note=(
+                        "Step 3/3: Retropaths discovery is unavailable and was skipped: "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                    phase="growing",
+                    stage="discovery",
+                    dr=dr,
+                    control_mode=_read_hawaii_control_mode(control_fp),
+                    growing_nodes=[],
+                )
+            else:
+                attempts, failures, added_nodes = _run_node_discovery_tool(
+                    workspace,
+                    tool_label="Retropaths template growth",
+                    run_for_node=lambda node_id: apply_reactions_to_node(
+                        workspace,
+                        int(node_id),
+                        progress_fp=progress_fp,
+                    ),
+                    attempted_node_keys=attempted_node_keys_by_tool.setdefault("retropaths", set()),
+                    network_splits=network_splits,
+                    progress_fp=progress_fp,
+                    dr=dr,
+                    control_fp=control_fp,
+                )
+            stats["retropaths_attempts"] += int(attempts)
+            stats["retropaths_failures"] += int(failures)
+        elif tool_name == "nanoreactor":
+            attempts, failures, added_nodes = _run_node_discovery_tool(
+                workspace,
+                tool_label="Nanoreactor sampling",
+                run_for_node=lambda node_id: run_nanoreactor_for_node(
+                    workspace,
+                    int(node_id),
+                    progress_fp=progress_fp,
+                ),
+                attempted_node_keys=attempted_node_keys_by_tool.setdefault("nanoreactor", set()),
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                dr=dr,
+                control_fp=control_fp,
+            )
+            stats["nanoreactor_attempts"] += int(attempts)
+            stats["nanoreactor_failures"] += int(failures)
+        else:
+            # This should be unreachable because discovery tools are validated.
+            attempts, failures, added_nodes = 0, 1, 0
+            _write_hawaii_progress(
+                workspace,
+                network_splits=network_splits,
+                progress_fp=progress_fp,
+                title="Hawaii autonomous exploration",
+                note=f"Step 3/3: unsupported discovery tool `{tool_name}` was skipped.",
+                phase="growing",
+                stage="discovery",
+                dr=dr,
+                control_mode=_read_hawaii_control_mode(control_fp),
+                growing_nodes=[],
+            )
+
+        stats["attempts"] += int(attempts)
+        stats["failures"] += int(failures)
+        stats["added_nodes"] += int(added_nodes)
+    return stats
+
+
 def _run_hawaii_autonomy(
     workspace_data: dict[str, Any],
     *,
@@ -3223,21 +3550,40 @@ def _run_hawaii_autonomy(
     progress_fp: str | None = None,
     control_fp: str | None = None,
     max_hessian_candidates: int = 100,
+    discovery_tools: list[str] | None = None,
 ) -> dict[str, Any]:
     workspace = RetropathsWorkspace(**workspace_data)
+    configured_tools = _normalize_hawaii_discovery_tools(
+        discovery_tools if discovery_tools is not None else _read_hawaii_control_payload(control_fp).get("discovery_tools"),
+        default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
+    )
     current_pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
-    dr_schedule = (1.0, 2.0, 3.0)
+    hessian_enabled = "hessian-sample" in configured_tools
+    dr_schedule = (1.0, 2.0, 3.0) if hessian_enabled else (1.0,)
     attempted_hessian_by_dr: dict[str, set[str]] = {
         f"{float(dr):.1f}": set()
         for dr in dr_schedule
     }
+    attempted_node_keys_by_tool: dict[str, set[str]] = {
+        "retropaths": set(),
+        "nanoreactor": set(),
+    }
     cycle_index = 0
+    completion_reason = ""
     total_connected_edges = 0
     total_neb_attempts = 0
     total_neb_failures = 0
+    total_discovery_attempts = 0
+    total_discovery_failures = 0
     total_hessian_attempts = 0
     total_hessian_failures = 0
+    total_retropaths_attempts = 0
+    total_retropaths_failures = 0
+    total_nanoreactor_attempts = 0
+    total_nanoreactor_failures = 0
     total_new_minima = 0
+    discovery_label = ", ".join(configured_tools) if configured_tools else "none"
+    current_dr = float(dr_schedule[0]) if dr_schedule else None
 
     _write_hawaii_progress(
         workspace,
@@ -3245,10 +3591,13 @@ def _run_hawaii_autonomy(
         pot=current_pot,
         progress_fp=progress_fp,
         title="Hawaii autonomous exploration",
-        note="Starting autonomous connect/NEB/Hessian exploration.",
+        note=(
+            "Starting autonomous connect/refinement/discovery exploration "
+            f"(discovery tools: {discovery_label})."
+        ),
         phase="growing",
         stage="connect",
-        dr=dr_schedule[0],
+        dr=current_dr,
         control_mode=_read_hawaii_control_mode(control_fp),
         growing_nodes=[],
     )
@@ -3260,6 +3609,7 @@ def _run_hawaii_autonomy(
             _raise_if_hawaii_stop_now(control_fp)
             cycle_index += 1
             dr = float(dr_schedule[dr_index])
+            current_dr = float(dr)
             current_pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
             before_nodes = int(current_pot.graph.number_of_nodes())
             _write_hawaii_progress(
@@ -3269,7 +3619,8 @@ def _run_hawaii_autonomy(
                 progress_fp=progress_fp,
                 title="Hawaii autonomous exploration",
                 note=(
-                    f"Cycle {cycle_index}: running autonomous sequence with Hessian dr={float(dr):.1f}."
+                    f"Cycle {cycle_index}: running autonomous connect/refinement/discovery cycle "
+                    f"(tools: {discovery_label}, dr={float(dr):.1f})."
                 ),
                 phase="growing",
                 stage="connect",
@@ -3301,17 +3652,25 @@ def _run_hawaii_autonomy(
             if _read_hawaii_control_mode(control_fp) == "yellow":
                 break
 
-            hessian_attempts, hessian_failures, hessian_added_nodes = _run_hessian_on_completed_edges(
+            discovery_stats = _run_discovery_cycle(
                 workspace,
+                discovery_tools=list(configured_tools),
                 network_splits=network_splits,
                 progress_fp=progress_fp,
                 dr=float(dr),
-                max_candidates=int(max_hessian_candidates),
-                attempted_edge_keys=attempted_hessian_by_dr[f"{float(dr):.1f}"],
+                max_hessian_candidates=int(max_hessian_candidates),
+                attempted_hessian_edge_keys=attempted_hessian_by_dr[f"{float(dr):.1f}"],
+                attempted_node_keys_by_tool=attempted_node_keys_by_tool,
                 control_fp=control_fp,
             )
-            total_hessian_attempts += int(hessian_attempts)
-            total_hessian_failures += int(hessian_failures)
+            total_discovery_attempts += int(discovery_stats["attempts"])
+            total_discovery_failures += int(discovery_stats["failures"])
+            total_hessian_attempts += int(discovery_stats["hessian_attempts"])
+            total_hessian_failures += int(discovery_stats["hessian_failures"])
+            total_retropaths_attempts += int(discovery_stats["retropaths_attempts"])
+            total_retropaths_failures += int(discovery_stats["retropaths_failures"])
+            total_nanoreactor_attempts += int(discovery_stats["nanoreactor_attempts"])
+            total_nanoreactor_failures += int(discovery_stats["nanoreactor_failures"])
             if _read_hawaii_control_mode(control_fp) == "yellow":
                 break
 
@@ -3319,7 +3678,7 @@ def _run_hawaii_autonomy(
             after_nodes = int(current_pot.graph.number_of_nodes())
             discovered_minima = max(0, int(after_nodes - before_nodes))
             if discovered_minima <= 0:
-                discovered_minima = int(hessian_added_nodes)
+                discovered_minima = int(discovery_stats["added_nodes"])
 
             if discovered_minima > 0:
                 total_new_minima += int(discovered_minima)
@@ -3340,6 +3699,64 @@ def _run_hawaii_autonomy(
                     growing_nodes=[],
                 )
                 continue
+
+            if not configured_tools:
+                if connected_edges <= 0 and neb_attempts <= 0:
+                    completion_reason = (
+                        "Autonomous loop finished after connect/refinement reached a steady state "
+                        "with discovery tools disabled."
+                    )
+                    _write_hawaii_progress(
+                        workspace,
+                        network_splits=network_splits,
+                        pot=current_pot,
+                        progress_fp=progress_fp,
+                        title="Hawaii autonomous exploration",
+                        note=completion_reason,
+                        phase="growing",
+                        stage="connect",
+                        dr=dr,
+                        control_mode=_read_hawaii_control_mode(control_fp),
+                        growing_nodes=[],
+                    )
+                    break
+                _write_hawaii_progress(
+                    workspace,
+                    network_splits=network_splits,
+                    pot=current_pot,
+                    progress_fp=progress_fp,
+                    title="Hawaii autonomous exploration",
+                    note=(
+                        f"Cycle {cycle_index}: no discovery tools configured; "
+                        "continuing connect/refinement stages until stable."
+                    ),
+                    phase="growing",
+                    stage="connect",
+                    dr=dr,
+                    control_mode=_read_hawaii_control_mode(control_fp),
+                    growing_nodes=[],
+                )
+                continue
+
+            if not hessian_enabled:
+                completion_reason = (
+                    "Autonomous loop finished because discovery tools without Hessian sampling "
+                    "found no new minima this cycle."
+                )
+                _write_hawaii_progress(
+                    workspace,
+                    network_splits=network_splits,
+                    pot=current_pot,
+                    progress_fp=progress_fp,
+                    title="Hawaii autonomous exploration",
+                    note=completion_reason,
+                    phase="growing",
+                    stage="connect",
+                    dr=dr,
+                    control_mode=_read_hawaii_control_mode(control_fp),
+                    growing_nodes=[],
+                )
+                break
 
             _write_hawaii_progress(
                 workspace,
@@ -3368,6 +3785,9 @@ def _run_hawaii_autonomy(
     elif final_mode == "yellow":
         final_note = "Hawaii paused after finishing the current stage (yellow stoplight)."
         phase = "finished"
+    elif completion_reason:
+        final_note = completion_reason
+        phase = "finished"
     elif dr_index >= len(dr_schedule):
         final_note = "Autonomous loop finished because no new minima were found at dr=1.0, 2.0, or 3.0."
         phase = "finished"
@@ -3384,7 +3804,7 @@ def _run_hawaii_autonomy(
         note=final_note,
         phase=phase,
         stage="finished",
-        dr=(dr_schedule[min(dr_index, len(dr_schedule) - 1)] if dr_schedule else None),
+        dr=current_dr,
         control_mode=final_mode,
         growing_nodes=[],
     )
@@ -3393,15 +3813,25 @@ def _run_hawaii_autonomy(
             f"{final_note} "
             f"Connected edges: {total_connected_edges}. "
             f"NEB attempts: {total_neb_attempts} (failures: {total_neb_failures}). "
+            f"Discovery attempts: {total_discovery_attempts} (failures: {total_discovery_failures}). "
             f"Hessian attempts: {total_hessian_attempts} (failures: {total_hessian_failures}). "
+            f"Retropaths attempts: {total_retropaths_attempts} (failures: {total_retropaths_failures}). "
+            f"Nanoreactor attempts: {total_nanoreactor_attempts} (failures: {total_nanoreactor_failures}). "
             f"New minima discovered: {total_new_minima}."
         ),
         "cycles": int(cycle_index),
+        "discovery_tools": list(configured_tools),
         "connected_edges": int(total_connected_edges),
         "neb_attempts": int(total_neb_attempts),
         "neb_failures": int(total_neb_failures),
+        "discovery_attempts": int(total_discovery_attempts),
+        "discovery_failures": int(total_discovery_failures),
         "hessian_attempts": int(total_hessian_attempts),
         "hessian_failures": int(total_hessian_failures),
+        "retropaths_attempts": int(total_retropaths_attempts),
+        "retropaths_failures": int(total_retropaths_failures),
+        "nanoreactor_attempts": int(total_nanoreactor_attempts),
+        "nanoreactor_failures": int(total_nanoreactor_failures),
         "new_minima": int(total_new_minima),
     }
 
@@ -3963,6 +4393,17 @@ def _drive_html() -> str:
       from { stroke-dashoffset: 28; }
       to { stroke-dashoffset: 0; }
     }
+    @keyframes flask-turn {
+      0% { transform: rotate(0deg); }
+      20% { transform: rotate(-18deg); }
+      52% { transform: rotate(12deg); }
+      82% { transform: rotate(-8deg); }
+      100% { transform: rotate(0deg); }
+    }
+    @keyframes flask-bubble {
+      0%, 100% { opacity: 0.26; transform: translateY(0); }
+      50% { opacity: 1; transform: translateY(-2px); }
+    }
     .viewer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     iframe.structure {
       width: 100%;
@@ -4009,6 +4450,43 @@ def _drive_html() -> str:
       border-radius: var(--radius-md);
       background: linear-gradient(180deg, rgba(14, 26, 44, 0.95), rgba(10, 20, 34, 0.9));
     }
+    .activity-indicator {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px dashed rgba(126, 240, 199, 0.4);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(15, 30, 50, 0.95), rgba(10, 20, 34, 0.9));
+    }
+    .activity-indicator.visible { display: flex; }
+    .activity-flask {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 1px solid rgba(126, 240, 199, 0.42);
+      background: rgba(126, 240, 199, 0.1);
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+    }
+    .activity-flask svg {
+      width: 20px;
+      height: 20px;
+      transform-origin: 50% 78%;
+      animation: flask-turn 1.2s ease-in-out infinite;
+    }
+    .activity-flask .bubble-a { animation: flask-bubble 1.1s ease-in-out infinite; }
+    .activity-flask .bubble-b { animation: flask-bubble 1.1s ease-in-out 0.36s infinite; }
+    .activity-title { font-weight: 600; color: var(--ink); }
+    .activity-detail { font-size: 12px; color: var(--muted); }
+    .activity-elapsed {
+      margin-top: 2px;
+      font-size: 11px;
+      color: rgba(201, 216, 240, 0.8);
+      letter-spacing: 0.02em;
+    }
     .stoplight-shell {
       margin-top: 12px;
       border: 1px solid var(--line);
@@ -4027,6 +4505,45 @@ def _drive_html() -> str:
     .stoplight-button.yellow { border-color: rgba(255, 209, 102, 0.46); background: rgba(255, 209, 102, 0.1); }
     .stoplight-button.red { border-color: rgba(255, 122, 143, 0.5); background: rgba(255, 122, 143, 0.12); }
     .stoplight-button.active { box-shadow: inset 0 0 0 1px rgba(238, 244, 255, 0.4); }
+    .stoplight-options {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+    .stoplight-options-title {
+      font-size: 12px;
+      letter-spacing: 0.02em;
+      color: var(--ink-soft);
+      margin-bottom: 7px;
+    }
+    .stoplight-options-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .stoplight-option {
+      margin: 0;
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      font-size: 12px;
+      color: var(--ink-soft);
+      letter-spacing: 0.01em;
+      cursor: pointer;
+    }
+    .stoplight-option input[type="checkbox"] {
+      width: auto;
+      margin: 0;
+      padding: 0;
+      cursor: pointer;
+      accent-color: #63d5ff;
+    }
+    .stoplight-summary {
+      margin-top: 8px;
+      font-size: 12px;
+      color: var(--muted);
+    }
     .kv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; }
     .kv-card {
       border: 1px solid var(--line);
@@ -4096,6 +4613,21 @@ def _drive_html() -> str:
       <div class="muted" style="margin-bottom:12px;">Set inputs, build a seed network, then manually grow and explore the graph while inspecting logs from a single workspace.</div>
       <div id="job-banner" class="message">Idle.</div>
       <div id="job-subtext" class="muted" style="margin-top:8px;">No action submitted yet.</div>
+      <div id="activity-indicator" class="activity-indicator" role="status" aria-live="polite">
+        <div class="activity-flask" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <path d="M9 2h6v2h-1v4.6l4.6 7.2c1.2 2-0.3 4.2-2.6 4.2H8c-2.3 0-3.8-2.2-2.6-4.2L10 8.6V4H9V2z" stroke="#7ef0c7" stroke-width="1.6" stroke-linejoin="round"/>
+            <path d="M8.1 14.4h7.8" stroke="#63d5ff" stroke-width="1.5" stroke-linecap="round"/>
+            <circle class="bubble-a" cx="11.1" cy="12.1" r="1.05" fill="#7ef0c7"/>
+            <circle class="bubble-b" cx="13.6" cy="10.9" r="0.85" fill="#63d5ff"/>
+          </svg>
+        </div>
+        <div>
+          <div id="activity-title" class="activity-title">Working...</div>
+          <div id="activity-detail" class="activity-detail">Preparing computation...</div>
+          <div id="activity-elapsed" class="activity-elapsed">Elapsed 0s</div>
+        </div>
+      </div>
       <div id="hawaii-stoplight" class="stoplight-shell">
         <div class="stoplight-head">
           <div><strong>Hawaii Stoplight</strong></div>
@@ -4106,7 +4638,16 @@ def _drive_html() -> str:
           <button id="hawaii-yellow" class="stoplight-button yellow">Yellow: Stop After Stage</button>
           <button id="hawaii-red" class="stoplight-button red">Red: Stop Now</button>
         </div>
-        <div id="hawaii-note" class="muted" style="margin-top:8px;">Green starts autonomous mode or keeps it running. Yellow lets the current stage finish. Red stops immediately.</div>
+        <div class="stoplight-options">
+          <div class="stoplight-options-title">Discovery Tools (Step 3)</div>
+          <div class="stoplight-options-row">
+            <label class="stoplight-option"><input id="hawaii-discovery-hessian" type="checkbox" checked /> hessian-sample</label>
+            <label class="stoplight-option"><input id="hawaii-discovery-retropaths" type="checkbox" /> retropaths</label>
+            <label class="stoplight-option"><input id="hawaii-discovery-nanoreactor" type="checkbox" /> nanoreactor</label>
+          </div>
+          <div id="hawaii-discovery-summary" class="stoplight-summary">Selected: hessian-sample</div>
+        </div>
+        <div id="hawaii-note" class="muted" style="margin-top:8px;">Green starts autonomous mode with the selected discovery tools. Yellow lets the current stage finish. Red stops immediately.</div>
       </div>
     </div>
 
@@ -4277,6 +4818,26 @@ def _drive_html() -> str:
                 <button id="add-manual-edge" class="secondary" style="width:100%;">Attempt To Add Manual Edge</button>
               </div>
             </div>
+            <div class="form-grid" style="margin-top:12px;">
+              <div style="grid-column:1 / -1;">
+                <label>Manual node XYZ</label>
+                <textarea id="manual-node-xyz" placeholder="Paste XYZ block for the node you want to insert"></textarea>
+              </div>
+              <div>
+                <label>Manual node charge</label>
+                <input id="manual-node-charge" type="number" step="1" value="0" />
+              </div>
+              <div>
+                <label>Manual node multiplicity</label>
+                <input id="manual-node-multiplicity" type="number" step="1" min="1" value="1" />
+              </div>
+              <div style="display:flex; align-items:end;">
+                <button id="insert-manual-node-mode" data-drive-action="insert-node-mode" class="secondary" style="width:100%;">Insert Node On Next Network Click</button>
+              </div>
+            </div>
+            <div class="muted" style="margin-top:10px;">
+              Paste an XYZ block, click "Insert Node On Next Network Click", then click empty space in the network canvas where the node should appear.
+            </div>
           </div>
         </div>
       </div>
@@ -4362,6 +4923,12 @@ def _drive_html() -> str:
     function authHeaders() {
       return DRIVE_URL_TOKEN ? { "X-MEPD-Token": DRIVE_URL_TOKEN } : {};
     }
+    const HAWAII_DISCOVERY_TOOL_ORDER = ["hessian-sample", "retropaths", "nanoreactor"];
+    const HAWAII_DISCOVERY_TOOL_INPUTS = {
+      "hessian-sample": "hawaii-discovery-hessian",
+      "retropaths": "hawaii-discovery-retropaths",
+      "nanoreactor": "hawaii-discovery-nanoreactor",
+    };
     const state = {
       snapshot: null,
       selected: null,
@@ -4371,6 +4938,9 @@ def _drive_html() -> str:
       inputsDefaultsKey: "",
       connectSourceNodeId: null,
       manualEdgeRequestInFlight: false,
+      manualNodeInsertMode: false,
+      manualNodeRequestInFlight: false,
+      contextMenuGraphPoint: null,
       pathSourceNodeId: 0,
       selectedProductKey: "",
       pathHighlight: null,
@@ -4384,7 +4954,42 @@ def _drive_html() -> str:
       hessianSampleMaxCandidates: 100,
       hessianSampleUseBigchem: false,
       hawaiiControlInFlight: false,
+      hawaiiDiscoveryDirty: false,
+      localActivities: new Map(),
+      nextActivityToken: 1,
+      activityTicker: null,
+      backendBusySince: 0,
     };
+
+    function normalizedHawaiiDiscoveryTools(rawTools) {
+      const include = new Set();
+      if (Array.isArray(rawTools)) {
+        rawTools.forEach((value) => {
+          const key = String(value || "").trim().toLowerCase();
+          if (HAWAII_DISCOVERY_TOOL_ORDER.includes(key)) include.add(key);
+        });
+      }
+      return HAWAII_DISCOVERY_TOOL_ORDER.filter((tool) => include.has(tool));
+    }
+
+    function getSelectedHawaiiDiscoveryTools() {
+      return HAWAII_DISCOVERY_TOOL_ORDER.filter((tool) => {
+        const input = document.getElementById(HAWAII_DISCOVERY_TOOL_INPUTS[tool]);
+        return Boolean(input?.checked);
+      });
+    }
+
+    function setSelectedHawaiiDiscoveryTools(tools, { force = false } = {}) {
+      if (state.hawaiiDiscoveryDirty && !force) return;
+      const normalized = normalizedHawaiiDiscoveryTools(tools);
+      const selected = new Set(normalized);
+      HAWAII_DISCOVERY_TOOL_ORDER.forEach((tool) => {
+        const input = document.getElementById(HAWAII_DISCOVERY_TOOL_INPUTS[tool]);
+        if (!input) return;
+        input.checked = selected.has(tool);
+      });
+      state.hawaiiDiscoveryDirty = false;
+    }
 
     function setManualEdgeEndpoint(which, nodeId) {
       const input = document.getElementById(which === "source" ? "manual-edge-source" : "manual-edge-target");
@@ -4416,6 +5021,128 @@ def _drive_html() -> str:
       const labelInput = document.getElementById("manual-edge-label");
       if (labelInput) labelInput.disabled = state.manualEdgeRequestInFlight;
       renderNetworkToolbar();
+    }
+
+    function setManualNodeInsertMode(enabled) {
+      const nextMode = Boolean(enabled) && !state.manualNodeRequestInFlight;
+      state.manualNodeInsertMode = nextMode;
+      const insertButton = document.getElementById("insert-manual-node-mode");
+      if (insertButton) {
+        insertButton.classList.toggle("active", nextMode);
+        insertButton.textContent = nextMode
+          ? "Click Network To Insert Node (Esc To Cancel)"
+          : "Insert Node On Next Network Click";
+        insertButton.disabled = state.manualNodeRequestInFlight || Boolean(state.snapshot?.busy);
+      }
+      renderNetworkToolbar();
+    }
+
+    function setManualNodeRequestInFlight(inFlight) {
+      state.manualNodeRequestInFlight = Boolean(inFlight);
+      if (state.manualNodeRequestInFlight) {
+        state.manualNodeInsertMode = false;
+      }
+      const insertButton = document.getElementById("insert-manual-node-mode");
+      if (insertButton) insertButton.disabled = state.manualNodeRequestInFlight;
+      const xyzInput = document.getElementById("manual-node-xyz");
+      if (xyzInput) xyzInput.disabled = state.manualNodeRequestInFlight;
+      const chargeInput = document.getElementById("manual-node-charge");
+      if (chargeInput) chargeInput.disabled = state.manualNodeRequestInFlight;
+      const multiplicityInput = document.getElementById("manual-node-multiplicity");
+      if (multiplicityInput) multiplicityInput.disabled = state.manualNodeRequestInFlight;
+      setManualNodeInsertMode(state.manualNodeInsertMode);
+    }
+
+    function getManualNodeCharge() {
+      const input = document.getElementById("manual-node-charge");
+      const parsed = Number(input ? input.value : 0);
+      const value = Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
+      if (input) input.value = String(value);
+      return value;
+    }
+
+    function getManualNodeMultiplicity() {
+      const input = document.getElementById("manual-node-multiplicity");
+      const parsed = Number(input ? input.value : 1);
+      const value = Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : 1;
+      if (input) input.value = String(value);
+      return value;
+    }
+
+    function canvasCoordsToGraphCoords(canvasX, canvasY) {
+      const view = state.networkView || {};
+      const scaleRaw = Number(view.scale || 1);
+      const scale = Number.isFinite(scaleRaw) && Math.abs(scaleRaw) > 1e-8 ? scaleRaw : 1;
+      return {
+        x: (Number(canvasX) - Number(view.x || 0)) / scale,
+        y: (Number(canvasY) - Number(view.y || 0)) / scale,
+      };
+    }
+
+    async function insertManualNodeAtGraphCoords(graphX, graphY) {
+      if (state.manualNodeRequestInFlight) {
+        setBanner("A manual node insertion request is already in progress.", true);
+        return;
+      }
+      const xyzInput = document.getElementById("manual-node-xyz");
+      const xyzText = String(xyzInput ? xyzInput.value : "").trim();
+      if (!xyzText) {
+        setBanner("Manual node insertion requires an XYZ block.", true);
+        setSubtext("Paste XYZ text in the Manual Edge tab before inserting a node.");
+        return;
+      }
+      const charge = getManualNodeCharge();
+      const multiplicity = getManualNodeMultiplicity();
+      try {
+        setManualNodeRequestInFlight(true);
+        setBanner("Adding manual node from XYZ...");
+        setSubtext("Inserting a new node at the selected network location.");
+        const result = await postJson("/api/add-node", {
+          xyz_text: xyzText,
+          charge: Number(charge),
+          multiplicity: Number(multiplicity),
+        });
+        const nodeId = Number(result.node_id);
+        if (Number.isFinite(nodeId) && nodeId >= 0) {
+          state.networkNodePositions[String(nodeId)] = {
+            x: Number(graphX),
+            y: Number(graphY),
+          };
+        }
+        setBanner(result.message || `Manual node ${Number.isFinite(nodeId) ? nodeId : ""} inserted.`);
+        await refreshState();
+      } catch (error) {
+        setBanner(error.message || String(error), true);
+        setSubtext("The manual node could not be inserted.");
+      } finally {
+        setManualNodeRequestInFlight(false);
+      }
+    }
+
+    function toggleManualNodeInsertMode() {
+      if (state.manualNodeRequestInFlight) {
+        setBanner("A manual node insertion request is already in progress.", true);
+        setSubtext("Wait for the current manual node insertion request to finish.");
+        return;
+      }
+      if (state.manualNodeInsertMode) {
+        setManualNodeInsertMode(false);
+        setSubtext("Node insert mode cleared.");
+        return;
+      }
+      if (state.snapshot?.busy) {
+        setBanner("Wait for the current background action to finish before inserting nodes.", true);
+        return;
+      }
+      const xyzInput = document.getElementById("manual-node-xyz");
+      const xyzText = String(xyzInput ? xyzInput.value : "").trim();
+      if (!xyzText) {
+        setBanner("Manual node insertion requires an XYZ block.", true);
+        setSubtext("Paste XYZ text in the Manual Edge tab before enabling click-to-insert mode.");
+        return;
+      }
+      setManualNodeInsertMode(true);
+      setSubtext("Node insert mode active. Click empty space in the network canvas to place the node.");
     }
 
     function normalizeHessianSampleDr(value) {
@@ -4587,15 +5314,151 @@ def _drive_html() -> str:
       document.getElementById("job-subtext").textContent = text;
     }
 
+    function formatElapsedDuration(milliseconds) {
+      const totalSeconds = Math.max(0, Math.floor(Number(milliseconds || 0) / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+    }
+
+    function visibleLocalActivityEntries() {
+      return Array.from(state.localActivities.entries())
+        .filter(([, entry]) => Boolean(entry && entry.visible))
+        .sort((left, right) => Number(left[0]) - Number(right[0]));
+    }
+
+    function latestVisibleLocalActivity() {
+      const visibleEntries = visibleLocalActivityEntries();
+      if (!visibleEntries.length) return null;
+      return visibleEntries[visibleEntries.length - 1][1];
+    }
+
+    function ensureActivityTicker() {
+      if (state.activityTicker != null) return;
+      state.activityTicker = window.setInterval(() => {
+        renderActivityIndicator(state.snapshot);
+      }, 1000);
+    }
+
+    function maybeStopActivityTicker(snapshot = state.snapshot) {
+      const hasVisibleLocal = visibleLocalActivityEntries().length > 0;
+      const backendBusy = Boolean(snapshot?.busy);
+      if (!hasVisibleLocal && !backendBusy && state.activityTicker != null) {
+        clearInterval(state.activityTicker);
+        state.activityTicker = null;
+      }
+    }
+
+    function renderActivityIndicator(snapshot = state.snapshot) {
+      const indicator = document.getElementById("activity-indicator");
+      const titleEl = document.getElementById("activity-title");
+      const detailEl = document.getElementById("activity-detail");
+      const elapsedEl = document.getElementById("activity-elapsed");
+      if (!indicator || !titleEl || !detailEl || !elapsedEl) return;
+
+      const localActivity = latestVisibleLocalActivity();
+      const backendBusy = Boolean(snapshot?.busy);
+      if (backendBusy && !state.backendBusySince) {
+        state.backendBusySince = Date.now();
+      } else if (!backendBusy) {
+        state.backendBusySince = 0;
+      }
+
+      if (!localActivity && !backendBusy) {
+        indicator.classList.remove("visible");
+        maybeStopActivityTicker(snapshot);
+        return;
+      }
+
+      let title = "Running background computation...";
+      let detail = "Processing the current request.";
+      let startedAt = Date.now();
+      if (localActivity) {
+        title = String(localActivity.label || title);
+        detail = String(localActivity.detail || detail);
+        startedAt = Number(localActivity.startedAt || Date.now());
+      } else {
+        const action = snapshot?.active_action || null;
+        const actionType = String(action?.type || "").toLowerCase();
+        title = String(action?.label || snapshot?.busy_label || title);
+        if (actionType === "load-workspace") {
+          detail = "Reading workspace files and rebuilding the network snapshot.";
+        } else if (actionType === "initialize") {
+          detail = "Seeding and expanding the network graph.";
+        } else if (actionType === "neb") {
+          detail = "Autosplitting NEB is running in the backend.";
+        } else {
+          detail = "Waiting for backend updates.";
+        }
+        startedAt = Number(state.backendBusySince || Date.now());
+      }
+
+      titleEl.textContent = title;
+      detailEl.textContent = detail;
+      elapsedEl.textContent = `Elapsed ${formatElapsedDuration(Date.now() - startedAt)}`;
+      indicator.classList.add("visible");
+      ensureActivityTicker();
+    }
+
+    function beginLocalActivity(label, detail = "", delayMs = 0) {
+      const token = Number(state.nextActivityToken || 1);
+      state.nextActivityToken = token + 1;
+      const entry = {
+        label: String(label || "Working..."),
+        detail: String(detail || ""),
+        startedAt: Date.now(),
+        visible: Number(delayMs || 0) <= 0,
+        delayTimer: null,
+      };
+      if (Number(delayMs || 0) > 0) {
+        entry.delayTimer = window.setTimeout(() => {
+          const active = state.localActivities.get(token);
+          if (!active) return;
+          active.visible = true;
+          renderActivityIndicator(state.snapshot);
+        }, Number(delayMs));
+      }
+      state.localActivities.set(token, entry);
+      renderActivityIndicator(state.snapshot);
+      return token;
+    }
+
+    function endLocalActivity(token) {
+      const entry = state.localActivities.get(Number(token));
+      if (!entry) return;
+      if (entry.delayTimer != null) {
+        clearTimeout(entry.delayTimer);
+      }
+      state.localActivities.delete(Number(token));
+      renderActivityIndicator(state.snapshot);
+      maybeStopActivityTicker(state.snapshot);
+    }
+
+    async function withLocalActivity(label, detail, task, { delayMs = 0 } = {}) {
+      const token = beginLocalActivity(label, detail, delayMs);
+      try {
+        return await task();
+      } finally {
+        endLocalActivity(token);
+      }
+    }
+
     function renderHawaiiStoplight(snapshot) {
       const payload = snapshot?.hawaii || {};
       const mode = String(payload.mode || "go").toLowerCase();
       const running = Boolean(payload.running);
       const stage = String(payload.stage || "").trim();
       const dr = payload.dr == null ? "" : `dr=${Number(payload.dr).toFixed(1)}`;
+      const configuredTools = normalizedHawaiiDiscoveryTools(payload.discovery_tools);
+      if (!state.hawaiiDiscoveryDirty) {
+        setSelectedHawaiiDiscoveryTools(configuredTools, { force: true });
+      }
+      const selectedTools = getSelectedHawaiiDiscoveryTools();
+      const selectedLabel = selectedTools.length ? selectedTools.join(", ") : "none";
       const modeLabel = mode === "yellow" ? "YELLOW" : mode === "red" ? "RED" : "GO";
       const modeEl = document.getElementById("hawaii-mode");
       const noteEl = document.getElementById("hawaii-note");
+      const discoverySummaryEl = document.getElementById("hawaii-discovery-summary");
       const goBtn = document.getElementById("hawaii-go");
       const yellowBtn = document.getElementById("hawaii-yellow");
       const redBtn = document.getElementById("hawaii-red");
@@ -4608,8 +5471,16 @@ def _drive_html() -> str:
         const detail = String(payload.note || "").trim();
         noteEl.textContent = detail
           ? `${detail}${stageText}${drText}`
-          : `Green starts autonomous mode or keeps it running. Yellow lets the current stage finish. Red stops immediately.${stageText}${drText}`;
+          : `Green starts autonomous mode with the selected discovery tools. Yellow lets the current stage finish. Red stops immediately.${stageText}${drText}`;
       }
+      if (discoverySummaryEl) {
+        const pendingSuffix = state.hawaiiDiscoveryDirty ? " (pending send)" : "";
+        discoverySummaryEl.textContent = `Selected: ${selectedLabel}${pendingSuffix}`;
+      }
+      HAWAII_DISCOVERY_TOOL_ORDER.forEach((tool) => {
+        const input = document.getElementById(HAWAII_DISCOVERY_TOOL_INPUTS[tool]);
+        if (input) input.disabled = state.hawaiiControlInFlight;
+      });
       if (goBtn) {
         goBtn.classList.toggle("active", mode === "go");
         goBtn.disabled = state.hawaiiControlInFlight;
@@ -5467,6 +6338,9 @@ def _drive_html() -> str:
         toolbar.innerHTML = `
           <div class="network-toolbar-title">Network Actions</div>
           <div class="muted">Select a node or edge to see actions here.</div>
+          <div class="network-toolbar-actions">
+            <button class="network-tool-button ${state.manualNodeInsertMode ? "active" : ""}" data-drive-action="toolbar-insert-node" title="Insert node from XYZ at next click" onclick="toggleManualNodeInsertMode()" ${state.manualNodeRequestInFlight || state.snapshot?.busy ? "disabled" : ""}>◎</button>
+          </div>
         `;
         return;
       }
@@ -5483,6 +6357,7 @@ def _drive_html() -> str:
             <button class="network-tool-button" data-drive-action="toolbar-nanoreactor-node" title="Run nanoreactor sampling" onclick="queueNanoreactor(${Number(node.id)})" ${node.can_nanoreactor ? "" : "disabled"}>⊕</button>
             <button class="network-tool-button" data-drive-action="toolbar-hessian-node" title="Run Hessian minima explorer" onclick="queueHessianSampleFromNode(${Number(node.id)})" ${node.can_hessian_sample ? "" : "disabled"}>*</button>
             <button class="network-tool-button ${connectActive ? "active" : ""}" data-drive-action="toolbar-connect-node" title="Connect to new node" onclick="beginConnectMode(${Number(node.id)})" ${connectDisabled}>→</button>
+            <button class="network-tool-button ${state.manualNodeInsertMode ? "active" : ""}" data-drive-action="toolbar-insert-node" title="Insert node from XYZ at next click" onclick="toggleManualNodeInsertMode()" ${state.manualNodeRequestInFlight || state.snapshot?.busy ? "disabled" : ""}>◎</button>
           </div>
         `;
         return;
@@ -5496,6 +6371,7 @@ def _drive_html() -> str:
           <button class="network-tool-button" data-drive-action="toolbar-minimize-edge" title="Minimize both endpoint geometries" onclick="queueMinimizePair(${Number(edge.source)}, ${Number(edge.target)})">↓↓</button>
           <button class="network-tool-button" data-drive-action="toolbar-hessian-edge" title="Run Hessian minima explorer from edge peak" onclick="queueHessianSampleFromEdge(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_hessian_sample ? "" : "disabled"}>*</button>
           <button class="network-tool-button" data-drive-action="toolbar-neb-edge" title="Queue NEB minimization" onclick="queueEdgeNeb(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_queue_neb ? "" : "disabled"}>#</button>
+          <button class="network-tool-button ${state.manualNodeInsertMode ? "active" : ""}" data-drive-action="toolbar-insert-node" title="Insert node from XYZ at next click" onclick="toggleManualNodeInsertMode()" ${state.manualNodeRequestInFlight || state.snapshot?.busy ? "disabled" : ""}>◎</button>
         </div>
       `;
     }
@@ -5993,6 +6869,7 @@ def _drive_html() -> str:
       const menu = document.getElementById("network-context-menu");
       if (!menu) return;
       menu.classList.remove("visible");
+      state.contextMenuGraphPoint = null;
     }
 
     function applyNetworkViewTransform() {
@@ -6047,6 +6924,9 @@ def _drive_html() -> str:
 
     function buildNetworkContextActions(selection) {
       const actions = [];
+      const manualNodeXyz = String(document.getElementById("manual-node-xyz")?.value || "").trim();
+      const canToggleManualNode = Boolean(manualNodeXyz) && !state.manualNodeRequestInFlight && !state.snapshot?.busy;
+      const canInsertManualNode = canToggleManualNode && state.contextMenuGraphPoint != null;
       if (selection?.kind === "node") {
         const node = selection.node;
         const nodeId = Number(node.id);
@@ -6104,6 +6984,38 @@ def _drive_html() -> str:
         });
       }
       actions.push({
+        label: state.manualNodeInsertMode ? "Cancel click-to-insert node mode" : "Enable click-to-insert node mode",
+        enabled: canToggleManualNode,
+        note: manualNodeXyz
+          ? (state.snapshot?.busy ? "Wait for the current background action to finish first." : "A manual node insertion request is already in progress.")
+          : "Paste XYZ text in the Manual Edge tab before enabling node insertion mode.",
+        run: () => {
+          if (state.manualNodeInsertMode) {
+            setManualNodeInsertMode(false);
+            setSubtext("Node insert mode cleared.");
+          } else {
+            setManualNodeInsertMode(true);
+            setSubtext("Node insert mode active. Click empty space in the network canvas to place the node.");
+          }
+        },
+      });
+      actions.push({
+        label: "Insert node here from XYZ",
+        enabled: canInsertManualNode,
+        note: !manualNodeXyz
+          ? "Paste XYZ text in the Manual Edge tab before inserting nodes."
+          : (
+            state.contextMenuGraphPoint == null
+              ? "Right-click inside the network canvas to pick an insertion point."
+              : (state.snapshot?.busy ? "Wait for the current background action to finish first." : "A manual node insertion request is already in progress.")
+          ),
+        run: () => {
+          const point = state.contextMenuGraphPoint;
+          if (!point) return;
+          void insertManualNodeAtGraphCoords(Number(point.x), Number(point.y));
+        },
+      });
+      actions.push({
         label: "Zoom in",
         enabled: true,
         note: "",
@@ -6129,6 +7041,8 @@ def _drive_html() -> str:
       const canvas = state.networkCanvas;
       const host = canvas?.svg?.closest(".network-canvas-shell");
       if (!menu || !host) return;
+      const contextCoords = networkSvgCoordsFromEvent(event);
+      state.contextMenuGraphPoint = canvasCoordsToGraphCoords(contextCoords.x, contextCoords.y);
       const selection = selectionOverride || state.selected;
       const title = selection?.kind === "node"
         ? `Node ${Number(selection.node.id)} tools`
@@ -6174,6 +7088,25 @@ def _drive_html() -> str:
         event.preventDefault();
         renderNetworkContextMenu(event);
       });
+      svg.addEventListener("click", (event) => {
+        if (!state.manualNodeInsertMode || state.manualNodeRequestInFlight) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (
+          target.closest(".network-node")
+          || target.closest(".network-edge-hitbox")
+          || target.closest(".network-edge-line")
+          || target.closest(".network-label")
+        ) {
+          return;
+        }
+        const canvasCoords = networkSvgCoordsFromEvent(event);
+        const graphCoords = canvasCoordsToGraphCoords(canvasCoords.x, canvasCoords.y);
+        event.preventDefault();
+        hideNetworkContextMenu();
+        setManualNodeInsertMode(false);
+        void insertManualNodeAtGraphCoords(graphCoords.x, graphCoords.y);
+      });
       svg.addEventListener("wheel", (event) => {
         event.preventDefault();
         hideNetworkContextMenu();
@@ -6190,6 +7123,11 @@ def _drive_html() -> str:
           || target.closest(".network-edge-line")
           || target.closest(".network-label")
         ) {
+          return;
+        }
+        if (state.manualNodeInsertMode) {
+          hideNetworkContextMenu();
+          event.preventDefault();
           return;
         }
         const canvas = state.networkCanvas;
@@ -6235,7 +7173,13 @@ def _drive_html() -> str:
         hideNetworkContextMenu();
       });
       document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") hideNetworkContextMenu();
+        if (event.key === "Escape") {
+          hideNetworkContextMenu();
+          if (state.manualNodeInsertMode) {
+            setManualNodeInsertMode(false);
+            setSubtext("Node insert mode cleared.");
+          }
+        }
       });
     }
 
@@ -6883,6 +7827,13 @@ def _drive_html() -> str:
     }
 
     async function refreshState() {
+      const refreshToken = state.localActivities.size > 0
+        ? null
+        : beginLocalActivity(
+          "Refreshing workspace snapshot...",
+          "Updating network and kinetics state from disk.",
+          850
+        );
       try {
         const response = await fetch("/api/state", { headers: authHeaders() });
         const snapshot = await readJsonResponse(response);
@@ -6919,6 +7870,10 @@ def _drive_html() -> str:
           setSubtext("Idle.");
         }
         setButtonsDisabled(Boolean(snapshot.busy));
+        if (snapshot.busy && state.manualNodeInsertMode) {
+          setManualNodeInsertMode(false);
+        }
+        renderActivityIndicator(snapshot);
         renderWorkspaceSummary(snapshot);
         renderHawaiiStoplight(snapshot);
         renderInputsPanels(snapshot);
@@ -6940,6 +7895,9 @@ def _drive_html() -> str:
       } catch (error) {
         setBanner(error.message || String(error), true);
       } finally {
+        if (refreshToken != null) {
+          endLocalActivity(refreshToken);
+        }
         scheduleRefreshLoop(state.snapshot);
       }
     }
@@ -6978,17 +7936,26 @@ def _drive_html() -> str:
     }
 
     async function loadWorkspace() {
+      const loadButton = document.getElementById("load-workspace");
+      if (loadButton) loadButton.disabled = true;
       try {
         setBanner("Loading existing workspace...");
         setSubtext("Reading the workspace files and restoring the live network.");
-        await postJson("/api/load-workspace", {
-          workspace_path: document.getElementById("workspace-path").value,
-        });
+        await withLocalActivity(
+          "Loading workspace files...",
+          "Parsing workspace, queue, and kinetics metadata.",
+          () => postJson("/api/load-workspace", {
+            workspace_path: document.getElementById("workspace-path").value,
+          }),
+          { delayMs: 0 }
+        );
         setBanner("Workspace load request accepted.");
         void refreshState();
       } catch (error) {
         setBanner(error.message || String(error), true);
         setSubtext("The workspace could not be loaded.");
+      } finally {
+        if (loadButton) loadButton.disabled = Boolean(state.snapshot?.busy);
       }
     }
 
@@ -7167,18 +8134,25 @@ def _drive_html() -> str:
     }
 
     async function runKmcModel() {
+      const runButton = document.getElementById("run-kmc");
+      if (runButton) runButton.disabled = true;
       try {
         if (!formatKmcInitialConditionsInput({ showErrors: true })) {
           return;
         }
         setBanner("Running kinetic model...");
-        setSubtext("Simulating population flow across the current NEB-backed network.");
-        const result = await postJson("/api/run-kinetics", {
-          temperature_kelvin: Number(document.getElementById("kmc-temperature").value || 298.15),
-          final_time: document.getElementById("kmc-final-time").value,
-          max_steps: Number(document.getElementById("kmc-max-steps").value || 200),
-          initial_conditions: document.getElementById("kmc-initial-conditions").value,
-        });
+        setSubtext("Simulating population flow across the current NEB-backed network. This may take a while for large systems.");
+        const result = await withLocalActivity(
+          "Solving kinetic ODE system...",
+          "Integrating population trajectories across the active reaction network.",
+          () => postJson("/api/run-kinetics", {
+            temperature_kelvin: Number(document.getElementById("kmc-temperature").value || 298.15),
+            final_time: document.getElementById("kmc-final-time").value,
+            max_steps: Number(document.getElementById("kmc-max-steps").value || 200),
+            initial_conditions: document.getElementById("kmc-initial-conditions").value,
+          }),
+          { delayMs: 0 }
+        );
         state.kmcResult = result;
         renderKmcPanel(state.snapshot);
         setBanner("Kinetic model finished.");
@@ -7186,6 +8160,8 @@ def _drive_html() -> str:
       } catch (error) {
         setBanner(error.message || String(error), true);
         setSubtext("The kinetic model could not be run.");
+      } finally {
+        if (runButton) runButton.disabled = Boolean(state.snapshot?.busy);
       }
     }
 
@@ -7228,6 +8204,7 @@ def _drive_html() -> str:
     async function setHawaiiStoplight(mode) {
       const normalized = String(mode || "").trim().toLowerCase();
       if (!["go", "yellow", "red"].includes(normalized)) return;
+      const selectedDiscoveryTools = getSelectedHawaiiDiscoveryTools();
       try {
         state.hawaiiControlInFlight = true;
         renderHawaiiStoplight(state.snapshot);
@@ -7238,7 +8215,15 @@ def _drive_html() -> str:
             : "Sending RED immediate stop request to Hawaii mode...";
         setBanner(bannerLabel);
         setSubtext("Updating Hawaii stoplight control...");
-        const result = await postJson("/api/hawaii-control", { mode: normalized });
+        const result = await postJson("/api/hawaii-control", {
+          mode: normalized,
+          discovery_tools: selectedDiscoveryTools,
+        });
+        if (Array.isArray(result?.discovery_tools)) {
+          setSelectedHawaiiDiscoveryTools(result.discovery_tools, { force: true });
+        } else {
+          state.hawaiiDiscoveryDirty = false;
+        }
         setBanner(result.message || "Hawaii stoplight updated.");
         void refreshState();
       } catch (error) {
@@ -7312,6 +8297,7 @@ def _drive_html() -> str:
     window.queueHessianSampleFromEdge = queueHessianSampleFromEdge;
     window.runKmcModel = runKmcModel;
     window.setManualEdgeEndpoint = setManualEdgeEndpoint;
+    window.toggleManualNodeInsertMode = toggleManualNodeInsertMode;
     window.beginConnectMode = beginConnectMode;
     window.setPathSourceNode = setPathSourceNode;
     window.setHawaiiStoplight = setHawaiiStoplight;
@@ -7321,6 +8307,7 @@ def _drive_html() -> str:
     document.getElementById("load-workspace").addEventListener("click", loadWorkspace);
     document.getElementById("minimize-all").addEventListener("click", queueMinimizeAll);
     document.getElementById("add-manual-edge").addEventListener("click", addManualEdge);
+    document.getElementById("insert-manual-node-mode").addEventListener("click", toggleManualNodeInsertMode);
     document.getElementById("format-kmc-json").addEventListener("click", () => {
       formatKmcInitialConditionsInput({ showErrors: true });
     });
@@ -7332,6 +8319,14 @@ def _drive_html() -> str:
     document.getElementById("hawaii-go").addEventListener("click", () => setHawaiiStoplight("go"));
     document.getElementById("hawaii-yellow").addEventListener("click", () => setHawaiiStoplight("yellow"));
     document.getElementById("hawaii-red").addEventListener("click", () => setHawaiiStoplight("red"));
+    Object.values(HAWAII_DISCOVERY_TOOL_INPUTS).forEach((inputId) => {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      input.addEventListener("change", () => {
+        state.hawaiiDiscoveryDirty = true;
+        renderHawaiiStoplight(state.snapshot);
+      });
+    });
 
     const d3Script = document.createElement("script");
     d3Script.src = "https://d3js.org/d3.v3.min.js";
@@ -7368,6 +8363,7 @@ class MepdDriveServer(ThreadingHTTPServer):
         max_depth: int,
         max_parallel_nebs: int,
         network_splits: bool = True,
+        hawaii_discovery_tools: Any = None,
         initial_state: dict[str, Any] | None = None,
         require_api_token: bool = False,
         api_token: str | None = None,
@@ -7381,6 +8377,10 @@ class MepdDriveServer(ThreadingHTTPServer):
         self.max_depth = max_depth
         self.max_parallel_nebs = max_parallel_nebs
         self.network_splits = bool(network_splits)
+        self.hawaii_discovery_tools = _normalize_hawaii_discovery_tools(
+            hawaii_discovery_tools,
+            default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
+        )
         self.require_api_token = bool(require_api_token)
         self.api_token = str(api_token or "")
         self.ui_token = self.api_token if self.require_api_token else ""
@@ -7635,6 +8635,7 @@ class MepdDriveServer(ThreadingHTTPServer):
         charge = int(payload.get("charge", 0) or 0)
         multiplicity = int(payload.get("multiplicity", 1) or 1)
         auto_start_hawaii = bool(payload.get("auto_start_hawaii", False))
+        auto_start_hawaii_discovery_tools = payload.get("auto_start_hawaii_discovery_tools")
         reactant = _resolve_species_input(
             smiles=str(payload.get("reactant_smiles") or ""),
             xyz_text=str(payload.get("reactant_xyz") or ""),
@@ -7711,7 +8712,10 @@ class MepdDriveServer(ThreadingHTTPServer):
                 self.runtime.active_action = None
             if auto_start_hawaii:
                 try:
-                    self.submit_hawaii()
+                    if auto_start_hawaii_discovery_tools is None:
+                        self.submit_hawaii()
+                    else:
+                        self.submit_hawaii(discovery_tools=auto_start_hawaii_discovery_tools)
                 except Exception as exc:
                     with self.state_lock:
                         self.runtime.last_error = _format_user_facing_error(exc)
@@ -8008,13 +9012,18 @@ class MepdDriveServer(ThreadingHTTPServer):
         with self.state_lock:
             self.runtime.active_action = action_payload
 
-    def submit_hawaii(self) -> None:
+    def submit_hawaii(self, *, discovery_tools: Any = None) -> None:
         self._assert_idle()
         with self.state_lock:
             workspace = self.runtime.workspace
         if workspace is None:
             raise ValueError("Initialize or load a workspace before running --hawaii automation.")
 
+        resolved_discovery_tools = _normalize_hawaii_discovery_tools(
+            discovery_tools if discovery_tools is not None else getattr(self, "hawaii_discovery_tools", None),
+            default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
+        )
+        self.hawaii_discovery_tools = list(resolved_discovery_tools)
         progress_fp = str((workspace.directory / "drive_hawaii.progress.json").resolve())
         control_fp = str((workspace.directory / "drive_hawaii.control.json").resolve())
         _write_hawaii_control_payload(
@@ -8022,8 +9031,12 @@ class MepdDriveServer(ThreadingHTTPServer):
             mode="go",
             source="server",
             note="Hawaii started.",
+            discovery_tools=resolved_discovery_tools,
         )
-        label = "Running Hawaii autonomous exploration..."
+        label = (
+            "Running Hawaii autonomous exploration "
+            f"(discovery tools: {', '.join(resolved_discovery_tools) if resolved_discovery_tools else 'none'})..."
+        )
         future = self._submit_process_action(
             _run_hawaii_autonomy,
             dict(workspace.__dict__),
@@ -8031,6 +9044,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             progress_fp=progress_fp,
             control_fp=control_fp,
             max_hessian_candidates=100,
+            discovery_tools=list(resolved_discovery_tools),
             label=label,
         )
         future.add_done_callback(self._finish_future)
@@ -8041,10 +9055,18 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "label": label,
                 "progress_fp": progress_fp,
                 "control_fp": control_fp,
+                "discovery_tools": list(resolved_discovery_tools),
             }
 
-    def submit_hawaii_control(self, *, mode: str) -> dict[str, Any]:
+    def submit_hawaii_control(self, *, mode: str, discovery_tools: Any = None) -> dict[str, Any]:
         normalized_mode = _normalize_hawaii_control_mode(mode)
+        resolved_discovery_tools = (
+            _normalize_hawaii_discovery_tools(discovery_tools, default=None)
+            if discovery_tools is not None
+            else None
+        )
+        if resolved_discovery_tools is not None:
+            self.hawaii_discovery_tools = list(resolved_discovery_tools)
         with self.state_lock:
             workspace = self.runtime.workspace
             active_action = dict(self.runtime.active_action) if isinstance(self.runtime.active_action, dict) else None
@@ -8062,11 +9084,15 @@ class MepdDriveServer(ThreadingHTTPServer):
         )
 
         if normalized_mode == "go" and not running_hawaii:
-            self.submit_hawaii()
+            if resolved_discovery_tools is None:
+                self.submit_hawaii()
+            else:
+                self.submit_hawaii(discovery_tools=resolved_discovery_tools)
             return {
                 "message": "Hawaii autonomous exploration started.",
                 "mode": "go",
                 "running": True,
+                "discovery_tools": list(getattr(self, "hawaii_discovery_tools", [])),
             }
 
         _write_hawaii_control_payload(
@@ -8074,6 +9100,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             mode=normalized_mode,
             source="server",
             note=f"Stoplight set to {normalized_mode}.",
+            discovery_tools=resolved_discovery_tools,
         )
 
         if not running_hawaii:
@@ -8088,6 +9115,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "message": self.runtime.last_message,
                 "mode": normalized_mode,
                 "running": False,
+                "discovery_tools": list(getattr(self, "hawaii_discovery_tools", [])),
             }
 
         if normalized_mode == "red":
@@ -8099,6 +9127,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "message": "Stopping Hawaii autonomous exploration immediately.",
                 "mode": "red",
                 "running": True,
+                "discovery_tools": list(getattr(self, "hawaii_discovery_tools", [])),
             }
 
         with self.state_lock:
@@ -8111,6 +9140,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             "message": self.runtime.last_message,
             "mode": normalized_mode,
             "running": True,
+            "discovery_tools": list(getattr(self, "hawaii_discovery_tools", [])),
         }
 
     def submit_run_neb(self, *, source_node: int, target_node: int) -> None:
@@ -8197,6 +9227,31 @@ class MepdDriveServer(ThreadingHTTPServer):
             self._prefer_fast_payload_until = time.time() + 30.0
         return result
 
+    def submit_add_node(
+        self,
+        *,
+        xyz_text: str,
+        charge: int = 0,
+        multiplicity: int = 1,
+    ) -> dict[str, Any]:
+        self._assert_idle()
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize a workspace before adding manual nodes.")
+        result = add_manual_node(
+            workspace,
+            xyz_text=str(xyz_text or ""),
+            charge=int(charge),
+            multiplicity=int(multiplicity),
+        )
+        with self.state_lock:
+            self.runtime.last_error = ""
+            self.runtime.last_message = str(result.get("message") or "Manual node added.")
+            self._prefer_fast_payload_once = True
+            self._prefer_fast_payload_until = time.time() + 30.0
+        return result
+
     def submit_run_kmc(
         self,
         *,
@@ -8255,6 +9310,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "stage": "",
                 "dr": None,
                 "note": "",
+                "discovery_tools": list(getattr(self, "hawaii_discovery_tools", [])),
             },
         }
         if runtime.workspace is not None:
@@ -8262,6 +9318,14 @@ class MepdDriveServer(ThreadingHTTPServer):
             mode = _read_hawaii_control_mode(control_fp)
             active_action = runtime.active_action or {}
             progress = _read_growth_progress(active_action.get("progress_fp")) if str(active_action.get("type") or "") == "hawaii" else {}
+            configured_discovery_tools = list(
+                _normalize_hawaii_discovery_tools(
+                    active_action.get("discovery_tools")
+                    if isinstance(active_action, dict) and active_action.get("discovery_tools") is not None
+                    else getattr(self, "hawaii_discovery_tools", None),
+                    default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
+                )
+            )
             snapshot["hawaii"] = {
                 "running": bool(
                     runtime.future is not None
@@ -8273,6 +9337,7 @@ class MepdDriveServer(ThreadingHTTPServer):
                 "stage": str((progress or {}).get("stage") or ""),
                 "dr": (float((progress or {}).get("dr")) if (progress or {}).get("dr") is not None else None),
                 "note": str((progress or {}).get("note") or ""),
+                "discovery_tools": configured_discovery_tools,
             }
         if runtime.active_action is not None and runtime.active_action.get("status") == "running":
             with contextlib.suppress(Exception):
@@ -8469,6 +9534,14 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 )
                 self._write_json({"ok": True, **result}, HTTPStatus.ACCEPTED)
                 return
+            if route_path == "/api/add-node":
+                result = self.server.submit_add_node(
+                    xyz_text=str(payload.get("xyz_text") or ""),
+                    charge=int(payload.get("charge", 0) or 0),
+                    multiplicity=int(payload.get("multiplicity", 1) or 1),
+                )
+                self._write_json({"ok": True, **result}, HTTPStatus.ACCEPTED)
+                return
             if route_path in {"/api/run-kmc", "/api/run-kinetics"}:
                 result = self.server.submit_run_kmc(
                     temperature_kelvin=float(payload.get("temperature_kelvin", 298.15)),
@@ -8481,6 +9554,7 @@ class _DriveHandler(BaseHTTPRequestHandler):
             if route_path == "/api/hawaii-control":
                 result = self.server.submit_hawaii_control(
                     mode=str(payload.get("mode") or "go"),
+                    discovery_tools=payload.get("discovery_tools"),
                 )
                 self._write_json({"ok": True, **result}, HTTPStatus.OK)
                 return
@@ -8504,6 +9578,8 @@ def launch_mepd_drive(
     workspace_path: str | None = None,
     smiles: str | None = None,
     product_smiles: str | None = None,
+    start_xyz_fp: str | None = None,
+    end_xyz_fp: str | None = None,
     environment_smiles: str = "",
     charge: int = 0,
     multiplicity: int = 1,
@@ -8516,9 +9592,14 @@ def launch_mepd_drive(
     max_parallel_nebs: int = 1,
     network_splits: bool = True,
     hawaii: bool = False,
+    hawaii_discovery_tools: Any = None,
     open_browser: bool = True,
     startup_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> MepdDriveServer:
+    resolved_hawaii_discovery_tools = _normalize_hawaii_discovery_tools(
+        hawaii_discovery_tools,
+        default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
+    )
     startup_base_steps = 6 if network_splits else 4
     startup_total_steps = startup_base_steps + 2
 
@@ -8537,6 +9618,9 @@ def launch_mepd_drive(
     explicit_directory = Path(directory).resolve() if directory else None
     startup_workspace_path = workspace_path
     deferred_initialize_payload: dict[str, Any] | None = None
+    reactant_xyz_text = _read_xyz_file_text(start_xyz_fp, label="Start") if start_xyz_fp else ""
+    product_xyz_text = _read_xyz_file_text(end_xyz_fp, label="End") if end_xyz_fp else ""
+    has_xyz_bootstrap = bool(reactant_xyz_text)
     require_api_token = not _is_loopback_host(host)
     api_token = secrets.token_urlsafe(24) if require_api_token else None
     if (
@@ -8565,10 +9649,33 @@ def launch_mepd_drive(
             progress=startup_progress,
         )
         _emit_startup_progress("Workspace snapshot loaded. Starting Drive server...", startup_base_steps)
-    elif smiles:
+    elif smiles or has_xyz_bootstrap:
         resolved_inputs = Path(str(inputs_fp)).expanduser().resolve() if inputs_fp else None
         if resolved_inputs is None:
-            raise ValueError("An inputs TOML path is required to start drive from SMILES.")
+            raise ValueError(
+                "An inputs TOML path is required to start drive from SMILES or XYZ endpoints."
+            )
+        reactant_payload = _resolve_species_input(
+            smiles=str(smiles or "").strip(),
+            xyz_text=reactant_xyz_text,
+            charge=int(charge),
+            multiplicity=int(multiplicity),
+        )
+        if not reactant_payload:
+            raise ValueError(
+                "A bootstrap reactant is required. Provide --smiles, --start-xyz-fp, or both."
+            )
+        product_payload = _resolve_species_input(
+            smiles=str(product_smiles or "").strip(),
+            xyz_text=product_xyz_text,
+            charge=int(charge),
+            multiplicity=int(multiplicity),
+        )
+        seed_only = (
+            bool(product_payload)
+            or bool(reactant_xyz_text.strip())
+            or bool(product_xyz_text.strip())
+        )
         resolved_run_name = _validate_run_name(
             str(run_name or "").strip() or f"mepd-drive-{int(time.time())}"
         )
@@ -8580,33 +9687,26 @@ def launch_mepd_drive(
             run_dir = (base_directory / resolved_run_name).resolve()
         if hawaii:
             deferred_initialize_payload = {
-                "mode": "reactant-product" if str(product_smiles or "").strip() else "reactant",
-                "reactant_smiles": str(smiles).strip(),
-                "reactant_xyz": "",
-                "product_smiles": str(product_smiles).strip() if str(product_smiles or "").strip() else "",
-                "product_xyz": "",
+                "mode": "reactant-product" if bool(product_payload) else "reactant",
+                "reactant_smiles": str(reactant_payload.get("smiles") or "").strip(),
+                "reactant_xyz": reactant_xyz_text,
+                "product_smiles": str(product_payload.get("smiles") or "").strip() if product_payload else "",
+                "product_xyz": product_xyz_text,
                 "run_name": resolved_run_name,
                 "inputs_fp": str(resolved_inputs),
                 "reactions_fp": str(Path(reactions_fp).expanduser().resolve()) if reactions_fp else "",
                 "environment_smiles": str(environment_smiles or ""),
                 "charge": int(charge),
                 "multiplicity": int(multiplicity),
-                "seed_only": bool(str(product_smiles or "").strip()),
+                "seed_only": bool(seed_only),
                 "auto_start_hawaii": True,
+                "auto_start_hawaii_discovery_tools": list(resolved_hawaii_discovery_tools),
             }
             initial_state = None
         else:
             initial_state = _initialize_workspace_job(
-                reactant={
-                    "smiles": str(smiles).strip(),
-                    "charge": int(charge),
-                    "multiplicity": int(multiplicity),
-                },
-                product={
-                    "smiles": str(product_smiles).strip(),
-                    "charge": int(charge),
-                    "multiplicity": int(multiplicity),
-                } if str(product_smiles or "").strip() else None,
+                reactant=reactant_payload,
+                product=(product_payload or None),
                 run_name=resolved_run_name,
                 workspace_dir=str(run_dir),
                 inputs_fp=str(resolved_inputs),
@@ -8616,7 +9716,7 @@ def launch_mepd_drive(
                 max_nodes=max_nodes,
                 max_depth=max_depth,
                 max_parallel_nebs=max_parallel_nebs,
-                seed_only=bool(str(product_smiles or "").strip()),
+                seed_only=bool(seed_only),
                 network_splits=network_splits,
                 progress_fp=None,
                 allowed_base_dir=str(base_directory.resolve()),
@@ -8635,6 +9735,7 @@ def launch_mepd_drive(
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
         network_splits=network_splits,
+        hawaii_discovery_tools=list(resolved_hawaii_discovery_tools),
         initial_state=initial_state,
         require_api_token=require_api_token,
         api_token=api_token,

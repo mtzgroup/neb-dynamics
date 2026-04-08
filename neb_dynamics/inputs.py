@@ -40,6 +40,17 @@ _QMMM_ENGINE_KEYS = {
 }
 
 
+def _normalized_path_method(path_min_method: str) -> str:
+    method = str(path_min_method or "").strip().upper().replace("_", "-")
+    aliases = {
+        "NEBDLF": "NEB-DLF",
+        "DLFNEB": "NEB-DLF",
+        "DLFIND": "NEB-DLF",
+        "DL-FIND": "NEB-DLF",
+    }
+    return aliases.get(method, method)
+
+
 def _format_tc_value(value):
     if isinstance(value, bool):
         return "yes" if value else "no"
@@ -323,11 +334,12 @@ class RunInputs:
 
     def __post_init__(self):
         default_kwds = {}
+        path_method = _normalized_path_method(self.path_min_method)
 
-        if self.path_min_method.upper() == "NEB":
+        if path_method == "NEB":
             default_kwds = NEBInputs().__dict__
 
-        elif self.path_min_method.upper() == "FNEB":
+        elif path_method == "FNEB":
             default_kwds = {
                 "max_min_iter": 100,
                 "max_grow_iter": 20,
@@ -345,11 +357,24 @@ class RunInputs:
                 "dist_err": 0.1,
 
             }
+        elif path_method == "NEB-DLF":
+            default_kwds = {
+                "nstep": 200,
+                "min_image": None,
+                "min_nebk": 0.01,
+                "max_nebk": None,
+                "new_minimizer": "no",
+                "skip_identical_graphs": True,
+                "do_elem_step_checks": True,
+                "collect_files": True,
+                "dlfind_keywords": {},
+                "v": False,
+            }
         #     default_kwds = FSMInputs()
         # elif self.path_min_method.upper() == "PYGSM":
         #     default_kwds = PYGSMInputs()
 
-        if self.path_min_method.upper() == 'MLPGI':
+        if path_method == 'MLPGI':
             default_kwds = {}
 
         if self.path_min_inputs is None:

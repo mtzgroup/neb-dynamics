@@ -30,6 +30,7 @@ from neb_dynamics.optimizers.fire import FIREOptimizer
 from qcio import Structure
 
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
+from neb_dynamics.pathminimizers.nebdlf import DLFindNEB
 from neb_dynamics.inputs import RunInputs
 from neb_dynamics.scripts.progress import print_neb_step, preserve_chain_snapshot, start_status, update_status, stop_status
 
@@ -39,7 +40,18 @@ def _get_verbose(inputs: RunInputs) -> bool:
     return getattr(inputs.path_min_inputs, 'v', False)
 
 
-PATH_METHODS = ["NEB", "FNEB", "MLPGI"]
+PATH_METHODS = ["NEB", "FNEB", "MLPGI", "NEB-DLF"]
+
+
+def _normalize_path_method(path_min_method: str) -> str:
+    method = str(path_min_method or "").strip().upper().replace("_", "-")
+    aliases = {
+        "NEBDLF": "NEB-DLF",
+        "DLFNEB": "NEB-DLF",
+        "DLFIND": "NEB-DLF",
+        "DL-FIND": "NEB-DLF",
+    }
+    return aliases.get(method, method)
 
 
 @dataclass
@@ -54,8 +66,9 @@ class MSMEP:
             self.inputs.path_min_method or self.path_minimizer is not None
         ), "Need to input a path_min_method or path minimizer"
         if self.path_minimizer is None:
+            normalized_method = _normalize_path_method(self.inputs.path_min_method)
             assert (
-                self.inputs.path_min_method.upper() in PATH_METHODS
+                normalized_method in PATH_METHODS
             ), f"Invalid path method: {self.inputs.path_min_method}. Allowed are: {PATH_METHODS}"
 
     def _build_neb_optimizer(self):
@@ -111,7 +124,7 @@ class MSMEP:
                 {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
         self._disable_molecular_graphs(input_chain)
 
-        if self.inputs.path_min_inputs.skip_identical_graphs and input_chain[0].has_molecular_graph:
+        if getattr(self.inputs.path_min_inputs, "skip_identical_graphs", True) and input_chain[0].has_molecular_graph:
             if not _get_verbose(self.inputs):
                 update_status("Checking endpoint connectivity")
             if _is_connectivity_identical(
@@ -277,7 +290,8 @@ class MSMEP:
         return interpolation
 
     def _construct_path_minimizer(self, initial_chain: Chain):
-        if self.inputs.path_min_method.upper() == "NEB":
+        path_method = _normalize_path_method(self.inputs.path_min_method)
+        if path_method == "NEB":
 
             msg = "Using in-house NEB optimizer"
             if _get_verbose(self.inputs):
@@ -301,7 +315,7 @@ class MSMEP:
         #         pygsm_kwds=self.inputs.path_min_inputs,
         #     )
 
-        elif self.inputs.path_min_method.upper() == "FNEB":
+        elif path_method == "FNEB":
             msg = "Using Freezing NEB optimizer"
             if _get_verbose(self.inputs):
                 print(msg)
@@ -315,7 +329,7 @@ class MSMEP:
                 gi_inputs=self.inputs.gi_inputs
             )
 
-        elif self.inputs.path_min_method.upper() == "MLPGI":
+        elif path_method == "MLPGI":
             from neb_dynamics.pathminimizers.mlpgi import MLPGI
             msg = "Using MLP Geodesic Optimizer"
             if _get_verbose(self.inputs):
@@ -327,9 +341,20 @@ class MSMEP:
                 engine=self.inputs.engine,
                 parameters=self.inputs.path_min_inputs,
             )
+        elif path_method == "NEB-DLF":
+            msg = "Using DL-Find NEB optimizer via TeraChem/QCOP"
+            if _get_verbose(self.inputs):
+                print(msg)
+            else:
+                update_status(msg)
+            n = DLFindNEB(
+                initial_chain=initial_chain,
+                engine=self.inputs.engine,
+                parameters=self.inputs.path_min_inputs,
+            )
         else:
             raise NotImplementedError(
-                "Invalid path minimization method. Select from NEB, FNEB, or MLPGI.")
+                "Invalid path minimization method. Select from NEB, FNEB, MLPGI, or NEB-DLF.")
 
         return n
 

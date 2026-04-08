@@ -589,6 +589,34 @@ def _queue_item_for_edge(
     )
 
 
+def _queue_item_for_edge_deferred(
+    pot: Pot,
+    source_node: int,
+    target_node: int,
+    reaction: str | None,
+) -> NEBQueueItem:
+    source_td = pot.graph.nodes[source_node].get("td")
+    target_td = pot.graph.nodes[target_node].get("td")
+    if source_td is None or target_td is None:
+        return NEBQueueItem(
+            job_id=f"{source_node}->{target_node}",
+            source_node=source_node,
+            target_node=target_node,
+            attempt_key="",
+            reaction=reaction,
+            status="missing_td",
+            error="Both queue endpoints need node['td'] structures.",
+        )
+    return NEBQueueItem(
+        job_id=f"{source_node}->{target_node}",
+        source_node=source_node,
+        target_node=target_node,
+        attempt_key="",
+        reaction=reaction,
+        status="pending",
+    )
+
+
 def _is_retryable_legacy_failure(item: NEBQueueItem) -> bool:
     if item.status == "incompatible":
         return True
@@ -694,6 +722,7 @@ def ensure_queue_item_for_edge(
     target_node: int,
     queue_fp: Path | None = None,
     overwrite: bool = False,
+    validate_compatibility: bool = True,
 ) -> RetropathsNEBQueue:
     queue = RetropathsNEBQueue()
     if queue_fp is not None:
@@ -705,25 +734,29 @@ def ensure_queue_item_for_edge(
     if pot.graph.has_edge(source_node, target_node):
         reaction = pot.graph.edges[(source_node, target_node)].get("reaction")
 
-    existing = queue.find_item(source_node, target_node)
-    candidate = _queue_item_for_edge(
-        pot=pot,
-        source_node=source_node,
-        target_node=target_node,
-        reaction=reaction,
-        attempted_pairs=queue.attempted_pairs,
-    )
-    if existing is not None and not _should_refresh_existing_item(existing, candidate):
-        return queue
-    if existing is not None and _is_retryable_legacy_failure(existing) and existing.attempt_key:
-        queue.attempted_pairs.pop(existing.attempt_key, None)
-        candidate = _queue_item_for_edge(
+    def _build_candidate() -> NEBQueueItem:
+        if not validate_compatibility:
+            return _queue_item_for_edge_deferred(
+                pot=pot,
+                source_node=source_node,
+                target_node=target_node,
+                reaction=reaction,
+            )
+        return _queue_item_for_edge(
             pot=pot,
             source_node=source_node,
             target_node=target_node,
             reaction=reaction,
             attempted_pairs=queue.attempted_pairs,
         )
+
+    existing = queue.find_item(source_node, target_node)
+    candidate = _build_candidate()
+    if existing is not None and not _should_refresh_existing_item(existing, candidate):
+        return queue
+    if existing is not None and _is_retryable_legacy_failure(existing) and existing.attempt_key:
+        queue.attempted_pairs.pop(existing.attempt_key, None)
+        candidate = _build_candidate()
 
     queue.replace_item(candidate)
     if queue_fp is not None:

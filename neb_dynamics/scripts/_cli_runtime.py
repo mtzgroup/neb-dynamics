@@ -70,8 +70,7 @@ def _configure_cli_logging() -> None:
 
 _configure_cli_logging()
 
-ob_log_handler = openbabel.OBMessageHandler()
-ob_log_handler.SetOutputLevel(0)
+openbabel.obErrorLog.SetOutputLevel(0)
 
 console = Console(theme=custom_theme)
 

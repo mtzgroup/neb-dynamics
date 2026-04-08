@@ -23,6 +23,8 @@ from neb_dynamics.elements import symbol_to_atomic_number
 
 from neb_dynamics.molecule import Molecule
 
+openbabel.obErrorLog.SetOutputLevel(0)
+
 
 def read_multiple_structure_from_file(
     fp: Union[Path, str], charge: int = 0, spinmult: int = 1

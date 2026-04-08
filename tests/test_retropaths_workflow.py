@@ -16,14 +16,17 @@ from neb_dynamics.pot import Pot
 from neb_dynamics.retropaths_workflow import (
     RetropathsWorkspace,
     _find_existing_network_node,
+    _extract_failure_text_from_output,
     _build_network_explorer_payload,
     _write_edge_visualizations,
+    add_manual_node,
     add_manual_edge,
     apply_reactions_to_node,
     load_partial_annotated_pot,
     materialize_drive_graph,
     prepare_optimized_neb_pot,
     prepare_optimized_neb_pot_from_pot,
+    refine_drive_workspace_network,
     run_hessian_sample_for_edge,
     run_hessian_sample_for_node,
     write_status_html,
@@ -69,6 +72,38 @@ def _fake_run_inputs(engine) -> SimpleNamespace:
         chain_inputs=ChainInputs(),
         path_min_inputs=SimpleNamespace(do_elem_step_checks=False),
     )
+
+
+def test_extract_failure_text_from_output_prefers_program_stdout_tail():
+    output = SimpleNamespace(
+        message=None,
+        stderr=None,
+        stdout="\n".join(
+            [
+                "SCF setup",
+                "Too many electrons for guess generation code",
+                "DIE called at line number 58 in file terachem/guess.cpp",
+            ]
+        ),
+        traceback="Traceback (most recent call last):\nqcop.exceptions.ExternalProgramError",
+    )
+    text = _extract_failure_text_from_output(output, "TS optimization did not converge.")
+    assert "DIE called" in text
+
+
+def test_extract_failure_text_from_output_falls_back_to_traceback_tail():
+    output = SimpleNamespace(
+        message=None,
+        stderr=None,
+        stdout="",
+        traceback=(
+            "Traceback (most recent call last):\n"
+            "  File \"x.py\", line 1\n"
+            "qcop.exceptions.ExternalProgramError: External program failed with return code 1"
+        ),
+    )
+    text = _extract_failure_text_from_output(output, "TS optimization did not converge.")
+    assert "External program failed with return code 1" in text
 
 
 def test_ensure_retropaths_available_reports_missing_repo(monkeypatch, tmp_path):
@@ -366,6 +401,96 @@ def test_load_partial_annotated_pot_expands_recursive_history_into_elementary_ed
     assert annotated.graph.edges[(2, 0)]["reaction"] == "1->0(step 2)"
     assert annotated.graph.edges[(2, 1)]["reaction"] == "1->0(step 1)"
     assert annotated.graph.edges[(0, 2)]["reaction"] == "1->0(step 2)"
+
+
+def test_load_partial_annotated_pot_reads_history_with_endpoint_charge_multiplicity(
+    monkeypatch, tmp_path
+):
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path),
+        run_name="demo",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+    )
+    workspace.write()
+
+    source = _node(0.0)
+    source.structure = Structure(
+        geometry=np.array(source.coords),
+        symbols=list(source.structure.symbols),
+        charge=2,
+        multiplicity=3,
+    )
+    target = _node(0.8)
+    target.structure = Structure(
+        geometry=np.array(target.coords),
+        symbols=list(target.structure.symbols),
+        charge=2,
+        multiplicity=3,
+    )
+    source_pot = Pot(root=Molecule(), target=Molecule())
+    source_pot.graph = nx.DiGraph()
+    source_pot.graph.add_node(0, molecule=Molecule.from_smiles("[H][H]"), td=source)
+    source_pot.graph.add_node(1, molecule=Molecule.from_smiles("[H][H]"), td=target)
+    source_pot.graph.add_edge(0, 1, reaction="0->1")
+    source_pot.write_to_disk(workspace.neb_pot_fp)
+
+    result_dir = tmp_path / "fake_history"
+    result_dir.mkdir(parents=True, exist_ok=True)
+    (result_dir / "adj_matrix.txt").write_text("0\n", encoding="utf-8")
+    workspace.queue_fp.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "items": [
+                    {
+                        "job_id": "0->1",
+                        "source_node": 0,
+                        "target_node": 1,
+                        "attempt_key": "abc",
+                        "status": "completed",
+                        "result_dir": str(result_dir),
+                        "reaction": "0->1",
+                    }
+                ],
+                "attempted_pairs": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    chain = Chain.model_validate({"nodes": [source.copy(), _node(0.4), target.copy()], "parameters": ChainInputs()})
+
+    class _LeafData:
+        def __init__(self, leaf_chain):
+            self.chain_trajectory = [leaf_chain]
+
+    class _Leaf:
+        def __init__(self, leaf_chain):
+            self.data = _LeafData(leaf_chain)
+
+    class _History:
+        ordered_leaves = [_Leaf(chain)]
+
+    read_args = {}
+
+    def _fake_read_from_disk(folder_name, charge, multiplicity):
+        read_args["folder_name"] = str(folder_name)
+        read_args["charge"] = int(charge)
+        read_args["multiplicity"] = int(multiplicity)
+        return _History()
+
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.TreeNode.read_from_disk",
+        staticmethod(_fake_read_from_disk),
+    )
+
+    load_partial_annotated_pot(workspace)
+
+    assert read_args["folder_name"] == str(result_dir)
+    assert read_args["charge"] == 2
+    assert read_args["multiplicity"] == 3
 
 
 def test_load_partial_annotated_pot_preserves_existing_target_ids_during_split(monkeypatch, tmp_path):
@@ -870,6 +995,90 @@ def test_add_manual_edge_persists_new_edge(monkeypatch, tmp_path):
     assert persisted.graph.edges[(1, 0)]["reaction"] == "Manual test edge"
 
 
+def test_add_manual_edge_uses_deferred_queue_validation(monkeypatch, tmp_path):
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path),
+        run_name="demo",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+    )
+    workspace.write()
+
+    pot = Pot(root=Molecule.from_smiles("C"), target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(0, molecule=Molecule.from_smiles("C"), td=structure_node_from_graph_like_molecule(Molecule.from_smiles("C")))
+    pot.graph.add_node(1, molecule=Molecule.from_smiles("CC"), td=structure_node_from_graph_like_molecule(Molecule.from_smiles("CC")))
+    pot.write_to_disk(workspace.neb_pot_fp)
+
+    captured: dict[str, object] = {}
+
+    def _fake_ensure_queue_item_for_edge(
+        pot,
+        source_node,
+        target_node,
+        queue_fp,
+        overwrite=False,
+        validate_compatibility=True,
+    ):
+        captured["validate_compatibility"] = bool(validate_compatibility)
+        return SimpleNamespace(
+            find_item=lambda *_args, **_kwargs: SimpleNamespace(status="pending", error=None),
+        )
+
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.ensure_queue_item_for_edge",
+        _fake_ensure_queue_item_for_edge,
+    )
+
+    add_manual_edge(
+        workspace,
+        source_node=1,
+        target_node=0,
+        reaction_label="Manual test edge",
+    )
+
+    assert captured["validate_compatibility"] is False
+
+
+def test_add_manual_node_persists_new_node(monkeypatch, tmp_path):
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path),
+        run_name="demo",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+    )
+    workspace.write()
+
+    pot = Pot(root=Molecule.from_smiles("C"), target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(0, molecule=Molecule.from_smiles("C"), td=structure_node_from_graph_like_molecule(Molecule.from_smiles("C")))
+    pot.write_to_disk(workspace.neb_pot_fp)
+
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_workflow.build_retropaths_neb_queue",
+        lambda **kwargs: SimpleNamespace(find_item=lambda *_args, **_kwargs: None),
+    )
+
+    result = add_manual_node(
+        workspace,
+        xyz_text="""2
+manual node
+H 0.0000 0.0000 0.0000
+H 0.0000 0.0000 0.7400
+""",
+        charge=0,
+        multiplicity=1,
+    )
+    persisted = Pot.read_from_disk(workspace.neb_pot_fp)
+
+    assert result["added"] is True
+    assert result["node_id"] == 1
+    assert 1 in persisted.graph.nodes
+    assert persisted.graph.nodes[1]["generated_by"] == "manual_drive_node"
+
+
 def test_materialize_drive_graph_merges_overlay_without_dropping_base_nodes(monkeypatch, tmp_path):
     workspace = RetropathsWorkspace(
         workdir=str(tmp_path),
@@ -1049,10 +1258,10 @@ def test_resolve_hessian_use_bigchem_allows_qcop_user_override_true():
     assert resolved is True
 
 
-def test_resolve_hessian_use_bigchem_keeps_chemcloud_true_when_user_sets_false():
+def test_resolve_hessian_use_bigchem_allows_chemcloud_user_override_false():
     run_inputs = SimpleNamespace(engine_name="chemcloud", engine=SimpleNamespace(compute_program="chemcloud"))
     resolved = workflow._resolve_hessian_use_bigchem(run_inputs, requested_use_bigchem=False)
-    assert resolved is True
+    assert resolved is False
 
 
 def test_run_hessian_sample_for_edge_requires_completed_chain(monkeypatch, tmp_path):
@@ -1112,17 +1321,40 @@ def test_run_hessian_sample_for_edge_uses_completed_attempted_pair_when_queue_it
     }
     workspace.queue_fp.write_text(json.dumps(queue_payload), encoding="utf-8")
 
+    source_td = _node(0.0)
+    source_td.structure = Structure(
+        geometry=np.array(source_td.coords),
+        symbols=list(source_td.structure.symbols),
+        charge=-1,
+        multiplicity=2,
+    )
+    target_td = _node(0.8)
+    target_td.structure = Structure(
+        geometry=np.array(target_td.coords),
+        symbols=list(target_td.structure.symbols),
+        charge=-1,
+        multiplicity=2,
+    )
+
     pot = Pot(root=Molecule.from_smiles("C"), target=Molecule())
     pot.graph = nx.DiGraph()
-    pot.graph.add_node(0, td=_node(0.0), molecule=Molecule.from_smiles("[H][H]"))
-    pot.graph.add_node(1, td=_node(0.8), molecule=Molecule.from_smiles("[H][H]"))
+    pot.graph.add_node(0, td=source_td, molecule=Molecule.from_smiles("[H][H]"))
+    pot.graph.add_node(1, td=target_td, molecule=Molecule.from_smiles("[H][H]"))
     pot.graph.add_edge(0, 1, reaction="0->1", list_of_nebs=[])
     monkeypatch.setattr("neb_dynamics.retropaths_workflow.materialize_drive_graph", lambda _workspace: pot)
 
     chain = Chain.model_validate({"nodes": [_node(0.0), _node(0.4), _node(0.8)], "parameters": ChainInputs()})
+    load_args = {}
+
+    def _fake_read_from_disk(folder_name, charge, multiplicity):
+        load_args["folder_name"] = str(folder_name)
+        load_args["charge"] = int(charge)
+        load_args["multiplicity"] = int(multiplicity)
+        return SimpleNamespace(output_chain=chain)
+
     monkeypatch.setattr(
         "neb_dynamics.retropaths_workflow.TreeNode.read_from_disk",
-        lambda folder_name, charge, multiplicity: SimpleNamespace(output_chain=chain),
+        _fake_read_from_disk,
     )
 
     captured = {}
@@ -1142,6 +1374,8 @@ def test_run_hessian_sample_for_edge_uses_completed_attempted_pair_when_queue_it
     assert captured["provenance_edge"] == (0, 1)
     assert captured["dr"] == 1.0
     assert captured["max_candidates"] == 10
+    assert load_args["charge"] == -1
+    assert load_args["multiplicity"] == 2
 
 
 def test_run_hessian_sample_for_edge_batches_all_candidates_for_chemcloud(monkeypatch, tmp_path):
@@ -1397,3 +1631,233 @@ def test_run_hessian_sample_for_edge_handles_batch_count_mismatch(monkeypatch, t
     assert calls["batch"] == 1
     assert calls["batch_size"] == 2
     assert out["added_nodes"] >= 1
+
+
+def test_refine_drive_workspace_network_adds_irc_minima(monkeypatch, tmp_path):
+    source_inputs_fp = tmp_path / "source_inputs.toml"
+    source_inputs_fp.write_text("", encoding="utf-8")
+    refinement_inputs_fp = tmp_path / "refine_inputs.toml"
+    refinement_inputs_fp.write_text("", encoding="utf-8")
+
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path / "source_workspace"),
+        run_name="demo",
+        root_smiles="CC",
+        environment_smiles="",
+        inputs_fp=str(source_inputs_fp),
+    )
+    workspace.write()
+    workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+
+    node0 = _node(0.0)
+    node0.graph = Molecule.from_smiles("CC")
+    node0.has_molecular_graph = True
+    node1 = _node(0.8)
+    node1.graph = Molecule.from_smiles("CN")
+    node1.has_molecular_graph = True
+    ts_guess = _node(0.4)
+    ts_guess.graph = Molecule.from_smiles("CO")
+    ts_guess.has_molecular_graph = True
+    ts_guess._cached_energy = 1.2
+    edge_chain = Chain.model_validate(
+        {"nodes": [node0.copy(), ts_guess.copy(), node1.copy()], "parameters": ChainInputs()}
+    )
+
+    pot = Pot(root=Molecule.from_smiles("CC"), target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(0, td=node0.copy(), molecule=node0.graph.copy())
+    pot.graph.add_node(1, td=node1.copy(), molecule=node1.graph.copy())
+    pot.graph.add_edge(0, 1, reaction="0->1", list_of_nebs=[edge_chain])
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow.materialize_drive_graph", lambda _workspace: pot)
+
+    class _Engine:
+        def _compute_ts_result(self, node, keywords=None, use_bigchem=False):
+            return SimpleNamespace(success=True, return_result=node.structure)
+
+        def compute_energies(self, nodes):
+            return np.array([0.0 for _ in nodes], dtype=float)
+
+        def compute_gradients(self, nodes):
+            return np.array([np.zeros_like(node.coords) for node in nodes], dtype=float)
+
+    fake_inputs = SimpleNamespace(
+        engine=_Engine(),
+        engine_name="qcop",
+        chain_inputs=ChainInputs(),
+        network_inputs=SimpleNamespace(
+            collapse_node_rms_thre=5.0,
+            collapse_node_ene_thre=5.0,
+        ),
+    )
+    monkeypatch.setattr(workflow.RunInputs, "open", staticmethod(lambda _fp: fake_inputs))
+
+    irc_left = _node(0.2)
+    irc_left.graph = Molecule.from_smiles("CO")
+    irc_left.has_molecular_graph = True
+    irc_left._cached_energy = -0.3
+    irc_mid = _node(0.4)
+    irc_mid.graph = Molecule.from_smiles("CC")
+    irc_mid.has_molecular_graph = True
+    irc_mid._cached_energy = 0.9
+    irc_right = _node(0.6)
+    irc_right.graph = Molecule.from_smiles("CS")
+    irc_right.has_molecular_graph = True
+    irc_right._cached_energy = -0.2
+    irc_chain = Chain.model_validate(
+        {"nodes": [irc_left, irc_mid, irc_right], "parameters": ChainInputs()}
+    )
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow._compute_irc_chain_with_geometric", lambda **kwargs: irc_chain)
+
+    summary = refine_drive_workspace_network(
+        workspace,
+        refinement_inputs_fp=refinement_inputs_fp,
+        refined_workspace_dir=tmp_path / "refined_workspace",
+    )
+
+    assert summary["ts_guesses_attempted"] == 1
+    assert summary["ts_converged"] == 1
+    assert summary["irc_converged"] == 1
+    assert summary["added_nodes"] >= 1
+    assert summary["added_edges"] >= 1
+
+    refined_workspace = RetropathsWorkspace.read(tmp_path / "refined_workspace")
+    refined_pot = Pot.read_from_disk(refined_workspace.neb_pot_fp)
+    assert refined_workspace.workspace_fp.exists()
+    assert refined_workspace.queue_fp.exists()
+    assert refined_pot.graph.number_of_nodes() >= 2
+    assert any(
+        attrs.get("generated_by") == "ts_irc_refine"
+        for _, attrs in refined_pot.graph.nodes(data=True)
+    )
+    refined_edges = [
+        attrs
+        for _source, _target, attrs in refined_pot.graph.edges(data=True)
+        if attrs.get("generated_by") == "ts_irc_refine"
+    ]
+    assert refined_edges
+    assert all(edge_attrs.get("barrier") is not None for edge_attrs in refined_edges)
+    for edge_attrs in refined_edges:
+        for chain in edge_attrs.get("list_of_nebs", []):
+            assert all(node._cached_energy is not None for node in chain.nodes)
+
+
+def test_refine_drive_workspace_network_chemcloud_stages_ts_then_irc_parallel(monkeypatch, tmp_path):
+    source_inputs_fp = tmp_path / "source_inputs.toml"
+    source_inputs_fp.write_text("", encoding="utf-8")
+    refinement_inputs_fp = tmp_path / "refine_inputs.toml"
+    refinement_inputs_fp.write_text("", encoding="utf-8")
+
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path / "source_workspace"),
+        run_name="demo",
+        root_smiles="CC",
+        environment_smiles="",
+        inputs_fp=str(source_inputs_fp),
+    )
+    workspace.write()
+    workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+
+    pot = Pot(root=Molecule.from_smiles("CC"), target=Molecule())
+    pot.graph = nx.DiGraph()
+    n0 = _node(0.0)
+    n1 = _node(0.4)
+    n2 = _node(0.8)
+    n0.graph = Molecule.from_smiles("CC")
+    n1.graph = Molecule.from_smiles("CN")
+    n2.graph = Molecule.from_smiles("CO")
+    n0.has_molecular_graph = True
+    n1.has_molecular_graph = True
+    n2.has_molecular_graph = True
+    pot.graph.add_node(0, td=n0.copy(), molecule=n0.graph.copy())
+    pot.graph.add_node(1, td=n1.copy(), molecule=n1.graph.copy())
+    pot.graph.add_node(2, td=n2.copy(), molecule=n2.graph.copy())
+    chain01 = Chain.model_validate({"nodes": [n0.copy(), _node(0.2), n1.copy()], "parameters": ChainInputs()})
+    chain12 = Chain.model_validate({"nodes": [n1.copy(), _node(0.6), n2.copy()], "parameters": ChainInputs()})
+    pot.graph.add_edge(0, 1, reaction="0->1", list_of_nebs=[chain01])
+    pot.graph.add_edge(1, 2, reaction="1->2", list_of_nebs=[chain12])
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow.materialize_drive_graph", lambda _workspace: pot)
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow.write_status_html", lambda *_args, **_kwargs: None)
+
+    class _Engine:
+        compute_program = "chemcloud"
+
+        def _compute_ts_result(self, node, keywords=None, use_bigchem=False):
+            return SimpleNamespace(success=True, return_result=node.structure)
+
+        def compute_energies(self, nodes):
+            return np.array([0.0 for _ in nodes], dtype=float)
+
+        def compute_gradients(self, nodes):
+            return np.array([np.zeros_like(node.coords) for node in nodes], dtype=float)
+
+    fake_inputs = SimpleNamespace(
+        engine=_Engine(),
+        engine_name="chemcloud",
+        chain_inputs=ChainInputs(),
+        network_inputs=SimpleNamespace(
+            collapse_node_rms_thre=5.0,
+            collapse_node_ene_thre=5.0,
+        ),
+    )
+    monkeypatch.setattr(workflow.RunInputs, "open", staticmethod(lambda _fp: fake_inputs))
+
+    events: list[str] = []
+
+    def _fake_ts(engine, ts_guess, **kwargs):
+        events.append("ts")
+        return ts_guess.copy(), None
+
+    def _fake_irc_chain(**kwargs):
+        events.append("irc")
+        a = _node(0.1)
+        b = _node(0.7)
+        a.graph = Molecule.from_smiles("CC")
+        b.graph = Molecule.from_smiles("CS")
+        a.has_molecular_graph = True
+        b.has_molecular_graph = True
+        return Chain.model_validate({"nodes": [a, b], "parameters": ChainInputs()})
+
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow._compute_ts_node_with_geometric", _fake_ts)
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow._compute_irc_chain_with_geometric", _fake_irc_chain)
+
+    executors: list[object] = []
+
+    class _ImmediateFuture:
+        def __init__(self, fn, *args, **kwargs):
+            self._result = fn(*args, **kwargs)
+
+        def result(self):
+            return self._result
+
+    class _FakeExecutor:
+        def __init__(self, max_workers=None, **kwargs):
+            self.max_workers = max_workers
+            self.submit_calls = 0
+            executors.append(self)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, *args, **kwargs):
+            self.submit_calls += 1
+            return _ImmediateFuture(fn, *args, **kwargs)
+
+    monkeypatch.setattr(workflow.concurrent.futures, "ThreadPoolExecutor", _FakeExecutor)
+
+    summary = refine_drive_workspace_network(
+        workspace,
+        refinement_inputs_fp=refinement_inputs_fp,
+        refined_workspace_dir=tmp_path / "refined_workspace_parallel",
+    )
+
+    assert events[:2] == ["ts", "ts"]
+    assert events[2:] == ["irc", "irc"]
+    assert len(executors) == 2
+    assert executors[0].submit_calls == 2
+    assert executors[1].submit_calls == 2
+    assert summary["chemcloud_parallel"] is True
+    assert summary["ts_jobs_submitted"] == 2
+    assert summary["irc_jobs_submitted"] == 2

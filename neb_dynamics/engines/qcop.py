@@ -4,7 +4,7 @@ import concurrent
 import inspect
 import contextlib
 from dataclasses import dataclass
-from typing import List, Union
+from typing import Any, List, Union
 import os
 import threading
 from pathlib import Path
@@ -22,7 +22,6 @@ from qcio import ProgramOutput, Structure
 import shutil
 
 from chemcloud import CCClient
-from chemcloud import compute as cc_compute
 from chemcloud import configure_client as cc_configure_client
 from chemcloud.config import Settings as ChemCloudSettings
 
@@ -120,6 +119,11 @@ def _env_float(name: str, default: float) -> float:
 
 def _configure_chemcloud_client(queue: str) -> None:
     """Handle ChemCloud client API drift across installed versions."""
+    cc_configure_client(**_chemcloud_client_kwargs(queue))
+
+
+def _chemcloud_client_kwargs(queue: str) -> dict[str, Any]:
+    """Build kwargs compatible with the installed CCClient constructor."""
     client_params = {}
     settings_kwargs = {
         "chemcloud_queue": queue,
@@ -151,7 +155,7 @@ def _configure_chemcloud_client(queue: str) -> None:
     else:
         client_params.update(settings_kwargs)
 
-    cc_configure_client(**client_params)
+    return client_params
 
 
 def _resolve_nanoreactor_inputs(nanoreactor_inputs: dict[str, object] | None) -> dict[str, object]:
@@ -184,6 +188,9 @@ class QCOPEngine(Engine):
 
     def __post_init__(self):
         self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
+        self._chemcloud_client_lock = threading.Lock()
+        self._chemcloud_clients_by_thread: dict[int, CCClient] = {}
+        self._chemcloud_client_params: dict[str, Any] = _chemcloud_client_kwargs(self.chemcloud_queue)
         if self.write_qcio:
             logging.warning(
                 "QCOPEngine write_qcio=True: cached qcio.ProgramOutput objects will be "
@@ -191,6 +198,20 @@ class QCOPEngine(Engine):
             )
         if self.compute_program == "chemcloud":
             _configure_chemcloud_client(self.chemcloud_queue)
+
+    def _get_thread_chemcloud_client(self) -> CCClient:
+        thread_id = int(threading.get_ident())
+        with self._chemcloud_client_lock:
+            client = self._chemcloud_clients_by_thread.get(thread_id)
+            if client is None:
+                client = CCClient(**dict(self._chemcloud_client_params))
+                self._chemcloud_clients_by_thread[thread_id] = client
+        return client
+
+    def _drop_thread_chemcloud_client(self) -> None:
+        thread_id = int(threading.get_ident())
+        with self._chemcloud_client_lock:
+            self._chemcloud_clients_by_thread.pop(thread_id, None)
 
     @staticmethod
     def _is_retryable_chemcloud_error(exc: Exception) -> bool:
@@ -212,16 +233,35 @@ class QCOPEngine(Engine):
             "connection reset",
             "timed out",
             "connecttimeout",
+            "different event loop",
+            "client has been closed",
         )
         return any(token in msg for token in retry_markers)
+
+    @staticmethod
+    def _is_chemcloud_output_fetch_error(exc: Exception) -> bool:
+        request = getattr(exc, "request", None)
+        request_url = str(getattr(request, "url", "") or "")
+        if "/compute/output/" in request_url:
+            return True
+        msg = str(exc).lower()
+        return "compute/output/" in msg
 
     def _chemcloud_compute_with_retries(self, *args, **kwargs):
         max_attempts = 5
         delay_sec = 5.0
         for attempt in range(1, max_attempts + 1):
             try:
-                return cc_compute(*args, queue=self.chemcloud_queue, **kwargs)
+                return self._get_thread_chemcloud_client().compute(*args, **kwargs)
             except Exception as exc:
+                if self._is_chemcloud_output_fetch_error(exc):
+                    # A fetch failure means the job was already submitted; retrying here
+                    # resubmits duplicate work instead of retrying the fetch.
+                    raise
+                lowered = str(exc).lower()
+                if "different event loop" in lowered or "client has been closed" in lowered:
+                    # The underlying async client got tied to another loop/thread.
+                    self._drop_thread_chemcloud_client()
                 retryable = self._is_retryable_chemcloud_error(exc)
                 if attempt >= max_attempts or not retryable:
                     raise
@@ -272,7 +312,9 @@ class QCOPEngine(Engine):
             return qcop.compute(*args, **kwargs)
         elif self.compute_program == "chemcloud":
             try:
-                return self._chemcloud_compute_with_retries(*args, **kwargs)
+                call_kwargs = dict(kwargs)
+                call_kwargs.setdefault("queue", self.chemcloud_queue)
+                return self._chemcloud_compute_with_retries(*args, **call_kwargs)
             except ValidationError as exc:
                 message = str(exc)
                 if "ProgramOutput" not in message:
@@ -286,6 +328,34 @@ class QCOPEngine(Engine):
                         "tries to materialize a failed task using an older ProgramOutput layout. "
                         "Check the remote task failure details and align the chemcloud/qcio versions."
                     ),
+                    original_exception=exc,
+                ) from exc
+            except Exception as exc:
+                if not self._is_chemcloud_output_fetch_error(exc):
+                    raise
+                program = str(args[0]) if args else self.program
+                request = getattr(exc, "request", None)
+                request_url = str(getattr(request, "url", "") or "")
+                task_id = ""
+                if "/compute/output/" in request_url:
+                    task_id = request_url.rsplit("/", 1)[-1].strip()
+                status_code = getattr(
+                    getattr(exc, "response", None), "status_code", None)
+                message = (
+                    "ChemCloud accepted the submission, but output collection failed while "
+                    "polling `/compute/output/<task_id>`."
+                )
+                if status_code is not None:
+                    message = f"{message} HTTP status: {status_code}."
+                if task_id:
+                    message = f"{message} Task ID: {task_id}."
+                message = (
+                    f"{message} This error is on result retrieval, so automatic retry is "
+                    "disabled to avoid duplicate task submissions."
+                )
+                raise ExternalProgramError(
+                    program=program,
+                    message=message,
                     original_exception=exc,
                 ) from exc
         else:
@@ -424,7 +494,7 @@ class QCOPEngine(Engine):
                 },
                 keywords={},
             )
-            fres = cc_compute("bigchem", dpi)
+            fres = self._chemcloud_compute_with_retries("bigchem", dpi)
             # ChemCloud client return type can be future-like (with .get()) or a
             # direct ProgramOutput, depending on installed client/version.
             if hasattr(fres, "get"):
@@ -542,9 +612,10 @@ class QCOPEngine(Engine):
                 nimaginary += 1
 
         if nimaginary > 1:
-            print(
-                "WARNING: More than one imaginary frequency detected. This is not a TS.")
-            print(f"frequencies: {freqs}")
+            logging.getLogger(__name__).warning(
+                "More than one imaginary frequency detected during IRC seed check; frequencies=%s",
+                freqs,
+            )
 
         node_plus = displace_by_dr(
             node=ts, dr=dr, displacement=normal_modes[0])
