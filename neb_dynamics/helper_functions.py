@@ -474,7 +474,8 @@ def parse_terachem_input_file(file_path: str | Path) -> dict:
             parsed["keywords"][parts[0]] = val
 
     if parsed["method"] is None or parsed["basis"] is None:
-        raise ValueError("TeraChem input must include both 'method' and 'basis'.")
+        raise ValueError(
+            "TeraChem input must include both 'method' and 'basis'.")
     if parsed["charge"] is None:
         parsed["charge"] = 0
     if parsed["spinmult"] is None:
@@ -584,6 +585,7 @@ def parse_nma_freq_data(hessres):
 
     return reshaped_normal_modes, freqs
 
+
 def project_rigid_body_forces(R, F, masses=None):
     """
     Remove net translation and rotation from forces.
@@ -653,11 +655,11 @@ def rst7_to_coords_and_indices(data):
 
     ind = 0
     for line in data.split("\n"):
-        if ind==0:
-            ind+=1
+        if ind == 0:
+            ind += 1
             continue
-        if ind==1:
-           natom = int(line.split()[0])
+        if ind == 1:
+            natom = int(line.split()[0])
         if (len(line.split()) == 6) or (len(line.split()) == 3):
             if len(coords) == natom:
                 break
@@ -672,10 +674,10 @@ def rst7_to_coords_and_indices(data):
                 coords.append(c)
             indices_coordinates.append(ind)
 
-
-        ind+=1
+        ind += 1
     # print(coords)
     return np.array(coords), indices_coordinates
+
 
 def parse_symbols_from_prmtop(data):
     """
@@ -692,17 +694,16 @@ def parse_symbols_from_prmtop(data):
     skipped1line = 0
     for line in data.split("\n"):
         print(line.strip())
-        if line.strip()=='%FLAG ATOMIC_NUMBER':
+        if line.strip() == '%FLAG ATOMIC_NUMBER':
             begin = True
             continue
         if begin:
             if skipped1line:
-                if line[0]=='%':
+                if line[0] == '%':
                     break
                 symbols.extend(line.split())
             else:
                 skipped1line = 1
-
 
     symbols = [atomic_number_to_symbol(int(n)) for n in symbols]
     return symbols
@@ -716,7 +717,7 @@ def parse_qmmm_gradients(text):
     mm_grads = []
 
     # State flags
-    current_mode = None # Can be 'QM' or 'MM'
+    current_mode = None  # Can be 'QM' or 'MM'
 
     for line in text.split("\n"):
         clean_line = line.strip()
@@ -770,17 +771,20 @@ def parse_hhtda_to_dict(stdout_text):
     ex_energies_ev = []
     oscillators = []
 
-    for row in rows[1:]: # Skip Root 1
+    print("rows: ", rows)
+
+    for row in rows[1:]:  # Skip Root 1
         cols = row.split()
         if len(cols) >= 7:
-            ex_energies_au.append(float(cols[3]))
+            ex_energies_au.append(float(cols[2]))
             ex_energies_ev.append(float(cols[4]))
             oscillators.append(float(cols[6]))
 
     return {
         "excited_states": {
-            "energies_au": ex_energies_au,
-            "energies_ev": ex_energies_ev,
+            "energies_au": [ground_energy]+ex_energies_au,
+            # dont use me please
+            "energies_ev": [ground_energy]+ex_energies_ev,
             "oscillator_strengths": oscillators,
         },
         "ground_state_energy": ground_energy

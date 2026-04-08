@@ -827,7 +827,8 @@ def _write_recursive_split_request_artifacts(
     output_dir.mkdir(parents=True, exist_ok=True)
     history.output_chain.write_to_disk(
         output_dir / f"request_{request_id}.xyz", write_qcio=write_qcio)
-    history.write_to_disk(output_dir / f"request_{request_id}_msmep", write_qcio=write_qcio)
+    history.write_to_disk(
+        output_dir / f"request_{request_id}_msmep", write_qcio=write_qcio)
 
 
 def _load_recursive_split_request_history(
@@ -996,7 +997,8 @@ def _run_recursive_network_splits(
     base_name: str,
     status_fp: Path | None = None,
 ) -> tuple[list[dict], Path | None, Path]:
-    manifest_fp = _recursive_split_manifest_path(output_dir=output_dir, base_name=base_name)
+    manifest_fp = _recursive_split_manifest_path(
+        output_dir=output_dir, base_name=base_name)
     resume_mode = output_dir.exists() and (
         manifest_fp.exists() or (output_dir / "request_0_msmep").is_dir()
     )
@@ -1585,9 +1587,11 @@ def run(
     all_nodes = [StructureNode(structure=s) for s in all_structs]
     if minimize_ends:
         console.print("[bold cyan]⟳ Minimizing input endpoints...[/bold cyan]")
-        batch_optimizer = getattr(program_input.engine, "compute_geometry_optimizations", None)
+        batch_optimizer = getattr(
+            program_input.engine, "compute_geometry_optimizations", None)
         if callable(batch_optimizer):
-            console.print("[dim]Submitting batched endpoint geometry optimizations...[/dim]")
+            console.print(
+                "[dim]Submitting batched endpoint geometry optimizations...[/dim]")
             try:
                 trajectories = batch_optimizer(
                     [all_nodes[0], all_nodes[-1]],
@@ -2369,13 +2373,20 @@ def ts(
 @app.command("hessian-sample")
 def hessian_sample(
     geometry: Annotated[str, typer.Argument(help="Path to input geometry file.")],
-    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path to RunInputs TOML file.")] = None,
-    name: Annotated[str, typer.Option("--name", help="Optional output basename (without extension).")] = None,
-    charge: Annotated[int, typer.Option("--charge", help="Total charge for input geometry.")] = 0,
-    multiplicity: Annotated[int, typer.Option("--multiplicity", help="Spin multiplicity for input geometry.")] = 1,
-    dr: Annotated[float, typer.Option("--dr", help="Displacement magnitude along each normal mode.")] = 0.1,
-    max_candidates: Annotated[int, typer.Option("--max-candidates", help="Maximum number of displaced structures to optimize.")] = 100,
-    maxiter: Annotated[int, typer.Option("--maxiter", help="Maximum geometry-optimization steps for each displaced structure.")] = 500,
+    inputs: Annotated[str, typer.Option(
+        "--inputs", "-i", help="Path to RunInputs TOML file.")] = None,
+    name: Annotated[str, typer.Option(
+        "--name", help="Optional output basename (without extension).")] = None,
+    charge: Annotated[int, typer.Option(
+        "--charge", help="Total charge for input geometry.")] = 0,
+    multiplicity: Annotated[int, typer.Option(
+        "--multiplicity", help="Spin multiplicity for input geometry.")] = 1,
+    dr: Annotated[float, typer.Option(
+        "--dr", help="Displacement magnitude along each normal mode.")] = 0.1,
+    max_candidates: Annotated[int, typer.Option(
+        "--max-candidates", help="Maximum number of displaced structures to optimize.")] = 100,
+    maxiter: Annotated[int, typer.Option(
+        "--maxiter", help="Maximum geometry-optimization steps for each displaced structure.")] = 500,
 ):
     console.print(BANNER)
 
@@ -2415,17 +2426,21 @@ def hessian_sample(
         except Exception as exc:
             hessres = getattr(exc, "program_output", None)
             if hessres is None:
-                console.print(f"[bold red]✗ Hessian computation failed:[/bold red] {traceback.format_exc()}")
+                console.print(
+                    f"[bold red]✗ Hessian computation failed:[/bold red] {traceback.format_exc()}")
                 raise typer.Exit(1)
 
     try:
-        normal_modes, frequencies = _extract_normal_modes_from_hessian_result(hessres)
+        normal_modes, frequencies = _extract_normal_modes_from_hessian_result(
+            hessres)
     except Exception:
-        console.print(f"[bold red]✗ Failed to extract normal modes:[/bold red] {traceback.format_exc()}")
+        console.print(
+            f"[bold red]✗ Failed to extract normal modes:[/bold red] {traceback.format_exc()}")
         raise typer.Exit(1)
 
     if len(normal_modes) == 0:
-        console.print("[bold red]✗ ERROR:[/bold red] No normal modes were returned from Hessian computation.")
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] No normal modes were returned from Hessian computation.")
         raise typer.Exit(1)
 
     base = _resolve_command_base_path(geometry=geometry, name=name)
@@ -2443,9 +2458,11 @@ def hessian_sample(
     displaced_metadata: list[dict] = []
     clipped = False
     for mode_index, mode in enumerate(normal_modes):
-        freq = float(frequencies[mode_index]) if mode_index < len(frequencies) else None
+        freq = float(frequencies[mode_index]) if mode_index < len(
+            frequencies) else None
         for direction, signed_dr in (("+", dr), ("-", -dr)):
-            displaced = displace_by_dr(node=node, displacement=np.array(mode), dr=signed_dr)
+            displaced = displace_by_dr(
+                node=node, displacement=np.array(mode), dr=signed_dr)
             displaced_nodes.append(displaced)
             displaced_metadata.append(
                 {
@@ -2462,11 +2479,13 @@ def hessian_sample(
             break
 
     if len(displaced_nodes) == 0:
-        console.print("[bold red]✗ ERROR:[/bold red] No displaced candidates were generated.")
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] No displaced candidates were generated.")
         raise typer.Exit(1)
 
     displaced_chain = Chain.model_validate(
-        {"nodes": [cand.copy() for cand in displaced_nodes], "parameters": program_input.chain_inputs}
+        {"nodes": [cand.copy() for cand in displaced_nodes],
+         "parameters": program_input.chain_inputs}
     )
     displaced_chain.write_to_disk(displaced_fp, write_qcio=False)
 
@@ -2505,7 +2524,8 @@ def hessian_sample(
         try:
             try:
                 trajectories = batch_optimizer(
-                    displaced_nodes, keywords={"coordsys": "cart", "maxiter": maxiter}
+                    displaced_nodes, keywords={
+                        "coordsys": "cart", "maxiter": maxiter}
                 )
             except TypeError:
                 trajectories = batch_optimizer(displaced_nodes)
@@ -2542,15 +2562,18 @@ def hessian_sample(
             TimeElapsedColumn(),
             console=console,
         ) as progress:
-            task = progress.add_task("Optimizing displaced candidates", total=len(displaced_nodes))
+            task = progress.add_task(
+                "Optimizing displaced candidates", total=len(displaced_nodes))
             for candidate, meta in zip(displaced_nodes, displaced_metadata):
                 try:
                     try:
                         trajectory = engine.compute_geometry_optimization(
-                            candidate, keywords={"coordsys": "cart", "maxiter": maxiter}
+                            candidate, keywords={
+                                "coordsys": "cart", "maxiter": maxiter}
                         )
                     except TypeError:
-                        trajectory = engine.compute_geometry_optimization(candidate)
+                        trajectory = engine.compute_geometry_optimization(
+                            candidate)
                     optimized_nodes.append(trajectory[-1])
                     optimized_metadata.append(meta)
                 except Exception:
@@ -2563,17 +2586,21 @@ def hessian_sample(
                 progress.update(task, advance=1)
 
     if len(optimized_nodes) == 0:
-        console.print("[bold red]✗ ERROR:[/bold red] All displaced-candidate optimizations failed.")
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] All displaced-candidate optimizations failed.")
         raise typer.Exit(1)
 
     optimized_chain = Chain.model_validate(
-        {"nodes": [cand.copy() for cand in optimized_nodes], "parameters": program_input.chain_inputs}
+        {"nodes": [cand.copy() for cand in optimized_nodes],
+         "parameters": program_input.chain_inputs}
     )
     optimized_chain.write_to_disk(optimized_fp, write_qcio=write_qcio)
 
-    unique_nodes = _dedupe_minima_nodes(optimized_nodes, program_input.chain_inputs)
+    unique_nodes = _dedupe_minima_nodes(
+        optimized_nodes, program_input.chain_inputs)
     unique_chain = Chain.model_validate(
-        {"nodes": [cand.copy() for cand in unique_nodes], "parameters": program_input.chain_inputs}
+        {"nodes": [cand.copy() for cand in unique_nodes],
+         "parameters": program_input.chain_inputs}
     )
     unique_chain.write_to_disk(unique_fp, write_qcio=write_qcio)
 
@@ -2665,7 +2692,8 @@ def pseuirc(geometry: Annotated[str, typer.Argument(help='path to geometry file 
             struct = Structure(**s_dict)
 
             node = StructureNode(structure=struct)
-            hessres = _compute_hessian_result_for_sampling(program_input.engine, node)
+            hessres = _compute_hessian_result_for_sampling(
+                program_input.engine, node)
 
         except Exception as e:
             hessres = e.program_output
@@ -2905,10 +2933,12 @@ def extract_best_path(
         )
         path_nodes = payload.get("highlighted_path") or []
         if not path_nodes:
-            raise typer.BadParameter("No best path could be inferred from this network.")
+            raise typer.BadParameter(
+                "No best path could be inferred from this network.")
         chain = _path_chain_from_pot(viz_data.network_pot, path_nodes)
         if chain is None:
-            raise typer.BadParameter("Could not construct a chain for the inferred best path.")
+            raise typer.BadParameter(
+                "Could not construct a chain for the inferred best path.")
 
     if output_xyz is None:
         base_name = src.stem.replace("_network", "")
@@ -2948,17 +2978,28 @@ def make_default_inputs(
 
 @app.command("netgen-smiles")
 def netgen_smiles(
-    smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES")] = None,
-    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
-    reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
-    environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES")] = "",
-    name: Annotated[str, typer.Option("--name", help="Run name / default workspace folder name")] = None,
-    directory: Annotated[str, typer.Option("--directory", "-d", help="Workspace directory")] = None,
-    timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
-    max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
-    max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
-    max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of recursive NEBs to run concurrently")] = 1,
-    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the generated status HTML")] = False,
+    smiles: Annotated[str, typer.Option(
+        "--smiles", "-s", help="Root reactant SMILES")] = None,
+    inputs: Annotated[str, typer.Option(
+        "--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    reactions_fp: Annotated[str, typer.Option(
+        "--reactions-fp", help="Path to retropaths reactions.p file")] = None,
+    environment: Annotated[str, typer.Option(
+        "--environment", "-e", help="Environment SMILES")] = "",
+    name: Annotated[str, typer.Option(
+        "--name", help="Run name / default workspace folder name")] = None,
+    directory: Annotated[str, typer.Option(
+        "--directory", "-d", help="Workspace directory")] = None,
+    timeout_seconds: Annotated[int, typer.Option(
+        "--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
+    max_nodes: Annotated[int, typer.Option(
+        "--max-nodes", help="Retropaths maximum number of nodes")] = 40,
+    max_depth: Annotated[int, typer.Option(
+        "--max-depth", help="Retropaths maximum search depth")] = 4,
+    max_parallel_nebs: Annotated[int, typer.Option(
+        "--max-parallel-nebs", help="Number of recursive NEBs to run concurrently")] = 1,
+    no_open: Annotated[bool, typer.Option(
+        "--no-open", help="Do not auto-open the generated status HTML")] = False,
 ):
     console.print(BANNER)
     if smiles is None:
@@ -2991,10 +3032,14 @@ def netgen_smiles(
             max_parallel_nebs=max_parallel_nebs,
         )
 
-    console.print(f"[bold cyan]Workspace:[/bold cyan] [white]{workspace.workdir}[/white]")
-    console.print(f"[bold cyan]Root SMILES:[/bold cyan] [white]{workspace.root_smiles}[/white]")
-    console.print(f"[bold cyan]Environment:[/bold cyan] [white]{workspace.environment_smiles or '(none)'}[/white]")
-    console.print(f"[bold cyan]Reactions File:[/bold cyan] [white]{workspace.reactions_path}[/white]")
+    console.print(
+        f"[bold cyan]Workspace:[/bold cyan] [white]{workspace.workdir}[/white]")
+    console.print(
+        f"[bold cyan]Root SMILES:[/bold cyan] [white]{workspace.root_smiles}[/white]")
+    console.print(
+        f"[bold cyan]Environment:[/bold cyan] [white]{workspace.environment_smiles or '(none)'}[/white]")
+    console.print(
+        f"[bold cyan]Reactions File:[/bold cyan] [white]{workspace.reactions_path}[/white]")
 
     with console.status("[bold cyan]Preparing retropaths cache, converted pot, and queue...[/bold cyan]"):
         prepare_neb_workspace(workspace)
@@ -3020,9 +3065,11 @@ def netgen_smiles(
     summary.add_row("Pending", str(counts.get("pending", 0)))
     summary.add_row("Failed", str(counts.get("failed", 0)))
     summary.add_row("Incompatible", str(counts.get("incompatible", 0)))
-    summary.add_row("Optimized Endpoints", str(sum(bool(_pot.graph.nodes[n].get("endpoint_optimized")) for n in _pot.graph.nodes)))
+    summary.add_row("Optimized Endpoints", str(sum(
+        bool(_pot.graph.nodes[n].get("endpoint_optimized")) for n in _pot.graph.nodes)))
     summary.add_row("Status HTML", str(status_fp))
-    console.print(Panel(summary, title="[bold green]✓ netgen-smiles Finished[/bold green]", border_style="green"))
+    console.print(Panel(
+        summary, title="[bold green]✓ netgen-smiles Finished[/bold green]", border_style="green"))
 
     if not no_open:
         webbrowser.open(status_fp.resolve().as_uri())
@@ -3030,21 +3077,28 @@ def netgen_smiles(
 
 @app.command("status")
 def status_cmd(
-    directory: Annotated[str, typer.Option("--directory", "-d", help="Workspace directory containing workspace.json")] = ".",
-    output_html: Annotated[str, typer.Option("--output", "-o", help="Optional override path for generated status HTML")] = None,
-    temperature: Annotated[float, typer.Option("--temperature", help="KMC temperature in kelvin for the status page")] = 298.15,
-    initial_conditions: Annotated[List[str], typer.Option("--initial-condition", help="Override KMC initial conditions as NODE=VALUE. Repeatable.")] = None,
-    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open browser window")] = False,
+    directory: Annotated[str, typer.Option(
+        "--directory", "-d", help="Workspace directory containing workspace.json")] = ".",
+    output_html: Annotated[str, typer.Option(
+        "--output", "-o", help="Optional override path for generated status HTML")] = None,
+    temperature: Annotated[float, typer.Option(
+        "--temperature", help="KMC temperature in kelvin for the status page")] = 298.15,
+    initial_conditions: Annotated[List[str], typer.Option(
+        "--initial-condition", help="Override KMC initial conditions as NODE=VALUE. Repeatable.")] = None,
+    no_open: Annotated[bool, typer.Option(
+        "--no-open", help="Do not auto-open browser window")] = False,
 ):
     console.print(BANNER)
     workspace_dir = Path(directory).resolve()
     workspace_fp = workspace_dir / "workspace.json"
     if not workspace_fp.exists():
-        console.print(f"[bold red]✗ ERROR:[/bold red] No workspace.json found in {workspace_dir}")
+        console.print(
+            f"[bold red]✗ ERROR:[/bold red] No workspace.json found in {workspace_dir}")
         raise typer.Exit(1)
 
     workspace = RetropathsWorkspace.read(workspace_dir)
-    kmc_initial_conditions = _parse_kmc_initial_condition_overrides(initial_conditions)
+    kmc_initial_conditions = _parse_kmc_initial_condition_overrides(
+        initial_conditions)
     queue, pot, status_fp = write_status_html(
         workspace,
         kmc_temperature_kelvin=temperature,
@@ -3054,7 +3108,8 @@ def status_cmd(
 
     if output_html is not None:
         out_fp = Path(output_html).resolve()
-        out_fp.write_text(status_fp.read_text(encoding="utf-8"), encoding="utf-8")
+        out_fp.write_text(status_fp.read_text(
+            encoding="utf-8"), encoding="utf-8")
         status_fp = out_fp
 
     summary = Table(box=box.ROUNDED, border_style="cyan", show_header=False)
@@ -3071,10 +3126,12 @@ def status_cmd(
     summary.add_row("Incompatible", str(counts.get("incompatible", 0)))
     summary.add_row("Network Nodes", str(pot.graph.number_of_nodes()))
     summary.add_row("Network Edges", str(pot.graph.number_of_edges()))
-    summary.add_row("Optimized Endpoints", str(sum(bool(pot.graph.nodes[n].get("endpoint_optimized")) for n in pot.graph.nodes)))
+    summary.add_row("Optimized Endpoints", str(
+        sum(bool(pot.graph.nodes[n].get("endpoint_optimized")) for n in pot.graph.nodes)))
     summary.add_row("KMC Temperature (K)", f"{temperature:.2f}")
     summary.add_row("Status HTML", str(status_fp))
-    console.print(Panel(summary, title="[bold cyan]Network Status[/bold cyan]", border_style="cyan"))
+    console.print(Panel(
+        summary, title="[bold cyan]Network Status[/bold cyan]", border_style="cyan"))
 
     if not no_open:
         webbrowser.open(status_fp.resolve().as_uri())
@@ -3082,27 +3139,48 @@ def status_cmd(
 
 @app.command("drive")
 def drive(
-    inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
-    smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES to bootstrap a drive workspace before opening the UI")] = None,
-    product_smiles: Annotated[str, typer.Option("--product-smiles", "--end", help="Optional product / end SMILES to bootstrap a target node and queued NEB edge")] = None,
-    environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES for SMILES-based drive initialization")] = "",
-    charge: Annotated[int, typer.Option("--charge", help="Total charge for SMILES-bootstrapped drive endpoint structures")] = 0,
-    multiplicity: Annotated[int, typer.Option("--multiplicity", help="Spin multiplicity for SMILES-bootstrapped drive endpoint structures")] = 1,
-    name: Annotated[str, typer.Option("--name", help="Run name / workspace name for SMILES-based drive initialization")] = None,
-    workspace: Annotated[str, typer.Option("--workspace", help="Existing workspace directory or workspace.json to load on startup")] = None,
-    reactions_fp: Annotated[str, typer.Option("--reactions-fp", help="Path to retropaths reactions.p file")] = None,
-    directory: Annotated[str, typer.Option("--directory", "-d", help="Directory where MEPD Drive workspaces should be created")] = None,
-    host: Annotated[str, typer.Option("--host", help="Host interface for the local drive server")] = "127.0.0.1",
-    port: Annotated[int, typer.Option("--port", help="Port for the local drive server (0 selects a free port)")] = 0,
-    ssh_login: Annotated[str, typer.Option("--ssh-login", help="SSH target to print a ready-made tunnel command, e.g. user@cluster")] = None,
-    local_port: Annotated[int, typer.Option("--local-port", help="Laptop-side port for the printed SSH tunnel command")] = None,
-    timeout_seconds: Annotated[int, typer.Option("--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
-    max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
-    max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
-    max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of autosplitting NEBs to run concurrently")] = 1,
-    network_splits: Annotated[bool, typer.Option("--network-splits/--no-network-splits", help="Use recursive autosplit results to build the displayed network overlay")] = True,
-    hawaii: Annotated[bool, typer.Option("--hawaii/--no-hawaii", help="Run autonomous connect/NEB/Hessian exploration loop on startup")] = False,
-    no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the browser")] = False,
+    inputs: Annotated[str, typer.Option(
+        "--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
+    smiles: Annotated[str, typer.Option(
+        "--smiles", "-s", help="Root reactant SMILES to bootstrap a drive workspace before opening the UI")] = None,
+    product_smiles: Annotated[str, typer.Option(
+        "--product-smiles", "--end", help="Optional product / end SMILES to bootstrap a target node and queued NEB edge")] = None,
+    environment: Annotated[str, typer.Option(
+        "--environment", "-e", help="Environment SMILES for SMILES-based drive initialization")] = "",
+    charge: Annotated[int, typer.Option(
+        "--charge", help="Total charge for SMILES-bootstrapped drive endpoint structures")] = 0,
+    multiplicity: Annotated[int, typer.Option(
+        "--multiplicity", help="Spin multiplicity for SMILES-bootstrapped drive endpoint structures")] = 1,
+    name: Annotated[str, typer.Option(
+        "--name", help="Run name / workspace name for SMILES-based drive initialization")] = None,
+    workspace: Annotated[str, typer.Option(
+        "--workspace", help="Existing workspace directory or workspace.json to load on startup")] = None,
+    reactions_fp: Annotated[str, typer.Option(
+        "--reactions-fp", help="Path to retropaths reactions.p file")] = None,
+    directory: Annotated[str, typer.Option(
+        "--directory", "-d", help="Directory where MEPD Drive workspaces should be created")] = None,
+    host: Annotated[str, typer.Option(
+        "--host", help="Host interface for the local drive server")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(
+        "--port", help="Port for the local drive server (0 selects a free port)")] = 0,
+    ssh_login: Annotated[str, typer.Option(
+        "--ssh-login", help="SSH target to print a ready-made tunnel command, e.g. user@cluster")] = None,
+    local_port: Annotated[int, typer.Option(
+        "--local-port", help="Laptop-side port for the printed SSH tunnel command")] = None,
+    timeout_seconds: Annotated[int, typer.Option(
+        "--timeout-seconds", help="Retropaths growth timeout in seconds")] = 30,
+    max_nodes: Annotated[int, typer.Option(
+        "--max-nodes", help="Retropaths maximum number of nodes")] = 40,
+    max_depth: Annotated[int, typer.Option(
+        "--max-depth", help="Retropaths maximum search depth")] = 4,
+    max_parallel_nebs: Annotated[int, typer.Option(
+        "--max-parallel-nebs", help="Number of autosplitting NEBs to run concurrently")] = 1,
+    network_splits: Annotated[bool, typer.Option(
+        "--network-splits/--no-network-splits", help="Use recursive autosplit results to build the displayed network overlay")] = False,
+    hawaii: Annotated[bool, typer.Option(
+        "--hawaii/--no-hawaii", help="Run autonomous connect/NEB/Hessian exploration loop on startup")] = False,
+    no_open: Annotated[bool, typer.Option(
+        "--no-open", help="Do not auto-open the browser")] = False,
 ):
     console.print(BANNER)
     workspace_path = str(workspace or "").strip() or None
@@ -3111,9 +3189,11 @@ def drive(
         workspace_path = str(requested_dir)
 
     if smiles and workspace_path:
-        raise typer.BadParameter("Choose either --smiles/--inputs to bootstrap a new drive workspace or --workspace/--directory to load an existing one, not both.")
+        raise typer.BadParameter(
+            "Choose either --smiles/--inputs to bootstrap a new drive workspace or --workspace/--directory to load an existing one, not both.")
     if smiles and inputs is None:
-        raise typer.BadParameter("--inputs/-i is required when using --smiles.")
+        raise typer.BadParameter(
+            "--inputs/-i is required when using --smiles.")
 
     server = launch_mepd_drive(
         directory=directory,
@@ -3417,8 +3497,10 @@ def run_netgen(
         try:
             history = m.run_recursive_minimize(chain)
 
-            history.output_chain.write_to_disk(filename, write_qcio=bool(getattr(program_input, "write_qcio", False)))
-            history.write_to_disk(foldername, write_qcio=bool(getattr(program_input, "write_qcio", False)))
+            history.output_chain.write_to_disk(filename, write_qcio=bool(
+                getattr(program_input, "write_qcio", False)))
+            history.write_to_disk(foldername, write_qcio=bool(
+                getattr(program_input, "write_qcio", False)))
         except Exception:
             console.print(f"[bold red]✗ Failed on pair {i}[/bold red]")
             continue

@@ -626,22 +626,23 @@ def update_node_cache(node_list, results):
                     input_keywords = {}
 
                 if 'cistarget' in input_keywords.keys():  # excited state calc
-                    ind = int(input_keywords['cistarget']) - 1
-                    if ind < 0:
-                        print(
-                            "Warning: cistarget is 1-indexed. Subtracting 1 to get 0-indexed. If cistarget was intended to be 1, this will set ind to 0.")
-
                     if 'cis' in input_keywords.keys():  # the 0th entry is the first excited state
+                        ind = int(input_keywords['cistarget']) - 1
+                        if ind < 0:
+                            print(
+                                "Warning: cistarget is 1-indexed. Subtracting 1 to get 0-indexed. \
+                                    If cistarget was intended to be 1, this will set ind to 0.")
+                            ind = 0
                         energy = result.results.extras['excited_states'][ind]['energy']
 
                     else:
+                        ind = int(input_keywords['cistarget'])
                         # reparse it because qccodec doesnt actually support this yet.
                         hhtda_data = parse_hhtda_to_dict(result.stdout)
 
                         # Update the extras in your existing results object
                         result.results.extras.update(hhtda_data)
-                        ground_energy = result.results.extras['ground_state_energy']
-                        energy = result.results.extras['excited_states']['energies_au'][ind]+ground_energy
+                        energy = result.results.extras['excited_states']['energies_au'][ind]
 
                     node._cached_energy = energy
                     node._cached_gradient = result.results.gradient
