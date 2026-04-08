@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import concurrent.futures
+from collections import Counter
 from dataclasses import asdict, dataclass
 import base64
 import contextlib
@@ -10,15 +12,19 @@ import json
 import os
 import re
 import sys
+import tempfile
 import types
 from pathlib import Path
 from time import time
-from typing import Any, Callable
+from typing import Any, Callable, Iterator, Sequence
 
 import networkx as nx
 import numpy as np
+from qcio import Structure
+from qcio.models.inputs import DualProgramInput
 
 from neb_dynamics.chain import Chain
+from neb_dynamics.constants import ANGSTROM_TO_BOHR, BOHR_TO_ANGSTROMS
 from neb_dynamics.engines.engine import build_hessian_result_from_matrix
 from neb_dynamics.helper_functions import parse_nma_freq_data
 from neb_dynamics.inputs import ChainInputs
@@ -610,12 +616,9 @@ def _resolve_hessian_use_bigchem(
     run_inputs: RunInputs,
     requested_use_bigchem: bool | None,
 ) -> bool | None:
-    auto = _hessian_use_bigchem_flag(run_inputs)
-    if auto is True:
-        return True
     if requested_use_bigchem is not None:
         return bool(requested_use_bigchem)
-    return auto
+    return _hessian_use_bigchem_flag(run_inputs)
 
 
 def _compute_hessian_result_for_sampling(
@@ -897,6 +900,912 @@ def _final_optimized_node(result: Any) -> StructureNode | None:
             if isinstance(last, StructureNode):
                 return last
     return None
+
+
+def _ts_irc_refine_support_status(run_inputs: RunInputs) -> tuple[bool, str]:
+    engine = getattr(run_inputs, "engine", None)
+    if engine is None:
+        return False, "The refinement inputs did not construct an engine."
+    if not (hasattr(engine, "_compute_ts_result") or hasattr(engine, "compute_transition_state")):
+        return False, (
+            "The configured engine does not expose transition-state optimization "
+            "(`_compute_ts_result` or `compute_transition_state`)."
+        )
+    if not hasattr(engine, "compute_energies"):
+        return False, "The configured engine does not expose energy evaluation (`compute_energies`) needed by geomeTRIC IRC."
+    if not hasattr(engine, "compute_gradients"):
+        return False, "The configured engine does not expose gradient evaluation (`compute_gradients`) needed by geomeTRIC IRC."
+    return True, ""
+
+
+def _extract_failure_text_from_output(output: Any, default: str) -> str:
+    if output is None:
+        return default
+
+    def _coerce_text(value: Any) -> str:
+        if value is None:
+            return ""
+        text = str(value).strip()
+        return text
+
+    def _truncate(text: str, *, limit: int = 280) -> str:
+        collapsed = " ".join(text.split())
+        if len(collapsed) <= limit:
+            return collapsed
+        return collapsed[: max(0, limit - 1)] + "…"
+
+    def _find_meaningful_error_line(text: str) -> str | None:
+        candidate = text[-12000:] if len(text) > 12000 else text
+        lines = [line.strip() for line in candidate.splitlines() if line.strip()]
+        if not lines:
+            return None
+        markers = (
+            "error",
+            "exception",
+            "failed",
+            "failure",
+            "fatal",
+            "die called",
+            "cannot",
+            "not found",
+            "invalid",
+            "too many electrons",
+            "traceback",
+        )
+        for line in reversed(lines):
+            lowered = line.lower()
+            if lowered.startswith("traceback (most recent call last):"):
+                continue
+            if any(marker in lowered for marker in markers):
+                return _truncate(line)
+        return _truncate(lines[-1])
+
+    for field in ("message", "error"):
+        value = _coerce_text(getattr(output, field, None))
+        if value:
+            line = _find_meaningful_error_line(value)
+            if line:
+                return line
+
+    for field in ("stderr", "stdout", "logs"):
+        value = _coerce_text(getattr(output, field, None))
+        if value:
+            line = _find_meaningful_error_line(value)
+            if line:
+                return line
+
+    traceback_text = _coerce_text(getattr(output, "traceback", None))
+    if traceback_text:
+        line = _find_meaningful_error_line(traceback_text)
+        if line:
+            return line
+
+    return default
+
+
+def _compute_ts_node_with_geometric(
+    engine: Any,
+    ts_guess: StructureNode,
+    *,
+    use_bigchem: bool | None = None,
+    keywords: dict[str, Any] | None = None,
+) -> tuple[StructureNode | None, Any | None]:
+    ts_keywords = dict(keywords or {"maxiter": 500})
+
+    if hasattr(engine, "_compute_ts_result"):
+        call_kwargs: dict[str, Any] = {"node": ts_guess}
+        with contextlib.suppress(Exception):
+            signature = inspect.signature(engine._compute_ts_result)
+            accepts_kwargs = any(
+                parameter.kind == inspect.Parameter.VAR_KEYWORD
+                for parameter in signature.parameters.values()
+            )
+            if "keywords" in signature.parameters or accepts_kwargs:
+                call_kwargs["keywords"] = ts_keywords
+            if use_bigchem is not None and ("use_bigchem" in signature.parameters or accepts_kwargs):
+                call_kwargs["use_bigchem"] = bool(use_bigchem)
+        try:
+            raw_out = engine._compute_ts_result(**call_kwargs)
+        except TypeError:
+            raw_out = engine._compute_ts_result(node=ts_guess)
+        if getattr(raw_out, "success", False):
+            return StructureNode(structure=raw_out.return_result), raw_out
+        return None, raw_out
+
+    if hasattr(engine, "compute_transition_state"):
+        try:
+            raw_out = engine.compute_transition_state(node=ts_guess, keywords=ts_keywords)
+        except TypeError:
+            raw_out = engine.compute_transition_state(node=ts_guess)
+        if isinstance(raw_out, StructureNode):
+            return raw_out, None
+        if getattr(raw_out, "success", False) and getattr(raw_out, "return_result", None) is not None:
+            return StructureNode(structure=raw_out.return_result), raw_out
+        return None, raw_out
+
+    return None, None
+
+
+def _compute_irc_chain_with_geometric(
+    engine: Any,
+    ts_node: StructureNode,
+    *,
+    keywords: dict[str, Any] | None = None,
+    use_bigchem: bool = False,
+) -> Chain:
+    del use_bigchem  # GeomeTRIC IRC path is explicit and does not use BigChem Hessian wiring here.
+    try:
+        import geometric.engine  # type: ignore
+        import geometric.molecule  # type: ignore
+        import geometric.optimize  # type: ignore
+    except ImportError as exc:
+        raise RuntimeError(
+            "Refinement IRC requires the `geometric` package."
+        ) from exc
+
+    class _GeometricRefineEngine(geometric.engine.Engine):  # type: ignore[name-defined]
+        def __init__(self, molecule: Any, base_engine: Any, template_node: StructureNode):
+            super().__init__(molecule)
+            self.base_engine = base_engine
+            self.template_node = template_node
+
+        def copy_scratch(self, src: str, dest: str) -> None:
+            del src, dest
+            return None
+
+        def calc_new(self, coords: Any, dirname: str) -> dict[str, Any]:
+            del dirname
+            updated = self.template_node.copy().update_coords(np.array(coords, dtype=float).reshape((-1, 3)))
+            updated.has_molecular_graph = False
+            updated.graph = None
+            energy = float(self.base_engine.compute_energies([updated])[0])
+            gradient = np.asarray(self.base_engine.compute_gradients([updated])[0], dtype=float)
+            return {
+                "energy": energy,
+                "gradient": gradient.reshape(-1) * BOHR_TO_ANGSTROMS,
+            }
+
+    irc_keywords: dict[str, Any] = {"irc": True, "coordsys": "dlc", "maxiter": 500}
+    if keywords:
+        irc_keywords.update(dict(keywords))
+    irc_keywords["irc"] = True
+
+    molecule = geometric.molecule.Molecule()  # type: ignore[name-defined]
+    molecule.elem = list(ts_node.structure.symbols)
+    # qcio stores Structure geometry in Bohr; geomeTRIC Molecule expects Angstrom.
+    molecule.xyzs = [np.array(ts_node.structure.geometry, dtype=float) * BOHR_TO_ANGSTROMS]
+    # GeomeTRIC IRC path expects fragment/topology metadata (`molecules`) to be present.
+    with contextlib.suppress(Exception):
+        molecule.build_topology(force_bonds=False)
+    if not hasattr(molecule, "molecules"):
+        with contextlib.suppress(Exception):
+            molecule.build_topology()
+    if not hasattr(molecule, "molecules"):
+        raise RuntimeError(
+            "Failed to initialize geomeTRIC molecule topology for IRC (missing `molecules`)."
+        )
+
+    ref_node = ts_node.copy()
+    ref_node.has_molecular_graph = False
+    ref_node.graph = None
+    custom_engine = _GeometricRefineEngine(
+        molecule=molecule,
+        base_engine=engine,
+        template_node=ref_node,
+    )
+
+    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmpf:
+        output = geometric.optimize.run_optimizer(  # type: ignore[name-defined]
+            customengine=custom_engine,
+            input=tmpf.name,
+            **irc_keywords,
+        )
+    xyzs = list(getattr(output, "xyzs", []) or [])
+    if len(xyzs) < 2:
+        raise RuntimeError("Geometric IRC did not return a usable trajectory.")
+
+    irc_nodes: list[StructureNode] = []
+    for coords in xyzs:
+        node = ref_node.copy().update_coords(np.array(coords, dtype=float) * ANGSTROM_TO_BOHR)
+        node.has_molecular_graph = False
+        node.graph = None
+        irc_nodes.append(node)
+    return Chain.model_validate({"nodes": irc_nodes})
+
+
+def _cache_chain_energies(
+    *,
+    engine: Any,
+    chain: Chain,
+) -> Chain:
+    energies = np.asarray(engine.compute_energies(chain), dtype=float).reshape(-1)
+    if len(energies) != len(chain.nodes):
+        raise ValueError(
+            "Engine returned a different number of energies than IRC chain nodes "
+            f"({len(energies)} vs {len(chain.nodes)})."
+        )
+    for node, energy in zip(chain.nodes, energies):
+        node._cached_energy = float(energy)
+    return chain
+
+
+def _clone_workspace_for_refinement(
+    source_workspace: RetropathsWorkspace,
+    *,
+    refinement_inputs_fp: Path,
+    refined_workspace_dir: Path | None = None,
+    refined_run_name: str | None = None,
+) -> RetropathsWorkspace:
+    source_dir = source_workspace.directory.resolve()
+    if refined_workspace_dir is not None:
+        target_dir = Path(refined_workspace_dir).expanduser().resolve()
+    else:
+        suffix = refined_run_name.strip() if str(refined_run_name or "").strip() else f"{source_workspace.run_name}-refined"
+        target_dir = (source_dir.parent / suffix).resolve()
+    if target_dir == source_dir:
+        raise ValueError("Refined workspace directory must be different from the source workspace directory.")
+
+    if target_dir.exists() and any(target_dir.iterdir()):
+        raise ValueError(
+            f"Refined workspace directory `{target_dir}` already exists and is not empty."
+        )
+
+    run_name = (
+        str(refined_run_name).strip()
+        if str(refined_run_name or "").strip()
+        else target_dir.name
+    )
+    refined_workspace = RetropathsWorkspace(
+        workdir=str(target_dir),
+        run_name=run_name,
+        root_smiles=source_workspace.root_smiles,
+        environment_smiles=source_workspace.environment_smiles,
+        inputs_fp=str(refinement_inputs_fp.resolve()),
+        reactions_fp=source_workspace.reactions_fp,
+        timeout_seconds=source_workspace.timeout_seconds,
+        max_nodes=source_workspace.max_nodes,
+        max_depth=source_workspace.max_depth,
+        max_parallel_nebs=source_workspace.max_parallel_nebs,
+    )
+    refined_workspace.write()
+
+    if source_workspace.retropaths_pot_fp.exists():
+        refined_workspace.retropaths_pot_fp.write_bytes(source_workspace.retropaths_pot_fp.read_bytes())
+    elif not refined_workspace.retropaths_pot_fp.exists():
+        refined_workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+    return refined_workspace
+
+
+def refine_drive_workspace_network(
+    workspace: RetropathsWorkspace,
+    *,
+    refinement_inputs_fp: Path | str,
+    refined_workspace_dir: Path | str | None = None,
+    refined_run_name: str | None = None,
+    use_bigchem: bool | None = None,
+    ts_keywords: dict[str, Any] | None = None,
+    irc_opt_keywords: dict[str, Any] | None = None,
+    include_queue_chain_fallback: bool = False,
+    write_status_html_output: bool = False,
+    progress: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    def _emit_progress(
+        message: str,
+        *,
+        phase: str,
+        current: int = 0,
+        total: int = 0,
+    ) -> None:
+        if progress is None:
+            return
+        with contextlib.suppress(Exception):
+            progress(
+                {
+                    "message": str(message),
+                    "phase": str(phase),
+                    "current": int(max(0, current)),
+                    "total": int(max(0, total)),
+                }
+                )
+
+    def _iter_completed_futures(futures: Sequence[Any]) -> Iterator[Any]:
+        # Some tests monkeypatch ThreadPoolExecutor with lightweight future-like
+        # objects that do not implement the stdlib Future interface.
+        futures_list = list(futures)
+        try:
+            yield from concurrent.futures.as_completed(futures_list)
+        except Exception:
+            for future in futures_list:
+                yield future
+
+    _emit_progress("Loading source workspace network...", phase="prepare", current=0, total=4)
+    source_pot = None
+    for candidate_fp in (workspace.neb_pot_fp, workspace.annotated_neb_pot_fp):
+        if not candidate_fp.exists():
+            continue
+        with contextlib.suppress(Exception):
+            source_pot = Pot.read_from_disk(candidate_fp)
+            break
+    if source_pot is None:
+        _emit_progress(
+            "Falling back to queue-history materialization (slower)...",
+            phase="prepare",
+            current=0,
+            total=4,
+        )
+        with contextlib.suppress(Exception):
+            source_pot = materialize_drive_graph(workspace)
+    if source_pot is None:
+        raise FileNotFoundError(
+            f"No readable network file found in workspace: expected `{workspace.annotated_neb_pot_fp}` "
+            f"or `{workspace.neb_pot_fp}`, and queue-history materialization failed."
+        )
+    _emit_progress(
+        f"Loaded source network: {source_pot.graph.number_of_nodes()} nodes, {source_pot.graph.number_of_edges()} edges.",
+        phase="prepare",
+        current=1,
+        total=4,
+    )
+    refinement_inputs_path = Path(refinement_inputs_fp).expanduser().resolve()
+    if not refinement_inputs_path.exists():
+        raise FileNotFoundError(f"Refinement inputs file was not found: {refinement_inputs_path}")
+    _emit_progress(
+        "Refinement inputs located.",
+        phase="prepare",
+        current=2,
+        total=4,
+    )
+
+    refined_workspace = _clone_workspace_for_refinement(
+        workspace,
+        refinement_inputs_fp=refinement_inputs_path,
+        refined_workspace_dir=(Path(refined_workspace_dir).expanduser().resolve() if refined_workspace_dir else None),
+        refined_run_name=refined_run_name,
+    )
+    _emit_progress(
+        "Refined workspace prepared.",
+        phase="prepare",
+        current=3,
+        total=4,
+    )
+
+    _emit_progress(
+        "Initializing refinement engine...",
+        phase="prepare",
+        current=3,
+        total=4,
+    )
+    run_inputs = RunInputs.open(refinement_inputs_path)
+    supported, support_note = _ts_irc_refine_support_status(run_inputs)
+    if not supported:
+        raise ValueError(support_note)
+    _emit_progress(
+        "Refinement engine ready.",
+        phase="prepare",
+        current=4,
+        total=4,
+    )
+    refined_pot = Pot(
+        root=source_pot.root.copy(),
+        target=source_pot.target.copy(),
+        multiplier=source_pot.multiplier,
+        rxn_name=f"{source_pot.rxn_name}-refined",
+    )
+    # Refinement network should contain only successful IRC-derived minima/edges.
+    refined_pot.graph = nx.DiGraph()
+    refined_pot.run_time = source_pot.run_time
+
+    chain_inputs = getattr(run_inputs, "chain_inputs", ChainInputs())
+    network_inputs = getattr(run_inputs, "network_inputs", None)
+    collapse_rms_thre = float(getattr(network_inputs, "collapse_node_rms_thre", chain_inputs.node_rms_thre))
+    collapse_ene_thre = float(getattr(network_inputs, "collapse_node_ene_thre", chain_inputs.node_ene_thre))
+    resolved_use_bigchem = _resolve_hessian_use_bigchem(
+        run_inputs,
+        requested_use_bigchem=use_bigchem,
+    )
+    _emit_progress(
+        f"Resolved Hessian BigChem mode: {bool(resolved_use_bigchem)}",
+        phase="prepare",
+        current=4,
+        total=4,
+    )
+    irc_keywords = dict(irc_opt_keywords or {"coordsys": "cart", "maxiter": 500})
+    ts_opt_keywords = dict(ts_keywords or {"maxiter": 500})
+
+    artifacts_dir = refined_workspace.directory / "ts_irc_refinement"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    ts_guesses_attempted = 0
+    irc_converged = 0
+    added_nodes = 0
+    added_edges = 0
+    skipped_edges = 0
+    ts_jobs_submitted = 0
+    irc_jobs_submitted = 0
+    ts_failed = 0
+    irc_failed = 0
+
+    edge_records: list[tuple[int, int, int, Chain]] = []
+    total_edges = int(source_pot.graph.number_of_edges())
+    _emit_progress(
+        "Collecting TS guesses from existing edge chains...",
+        phase="collect",
+        current=0,
+        total=total_edges,
+    )
+    for edge_counter, (source_node, target_node) in enumerate(sorted(source_pot.graph.edges), start=1):
+        edge_attrs = dict(source_pot.graph.edges[(source_node, target_node)])
+        chains = list(edge_attrs.get("list_of_nebs") or [])
+        if include_queue_chain_fallback and not chains:
+            candidate_chain = _find_completed_chain_for_edge(
+                workspace,
+                source_pot,
+                source_node=int(source_node),
+                target_node=int(target_node),
+            )
+            if candidate_chain is not None:
+                chains = [candidate_chain]
+        if not chains:
+            skipped_edges += 1
+            continue
+        for chain_index, chain in enumerate(chains):
+            candidate = _coerce_chain_candidate(chain)
+            if candidate is None:
+                continue
+            edge_records.append((int(source_node), int(target_node), int(chain_index), candidate))
+        _emit_progress(
+            f"Collected edge chains from {edge_counter}/{total_edges} edges.",
+            phase="collect",
+            current=edge_counter,
+            total=total_edges,
+        )
+
+    engine_name = str(getattr(run_inputs, "engine_name", "") or "").strip().lower()
+    compute_program = str(getattr(getattr(run_inputs, "engine", None), "compute_program", "") or "").strip().lower()
+    chemcloud_mode = engine_name == "chemcloud" or compute_program == "chemcloud"
+
+    ts_jobs: list[dict[str, Any]] = []
+    for source_node, target_node, chain_index, chain in edge_records:
+        try:
+            ts_guess = chain.get_ts_node().copy()
+        except Exception:
+            ts_guess = _peak_node_from_chain(chain)
+        ts_guess = _ensure_node_graph(ts_guess)
+        stem = f"edge_{source_node}_{target_node}_chain_{chain_index}"
+        ts_jobs.append(
+            {
+                "source_node": int(source_node),
+                "target_node": int(target_node),
+                "chain_index": int(chain_index),
+                "ts_guess": ts_guess,
+                "stem": stem,
+            }
+        )
+
+    ts_guesses_attempted = len(ts_jobs)
+    ts_jobs_submitted = len(ts_jobs)
+
+    def _run_ts_jobs_chemcloud_batch(jobs: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+        engine = run_inputs.engine
+        program_args = getattr(engine, "program_args", None)
+        model = getattr(program_args, "model", None)
+        program_keywords = dict(getattr(program_args, "keywords", {}) or {})
+        program_inputs = [
+            DualProgramInput(
+                keywords=dict(ts_opt_keywords),
+                structure=job["ts_guess"].structure,
+                calctype="transition_state",
+                subprogram=getattr(engine, "program"),
+                subprogram_args={
+                    "model": model,
+                    "keywords": program_keywords,
+                },
+                files={},
+            )
+            for job in jobs
+        ]
+        outputs = engine.compute_func(
+            "geometric",
+            program_inputs if len(program_inputs) > 1 else program_inputs[0],
+            collect_files=getattr(engine, "collect_files", True),
+        )
+        if len(program_inputs) == 1:
+            outputs = [outputs]
+        if len(outputs) != len(jobs):
+            raise ValueError(
+                f"ChemCloud TS batch returned {len(outputs)} outputs for {len(jobs)} jobs."
+            )
+
+        results: list[dict[str, Any]] = []
+        for job, ts_output in zip(jobs, outputs):
+            if ts_output is not None and hasattr(ts_output, "save"):
+                with contextlib.suppress(Exception):
+                    ts_output.save(artifacts_dir / f"{job['stem']}.ts.qcio")
+            if bool(getattr(ts_output, "success", False)) and getattr(ts_output, "return_result", None) is not None:
+                ts_node = StructureNode(structure=ts_output.return_result)
+                ts_node = _ensure_node_graph(ts_node, fallback=job["ts_guess"])
+                with contextlib.suppress(Exception):
+                    ts_node.structure.save(artifacts_dir / f"{job['stem']}.ts.xyz")
+                results.append({**job, "ts_node": ts_node})
+            else:
+                results.append(
+                    {
+                        **job,
+                        "ts_node": None,
+                        "error": _extract_failure_text_from_output(ts_output, "TS optimization did not converge."),
+                    }
+                )
+        return results
+
+    def _run_ts_job(job: dict[str, Any]) -> dict[str, Any]:
+        try:
+            engine = run_inputs.engine
+            if chemcloud_mode:
+                with contextlib.suppress(Exception):
+                    engine = RunInputs.open(refinement_inputs_path).engine
+            ts_node, ts_output = _compute_ts_node_with_geometric(
+                engine=engine,
+                ts_guess=job["ts_guess"],
+                use_bigchem=resolved_use_bigchem,
+                keywords=ts_opt_keywords,
+            )
+            if ts_output is not None and hasattr(ts_output, "save"):
+                with contextlib.suppress(Exception):
+                    ts_output.save(artifacts_dir / f"{job['stem']}.ts.qcio")
+            if ts_node is None:
+                return {
+                    **job,
+                    "ts_node": None,
+                    "error": _extract_failure_text_from_output(ts_output, "TS optimization did not converge."),
+                }
+            ts_node = _ensure_node_graph(ts_node, fallback=job["ts_guess"])
+            with contextlib.suppress(Exception):
+                ts_node.structure.save(artifacts_dir / f"{job['stem']}.ts.xyz")
+            return {**job, "ts_node": ts_node}
+        except Exception as exc:
+            return {**job, "ts_node": None, "error": f"{type(exc).__name__}: {exc}"}
+
+    _emit_progress(
+        "Running TS optimizations...",
+        phase="ts",
+        current=0,
+        total=ts_jobs_submitted,
+    )
+    ts_results: list[dict[str, Any]] | None = None
+    batch_capable = (
+        bool(chemcloud_mode)
+        and len(ts_jobs) > 1
+        and not bool(resolved_use_bigchem)
+        and hasattr(run_inputs.engine, "compute_func")
+        and hasattr(run_inputs.engine, "program")
+        and hasattr(run_inputs.engine, "program_args")
+    )
+    if batch_capable:
+        _emit_progress(
+            f"Submitting {ts_jobs_submitted} TS optimizations to ChemCloud as one batch...",
+            phase="ts",
+            current=0,
+            total=ts_jobs_submitted,
+        )
+        try:
+            ts_results = _run_ts_jobs_chemcloud_batch(ts_jobs)
+        except Exception as exc:
+            _emit_progress(
+                f"ChemCloud TS batch submission failed ({type(exc).__name__}); falling back to threaded TS submissions.",
+                phase="ts",
+                current=0,
+                total=ts_jobs_submitted,
+            )
+    if chemcloud_mode and len(ts_jobs) > 1:
+        if ts_results is None:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(ts_jobs)) as executor:
+                ts_futures = [executor.submit(_run_ts_job, job) for job in ts_jobs]
+                ts_results = []
+                ts_success_count = 0
+                for completed, future in enumerate(_iter_completed_futures(ts_futures), start=1):
+                    result = future.result()
+                    ts_results.append(result)
+                    if result.get("ts_node") is not None:
+                        ts_success_count += 1
+                    ts_failure_count = completed - ts_success_count
+                    _emit_progress(
+                        f"TS optimization complete: {completed}/{ts_jobs_submitted} (ok {ts_success_count}, failed {ts_failure_count})",
+                        phase="ts",
+                        current=completed,
+                        total=ts_jobs_submitted,
+                    )
+        else:
+            ts_success_count = 0
+            for completed, result in enumerate(ts_results, start=1):
+                if result.get("ts_node") is not None:
+                    ts_success_count += 1
+                ts_failure_count = completed - ts_success_count
+                _emit_progress(
+                    f"TS optimization complete: {completed}/{ts_jobs_submitted} (ok {ts_success_count}, failed {ts_failure_count})",
+                    phase="ts",
+                    current=completed,
+                    total=ts_jobs_submitted,
+                )
+    else:
+        ts_results = ts_results or []
+        ts_success_count = 0
+        for idx, job in enumerate(ts_jobs, start=1):
+            result = _run_ts_job(job)
+            ts_results.append(result)
+            if result.get("ts_node") is not None:
+                ts_success_count += 1
+            ts_failure_count = idx - ts_success_count
+            _emit_progress(
+                f"TS optimization complete: {idx}/{ts_jobs_submitted} (ok {ts_success_count}, failed {ts_failure_count})",
+                phase="ts",
+                current=idx,
+                total=ts_jobs_submitted,
+            )
+
+    successful_ts_results = [result for result in ts_results if result.get("ts_node") is not None]
+    ts_failed = int(ts_jobs_submitted - len(successful_ts_results))
+    ts_error_counts = Counter(
+        str(result.get("error") or "").strip()
+        for result in ts_results
+        if result.get("ts_node") is None
+    )
+    ts_error_counts.pop("", None)
+    ts_top_errors: list[str] = [
+        f"{count}x {error}"
+        for error, count in ts_error_counts.most_common(3)
+    ]
+    ts_failure_log_fp: Path | None = None
+    if ts_error_counts:
+        ts_failure_log_fp = artifacts_dir / "ts_failures.jsonl"
+        with contextlib.suppress(Exception):
+            with ts_failure_log_fp.open("w", encoding="utf-8") as handle:
+                for result in ts_results:
+                    if result.get("ts_node") is not None:
+                        continue
+                    payload = {
+                        "source_node": int(result["source_node"]),
+                        "target_node": int(result["target_node"]),
+                        "chain_index": int(result["chain_index"]),
+                        "error": str(result.get("error") or "unknown"),
+                    }
+                    handle.write(json.dumps(payload) + "\n")
+    if ts_failed > 0:
+        top_line = "; ".join(ts_top_errors) if ts_top_errors else "No explicit error message captured."
+        _emit_progress(
+            f"TS stage complete with failures ({ts_failed}/{ts_jobs_submitted}). Top errors: {top_line}",
+            phase="ts",
+            current=ts_jobs_submitted,
+            total=ts_jobs_submitted,
+        )
+    irc_jobs_submitted = len(successful_ts_results)
+
+    def _run_irc_job(job: dict[str, Any]) -> dict[str, Any]:
+        try:
+            engine = run_inputs.engine
+            if chemcloud_mode:
+                with contextlib.suppress(Exception):
+                    engine = RunInputs.open(refinement_inputs_path).engine
+            irc_chain = _compute_irc_chain_with_geometric(
+                engine=engine,
+                ts_node=job["ts_node"],
+                keywords=irc_keywords,
+                use_bigchem=bool(resolved_use_bigchem),
+            )
+            irc_chain = _cache_chain_energies(engine=engine, chain=irc_chain)
+        except Exception as exc:
+            return {**job, "irc_chain": None, "error": f"{type(exc).__name__}: {exc}"}
+        if len(getattr(irc_chain, "nodes", []) or []) < 2:
+            return {**job, "irc_chain": None, "error": "IRC returned fewer than two nodes."}
+        with contextlib.suppress(Exception):
+            irc_chain.write_to_disk(artifacts_dir / f"{job['stem']}.irc.xyz")
+        return {**job, "irc_chain": irc_chain}
+
+    _emit_progress(
+        "Running IRC calculations...",
+        phase="irc",
+        current=0,
+        total=irc_jobs_submitted,
+    )
+    if chemcloud_mode and len(successful_ts_results) > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(successful_ts_results)) as executor:
+            irc_futures = [
+                executor.submit(_run_irc_job, job)
+                for job in successful_ts_results
+            ]
+            irc_results = []
+            irc_success_count = 0
+            for completed, future in enumerate(_iter_completed_futures(irc_futures), start=1):
+                result = future.result()
+                irc_results.append(result)
+                if result.get("irc_chain") is not None:
+                    irc_success_count += 1
+                irc_failure_count = completed - irc_success_count
+                _emit_progress(
+                    f"IRC complete: {completed}/{irc_jobs_submitted} (ok {irc_success_count}, failed {irc_failure_count})",
+                    phase="irc",
+                    current=completed,
+                    total=irc_jobs_submitted,
+                )
+    else:
+        irc_results = []
+        irc_success_count = 0
+        for idx, job in enumerate(successful_ts_results, start=1):
+            result = _run_irc_job(job)
+            irc_results.append(result)
+            if result.get("irc_chain") is not None:
+                irc_success_count += 1
+            irc_failure_count = idx - irc_success_count
+            _emit_progress(
+                f"IRC complete: {idx}/{irc_jobs_submitted} (ok {irc_success_count}, failed {irc_failure_count})",
+                phase="irc",
+                current=idx,
+                total=irc_jobs_submitted,
+            )
+
+    irc_error_counts = Counter(
+        str(result.get("error") or "").strip()
+        for result in irc_results
+        if result.get("irc_chain") is None
+    )
+    irc_error_counts.pop("", None)
+    irc_top_errors: list[str] = [
+        f"{count}x {error}"
+        for error, count in irc_error_counts.most_common(3)
+    ]
+    irc_failure_log_fp: Path | None = None
+    if irc_error_counts:
+        irc_failure_log_fp = artifacts_dir / "irc_failures.jsonl"
+        with contextlib.suppress(Exception):
+            with irc_failure_log_fp.open("w", encoding="utf-8") as handle:
+                for result in irc_results:
+                    if result.get("irc_chain") is not None:
+                        continue
+                    payload = {
+                        "source_node": int(result["source_node"]),
+                        "target_node": int(result["target_node"]),
+                        "chain_index": int(result["chain_index"]),
+                        "error": str(result.get("error") or "unknown"),
+                    }
+                    handle.write(json.dumps(payload) + "\n")
+    if irc_error_counts:
+        top_line = "; ".join(irc_top_errors) if irc_top_errors else "No explicit error message captured."
+        _emit_progress(
+            f"IRC stage complete with failures ({sum(irc_error_counts.values())}/{irc_jobs_submitted}). Top errors: {top_line}",
+            phase="irc",
+            current=irc_jobs_submitted,
+            total=irc_jobs_submitted,
+        )
+
+    _emit_progress(
+        "Merging IRC minima into refined network...",
+        phase="merge",
+        current=0,
+        total=len(irc_results),
+    )
+    for merge_idx, result in enumerate(irc_results, start=1):
+        irc_chain = result.get("irc_chain")
+        if irc_chain is None:
+            irc_failed += 1
+            _emit_progress(
+                f"Merged IRC result {merge_idx}/{len(irc_results)}",
+                phase="merge",
+                current=merge_idx,
+                total=len(irc_results),
+            )
+            continue
+        source_node = int(result["source_node"])
+        target_node = int(result["target_node"])
+        ts_guess = result["ts_guess"]
+        irc_converged += 1
+
+        irc_minima = [
+            _ensure_node_graph(irc_chain.nodes[0].copy(), fallback=ts_guess),
+            _ensure_node_graph(irc_chain.nodes[-1].copy(), fallback=ts_guess),
+        ]
+        minima_indices: list[int] = []
+        for minimum in irc_minima:
+            node_index = _find_existing_network_node(
+                refined_pot,
+                minimum,
+                chain_inputs,
+                collapse_rms_thre,
+                collapse_ene_thre,
+            )
+            if node_index is None:
+                node_index = (max(refined_pot.graph.nodes) + 1) if refined_pot.graph.nodes else 0
+                refined_pot.graph.add_node(
+                    node_index,
+                    molecule=copy_graph_like_molecule(getattr(minimum, "graph", None)),
+                    converged=True,
+                    td=minimum,
+                    endpoint_optimized=True,
+                    generated_by="ts_irc_refine",
+                    ts_irc_provenance_edge=[int(source_node), int(target_node)],
+                )
+                added_nodes += 1
+            else:
+                target_attrs = refined_pot.graph.nodes[node_index]
+                if getattr(minimum, "graph", None) is not None:
+                    target_attrs["molecule"] = copy_graph_like_molecule(minimum.graph)
+                target_attrs["td"] = minimum
+                target_attrs["endpoint_optimized"] = True
+                target_attrs.setdefault("generated_by", "ts_irc_refine")
+                target_attrs.setdefault(
+                    "ts_irc_provenance_edge",
+                    [int(source_node), int(target_node)],
+                )
+            minima_indices.append(int(node_index))
+
+        if len(minima_indices) < 2 or minima_indices[0] == minima_indices[1]:
+            continue
+
+        edge_key = (int(minima_indices[0]), int(minima_indices[1]))
+        if not refined_pot.graph.has_edge(*edge_key):
+            refined_pot.graph.add_edge(
+                edge_key[0],
+                edge_key[1],
+                reaction=f"TS IRC {source_node}->{target_node}",
+                list_of_nebs=[],
+                generated_by="ts_irc_refine",
+            )
+            added_edges += 1
+        edge_attrs = refined_pot.graph.edges[edge_key]
+        edge_attrs.setdefault("list_of_nebs", [])
+        edge_attrs["list_of_nebs"].append(irc_chain.copy())
+        edge_attrs["ts_irc_provenance_edge"] = [int(source_node), int(target_node)]
+        barriers = []
+        for candidate_chain in edge_attrs.get("list_of_nebs", []):
+            with contextlib.suppress(Exception):
+                barriers.append(float(candidate_chain.get_eA_chain()))
+        if barriers:
+            edge_attrs["barrier"] = float(min(barriers))
+            edge_attrs["exp_neg_barrier"] = float(np.exp(-edge_attrs["barrier"]))
+        _emit_progress(
+            f"Merged IRC result {merge_idx}/{len(irc_results)}",
+            phase="merge",
+            current=merge_idx,
+            total=len(irc_results),
+        )
+
+    refined_pot.write_to_disk(refined_workspace.neb_pot_fp)
+    refined_pot.write_to_disk(refined_workspace.annotated_neb_pot_fp)
+    queue = build_retropaths_neb_queue(
+        pot=refined_pot,
+        queue_fp=refined_workspace.queue_fp,
+        overwrite=True,
+    )
+    if bool(write_status_html_output):
+        with contextlib.suppress(Exception):
+            write_status_html(refined_workspace)
+    _emit_progress("Refinement complete.", phase="done", current=1, total=1)
+
+    return {
+        "workspace": str(refined_workspace.directory),
+        "source_workspace": str(workspace.directory),
+        "inputs_fp": str(refinement_inputs_path),
+        "edges_scanned": int(source_pot.graph.number_of_edges()),
+        "edges_with_chains": int(len(edge_records)),
+        "edges_without_chains": int(skipped_edges),
+        "ts_guesses_attempted": int(ts_guesses_attempted),
+        "ts_jobs_submitted": int(ts_jobs_submitted),
+        "ts_converged": int(len(successful_ts_results)),
+        "ts_failed": int(ts_failed),
+        "ts_failure_log": str(ts_failure_log_fp) if ts_failure_log_fp is not None else "",
+        "ts_top_errors": list(ts_top_errors),
+        "irc_jobs_submitted": int(irc_jobs_submitted),
+        "irc_converged": int(irc_converged),
+        "irc_failed": int(max(0, irc_failed)),
+        "irc_failure_log": str(irc_failure_log_fp) if irc_failure_log_fp is not None else "",
+        "irc_top_errors": list(irc_top_errors),
+        "added_nodes": int(added_nodes),
+        "added_edges": int(added_edges),
+        "final_nodes": int(refined_pot.graph.number_of_nodes()),
+        "final_edges": int(refined_pot.graph.number_of_edges()),
+        "queue_items": int(len(queue.items)),
+        "artifacts_dir": str(artifacts_dir),
+        "chemcloud_parallel": bool(chemcloud_mode),
+        "use_bigchem": bool(resolved_use_bigchem),
+    }
 
 
 def _run_hessian_sample(
@@ -1728,13 +2637,23 @@ def add_manual_edge(
         added = True
 
     pot.write_to_disk(workspace.neb_pot_fp)
-    queue = ensure_queue_item_for_edge(
-        pot=pot,
-        source_node=int(source_node),
-        target_node=int(target_node),
-        queue_fp=workspace.queue_fp,
-        overwrite=False,
-    )
+    try:
+        queue = ensure_queue_item_for_edge(
+            pot=pot,
+            source_node=int(source_node),
+            target_node=int(target_node),
+            queue_fp=workspace.queue_fp,
+            overwrite=False,
+            validate_compatibility=False,
+        )
+    except TypeError:
+        queue = ensure_queue_item_for_edge(
+            pot=pot,
+            source_node=int(source_node),
+            target_node=int(target_node),
+            queue_fp=workspace.queue_fp,
+            overwrite=False,
+        )
     item = queue.find_item(source_node, target_node)
     return {
         "message": (
@@ -1745,6 +2664,96 @@ def add_manual_edge(
         "added": bool(added),
         "queue_status": item.status if item is not None else "",
         "queue_error": item.error if item is not None else "",
+    }
+
+
+def _parse_xyz_text_to_structure(
+    xyz_text: str,
+    *,
+    charge: int = 0,
+    multiplicity: int = 1,
+) -> Structure:
+    lines = [line.rstrip() for line in str(xyz_text).strip().splitlines() if line.strip()]
+    if len(lines) < 3:
+        raise ValueError("XYZ text must contain an atom count, comment line, and atom rows.")
+
+    try:
+        atom_count = int(lines[0].strip())
+    except ValueError as exc:
+        raise ValueError("First XYZ line must be an integer atom count.") from exc
+
+    atom_lines = lines[2 : 2 + atom_count]
+    if len(atom_lines) != atom_count:
+        raise ValueError(f"XYZ text declared {atom_count} atoms but only {len(atom_lines)} rows were provided.")
+
+    symbols: list[str] = []
+    geometry_angstrom: list[list[float]] = []
+    for line in atom_lines:
+        parts = line.split()
+        if len(parts) < 4:
+            raise ValueError(f"Invalid XYZ atom row: {line}")
+        symbols.append(parts[0])
+        geometry_angstrom.append([float(parts[1]), float(parts[2]), float(parts[3])])
+
+    return Structure(
+        symbols=symbols,
+        geometry=[[value * ANGSTROM_TO_BOHR for value in row] for row in geometry_angstrom],
+        charge=int(charge),
+        multiplicity=int(multiplicity),
+    )
+
+
+def add_manual_node(
+    workspace: RetropathsWorkspace,
+    *,
+    xyz_text: str,
+    charge: int = 0,
+    multiplicity: int = 1,
+) -> dict[str, Any]:
+    if not str(xyz_text or "").strip():
+        raise ValueError("Manual node insertion requires XYZ text.")
+    if not workspace.neb_pot_fp.exists():
+        raise ValueError("The workspace has no NEB graph yet.")
+
+    structure = _parse_xyz_text_to_structure(
+        xyz_text,
+        charge=int(charge),
+        multiplicity=int(multiplicity),
+    )
+    try:
+        molecule = structure_to_molecule(structure)
+    except Exception as exc:
+        raise ValueError(
+            "Could not build a molecular graph from the provided XYZ. "
+            "Check atom ordering and coordinates."
+        ) from exc
+
+    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    node_index = (max(int(node_id) for node_id in pot.graph.nodes) + 1) if pot.graph.nodes else 0
+    td = StructureNode(
+        structure=structure,
+        graph=molecule.copy(),
+        has_molecular_graph=True,
+        converged=False,
+    )
+    pot.graph.add_node(
+        int(node_index),
+        molecule=molecule.copy(),
+        converged=False,
+        td=td,
+        endpoint_optimized=False,
+        generated_by="manual_drive_node",
+    )
+    pot.write_to_disk(workspace.neb_pot_fp)
+    build_retropaths_neb_queue(
+        pot=pot,
+        queue_fp=workspace.queue_fp,
+        overwrite=False,
+    )
+    return {
+        "message": f"Added manual node {int(node_index)} from XYZ.",
+        "node_id": int(node_index),
+        "added": True,
     }
 
 
