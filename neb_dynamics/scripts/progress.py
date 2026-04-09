@@ -105,9 +105,17 @@ class ProgressPrinter:
         self._chain_plot_history = []
         self._monitor_states: dict[str, dict] = {}
         self._lock = threading.RLock()
+        self._monitor_column_width = 44
 
         # Throttle updates to avoid too much output
         self._throttle = 0.5  # Only print every 0.5 seconds by default
+
+    def _format_monitor_label(self, monitor_id: str, caption: str) -> str:
+        monitor = str(monitor_id or "main").strip() or "main"
+        if not caption:
+            return monitor
+        label = f"{monitor} | {caption}"
+        return _truncate_label(label, self._monitor_column_width)
 
     def _state_for_monitor(self, monitor_id: str | None = None) -> dict:
         key = str(monitor_id or _active_monitor_id() or "main")
@@ -138,12 +146,20 @@ class ProgressPrinter:
             self._status.stop()
             self._status_active = False
         table = Table(show_header=True, box=box.SIMPLE)
-        table.add_column("Monitor", style="bold cyan", no_wrap=True)
+        table.add_column(
+            "Monitor",
+            style="bold cyan",
+            no_wrap=True,
+            width=self._monitor_column_width,
+            min_width=self._monitor_column_width,
+            max_width=self._monitor_column_width,
+            overflow="ellipsis",
+        )
         table.add_column("Chain")
         for monitor_id in sorted(self._monitor_states.keys()):
             state = self._monitor_states[monitor_id]
             caption = str(state.get("status_message") or state.get("caption") or "").strip()
-            label = monitor_id if not caption else f"{monitor_id} | {caption}"
+            label = self._format_monitor_label(monitor_id=monitor_id, caption=caption)
             chain_ascii = state.get("ascii_plot") or "(waiting for first chain update)"
             table.add_row(label, str(chain_ascii))
 
@@ -681,11 +697,22 @@ def _build_ascii_energy_profile(energies, labels, width: int = 60, height: int =
         if 0 <= row < height and 0 <= x < width:
             grid[row][x] = "*"
 
-    prefix_len = len(f"{max_e:7.2f} |")
+    axis_width = 10
+
+    def _axis_label(value: float) -> str:
+        fixed = f"{value:>{axis_width}.2f}"
+        if len(fixed) <= axis_width:
+            return fixed
+        sci = f"{value:>{axis_width}.2e}"
+        if len(sci) <= axis_width:
+            return sci
+        return sci[-axis_width:]
+
+    prefix_len = axis_width + 2
     lines = []
     for r in range(height):
         y_val = max_e - (max_e - min_e) * (r / (height - 1))
-        prefix = f"{y_val:7.2f} |"
+        prefix = f"{_axis_label(y_val)} |"
         lines.append(prefix + "".join(grid[r]))
 
     lines.append(" " * prefix_len + "-" * width)

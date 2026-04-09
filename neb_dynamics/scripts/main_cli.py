@@ -1756,28 +1756,56 @@ def run(
             if leaf_chain is not None:
                 successful_leaf_chains.append(leaf_chain)
 
+        parallel_failures = list(getattr(history, "parallel_failures", []) or [])
+
         if not successful_leaf_chains:
-            _write_run_status(
-                status_fp,
-                base_name=filename.stem,
-                run_state="failed",
-                phase="parallel_recursive_request",
-                recursive=False,
-                parallel=True,
-                network_splits=False,
-                path_min_method=str(program_input.path_min_method),
-                error="Parallel autosplitting produced no successful leaf chains.",
-            )
-            console.print(
-                "[bold red]✗ ERROR:[/bold red] Parallel autosplitting did not yield any successful leaf chains."
-            )
-            raise typer.Exit(1)
+            root_chain = None
+            if history.data is not None:
+                if getattr(history.data, "chain_trajectory", None):
+                    root_chain = history.data.chain_trajectory[-1]
+                elif getattr(history.data, "optimized", None) is not None:
+                    root_chain = history.data.optimized
+
+            if root_chain is not None:
+                console.print(
+                    "[yellow]⚠ Parallel autosplitting produced no successful child leaves; "
+                    "falling back to the root optimized chain.[/yellow]"
+                )
+                successful_leaf_chains = [root_chain]
+            else:
+                _write_run_status(
+                    status_fp,
+                    base_name=filename.stem,
+                    run_state="failed",
+                    phase="parallel_recursive_request",
+                    recursive=False,
+                    parallel=True,
+                    network_splits=False,
+                    path_min_method=str(program_input.path_min_method),
+                    error="Parallel autosplitting produced no successful leaf chains.",
+                )
+                console.print(
+                    "[bold red]✗ ERROR:[/bold red] Parallel autosplitting did not yield any successful leaf chains."
+                )
+                if parallel_failures:
+                    console.print(
+                        f"[yellow]Captured {len(parallel_failures)} branch failure(s). "
+                        "Showing the first one below.[/yellow]"
+                    )
+                    console.print(f"[dim]{parallel_failures[0]}[/dim]")
+                raise typer.Exit(1)
 
         if len(successful_leaf_chains) == 1:
             merged_chain = successful_leaf_chains[0]
         else:
             merged_chain = _concat_chains(
                 successful_leaf_chains, program_input.chain_inputs
+            )
+
+        if parallel_failures:
+            console.print(
+                f"[yellow]⚠ {len(parallel_failures)} branch worker failure(s) occurred during "
+                "parallel autosplitting; recovered branches were retained where possible.[/yellow]"
             )
         failed_leaves = sum(
             1 for leaf in history.depth_first_ordered_nodes

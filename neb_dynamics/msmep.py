@@ -4,6 +4,7 @@ import copy
 import os
 import concurrent.futures
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 import sys
 import numpy as np
@@ -61,6 +62,49 @@ def _normalize_path_method(path_min_method: str) -> str:
         "DL-FIND": "NEB-DLF",
     }
     return aliases.get(method, method)
+
+
+def _to_plain_dict(value):
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return copy.deepcopy(value)
+    if isinstance(value, SimpleNamespace):
+        return copy.deepcopy(vars(value))
+    if hasattr(value, "model_dump"):
+        try:
+            return copy.deepcopy(value.model_dump())
+        except Exception:
+            pass
+    if hasattr(value, "dict"):
+        try:
+            return copy.deepcopy(value.dict())
+        except Exception:
+            pass
+    if hasattr(value, "__dict__"):
+        return copy.deepcopy(vars(value))
+    return copy.deepcopy(value)
+
+
+def _clone_run_inputs_for_worker(run_inputs: RunInputs) -> RunInputs:
+    """Build an isolated RunInputs instance for a worker thread."""
+    return RunInputs(
+        engine_name=getattr(run_inputs, "engine_name", "chemcloud"),
+        program=getattr(run_inputs, "program", "xtb"),
+        chemcloud_queue=getattr(run_inputs, "chemcloud_queue", None),
+        write_qcio=bool(getattr(run_inputs, "write_qcio", False)),
+        qmmm_inputs=_to_plain_dict(getattr(run_inputs, "qmmm_inputs", None)),
+        nanoreactor_inputs=_to_plain_dict(
+            getattr(run_inputs, "nanoreactor_inputs", None)
+        ),
+        path_min_method=getattr(run_inputs, "path_min_method", "NEB"),
+        path_min_inputs=_to_plain_dict(getattr(run_inputs, "path_min_inputs", None)),
+        chain_inputs=_to_plain_dict(getattr(run_inputs, "chain_inputs", None)),
+        gi_inputs=_to_plain_dict(getattr(run_inputs, "gi_inputs", None)),
+        network_inputs=_to_plain_dict(getattr(run_inputs, "network_inputs", None)),
+        program_kwds=_to_plain_dict(getattr(run_inputs, "program_kwds", None)),
+        optimizer_kwds=_to_plain_dict(getattr(run_inputs, "optimizer_kwds", None)),
+    )
 
 
 @dataclass
@@ -276,10 +320,14 @@ class MSMEP:
                 input_chain=input_chain, tree_node_index=tree_node_index
             )
         if not root_children:
+            setattr(root_history, "parallel_failures", [])
             return root_history
 
         next_tree_index = tree_node_index + 1
-        pending: dict[concurrent.futures.Future, tuple[TreeNode, int, int]] = {}
+        pending: dict[
+            concurrent.futures.Future, tuple[TreeNode, int, int, Chain]
+        ] = {}
+        branch_failures: list[str] = []
 
         def _submit_children(
             executor: concurrent.futures.Executor,
@@ -297,7 +345,7 @@ class MSMEP:
                     child_chain,
                     child_index,
                 )
-                pending[future] = (parent_node, child_position, child_index)
+                pending[future] = (parent_node, child_position, child_index, child_chain)
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=bounded_workers
@@ -309,18 +357,38 @@ class MSMEP:
                     return_when=concurrent.futures.FIRST_COMPLETED,
                 )
                 for future in done:
-                    parent_node, child_position, child_index = pending.pop(future)
+                    parent_node, child_position, child_index, child_chain = pending.pop(
+                        future
+                    )
                     try:
                         child_history, child_children = future.result()
-                    except Exception:
-                        child_history = TreeNode(
-                            data=None, children=[], index=child_index
-                        )
-                        child_children = []
+                    except Exception as worker_exc:
+                        worker_trace = traceback.format_exc().strip()
+                        try:
+                            # Recover the failed branch in-process using a fresh
+                            # isolated RunInputs clone.
+                            child_history, child_children = _parallel_recursive_step_worker(
+                                self.inputs,
+                                child_chain,
+                                child_index,
+                            )
+                        except Exception as retry_exc:
+                            retry_trace = traceback.format_exc().strip()
+                            branch_failures.append(
+                                f"branch-{child_index}: worker failed ({type(worker_exc).__name__}: {worker_exc}); "
+                                f"serial retry failed ({type(retry_exc).__name__}: {retry_exc})\n"
+                                f"worker traceback:\n{worker_trace}\n"
+                                f"retry traceback:\n{retry_trace}"
+                            )
+                            child_history = TreeNode(
+                                data=None, children=[], index=child_index
+                            )
+                            child_children = []
                     parent_node.children[child_position] = child_history
                     if child_children:
                         _submit_children(executor, child_history, child_children)
 
+        setattr(root_history, "parallel_failures", branch_failures)
         return root_history
 
     def _create_interpolation(self, chain: Chain):
@@ -822,9 +890,12 @@ def _parallel_recursive_step_worker(
     tree_node_index: int,
 ) -> tuple[TreeNode, list[Chain]]:
     try:
-        local_inputs = copy.deepcopy(run_inputs)
+        local_inputs = _clone_run_inputs_for_worker(run_inputs)
     except Exception:
-        local_inputs = run_inputs
+        try:
+            local_inputs = copy.deepcopy(run_inputs)
+        except Exception:
+            local_inputs = run_inputs
 
     try:
         local_inputs.path_min_inputs.v = True

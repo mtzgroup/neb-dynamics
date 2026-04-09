@@ -125,6 +125,33 @@ class _ParallelFakeMSMEP:
         return neb, SimpleNamespace(is_elem_step=True)
 
 
+class _ParallelAllFailedMSMEP:
+    def __init__(self, inputs):
+        self.inputs = inputs
+        self.parallel_calls = 0
+        self.requested_max_workers = None
+
+    def run_parallel_recursive_minimize(
+        self, input_chain: Chain, max_workers: int | None = None
+    ):
+        self.parallel_calls += 1
+        self.requested_max_workers = max_workers
+        root_chain = _chain_from_xs([0.0, 2.0], self.inputs.chain_inputs)
+        history = TreeNode(
+            data=_FakeNEB(root_chain),
+            children=[
+                TreeNode(data=None, children=[], index=1),
+                TreeNode(data=None, children=[], index=2),
+            ],
+            index=0,
+        )
+        history.parallel_failures = [
+            "branch-1: worker failed",
+            "branch-2: worker failed",
+        ]
+        return history
+
+
 def test_run_recursive_network_splits_enqueues_intermediate_targets(monkeypatch, tmp_path):
     params = ChainInputs()
     expensive_inputs = SimpleNamespace(
@@ -397,6 +424,43 @@ def test_parallel_run_uses_parallel_recursive_runner_and_writes_partial_status(m
     assert snapshot["run_status"]["parallel"] is True
     assert snapshot["run_status"]["recursive"] is False
     assert snapshot["run_status"]["network_splits"] is False
+
+
+def test_parallel_run_falls_back_to_root_chain_when_all_child_leaves_fail(monkeypatch, tmp_path):
+    params = ChainInputs()
+    program_inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(do_elem_step_checks=True),
+        chain_inputs=params,
+        engine=SimpleNamespace(),
+    )
+    runner = _ParallelAllFailedMSMEP(program_inputs)
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(lambda path: program_inputs))
+    monkeypatch.setattr(main_cli, "MSMEP", lambda inputs: runner)
+    monkeypatch.setattr(main_cli, "_render_runinputs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        main_cli,
+        "read_multiple_structure_from_file",
+        lambda *args, **kwargs: [_structure_at_x(0.0), _structure_at_x(2.0)],
+    )
+    monkeypatch.chdir(tmp_path)
+
+    main_cli.run(
+        geometries="dummy.xyz",
+        inputs="dummy.toml",
+        recursive=False,
+        parallel=True,
+        parallel_workers=4,
+        network_splits=False,
+        name="parallel_all_failed",
+    )
+
+    assert runner.parallel_calls == 1
+    assert (tmp_path / "parallel_all_failed.xyz").exists()
+    snapshot = main_cli._load_status_snapshot(str(tmp_path / "parallel_all_failed.xyz"))
+    assert snapshot["run_status"]["run_state"] == "completed"
+    assert snapshot["run_status"]["parallel"] is True
 
 
 def test_run_network_splits_resumes_from_saved_tree_and_request_artifacts(monkeypatch, tmp_path):
