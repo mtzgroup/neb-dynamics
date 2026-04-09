@@ -77,3 +77,29 @@ def test_compact_ascii_for_live_uses_payload_series():
     out = printer._compact_ascii_for_live(state)
 
     assert "node index" in out
+
+
+def test_visible_monitor_ids_paginates_and_rotates():
+    printer = progress.ProgressPrinter(use_rich=False)
+    printer._monitor_page_size = 2
+    printer._monitor_page_rotate_seconds = 1.0
+    printer._monitor_states = {
+        "branch-0": {},
+        "branch-1": {},
+        "branch-2": {},
+        "branch-3": {},
+        "branch-4": {},
+    }
+
+    ids0, meta0 = printer._visible_monitor_ids(now=100.0)
+    ids1, meta1 = printer._visible_monitor_ids(now=100.3)
+    ids2, meta2 = printer._visible_monitor_ids(now=101.1)
+    ids3, meta3 = printer._visible_monitor_ids(now=102.2)
+
+    assert ids0 == ["branch-0", "branch-1"]
+    assert ids1 == ["branch-0", "branch-1"]
+    assert ids2 == ["branch-2", "branch-3"]
+    assert ids3 == ["branch-4"]
+    assert meta0["total_pages"] == 3
+    assert meta2["page"] == 2
+    assert meta3["page"] == 3

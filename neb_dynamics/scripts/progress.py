@@ -108,6 +108,20 @@ class ProgressPrinter:
         self._monitor_column_width = 44
         self._compact_plot_width = 36
         self._compact_plot_height = 6
+        try:
+            self._monitor_page_size = max(
+                1, int(os.environ.get("MEPD_MONITOR_PAGE_SIZE", "8"))
+            )
+        except Exception:
+            self._monitor_page_size = 8
+        try:
+            self._monitor_page_rotate_seconds = max(
+                0.0, float(os.environ.get("MEPD_MONITOR_PAGE_ROTATE_SECONDS", "2.5"))
+            )
+        except Exception:
+            self._monitor_page_rotate_seconds = 2.5
+        self._monitor_page_index = 0
+        self._monitor_page_last_switch = 0.0
 
         # Throttle updates to avoid too much output
         self._throttle = 0.5  # Only print every 0.5 seconds by default
@@ -145,6 +159,51 @@ class ProgressPrinter:
         kept = lines[:max_lines]
         kept.append("... (compact view)")
         return "\n".join(kept)
+
+    def _visible_monitor_ids(self, now: float | None = None) -> tuple[list[str], dict]:
+        monitor_ids = sorted(self._monitor_states.keys())
+        total = len(monitor_ids)
+        if total == 0:
+            return [], {"total": 0, "start": 0, "end": 0, "page": 1, "total_pages": 1}
+
+        page_size = max(1, int(self._monitor_page_size or 1))
+        if total <= page_size:
+            self._monitor_page_index = 0
+            return monitor_ids, {
+                "total": total,
+                "start": 1,
+                "end": total,
+                "page": 1,
+                "total_pages": 1,
+            }
+
+        total_pages = int(math.ceil(total / page_size))
+        self._monitor_page_index = int(self._monitor_page_index) % total_pages
+        current_time = time.time() if now is None else float(now)
+        rotate_seconds = max(0.0, float(self._monitor_page_rotate_seconds or 0.0))
+        if rotate_seconds > 0:
+            if self._monitor_page_last_switch <= 0:
+                self._monitor_page_last_switch = current_time
+            else:
+                elapsed = current_time - self._monitor_page_last_switch
+                if elapsed >= rotate_seconds:
+                    page_steps = max(1, int(elapsed // rotate_seconds))
+                    self._monitor_page_index = (
+                        self._monitor_page_index + page_steps
+                    ) % total_pages
+                    self._monitor_page_last_switch += page_steps * rotate_seconds
+        else:
+            self._monitor_page_last_switch = current_time
+
+        start_idx = self._monitor_page_index * page_size
+        end_idx = min(total, start_idx + page_size)
+        return monitor_ids[start_idx:end_idx], {
+            "total": total,
+            "start": start_idx + 1,
+            "end": end_idx,
+            "page": self._monitor_page_index + 1,
+            "total_pages": total_pages,
+        }
 
     def _state_for_monitor(self, monitor_id: str | None = None) -> dict:
         key = str(monitor_id or _active_monitor_id() or "main")
@@ -185,8 +244,15 @@ class ProgressPrinter:
             overflow="ellipsis",
         )
         table.add_column("Chain")
+        visible_ids, page_meta = self._visible_monitor_ids()
+        if page_meta.get("total_pages", 1) > 1:
+            table.title = (
+                "Parallel Branch Monitors "
+                f"({page_meta['start']}-{page_meta['end']} of {page_meta['total']}, "
+                f"page {page_meta['page']}/{page_meta['total_pages']})"
+            )
         compact_mode = len(self._monitor_states) > 1
-        for monitor_id in sorted(self._monitor_states.keys()):
+        for monitor_id in visible_ids:
             state = self._monitor_states[monitor_id]
             caption = str(state.get("status_message") or state.get("caption") or "").strip()
             label = self._format_monitor_label(monitor_id=monitor_id, caption=caption)
