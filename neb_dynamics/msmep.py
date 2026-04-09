@@ -36,6 +36,7 @@ from neb_dynamics.pathminimizers.fneb import FreezingNEB
 from neb_dynamics.pathminimizers.nebdlf import DLFindNEB
 from neb_dynamics.inputs import RunInputs
 from neb_dynamics.scripts.progress import (
+    get_progress_printer,
     print_neb_step,
     preserve_chain_snapshot,
     progress_monitor,
@@ -111,6 +112,29 @@ def _clone_run_inputs_for_worker(run_inputs: RunInputs) -> RunInputs:
         program_kwds=_to_plain_dict(getattr(run_inputs, "program_kwds", None)),
         optimizer_kwds=_to_plain_dict(getattr(run_inputs, "optimizer_kwds", None)),
     )
+
+
+def _leaf_chain_from_tree_node(node: TreeNode) -> Chain | None:
+    if node is None or getattr(node, "data", None) is None:
+        return None
+    data = node.data
+    chain_trajectory = getattr(data, "chain_trajectory", None) or []
+    if chain_trajectory:
+        return chain_trajectory[-1]
+    optimized = getattr(data, "optimized", None)
+    if optimized is not None:
+        return optimized
+    return None
+
+
+def _concat_leaf_chains(chains: list[Chain], parameters) -> Chain:
+    if len(chains) == 0:
+        raise ValueError("Cannot concatenate empty chain list.")
+    nodes = []
+    for i, chain in enumerate(chains):
+        chain_nodes = chain.nodes if i == 0 else chain.nodes[1:]
+        nodes.extend([node.copy() for node in chain_nodes])
+    return Chain.model_validate({"nodes": nodes, "parameters": parameters})
 
 
 @dataclass
@@ -321,6 +345,8 @@ class MSMEP:
         else:
             bounded_workers = max(1, min(int(max_workers), cpu_cap))
 
+        progress_printer = get_progress_printer()
+        progress_printer.clear_path_so_far()
         with progress_monitor(f"branch-{int(tree_node_index)}"):
             root_history, root_children = self._run_recursive_step(
                 input_chain=input_chain, tree_node_index=tree_node_index
@@ -330,6 +356,7 @@ class MSMEP:
             return root_history
 
         next_tree_index = tree_node_index + 1
+        completed_leaf_chains_by_index: dict[int, Chain] = {}
         pending: dict[
             concurrent.futures.Future, tuple[TreeNode, int, int, Chain]
         ] = {}
@@ -391,6 +418,21 @@ class MSMEP:
                             )
                             child_children = []
                     parent_node.children[child_position] = child_history
+                    if not child_children:
+                        leaf_chain = _leaf_chain_from_tree_node(child_history)
+                        if leaf_chain is not None:
+                            completed_leaf_chains_by_index[child_index] = leaf_chain
+                            ordered_leaf_chains = [
+                                completed_leaf_chains_by_index[idx]
+                                for idx in sorted(completed_leaf_chains_by_index.keys())
+                            ]
+                            path_so_far = _concat_leaf_chains(
+                                ordered_leaf_chains, self.inputs.chain_inputs
+                            )
+                            progress_printer.update_path_so_far(
+                                path_so_far,
+                                caption=f"{len(ordered_leaf_chains)} completed branch(es)",
+                            )
                     if child_children:
                         _submit_children(executor, child_history, child_children)
 

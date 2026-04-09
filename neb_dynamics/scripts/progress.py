@@ -47,11 +47,17 @@ def _active_monitor_id() -> str:
 
 @contextmanager
 def progress_monitor(monitor_id: str):
-    token = _progress_monitor_id.set(str(monitor_id or "main"))
+    normalized_monitor = str(monitor_id or "main").strip() or "main"
+    printer = get_progress_printer()
+    if normalized_monitor != "main":
+        printer.mark_monitor_active(normalized_monitor)
+    token = _progress_monitor_id.set(normalized_monitor)
     try:
         yield
     finally:
         _progress_monitor_id.reset(token)
+        if normalized_monitor != "main":
+            printer.mark_monitor_inactive(normalized_monitor)
 
 
 def _append_progress_log(message: str) -> None:
@@ -104,10 +110,13 @@ class ProgressPrinter:
         self._last_chain_plot_payload = None
         self._chain_plot_history = []
         self._monitor_states: dict[str, dict] = {}
+        self._active_monitor_ids: set[str] = set()
         self._lock = threading.RLock()
         self._monitor_column_width = 44
         self._compact_plot_width = 36
         self._compact_plot_height = 6
+        self._path_monitor_id = "path-so-far"
+        self._path_monitor_label = "Path So Far"
         try:
             self._monitor_page_size = max(
                 1, int(os.environ.get("MEPD_MONITOR_PAGE_SIZE", "8"))
@@ -127,6 +136,13 @@ class ProgressPrinter:
         self._throttle = 0.5  # Only print every 0.5 seconds by default
 
     def _format_monitor_label(self, monitor_id: str, caption: str) -> str:
+        if monitor_id == self._path_monitor_id:
+            base = self._path_monitor_label
+            if not caption:
+                return base
+            return _truncate_label(
+                f"{base} | {caption}", self._monitor_column_width
+            )
         monitor = str(monitor_id or "main").strip() or "main"
         if not caption:
             return monitor
@@ -160,8 +176,10 @@ class ProgressPrinter:
         kept.append("... (compact view)")
         return "\n".join(kept)
 
-    def _visible_monitor_ids(self, now: float | None = None) -> tuple[list[str], dict]:
-        monitor_ids = sorted(self._monitor_states.keys())
+    def _visible_monitor_ids(
+        self, monitor_ids: list[str], now: float | None = None
+    ) -> tuple[list[str], dict]:
+        monitor_ids = sorted(monitor_ids)
         total = len(monitor_ids)
         if total == 0:
             return [], {"total": 0, "start": 0, "end": 0, "page": 1, "total_pages": 1}
@@ -205,6 +223,75 @@ class ProgressPrinter:
             "total_pages": total_pages,
         }
 
+    def mark_monitor_active(self, monitor_id: str) -> None:
+        with self._lock:
+            monitor = str(monitor_id or "").strip()
+            if not monitor or monitor in {"main", self._path_monitor_id}:
+                return
+            self._active_monitor_ids.add(monitor)
+            self._state_for_monitor(monitor)
+            if self.use_rich and self._live is not None:
+                self._render_live_monitors()
+
+    def mark_monitor_inactive(self, monitor_id: str) -> None:
+        with self._lock:
+            monitor = str(monitor_id or "").strip()
+            if not monitor or monitor in {"main", self._path_monitor_id}:
+                return
+            self._active_monitor_ids.discard(monitor)
+            if self.use_rich and self._live is not None:
+                self._render_live_monitors()
+
+    def clear_path_so_far(self) -> None:
+        with self._lock:
+            state = self._state_for_monitor(self._path_monitor_id)
+            state["ascii_plot"] = None
+            state["caption"] = None
+            state["status_message"] = None
+            state["chain_plot_payload"] = None
+            state["chain_plot_history"] = []
+            if self.use_rich and self._live is not None:
+                self._render_live_monitors()
+
+    def update_path_so_far(self, chain, caption: str = "Completed branches"):
+        with self._lock:
+            state = self._state_for_monitor(self._path_monitor_id)
+            ascii_plot = ascii_profile_for_chain(
+                chain,
+                width=self._compact_plot_width,
+                height=self._compact_plot_height,
+            )
+            if (
+                ascii_plot == state.get("ascii_plot")
+                and caption == state.get("caption")
+            ):
+                return
+
+            state["ascii_plot"] = ascii_plot
+            state["caption"] = caption
+            state["status_message"] = None
+            try:
+                x_vals = [float(v) for v in chain.integrated_path_length]
+            except Exception:
+                x_vals = []
+            try:
+                y_vals = [float(v) for v in chain.energies_kcalmol]
+            except Exception:
+                y_vals = []
+            state["chain_plot_payload"] = {
+                "caption": caption,
+                "x": x_vals,
+                "y": y_vals,
+                "reactant_smiles": "",
+                "product_smiles": "",
+            }
+            history = list(state.get("chain_plot_history") or [])
+            history.append(state["chain_plot_payload"])
+            state["chain_plot_history"] = history[-120:]
+            if self.use_rich and (self._live is not None or self._active_monitor_ids):
+                self._render_live_monitors()
+            self._write_current_payload(self._path_monitor_id, state)
+
     def _state_for_monitor(self, monitor_id: str | None = None) -> dict:
         key = str(monitor_id or _active_monitor_id() or "main")
         state = self._monitor_states.get(key)
@@ -244,14 +331,26 @@ class ProgressPrinter:
             overflow="ellipsis",
         )
         table.add_column("Chain")
-        visible_ids, page_meta = self._visible_monitor_ids()
+        active_monitor_ids = sorted(self._active_monitor_ids)
+        visible_ids, page_meta = self._visible_monitor_ids(active_monitor_ids)
         if page_meta.get("total_pages", 1) > 1:
             table.title = (
                 "Parallel Branch Monitors "
                 f"({page_meta['start']}-{page_meta['end']} of {page_meta['total']}, "
                 f"page {page_meta['page']}/{page_meta['total_pages']})"
             )
-        compact_mode = len(self._monitor_states) > 1
+        path_state = self._monitor_states.get(self._path_monitor_id) or {}
+        path_ready = bool(path_state.get("ascii_plot") or path_state.get("chain_plot_payload"))
+        show_path_monitor = path_ready or bool(active_monitor_ids)
+        if show_path_monitor:
+            label = self._format_monitor_label(
+                monitor_id=self._path_monitor_id,
+                caption=str(path_state.get("caption") or "").strip(),
+            )
+            path_ascii = self._compact_ascii_for_live(path_state)
+            table.add_row(label, str(path_ascii))
+
+        compact_mode = len(active_monitor_ids) > 1
         for monitor_id in visible_ids:
             state = self._monitor_states[monitor_id]
             caption = str(state.get("status_message") or state.get("caption") or "").strip()
@@ -284,6 +383,7 @@ class ProgressPrinter:
                 "plot": state.get("chain_plot_payload"),
                 "history": list(state.get("chain_plot_history") or []),
                 "status_message": state.get("status_message"),
+                "active": monitor_id in self._active_monitor_ids,
             }
         return payload
 
