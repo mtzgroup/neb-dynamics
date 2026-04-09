@@ -131,3 +131,16 @@ def test_active_ascii_for_live_is_dense_two_line_summary():
     lines = out.splitlines()
     assert len(lines) == 2
     assert lines[0].startswith("E[")
+
+
+def test_active_ascii_for_live_uses_status_when_no_plot_data():
+    printer = progress.ProgressPrinter(use_rich=False)
+    state = {
+        "chain_plot_payload": {},
+        "ascii_plot": None,
+        "status_message": "Running in worker process (attempt 1/2, 8s)",
+    }
+
+    out = printer._active_ascii_for_live(state)
+
+    assert out == "Running in worker process (attempt 1/2, 8s)"

@@ -192,7 +192,10 @@ class ProgressPrinter:
         if len(values) < 2:
             ascii_plot = str(state.get("ascii_plot") or "").strip()
             if not ascii_plot:
-                return "(waiting for first chain update)"
+                status_text = str(
+                    state.get("status_message") or state.get("caption") or ""
+                ).strip()
+                return status_text or "(waiting for first chain update)"
             first_line = ascii_plot.splitlines()[0].strip()
             return first_line if first_line else "(waiting for first chain update)"
 
@@ -413,7 +416,12 @@ class ProgressPrinter:
             if compact_mode:
                 chain_ascii = self._active_ascii_for_live(state)
             else:
-                chain_ascii = state.get("ascii_plot") or "(waiting for first chain update)"
+                chain_ascii = (
+                    state.get("ascii_plot")
+                    or state.get("status_message")
+                    or state.get("caption")
+                    or "(waiting for first chain update)"
+                )
             table.add_row(label, str(chain_ascii))
 
         if self._live is None:
