@@ -1,4 +1,5 @@
 import concurrent.futures
+import threading
 from types import SimpleNamespace
 
 import numpy as np
@@ -223,3 +224,123 @@ def test_parallel_scheduler_honors_explicit_worker_count_when_cpu_count_is_low(
     m.run_parallel_recursive_minimize(chain, max_workers=50)
 
     assert captured["max_workers"] == 50
+
+
+def test_parallel_scheduler_retries_failed_worker_in_executor_not_main_thread(
+    monkeypatch,
+):
+    inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(v=False),
+        chain_inputs=ChainInputs(),
+        gi_inputs=SimpleNamespace(nimages=2),
+        optimizer_kwds={"name": "cg", "timestep": 0.1},
+        engine=SimpleNamespace(),
+    )
+    m = MSMEP(inputs=inputs)
+    nodes = [StructureNode(structure=_structure_at_x(0.3)), StructureNode(structure=_structure_at_x(1.1))]
+    chain = Chain.model_validate({"nodes": nodes, "parameters": inputs.chain_inputs})
+
+    root_data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+    root_history = msmep_module.TreeNode(data=root_data, children=[], index=0)
+    monkeypatch.setattr(
+        MSMEP,
+        "_run_recursive_step",
+        lambda self, input_chain, tree_node_index: (root_history, [chain]),
+    )
+
+    calls = {"n": 0}
+    thread_names: list[str] = []
+
+    def _flaky_worker(run_inputs, input_chain, tree_node_index):
+        calls["n"] += 1
+        thread_names.append(threading.current_thread().name)
+        if calls["n"] == 1:
+            raise RuntimeError("transient worker failure")
+        data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+        return msmep_module.TreeNode(data=data, children=[], index=tree_node_index), []
+
+    monkeypatch.setattr(msmep_module, "_parallel_recursive_step_worker", _flaky_worker)
+
+    class _FakePrinter:
+        def clear_path_so_far(self):
+            return None
+
+        def mark_monitor_active(self, monitor_id):
+            return None
+
+        def mark_monitor_inactive(self, monitor_id):
+            return None
+
+        def update_path_so_far(self, chain, caption=""):
+            return None
+
+    monkeypatch.setattr(msmep_module, "get_progress_printer", lambda: _FakePrinter())
+
+    history = m.run_parallel_recursive_minimize(chain, max_workers=1)
+
+    assert history is root_history
+    assert calls["n"] == 2
+    assert len(thread_names) == 2
+    assert all(name != "MainThread" for name in thread_names)
+    assert getattr(history, "parallel_failures", []) == []
+
+
+def test_parallel_scheduler_runs_multiple_branch_workers_concurrently(monkeypatch):
+    inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(v=False),
+        chain_inputs=ChainInputs(),
+        gi_inputs=SimpleNamespace(nimages=2),
+        optimizer_kwds={"name": "cg", "timestep": 0.1},
+        engine=SimpleNamespace(),
+    )
+    m = MSMEP(inputs=inputs)
+    nodes = [StructureNode(structure=_structure_at_x(0.4)), StructureNode(structure=_structure_at_x(1.4))]
+    chain = Chain.model_validate({"nodes": nodes, "parameters": inputs.chain_inputs})
+
+    root_data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+    root_history = msmep_module.TreeNode(data=root_data, children=[], index=0)
+    monkeypatch.setattr(
+        MSMEP,
+        "_run_recursive_step",
+        lambda self, input_chain, tree_node_index: (root_history, [chain, chain]),
+    )
+
+    lock = threading.Lock()
+    entered = {"count": 0, "max": 0}
+    both_started = threading.Event()
+
+    def _concurrent_worker(run_inputs, input_chain, tree_node_index):
+        with lock:
+            entered["count"] += 1
+            entered["max"] = max(entered["max"], entered["count"])
+            if entered["count"] >= 2:
+                both_started.set()
+        both_started.wait(timeout=1.5)
+        with lock:
+            entered["count"] -= 1
+        data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+        return msmep_module.TreeNode(data=data, children=[], index=tree_node_index), []
+
+    monkeypatch.setattr(msmep_module, "_parallel_recursive_step_worker", _concurrent_worker)
+
+    class _FakePrinter:
+        def clear_path_so_far(self):
+            return None
+
+        def mark_monitor_active(self, monitor_id):
+            return None
+
+        def mark_monitor_inactive(self, monitor_id):
+            return None
+
+        def update_path_so_far(self, chain, caption=""):
+            return None
+
+    monkeypatch.setattr(msmep_module, "get_progress_printer", lambda: _FakePrinter())
+
+    history = m.run_parallel_recursive_minimize(chain, max_workers=2)
+
+    assert history is root_history
+    assert entered["max"] >= 2

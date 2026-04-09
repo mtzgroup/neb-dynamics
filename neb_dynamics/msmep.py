@@ -360,14 +360,16 @@ class MSMEP:
         next_tree_index = tree_node_index + 1
         completed_leaf_chains_by_index: dict[int, Chain] = {}
         pending: dict[
-            concurrent.futures.Future, tuple[TreeNode, int, int, Chain]
+            concurrent.futures.Future, tuple[TreeNode, int, int, Chain, int]
         ] = {}
         branch_failures: list[str] = []
+        max_worker_attempts = 2
 
         def _submit_children(
             executor: concurrent.futures.Executor,
             parent_node: TreeNode,
             child_fragments: list[Chain],
+            attempt: int = 1,
         ) -> None:
             nonlocal next_tree_index
             parent_node.children = [None] * len(child_fragments)
@@ -381,7 +383,13 @@ class MSMEP:
                     child_chain,
                     child_index,
                 )
-                pending[future] = (parent_node, child_position, child_index, child_chain)
+                pending[future] = (
+                    parent_node,
+                    child_position,
+                    child_index,
+                    child_chain,
+                    int(attempt),
+                )
 
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=bounded_workers
@@ -393,33 +401,42 @@ class MSMEP:
                     return_when=concurrent.futures.FIRST_COMPLETED,
                 )
                 for future in done:
-                    parent_node, child_position, child_index, child_chain = pending.pop(
+                    (
+                        parent_node,
+                        child_position,
+                        child_index,
+                        child_chain,
+                        attempt,
+                    ) = pending.pop(
                         future
                     )
                     try:
                         child_history, child_children = future.result()
                     except Exception as worker_exc:
                         worker_trace = traceback.format_exc().strip()
-                        try:
-                            # Recover the failed branch in-process using a fresh
-                            # isolated RunInputs clone.
-                            child_history, child_children = _parallel_recursive_step_worker(
+                        if attempt < max_worker_attempts:
+                            retry_attempt = attempt + 1
+                            retry_future = executor.submit(
+                                _parallel_recursive_step_worker,
                                 self.inputs,
                                 child_chain,
                                 child_index,
                             )
-                        except Exception as retry_exc:
-                            retry_trace = traceback.format_exc().strip()
-                            branch_failures.append(
-                                f"branch-{child_index}: worker failed ({type(worker_exc).__name__}: {worker_exc}); "
-                                f"serial retry failed ({type(retry_exc).__name__}: {retry_exc})\n"
-                                f"worker traceback:\n{worker_trace}\n"
-                                f"retry traceback:\n{retry_trace}"
+                            pending[retry_future] = (
+                                parent_node,
+                                child_position,
+                                child_index,
+                                child_chain,
+                                retry_attempt,
                             )
-                            child_history = _empty_leaf(
-                                child_index, status="worker_failure"
-                            )
-                            child_children = []
+                            continue
+                        branch_failures.append(
+                            f"branch-{child_index}: worker failed after {attempt} attempt(s) "
+                            f"({type(worker_exc).__name__}: {worker_exc})\n"
+                            f"worker traceback:\n{worker_trace}"
+                        )
+                        child_history = _empty_leaf(child_index, status="worker_failure")
+                        child_children = []
                     parent_node.children[child_position] = child_history
                     progress_printer.mark_monitor_inactive(f"branch-{child_index}")
                     if not child_children:
