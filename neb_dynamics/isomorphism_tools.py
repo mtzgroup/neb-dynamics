@@ -1,3 +1,6 @@
+import threading
+from contextlib import nullcontext
+
 import networkx as nx
 from timeout_timer import timeout, TimeoutInterrupt
 
@@ -51,12 +54,28 @@ class SubGraphMatcher:
         edge_equiv = bool(e1["bond_order"] and e2["bond_order"])
         return edge_equiv
 
+    def _timeout_context(self):
+        """
+        SIGALRM-based timeout handling only works on the main thread.
+        In worker threads (parallel autosplitting), run without this timeout
+        guard to avoid `ValueError: signal only works in main thread`.
+        """
+        try:
+            timeout_seconds = float(self.timeout_seconds)
+        except Exception:
+            timeout_seconds = 0.0
+        if timeout_seconds <= 0:
+            return nullcontext()
+        if threading.current_thread() is not threading.main_thread():
+            return nullcontext()
+        return timeout(timeout_seconds, exception=TimeoutIsomorphism)
+
     def is_isomorphic(self, g):
         """
         returns a boolean to see if it's isomorphic.
         """
         try:
-            with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
+            with self._timeout_context():
                 GM = self.GM(
                     self.mol,
                     g,
@@ -76,7 +95,7 @@ class SubGraphMatcher:
         returns a boolean to see if it's isomorphic in connectivity
         """
         try:
-            with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
+            with self._timeout_context():
                 GM = self.GM(
                     self.mol,
                     g,
@@ -98,7 +117,7 @@ class SubGraphMatcher:
         The keys of each dictionary are nodes in self.mol, while values are nodes in g.
         """
         try:
-            with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
+            with self._timeout_context():
                 GM = self.GM(
                     self.mol,
                     g,
@@ -118,7 +137,7 @@ class SubGraphMatcher:
         Returns a boolean if self is subgraph isomorphic of g
         """
         try:
-            with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
+            with self._timeout_context():
                 GM = self.GM(
                     self.mol,
                     g,
@@ -139,7 +158,7 @@ class SubGraphMatcher:
         The keys of each dictionary are nodes in self.mol, while values are nodes in g.
         """
         try:
-            with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
+            with self._timeout_context():
                 GM = self.GM(
                     self.mol,
                     g,
@@ -160,7 +179,7 @@ class SubGraphMatcher:
         The keys of each dictionary are nodes in self.mol, while values are nodes in g.
         """
         try:
-            with timeout(self.timeout_seconds, exception=TimeoutIsomorphism):
+            with self._timeout_context():
                 GM = self.GM(
                     self.mol,
                     g,
