@@ -110,3 +110,14 @@ def test_monitor_active_state_toggles_without_dropping_payload_state():
     payload = printer._monitors_payload()
     assert "branch-7" in payload
     assert payload["branch-7"]["active"] is False
+
+
+def test_active_ascii_for_live_is_dense_two_line_summary():
+    printer = progress.ProgressPrinter(use_rich=False)
+    state = {"chain_plot_payload": {"y": [0.0, 1.5, -0.5, 2.0, 1.0]}}
+
+    out = printer._active_ascii_for_live(state)
+
+    lines = out.splitlines()
+    assert len(lines) == 2
+    assert lines[0].startswith("E[")

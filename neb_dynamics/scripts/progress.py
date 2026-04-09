@@ -115,6 +115,7 @@ class ProgressPrinter:
         self._monitor_column_width = 44
         self._compact_plot_width = 36
         self._compact_plot_height = 6
+        self._active_plot_width = 40
         self._path_monitor_id = "path-so-far"
         self._path_monitor_label = "Path So Far"
         try:
@@ -175,6 +176,48 @@ class ProgressPrinter:
         kept = lines[:max_lines]
         kept.append("... (compact view)")
         return "\n".join(kept)
+
+    def _active_ascii_for_live(self, state: dict) -> str:
+        payload = state.get("chain_plot_payload") or {}
+        raw_vals = payload.get("y") or []
+        values: list[float] = []
+        for v in raw_vals:
+            try:
+                fv = float(v)
+            except Exception:
+                continue
+            if math.isfinite(fv):
+                values.append(fv)
+
+        if len(values) < 2:
+            ascii_plot = str(state.get("ascii_plot") or "").strip()
+            if not ascii_plot:
+                return "(waiting for first chain update)"
+            first_line = ascii_plot.splitlines()[0].strip()
+            return first_line if first_line else "(waiting for first chain update)"
+
+        chars = " .:-=+*#%@"
+        ymin = min(values)
+        ymax = max(values)
+        span = ymax - ymin
+        if span <= 1e-12:
+            spark = "-" * self._active_plot_width
+        else:
+            n = len(values)
+            spark_chars: list[str] = []
+            for i in range(self._active_plot_width):
+                pos = i * (n - 1) / max(1, self._active_plot_width - 1)
+                lo = int(math.floor(pos))
+                hi = min(n - 1, lo + 1)
+                t = pos - lo
+                y = values[lo] * (1.0 - t) + values[hi] * t
+                level = int(round((y - ymin) * (len(chars) - 1) / span))
+                level = max(0, min(len(chars) - 1, level))
+                spark_chars.append(chars[level])
+            spark = "".join(spark_chars)
+
+        latest = values[-1]
+        return f"E[{ymin:7.2f},{ymax:7.2f}] now={latest:7.2f}\n{spark}"
 
     def _visible_monitor_ids(
         self, monitor_ids: list[str], now: float | None = None
@@ -356,7 +399,7 @@ class ProgressPrinter:
             caption = str(state.get("status_message") or state.get("caption") or "").strip()
             label = self._format_monitor_label(monitor_id=monitor_id, caption=caption)
             if compact_mode:
-                chain_ascii = self._compact_ascii_for_live(state)
+                chain_ascii = self._active_ascii_for_live(state)
             else:
                 chain_ascii = state.get("ascii_plot") or "(waiting for first chain update)"
             table.add_row(label, str(chain_ascii))
