@@ -71,6 +71,7 @@ class IRCResults:
     found_reactant: Node
     found_product: Node
     number_grad_calls: int
+    optimization_succeeded: bool = True
 
 
 def _print_new_structure(node: Node, message: str = "new structure found!") -> None:
@@ -317,7 +318,21 @@ def check_if_elem_step(inp_chain: Chain, engine: Engine, verbose: bool = True) -
     else:
         minimizing_gives_endpoints = False
 
-    elem_step = True if minimizing_gives_endpoints else False
+    pseudo_irc_failed = not bool(
+        getattr(pseu_irc_results, "optimization_succeeded", True)
+    )
+    if pseudo_irc_failed:
+        if verbose:
+            if _rich_available:
+                _console.print(Panel.fit(
+                    "[bold yellow]pseudo-IRC optimization failed; forcing maxima split fallback[/bold yellow]",
+                    border_style="yellow",
+                ))
+            else:
+                print("pseudo-IRC optimization failed; forcing maxima split fallback")
+        elem_step = False
+    else:
+        elem_step = True if minimizing_gives_endpoints else False
 
     if new_structures:
         if not verbose:
@@ -744,7 +759,6 @@ def pseudo_irc(chain: Chain, engine: Engine):
     else:
         chain_for_opt = chain
     try:
-
         candidate_r = chain_for_opt[arg_max - 1]
         candidate_p = chain_for_opt[arg_max + 1]
 
@@ -761,11 +775,19 @@ def pseudo_irc(chain: Chain, engine: Engine):
 
         print(traceback.format_exc())
         print(
-            f"Error in geometry optimization: {e}. Pretending this is an elem step.")
+            f"Error in geometry optimization: {e}. Falling back to maxima split candidates.")
+        candidate_r = chain_for_opt[max(arg_max - 1, 0)]
+        candidate_p = chain_for_opt[min(arg_max + 1, len(chain_for_opt) - 1)]
         return IRCResults(
-            found_reactant=chain[0],
-            found_product=chain[len(chain) - 1],
+            found_reactant=candidate_r,
+            found_product=candidate_p,
             number_grad_calls=n_grad_calls,
+            optimization_succeeded=False,
         )
 
-    return IRCResults(found_reactant=r, found_product=p, number_grad_calls=n_grad_calls)
+    return IRCResults(
+        found_reactant=r,
+        found_product=p,
+        number_grad_calls=n_grad_calls,
+        optimization_succeeded=True,
+    )

@@ -50,3 +50,52 @@ def test_check_if_elem_step_skips_pseudo_irc_for_chemcloud(monkeypatch):
     result = check_if_elem_step(chain, engine=engine, verbose=False)
 
     assert result.is_elem_step is True
+
+
+def test_check_if_elem_step_forces_maxima_split_when_pseudo_irc_optimization_fails(
+    monkeypatch,
+):
+    chain = Chain.model_validate(
+        {
+            "nodes": [
+                StructureNode(structure=_structure_at_x(0.0)),
+                StructureNode(structure=_structure_at_x(0.5)),
+                StructureNode(structure=_structure_at_x(1.0)),
+            ],
+            "parameters": ChainInputs(),
+        }
+    )
+    for index, node in enumerate(chain):
+        node._cached_energy = float(index)
+
+    monkeypatch.setattr(
+        "neb_dynamics.elementarystep._chain_is_concave",
+        lambda chain, engine, verbose=True: SimpleNamespace(
+            is_not_concave=False,
+            is_concave=True,
+            minimization_results=[],
+            number_grad_calls=0,
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.elementarystep.is_approx_elem_step",
+        lambda chain, engine, slope_thresh=0.1, verbose=True: (False, 0),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.elementarystep.pseudo_irc",
+        lambda chain, engine: SimpleNamespace(
+            found_reactant=chain[0],
+            found_product=chain[-1],
+            number_grad_calls=0,
+            optimization_succeeded=False,
+        ),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.elementarystep.is_identical",
+        lambda a, b, **kwargs: np.allclose(a.coords, b.coords),
+    )
+
+    result = check_if_elem_step(chain, engine=SimpleNamespace(), verbose=False)
+
+    assert result.is_elem_step is False
+    assert result.splitting_criterion == "maxima"

@@ -33,3 +33,12 @@ def test_ascii_profile_uses_smiles_for_graph_nodes(monkeypatch):
 
     assert "start SMILES: C" in out
     assert "end SMILES:   C" in out
+
+
+def test_ascii_profile_tolerates_non_finite_energies():
+    chain = _Chain(has_molecular_graph=False)
+    chain.energies_kcalmol = [float("nan"), 1.0]
+
+    out = progress.ascii_profile_for_chain(chain)
+
+    assert "node index" in out

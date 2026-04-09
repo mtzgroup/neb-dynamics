@@ -1,6 +1,7 @@
 """Progress printing utilities for NEB Dynamics."""
 
 import json
+import math
 import os
 import sys
 import time
@@ -624,8 +625,24 @@ def _build_ascii_energy_profile(energies, labels, width: int = 60, height: int =
     if len(energies) != len(labels):
         raise ValueError("labels must be same length as energies")
 
-    min_e = float(min(energies))
-    max_e = float(max(energies))
+    numeric_energies: list[float | None] = []
+    finite_energies: list[float] = []
+    for value in energies:
+        try:
+            numeric = float(value)
+        except Exception:
+            numeric = float("nan")
+        if math.isfinite(numeric):
+            numeric_energies.append(numeric)
+            finite_energies.append(numeric)
+        else:
+            numeric_energies.append(None)
+
+    if not finite_energies:
+        return "No finite energies to plot."
+
+    min_e = float(min(finite_energies))
+    max_e = float(max(finite_energies))
     if max_e == min_e:
         max_e = min_e + 1e-6
 
@@ -640,11 +657,13 @@ def _build_ascii_energy_profile(energies, labels, width: int = 60, height: int =
     grid = [[" " for _ in range(width)] for _ in range(height)]
 
     xs = [_xpos(i) for i in range(len(energies))]
-    ys = [_ypos(e) for e in energies]
+    ys = [_ypos(e) if e is not None else None for e in numeric_energies]
 
     for i in range(len(energies) - 1):
         x0, y0 = xs[i], ys[i]
         x1, y1 = xs[i + 1], ys[i + 1]
+        if y0 is None or y1 is None:
+            continue
         if x0 == x1:
             continue
         step = 1 if x1 > x0 else -1
@@ -656,6 +675,8 @@ def _build_ascii_energy_profile(energies, labels, width: int = 60, height: int =
                 grid[row][x] = "-"
 
     for x, y in zip(xs, ys):
+        if y is None:
+            continue
         row = height - 1 - y
         if 0 <= row < height and 0 <= x < width:
             grid[row][x] = "*"

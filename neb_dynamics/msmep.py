@@ -755,25 +755,48 @@ class MSMEP:
             List[Chain]: list of chains to be minimized
         """
         r, p = minimization_results
+        segment_pairs = [
+            (chain[0], r),
+            (r, p),
+            (p, chain[len(chain) - 1]),
+        ]
+
+        def _pair_key(a: Node, b: Node):
+            a_coords = np.asarray(a.coords).flatten()
+            b_coords = np.asarray(b.coords).flatten()
+            return (
+                tuple(np.round(a_coords, 8).tolist()),
+                tuple(np.round(b_coords, 8).tolist()),
+            )
+
         chains_list = []
+        seen_pairs = set()
+        for start_node, end_node in segment_pairs:
+            try:
+                same_endpoints = np.allclose(
+                    np.asarray(start_node.coords),
+                    np.asarray(end_node.coords),
+                    atol=1e-8,
+                    rtol=0.0,
+                )
+            except Exception:
+                same_endpoints = False
+            if same_endpoints:
+                continue
 
-        # add the input_R->R
-        nodes = [chain[0], r]
-        chain_frag = chain.copy()
-        chain_frag.nodes = nodes
-        chains_list.append(chain_frag)
+            key = _pair_key(start_node, end_node)
+            if key in seen_pairs:
+                continue
+            seen_pairs.add(key)
 
-        # add the R->P transition
-        nodes = [r, p]
-        chain_frag2 = chain.copy()
-        chain_frag2.nodes = nodes
-        chains_list.append(chain_frag2)
+            chain_frag = chain.copy()
+            chain_frag.nodes = [start_node, end_node]
+            chains_list.append(chain_frag)
 
-        # add the P -> input_P
-        nodes3 = [p, chain[len(chain) - 1]]
-        chain_frag3 = chain.copy()
-        chain_frag3.nodes = nodes3
-        chains_list.append(chain_frag3)
+        if not chains_list:
+            fallback = chain.copy()
+            fallback.nodes = [chain[0], chain[-1]]
+            return [fallback]
 
         return chains_list
 
