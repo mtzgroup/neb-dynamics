@@ -1806,6 +1806,12 @@ def run(
                 f"[yellow]⚠ {len(parallel_failures)} branch worker failure(s) occurred during "
                 "parallel autosplitting; recovered branches were retained where possible.[/yellow]"
             )
+            max_shown = min(3, len(parallel_failures))
+            console.print(
+                f"[yellow]Showing {max_shown} branch failure detail(s):[/yellow]"
+            )
+            for i, failure_text in enumerate(parallel_failures[:max_shown], start=1):
+                console.print(f"[dim][parallel-failure {i}] {failure_text}[/dim]")
         identical_skipped_leaves = sum(
             1
             for leaf in history.depth_first_ordered_nodes

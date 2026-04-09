@@ -973,9 +973,21 @@ def _parallel_recursive_step_worker(
     except Exception:
         pass
 
+    # Isolate each branch worker from shared mutable endpoint/node state.
+    # Split builders can reuse node instances across child chains (e.g. maxima
+    # split middle points), which is safe in serial mode but can race in
+    # parallel mode.
+    try:
+        local_chain = input_chain.copy()
+    except Exception:
+        try:
+            local_chain = copy.deepcopy(input_chain)
+        except Exception:
+            local_chain = input_chain
+
     with progress_monitor(f"branch-{int(tree_node_index)}"):
         runner = MSMEP(inputs=local_inputs)
         return runner._run_recursive_step(
-            input_chain=input_chain,
+            input_chain=local_chain,
             tree_node_index=tree_node_index,
         )

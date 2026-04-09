@@ -94,6 +94,49 @@ def test_parallel_worker_forces_non_verbose_for_live_monitor_stability(monkeypat
     assert captured["step_v"] is False
 
 
+def test_parallel_worker_clones_input_chain_before_recursive_step(monkeypatch):
+    worker_inputs = SimpleNamespace(path_min_inputs=SimpleNamespace(v=True))
+    monkeypatch.setattr(
+        msmep_module,
+        "_clone_run_inputs_for_worker",
+        lambda _run_inputs: worker_inputs,
+    )
+
+    original_chain = Chain.model_validate(
+        {
+            "nodes": [
+                StructureNode(structure=_structure_at_x(0.15)),
+                StructureNode(structure=_structure_at_x(0.85)),
+            ],
+            "parameters": ChainInputs(),
+        }
+    )
+    captured = {}
+
+    class _FakeRunner:
+        def __init__(self, inputs):
+            self.inputs = inputs
+
+        def _run_recursive_step(self, input_chain, tree_node_index):
+            captured["same_chain_obj"] = input_chain is original_chain
+            captured["same_first_node_obj"] = input_chain[0] is original_chain[0]
+            captured["same_last_node_obj"] = input_chain[-1] is original_chain[-1]
+            return ("history", [])
+
+    monkeypatch.setattr(msmep_module, "MSMEP", _FakeRunner)
+
+    out = msmep_module._parallel_recursive_step_worker(
+        run_inputs=SimpleNamespace(),
+        input_chain=original_chain,
+        tree_node_index=2,
+    )
+
+    assert out == ("history", [])
+    assert captured["same_chain_obj"] is False
+    assert captured["same_first_node_obj"] is False
+    assert captured["same_last_node_obj"] is False
+
+
 def test_parallel_scheduler_marks_child_monitors_active_and_inactive(monkeypatch):
     inputs = SimpleNamespace(
         path_min_method="NEB",
