@@ -904,6 +904,8 @@ def run_retropaths_neb_queue(
     pot_fp: Path | None = None,
     stop_on_error: bool = False,
     max_parallel_nebs: int = 1,
+    parallel_recursive: bool = False,
+    parallel_workers: int | None = None,
 ) -> RetropathsNEBQueue:
     queue_fp = Path(queue_fp)
     output_dir = Path(output_dir)
@@ -918,6 +920,10 @@ def run_retropaths_neb_queue(
         queue.write_to_disk(queue_fp)
     run_inputs.path_min_inputs.do_elem_step_checks = True
     max_parallel_nebs = max(1, int(max_parallel_nebs))
+    parallel_recursive = bool(parallel_recursive)
+    resolved_parallel_workers = (
+        None if parallel_workers is None else max(1, int(parallel_workers))
+    )
 
     runnable_items: list[NEBQueueItem] = []
 
@@ -1018,7 +1024,11 @@ def run_retropaths_neb_queue(
     if max_parallel_nebs == 1:
         for item in runnable_items:
             try:
-                result = _run_single_item_worker(*_item_job_payload(item))
+                result = _run_single_item_worker(
+                    *_item_job_payload(item),
+                    parallel_recursive=parallel_recursive,
+                    parallel_workers=resolved_parallel_workers,
+                )
             except Exception as exc:
                 _mark_failed(item, exc)
                 if stop_on_error:
@@ -1033,7 +1043,12 @@ def run_retropaths_neb_queue(
         mp_context=ctx,
     ) as executor:
         future_to_item = {
-            executor.submit(_run_single_item_worker, *_item_job_payload(item)): item
+            executor.submit(
+                _run_single_item_worker,
+                *_item_job_payload(item),
+                parallel_recursive=parallel_recursive,
+                parallel_workers=resolved_parallel_workers,
+            ): item
             for item in runnable_items
         }
         for future in concurrent.futures.as_completed(future_to_item):

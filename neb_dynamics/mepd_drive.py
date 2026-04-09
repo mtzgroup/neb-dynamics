@@ -41,6 +41,7 @@ from neb_dynamics.retropaths_queue import (
     RetropathsNEBQueue,
     build_retropaths_neb_queue,
     ensure_queue_item_for_edge,
+    run_retropaths_neb_queue,
 )
 from neb_dynamics.retropaths_compat import structure_node_from_graph_like_molecule
 from neb_dynamics.retropaths_workflow import (
@@ -3006,7 +3007,10 @@ def _run_unattempted_nebs(
     attempted_keys = set(str(key) for key in queue.attempted_pairs.keys())
     pending_items: list[NEBQueueItem] = []
     seen_pairs: set[tuple[int, int]] = set()
-    for item in sorted(queue.items, key=lambda candidate: (int(candidate.source_node), int(candidate.target_node))):
+    for item in sorted(
+        queue.items,
+        key=lambda candidate: (int(candidate.source_node), int(candidate.target_node)),
+    ):
         if str(item.status) != "pending":
             continue
         attempt_key = str(item.attempt_key or "").strip()
@@ -3018,8 +3022,6 @@ def _run_unattempted_nebs(
         seen_pairs.add(pair_key)
         pending_items.append(item)
 
-    attempts = 0
-    failures = 0
     if not pending_items:
         _write_hawaii_progress(
             workspace,
@@ -3034,31 +3036,48 @@ def _run_unattempted_nebs(
             control_mode=_read_hawaii_control_mode(control_fp),
             growing_nodes=[],
         )
-        return attempts, failures
+        return 0, 0
 
-    for index, item in enumerate(pending_items, start=1):
-        _raise_if_hawaii_stop_now(control_fp)
-        attempts += 1
-        source_node = int(item.source_node)
-        target_node = int(item.target_node)
-        neb_log_fp = str(
-            (
-                workspace.directory
-                / f"drive_hawaii_neb_{source_node}_{target_node}.log"
-            ).resolve()
+    max_parallel_nebs = max(1, int(getattr(workspace, "max_parallel_nebs", 1) or 1))
+    parallel_autosplit = bool(getattr(workspace, "parallel_autosplit_nebs", False))
+    parallel_autosplit_workers = max(
+        1, int(getattr(workspace, "parallel_autosplit_workers", 4) or 4)
+    )
+    autosplit_note = (
+        f"parallel autosplitting enabled (branch workers={parallel_autosplit_workers})"
+        if parallel_autosplit
+        else "recursive autosplitting enabled"
+    )
+    _write_hawaii_progress(
+        workspace,
+        network_splits=network_splits,
+        pot=pot,
+        progress_fp=progress_fp,
+        title="Hawaii autonomous exploration",
+        note=(
+            f"Step 2/3: running autosplitting NEB for {len(pending_items)} edge(s) "
+            f"with up to {max_parallel_nebs} concurrent edge worker(s); {autosplit_note}."
+        ),
+        phase="growing",
+        stage="neb",
+        dr=dr,
+        control_mode=_read_hawaii_control_mode(control_fp),
+        growing_nodes=[],
+    )
+
+    try:
+        run_inputs = RunInputs.open(workspace.inputs_fp)
+        run_retropaths_neb_queue(
+            pot=pot,
+            run_inputs=run_inputs,
+            queue_fp=workspace.queue_fp,
+            output_dir=workspace.queue_output_dir,
+            pot_fp=workspace.neb_pot_fp,
+            max_parallel_nebs=max_parallel_nebs,
+            parallel_recursive=parallel_autosplit,
+            parallel_workers=(parallel_autosplit_workers if parallel_autosplit else None),
         )
-        neb_progress_fp = str(
-            (
-                workspace.directory
-                / f"drive_hawaii_neb_{source_node}_{target_node}.progress.json"
-            ).resolve()
-        )
-        neb_chain_fp = str(
-            (
-                workspace.directory
-                / f"drive_hawaii_neb_{source_node}_{target_node}.chain.json"
-            ).resolve()
-        )
+    except Exception as exc:
         _write_hawaii_progress(
             workspace,
             network_splits=network_splits,
@@ -3066,64 +3085,86 @@ def _run_unattempted_nebs(
             progress_fp=progress_fp,
             title="Hawaii autonomous exploration",
             note=(
-                f"Step 2/3: running autosplitting NEB for edge {source_node} -> {target_node} "
-                f"({index}/{len(pending_items)})."
-            ),
-            phase="growing",
-            stage="neb",
-            dr=dr,
-            control_mode=_read_hawaii_control_mode(control_fp),
-            growing_nodes=[source_node, target_node],
-            neb_source_node=source_node,
-            neb_target_node=target_node,
-            neb_progress_fp=neb_progress_fp,
-            neb_chain_fp=neb_chain_fp,
-        )
-        try:
-            _run_selected_edge_neb_logged(
-                dict(workspace.__dict__),
-                source_node=source_node,
-                target_node=target_node,
-                network_splits=network_splits,
-                log_fp=neb_log_fp,
-                progress_fp=neb_progress_fp,
-                chain_fp=neb_chain_fp,
-            )
-        except Exception as exc:
-            failures += 1
-            _write_hawaii_progress(
-                workspace,
-                network_splits=network_splits,
-                pot=pot,
-                progress_fp=progress_fp,
-                title="Hawaii autonomous exploration",
-                note=(
-                    f"Step 2/3: autosplitting NEB for edge {source_node} -> {target_node} "
-                    f"failed ({index}/{len(pending_items)}): {type(exc).__name__}: {exc}"
-                ),
-                phase="growing",
-                stage="neb",
-                dr=dr,
-                control_mode=_read_hawaii_control_mode(control_fp),
-                growing_nodes=[source_node, target_node],
-            )
-            continue
-        pot = materialize_drive_graph(workspace)
-        _write_hawaii_progress(
-            workspace,
-            network_splits=network_splits,
-            pot=pot,
-            progress_fp=progress_fp,
-            title="Hawaii autonomous exploration",
-            note=(
-                f"Step 2/3: completed autosplitting NEB for edge {source_node} -> {target_node} "
-                f"({index}/{len(pending_items)})."
+                f"Step 2/3: autosplitting NEB batch failed for {len(pending_items)} edge(s): "
+                f"{type(exc).__name__}: {exc}"
             ),
             phase="growing",
             stage="neb",
             dr=dr,
             control_mode=_read_hawaii_control_mode(control_fp),
             growing_nodes=[],
+        )
+        return len(pending_items), len(pending_items)
+
+    pot = materialize_drive_graph(workspace)
+    queue = build_retropaths_neb_queue(
+        pot=pot,
+        queue_fp=workspace.queue_fp,
+        overwrite=False,
+    )
+
+    attempts = 0
+    failures = 0
+    for index, item in enumerate(pending_items, start=1):
+        _raise_if_hawaii_stop_now(control_fp)
+        source_node = int(item.source_node)
+        target_node = int(item.target_node)
+        final_item = queue.find_item(source_node, target_node)
+        final_status = str(getattr(final_item, "status", "") or "").strip().lower()
+        final_error = str(getattr(final_item, "error", "") or "").strip()
+
+        if final_status == "completed":
+            attempts += 1
+            note = (
+                f"Step 2/3: completed autosplitting NEB for edge {source_node} -> {target_node} "
+                f"({index}/{len(pending_items)})."
+            )
+            growing_nodes: list[int] = []
+        elif final_status == "skipped_identical":
+            attempts += 1
+            note = (
+                f"Step 2/3: skipped autosplitting NEB for edge {source_node} -> {target_node} "
+                f"({index}/{len(pending_items)}) because endpoints are identical."
+            )
+            growing_nodes = []
+        elif final_status == "failed":
+            attempts += 1
+            failures += 1
+            failure_text = final_error or "Unknown failure."
+            note = (
+                f"Step 2/3: autosplitting NEB for edge {source_node} -> {target_node} "
+                f"failed ({index}/{len(pending_items)}): {failure_text}"
+            )
+            growing_nodes = [source_node, target_node]
+        elif final_status == "skipped_attempted":
+            note = (
+                f"Step 2/3: skipped autosplitting NEB for edge {source_node} -> {target_node} "
+                f"({index}/{len(pending_items)}) because an equivalent pair is already complete or running."
+            )
+            growing_nodes = []
+        else:
+            note = (
+                f"Step 2/3: autosplitting NEB for edge {source_node} -> {target_node} "
+                f"ended with status `{final_status or 'unknown'}` ({index}/{len(pending_items)})."
+            )
+            growing_nodes = (
+                [source_node, target_node]
+                if final_status in {"running", "pending"}
+                else []
+            )
+
+        _write_hawaii_progress(
+            workspace,
+            network_splits=network_splits,
+            pot=pot,
+            progress_fp=progress_fp,
+            title="Hawaii autonomous exploration",
+            note=note,
+            phase="growing",
+            stage="neb",
+            dr=dr,
+            control_mode=_read_hawaii_control_mode(control_fp),
+            growing_nodes=growing_nodes,
         )
     return attempts, failures
 

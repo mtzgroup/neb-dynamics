@@ -36,7 +36,11 @@ from neb_dynamics.mepd_drive import (
 )
 from neb_dynamics.scripts import main_cli
 from neb_dynamics.scripts.progress import ProgressPrinter, progress_monitor
-from neb_dynamics.retropaths_queue import _run_single_item_worker
+from neb_dynamics.retropaths_queue import (
+    _run_single_item_worker,
+    NEBQueueItem,
+    RetropathsNEBQueue,
+)
 from neb_dynamics.retropaths_workflow import RetropathsWorkspace, apply_reactions_to_node, run_nanoreactor_for_node
 from neb_dynamics.molecule import Molecule
 from neb_dynamics.pot import Pot
@@ -5003,15 +5007,24 @@ def test_hawaii_neb_stage_writes_progress_after_each_completed_neb(monkeypatch, 
     pot.graph.add_nodes_from([0, 1, 2])
     pot.graph.add_edge(0, 1)
     pot.graph.add_edge(1, 2)
-    queue = SimpleNamespace(
+    queue = RetropathsNEBQueue(
         attempted_pairs={},
         items=[
-            SimpleNamespace(source_node=0, target_node=1, status="pending", attempt_key="0-1"),
-            SimpleNamespace(source_node=1, target_node=2, status="pending", attempt_key="1-2"),
+            NEBQueueItem(job_id="0->1", source_node=0, target_node=1, status="pending", attempt_key="0-1"),
+            NEBQueueItem(job_id="1->2", source_node=1, target_node=2, status="pending", attempt_key="1-2"),
         ],
     )
 
     progress_notes: list[str] = []
+    captured: dict[str, object] = {}
+
+    def _fake_run_queue(**kwargs):
+        captured["max_parallel_nebs"] = kwargs.get("max_parallel_nebs")
+        captured["parallel_recursive"] = kwargs.get("parallel_recursive")
+        captured["parallel_workers"] = kwargs.get("parallel_workers")
+        for candidate in queue.items:
+            candidate.status = "completed"
+        return queue
 
     monkeypatch.setattr("neb_dynamics.mepd_drive.materialize_drive_graph", lambda _workspace: pot)
     monkeypatch.setattr(
@@ -5019,8 +5032,12 @@ def test_hawaii_neb_stage_writes_progress_after_each_completed_neb(monkeypatch, 
         lambda **kwargs: queue,
     )
     monkeypatch.setattr(
-        "neb_dynamics.mepd_drive._run_selected_edge_neb_logged",
-        lambda *args, **kwargs: {"message": "ok"},
+        "neb_dynamics.mepd_drive.RunInputs.open",
+        lambda _fp: SimpleNamespace(path_min_inputs=SimpleNamespace(do_elem_step_checks=False)),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.run_retropaths_neb_queue",
+        _fake_run_queue,
     )
     monkeypatch.setattr(
         "neb_dynamics.mepd_drive._write_hawaii_progress",
@@ -5041,6 +5058,9 @@ def test_hawaii_neb_stage_writes_progress_after_each_completed_neb(monkeypatch, 
     assert len(completed) == 2
     assert "0 -> 1" in completed[0]
     assert "1 -> 2" in completed[1]
+    assert captured["max_parallel_nebs"] == 1
+    assert captured["parallel_recursive"] is False
+    assert captured["parallel_workers"] is None
 
 
 def test_hawaii_neb_stage_deduplicates_reverse_direction_pairs(monkeypatch, tmp_path):
@@ -5058,19 +5078,25 @@ def test_hawaii_neb_stage_deduplicates_reverse_direction_pairs(monkeypatch, tmp_
     pot.graph.add_nodes_from([0, 1])
     pot.graph.add_edge(0, 1)
     pot.graph.add_edge(1, 0)
-    queue = SimpleNamespace(
+    queue = RetropathsNEBQueue(
         attempted_pairs={},
         items=[
-            SimpleNamespace(source_node=1, target_node=0, status="pending", attempt_key="1-0"),
-            SimpleNamespace(source_node=0, target_node=1, status="pending", attempt_key="0-1"),
+            NEBQueueItem(job_id="1->0", source_node=1, target_node=0, status="pending", attempt_key="1-0"),
+            NEBQueueItem(job_id="0->1", source_node=0, target_node=1, status="pending", attempt_key="0-1"),
         ],
     )
 
-    calls: list[tuple[int, int]] = []
+    progress_notes: list[str] = []
+    run_calls: list[dict[str, object]] = []
 
-    def _fake_run_selected_edge_neb_logged(*_args, **kwargs):
-        calls.append((int(kwargs["source_node"]), int(kwargs["target_node"])))
-        return {"message": "ok"}
+    def _fake_run_queue(**kwargs):
+        run_calls.append(dict(kwargs))
+        for candidate in queue.items:
+            if int(candidate.source_node) == 0 and int(candidate.target_node) == 1:
+                candidate.status = "completed"
+            else:
+                candidate.status = "skipped_attempted"
+        return queue
 
     monkeypatch.setattr("neb_dynamics.mepd_drive.materialize_drive_graph", lambda _workspace: pot)
     monkeypatch.setattr(
@@ -5078,8 +5104,78 @@ def test_hawaii_neb_stage_deduplicates_reverse_direction_pairs(monkeypatch, tmp_
         lambda **kwargs: queue,
     )
     monkeypatch.setattr(
-        "neb_dynamics.mepd_drive._run_selected_edge_neb_logged",
-        _fake_run_selected_edge_neb_logged,
+        "neb_dynamics.mepd_drive.RunInputs.open",
+        lambda _fp: SimpleNamespace(path_min_inputs=SimpleNamespace(do_elem_step_checks=False)),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.run_retropaths_neb_queue",
+        _fake_run_queue,
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_hawaii_progress",
+        lambda *args, **kwargs: progress_notes.append(str(kwargs.get("note") or "")),
+    )
+
+    attempts, failures = _run_unattempted_nebs(
+        workspace,
+        network_splits=True,
+        progress_fp=str(workspace_dir / "drive_hawaii.progress.json"),
+        control_fp=None,
+        dr=1.0,
+    )
+
+    assert attempts == 1
+    assert failures == 0
+    assert len(run_calls) == 1
+    completed = [note for note in progress_notes if "completed autosplitting NEB" in note]
+    assert len(completed) == 1
+    assert "0 -> 1" in completed[0]
+
+
+def test_hawaii_neb_stage_forwards_edge_and_autosplit_parallel_limits(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C=C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+        max_parallel_nebs=5,
+        parallel_autosplit_nebs=True,
+        parallel_autosplit_workers=7,
+    )
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_nodes_from([0, 1])
+    pot.graph.add_edge(0, 1)
+    queue = RetropathsNEBQueue(
+        attempted_pairs={},
+        items=[
+            NEBQueueItem(job_id="0->1", source_node=0, target_node=1, status="pending", attempt_key="0-1"),
+        ],
+    )
+    captured: dict[str, object] = {}
+
+    def _fake_run_queue(**kwargs):
+        captured["max_parallel_nebs"] = kwargs.get("max_parallel_nebs")
+        captured["parallel_recursive"] = kwargs.get("parallel_recursive")
+        captured["parallel_workers"] = kwargs.get("parallel_workers")
+        queue.items[0].status = "completed"
+        return queue
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive.materialize_drive_graph", lambda _workspace: pot)
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.build_retropaths_neb_queue",
+        lambda **kwargs: queue,
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.RunInputs.open",
+        lambda _fp: SimpleNamespace(path_min_inputs=SimpleNamespace(do_elem_step_checks=False)),
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive.run_retropaths_neb_queue",
+        _fake_run_queue,
     )
     monkeypatch.setattr("neb_dynamics.mepd_drive._write_hawaii_progress", lambda *args, **kwargs: None)
 
@@ -5093,7 +5189,9 @@ def test_hawaii_neb_stage_deduplicates_reverse_direction_pairs(monkeypatch, tmp_
 
     assert attempts == 1
     assert failures == 0
-    assert calls == [(0, 1)]
+    assert captured["max_parallel_nebs"] == 5
+    assert captured["parallel_recursive"] is True
+    assert captured["parallel_workers"] == 7
 
 
 def test_write_hawaii_progress_uses_passed_pot_without_remerge(monkeypatch, tmp_path):

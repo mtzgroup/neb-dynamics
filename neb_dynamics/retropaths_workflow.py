@@ -4864,6 +4864,10 @@ def run_netgen_smiles_workflow(
         output_dir=workspace.queue_output_dir,
         pot_fp=workspace.neb_pot_fp,
         max_parallel_nebs=workspace.max_parallel_nebs,
+        parallel_recursive=bool(getattr(workspace, "parallel_autosplit_nebs", False)),
+        parallel_workers=max(
+            1, int(getattr(workspace, "parallel_autosplit_workers", 4) or 4)
+        ),
     )
     progress("Reconstructing partial NEB pot from completed queue results.")
     annotated = load_partial_annotated_pot(workspace)

@@ -496,7 +496,15 @@ def test_run_retropaths_neb_queue_supports_parallel_workers(
     state = {"active": 0, "max_active": 0}
     lock = threading.Lock()
 
-    def _fake_worker(pair, run_inputs, result_dir, output_chain_xyz):
+    def _fake_worker(
+        pair,
+        run_inputs,
+        result_dir,
+        output_chain_xyz,
+        *,
+        parallel_recursive=False,
+        parallel_workers=None,
+    ):
         with lock:
             state["active"] += 1
             state["max_active"] = max(state["max_active"], state["active"])
