@@ -564,12 +564,14 @@ def _build_neb_live_payload(
     history = list((live_chain or {}).get("history") or [])
     if len(history) > 24:
         history = history[-24:]
+    monitors = dict((live_chain or {}).get("monitors") or {})
     return {
         "type": "neb",
         "title": active_action.get("label") or "Running autosplitting NEB",
         "plot": live_chain.get("plot") if live_chain else None,
         "history": history,
         "ascii_plot": live_chain.get("ascii_plot") if live_chain else "",
+        "monitors": monitors,
         "console_text": _read_log_tail(active_action.get("progress_fp"), max_chars=6000),
         "reactant_structure": reactant_structure,
         "product_structure": product_structure,
@@ -2303,6 +2305,8 @@ def _initialize_workspace_job(
     max_nodes: int,
     max_depth: int,
     max_parallel_nebs: int,
+    parallel_autosplit_nebs: bool = False,
+    parallel_autosplit_workers: int = 4,
     seed_only: bool = False,
     network_splits: bool = True,
     progress_fp: str | None = None,
@@ -2327,6 +2331,8 @@ def _initialize_workspace_job(
         max_nodes=max_nodes,
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
+        parallel_autosplit_nebs=bool(parallel_autosplit_nebs),
+        parallel_autosplit_workers=max(1, int(parallel_autosplit_workers)),
     )
     init_error = ""
     if seed_only:
@@ -2414,6 +2420,8 @@ def _workspace_snapshot_payload(
             "max_nodes": workspace.max_nodes,
             "max_depth": workspace.max_depth,
             "max_parallel_nebs": workspace.max_parallel_nebs,
+            "parallel_autosplit_nebs": bool(getattr(workspace, "parallel_autosplit_nebs", False)),
+            "parallel_autosplit_workers": int(getattr(workspace, "parallel_autosplit_workers", 4) or 4),
         },
         "reactant": reactant if reactant is not None else {"smiles": workspace.root_smiles},
         "product": product,
@@ -2688,6 +2696,10 @@ def _run_selected_edge_neb(
         return {"message": f"Skipped autosplitting NEB for edge {source_node} -> {target_node}: identical endpoints."}
     result_dir = workspace.queue_output_dir / f"pair_{item.source_node}_{item.target_node}_msmep"
     output_chain_fp = workspace.queue_output_dir / f"pair_{item.source_node}_{item.target_node}.xyz"
+    parallel_autosplit = bool(getattr(workspace, "parallel_autosplit_nebs", False))
+    parallel_autosplit_workers = max(
+        1, int(getattr(workspace, "parallel_autosplit_workers", 4) or 4)
+    )
 
     try:
         result = _run_single_item_worker(
@@ -2695,6 +2707,8 @@ def _run_selected_edge_neb(
             run_inputs,
             str(result_dir),
             str(output_chain_fp),
+            parallel_recursive=parallel_autosplit,
+            parallel_workers=parallel_autosplit_workers,
         )
     except Exception as exc:
         item.status = "failed"
@@ -3963,6 +3977,8 @@ def _materialize_workspace_from_network_splits(path: Path) -> RetropathsWorkspac
         max_nodes=40,
         max_depth=4,
         max_parallel_nebs=1,
+        parallel_autosplit_nebs=False,
+        parallel_autosplit_workers=4,
     )
     workspace.write()
 
@@ -6512,6 +6528,40 @@ def _drive_html() -> str:
       `;
     }
 
+    function renderNebAsciiMonitors(activity) {
+      const monitors = activity?.monitors && typeof activity.monitors === "object"
+        ? activity.monitors
+        : {};
+      const monitorEntries = Object.entries(monitors);
+      if (!monitorEntries.length) {
+        if (activity?.ascii_plot) {
+          return `
+            <div class="muted" style="margin-top:10px;">Live chain monitor</div>
+            <pre>${escapeHtml(activity.ascii_plot)}</pre>
+          `;
+        }
+        return "";
+      }
+      const rows = monitorEntries
+        .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+        .map(([monitorId, monitorPayload]) => {
+          const payload = monitorPayload || {};
+          const caption = String(payload.caption || payload.status_message || "").trim();
+          const ascii = String(payload.ascii_plot || "").trim();
+          return `
+            <div class="job-row running">
+              <div><strong>${escapeHtml(monitorId)}</strong>${caption ? ` <span class="badge">${escapeHtml(caption)}</span>` : ""}</div>
+              ${ascii ? `<pre style="margin-top:8px;">${escapeHtml(ascii)}</pre>` : `<div class="muted" style="margin-top:8px;">Waiting for first chain update...</div>`}
+            </div>
+          `;
+        })
+        .join("");
+      return `
+        <div class="muted" style="margin-top:10px;">Parallel branch monitors</div>
+        <div class="job-list">${rows}</div>
+      `;
+    }
+
     function drawGrowthGraphSvg(activity) {
       const payload = activity?.network || {};
       const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
@@ -6661,6 +6711,7 @@ def _drive_html() -> str:
           </div>
         </div>
         <div class="muted" style="margin-top:10px;">${escapeHtml(activity.note || "")}</div>
+        ${renderNebAsciiMonitors(activity)}
         ${activity.console_text ? `<pre>${escapeHtml(activity.console_text)}</pre>` : ""}
       `;
     }
@@ -8362,6 +8413,8 @@ class MepdDriveServer(ThreadingHTTPServer):
         max_nodes: int,
         max_depth: int,
         max_parallel_nebs: int,
+        parallel_autosplit_nebs: bool = False,
+        parallel_autosplit_workers: int = 4,
         network_splits: bool = True,
         hawaii_discovery_tools: Any = None,
         initial_state: dict[str, Any] | None = None,
@@ -8376,6 +8429,8 @@ class MepdDriveServer(ThreadingHTTPServer):
         self.max_nodes = max_nodes
         self.max_depth = max_depth
         self.max_parallel_nebs = max_parallel_nebs
+        self.parallel_autosplit_nebs = bool(parallel_autosplit_nebs)
+        self.parallel_autosplit_workers = max(1, int(parallel_autosplit_workers))
         self.network_splits = bool(network_splits)
         self.hawaii_discovery_tools = _normalize_hawaii_discovery_tools(
             hawaii_discovery_tools,
@@ -8734,6 +8789,8 @@ class MepdDriveServer(ThreadingHTTPServer):
             max_nodes=self.max_nodes,
             max_depth=self.max_depth,
             max_parallel_nebs=self.max_parallel_nebs,
+            parallel_autosplit_nebs=self.parallel_autosplit_nebs,
+            parallel_autosplit_workers=self.parallel_autosplit_workers,
             seed_only=seed_only,
             network_splits=getattr(self, "network_splits", True),
             progress_fp=progress_fp,
@@ -9590,6 +9647,8 @@ def launch_mepd_drive(
     max_nodes: int = 40,
     max_depth: int = 4,
     max_parallel_nebs: int = 1,
+    parallel_autosplit_nebs: bool = False,
+    parallel_autosplit_workers: int = 4,
     network_splits: bool = True,
     hawaii: bool = False,
     hawaii_discovery_tools: Any = None,
@@ -9600,6 +9659,8 @@ def launch_mepd_drive(
         hawaii_discovery_tools,
         default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
     )
+    parallel_autosplit_nebs = bool(parallel_autosplit_nebs)
+    parallel_autosplit_workers = max(1, int(parallel_autosplit_workers))
     startup_base_steps = 6 if network_splits else 4
     startup_total_steps = startup_base_steps + 2
 
@@ -9716,6 +9777,8 @@ def launch_mepd_drive(
                 max_nodes=max_nodes,
                 max_depth=max_depth,
                 max_parallel_nebs=max_parallel_nebs,
+                parallel_autosplit_nebs=parallel_autosplit_nebs,
+                parallel_autosplit_workers=parallel_autosplit_workers,
                 seed_only=bool(seed_only),
                 network_splits=network_splits,
                 progress_fp=None,
@@ -9734,6 +9797,8 @@ def launch_mepd_drive(
         max_nodes=max_nodes,
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
+        parallel_autosplit_nebs=parallel_autosplit_nebs,
+        parallel_autosplit_workers=parallel_autosplit_workers,
         network_splits=network_splits,
         hawaii_discovery_tools=list(resolved_hawaii_discovery_tools),
         initial_state=initial_state,

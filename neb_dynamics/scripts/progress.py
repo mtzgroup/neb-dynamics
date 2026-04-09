@@ -4,6 +4,9 @@ import json
 import os
 import sys
 import time
+import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Optional
 
@@ -28,6 +31,26 @@ try:
     from qcinf import structure_to_smiles
 except Exception:
     structure_to_smiles = None
+
+
+_progress_monitor_id: ContextVar[str] = ContextVar(
+    "neb_progress_monitor_id",
+    default="main",
+)
+
+
+def _active_monitor_id() -> str:
+    monitor_id = str(_progress_monitor_id.get() or "").strip()
+    return monitor_id or "main"
+
+
+@contextmanager
+def progress_monitor(monitor_id: str):
+    token = _progress_monitor_id.set(str(monitor_id or "main"))
+    try:
+        yield
+    finally:
+        _progress_monitor_id.reset(token)
 
 
 def _append_progress_log(message: str) -> None:
@@ -79,9 +102,86 @@ class ProgressPrinter:
         self._last_status_message = None
         self._last_chain_plot_payload = None
         self._chain_plot_history = []
+        self._monitor_states: dict[str, dict] = {}
+        self._lock = threading.RLock()
 
         # Throttle updates to avoid too much output
         self._throttle = 0.5  # Only print every 0.5 seconds by default
+
+    def _state_for_monitor(self, monitor_id: str | None = None) -> dict:
+        key = str(monitor_id or _active_monitor_id() or "main")
+        state = self._monitor_states.get(key)
+        if state is None:
+            state = {
+                "ascii_plot": None,
+                "caption": None,
+                "status_message": None,
+                "chain_plot_payload": None,
+                "chain_plot_history": [],
+                "last_print_time": 0.0,
+            }
+            self._monitor_states[key] = state
+        return state
+
+    def _sync_legacy_fields(self, state: dict) -> None:
+        self._last_ascii_plot = state.get("ascii_plot")
+        self._last_caption = state.get("caption")
+        self._last_status_message = state.get("status_message")
+        self._last_chain_plot_payload = state.get("chain_plot_payload")
+        self._chain_plot_history = list(state.get("chain_plot_history") or [])
+
+    def _render_live_monitors(self) -> None:
+        if not self.use_rich:
+            return
+        if self._status_active and self._status is not None:
+            self._status.stop()
+            self._status_active = False
+        table = Table(show_header=True, box=box.SIMPLE)
+        table.add_column("Monitor", style="bold cyan", no_wrap=True)
+        table.add_column("Chain")
+        for monitor_id in sorted(self._monitor_states.keys()):
+            state = self._monitor_states[monitor_id]
+            caption = str(state.get("status_message") or state.get("caption") or "").strip()
+            label = monitor_id if not caption else f"{monitor_id} | {caption}"
+            chain_ascii = state.get("ascii_plot") or "(waiting for first chain update)"
+            table.add_row(label, str(chain_ascii))
+
+        if self._live is None:
+            self._live = Live(
+                table,
+                console=_console,
+                refresh_per_second=4,
+                auto_refresh=False,
+            )
+            self._live.start()
+            self._live.refresh()
+        else:
+            self._live.update(table)
+            self._live.refresh()
+
+    def _monitors_payload(self) -> dict[str, dict]:
+        payload: dict[str, dict] = {}
+        for monitor_id, state in self._monitor_states.items():
+            payload[monitor_id] = {
+                "ascii_plot": state.get("ascii_plot"),
+                "caption": state.get("caption"),
+                "plot": state.get("chain_plot_payload"),
+                "history": list(state.get("chain_plot_history") or []),
+                "status_message": state.get("status_message"),
+            }
+        return payload
+
+    def _write_current_payload(self, monitor_id: str, state: dict) -> None:
+        _write_progress_chain_payload(
+            {
+                "ascii_plot": state.get("ascii_plot"),
+                "caption": state.get("caption"),
+                "plot": state.get("chain_plot_payload"),
+                "history": list(state.get("chain_plot_history") or []),
+                "monitor_id": monitor_id,
+                "monitors": self._monitors_payload(),
+            }
+        )
 
     def start(self, description: str, total: Optional[int] = None):
         """Start a new progress task."""
@@ -127,50 +227,61 @@ class ProgressPrinter:
 
     def start_status(self, message: str):
         """Start a spinner status message."""
-        _append_progress_log(message)
-        if self.use_rich and self._live is not None:
-            self._update_live_caption(message)
-            return
-        if self.use_rich:
-            if self._status is None:
-                self._status = Status(message, console=_console)
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            _append_progress_log(f"[{monitor_id}] {message}")
+            state = self._state_for_monitor(monitor_id)
+            state["status_message"] = message
+            if self.use_rich and (self._live is not None or monitor_id != "main"):
+                self._sync_legacy_fields(state)
+                self._render_live_monitors()
+                return
+            if self.use_rich:
+                if self._status is None:
+                    self._status = Status(message, console=_console)
+                else:
+                    self._status.update(message)
+                if not self._status_active:
+                    self._status.start()
+                    self._status_active = True
             else:
-                self._status.update(message)
-            if not self._status_active:
-                self._status.start()
-                self._status_active = True
-        else:
-            sys.stdout.write(f"{message}\n")
-            sys.stdout.flush()
+                sys.stdout.write(f"[{monitor_id}] {message}\n")
+                sys.stdout.flush()
 
     def update_status(self, message: str):
         """Update the spinner status message."""
-        _append_progress_log(message)
-        if self.use_rich and self._live is not None:
-            self._update_live_caption(message)
-            return
-        if self.use_rich:
-            if self._status is None:
-                _console.print(f"[dim]{message}[/dim]")
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            _append_progress_log(f"[{monitor_id}] {message}")
+            state = self._state_for_monitor(monitor_id)
+            state["status_message"] = message
+            if self.use_rich and (self._live is not None or monitor_id != "main"):
+                self._sync_legacy_fields(state)
+                self._render_live_monitors()
                 return
-            if not self._status_active:
-                self._status.start()
-                self._status_active = True
-            self._status.update(message)
-        elif not self.use_rich:
-            sys.stdout.write(f"{message}\n")
-            sys.stdout.flush()
+            if self.use_rich:
+                if self._status is None:
+                    _console.print(f"[dim]{message}[/dim]")
+                    return
+                if not self._status_active:
+                    self._status.start()
+                    self._status_active = True
+                self._status.update(message)
+            elif not self.use_rich:
+                sys.stdout.write(f"[{monitor_id}] {message}\n")
+                sys.stdout.flush()
 
     def stop_status(self):
         """Stop the spinner status message."""
-        if self.use_rich and self._status and self._status_active:
-            self._status.stop()
-            self._status_active = False
-        if self.use_rich and self._live is not None:
-            # Ensure external rich prints (e.g., new-structure ASCII art)
-            # are not obscured by an active Live renderer.
-            self._live.stop()
-            self._live = None
+        with self._lock:
+            if self.use_rich and self._status and self._status_active:
+                self._status.stop()
+                self._status_active = False
+            if self.use_rich and self._live is not None:
+                # Ensure external rich prints (e.g., new-structure ASCII art)
+                # are not obscured by an active Live renderer.
+                self._live.stop()
+                self._live = None
 
     def print_step(
         self,
@@ -188,236 +299,227 @@ class ProgressPrinter:
 
         This is the main method for displaying optimization progress.
         """
-        current_time = time.time()
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            state = self._state_for_monitor(monitor_id)
+            current_time = time.time()
 
-        # Throttle updates to avoid flooding output
-        if not force_update and (current_time - self._last_print_time) < self._throttle:
-            return
+            # Throttle updates to avoid flooding output
+            last_print = float(state.get("last_print_time") or 0.0)
+            if not force_update and (current_time - last_print) < self._throttle:
+                return
 
-        self._last_print_time = current_time
+            state["last_print_time"] = current_time
+            self._last_print_time = current_time
 
-        if self.use_rich:
-            # Create a rich-formatted status line
-            status_parts = [
-                ("step ", "cyan"),
-                (f"{step}", "bold white"),
-                (" | ", "dim"),
-                ("TS gperp: ", "yellow"),
-                (f"{ts_grad:.4f}", "white"),
-                (" | ", "dim"),
-                ("max rms: ", "yellow"),
-                (f"{max_rms_grad:.4f}", "white"),
-                (" | ", "dim"),
-                ("tspring: ", "yellow"),
-                (f"{ts_triplet_gspring:.4f}", "white"),
-            ]
-
-            if nodes_frozen > 0 or timestep > 0:
-                status_parts.extend([
+            if self.use_rich:
+                # Create a rich-formatted status line
+                status_parts = [
+                    (f"[{monitor_id}] ", "magenta"),
+                    ("step ", "cyan"),
+                    (f"{step}", "bold white"),
                     (" | ", "dim"),
-                    ("frozen: ", "magenta"),
-                    (f"{nodes_frozen}", "white"),
-                ])
-
-            if timestep > 0:
-                status_parts.extend([
+                    ("TS gperp: ", "yellow"),
+                    (f"{ts_grad:.4f}", "white"),
                     (" | ", "dim"),
-                    ("dt: ", "magenta"),
-                    (f"{timestep:.3f}", "white"),
-                ])
-
-            if grad_corr:
-                status_parts.extend([
+                    ("max rms: ", "yellow"),
+                    (f"{max_rms_grad:.4f}", "white"),
                     (" | ", "dim"),
-                    (grad_corr, "green"),
-                ])
+                    ("tspring: ", "yellow"),
+                    (f"{ts_triplet_gspring:.4f}", "white"),
+                ]
 
-            # Print on same line using carriage return
-            line = ""
-            for text, style in status_parts:
-                line += f"[{style}]{text}[/{style}]"
+                if nodes_frozen > 0 or timestep > 0:
+                    status_parts.extend([
+                        (" | ", "dim"),
+                        ("frozen: ", "magenta"),
+                        (f"{nodes_frozen}", "white"),
+                    ])
 
-            # Use console.print with end="\n" to overwrite line
-            _console.print(line, end="\n")
-            sys.stdout.flush()
-        else:
-            # Simple text fallback
-            line = f"step {step} | TS gperp: {ts_grad:.4f} | max rms: {max_rms_grad:.4f} | tspring: {ts_triplet_gspring:.4f}"
-            if nodes_frozen > 0:
-                line += f" | frozen: {nodes_frozen}"
-            if timestep > 0:
-                line += f" | dt: {timestep:.3f}"
-            if grad_corr:
-                line += f" | {grad_corr}"
+                if timestep > 0:
+                    status_parts.extend([
+                        (" | ", "dim"),
+                        ("dt: ", "magenta"),
+                        (f"{timestep:.3f}", "white"),
+                    ])
 
-            sys.stdout.write(f"\n{line}{' ' * 20}")
-            sys.stdout.flush()
+                if grad_corr:
+                    status_parts.extend([
+                        (" | ", "dim"),
+                        (grad_corr, "green"),
+                    ])
+
+                line = ""
+                for text, style in status_parts:
+                    line += f"[{style}]{text}[/{style}]"
+                _console.print(line, end="\n")
+                sys.stdout.flush()
+            else:
+                line = (
+                    f"[{monitor_id}] step {step} | TS gperp: {ts_grad:.4f} | "
+                    f"max rms: {max_rms_grad:.4f} | tspring: {ts_triplet_gspring:.4f}"
+                )
+                if nodes_frozen > 0:
+                    line += f" | frozen: {nodes_frozen}"
+                if timestep > 0:
+                    line += f" | dt: {timestep:.3f}"
+                if grad_corr:
+                    line += f" | {grad_corr}"
+
+                sys.stdout.write(f"\n{line}{' ' * 20}")
+                sys.stdout.flush()
 
     def print_convergence(self, message: str = "Converged!"):
         """Print convergence message."""
-        _append_progress_log(message)
-        if self.use_rich and self._live is not None:
-            self._live.stop()
-            self._live = None
-        if self.use_rich:
-            _console.print(f"\n[bold green]✓[/bold green] {message}")
-        else:
-            print(f"\n{message}")
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            _append_progress_log(f"[{monitor_id}] {message}")
+            if self.use_rich and self._live is not None:
+                self._live.stop()
+                self._live = None
+            if self.use_rich:
+                _console.print(f"\n[bold green]✓[/bold green] [{monitor_id}] {message}")
+            else:
+                print(f"\n[{monitor_id}] {message}")
 
     def print_warning(self, message: str):
         """Print a warning message."""
-        _append_progress_log(f"WARNING: {message}")
-        if self.use_rich and self._live is not None:
-            self._live.stop()
-            self._live = None
-        if self.use_rich:
-            _console.print(f"[yellow]⚠ {message}[/yellow]")
-        else:
-            print(f"WARNING: {message}")
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            _append_progress_log(f"[{monitor_id}] WARNING: {message}")
+            if self.use_rich and self._live is not None:
+                self._live.stop()
+                self._live = None
+            if self.use_rich:
+                _console.print(f"[yellow]⚠ [{monitor_id}] {message}[/yellow]")
+            else:
+                print(f"[{monitor_id}] WARNING: {message}")
 
     def print_error(self, message: str):
         """Print an error message."""
-        _append_progress_log(f"ERROR: {message}")
-        if self.use_rich and self._live is not None:
-            self._live.stop()
-            self._live = None
-        if self.use_rich:
-            _console.print(f"[bold red]✗ {message}[/bold red]")
-        else:
-            print(f"ERROR: {message}")
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            _append_progress_log(f"[{monitor_id}] ERROR: {message}")
+            if self.use_rich and self._live is not None:
+                self._live.stop()
+                self._live = None
+            if self.use_rich:
+                _console.print(f"[bold red]✗ [{monitor_id}] {message}[/bold red]")
+            else:
+                print(f"[{monitor_id}] ERROR: {message}")
 
     def print_chain_ascii(self, ascii_plot: str, caption: str, force_update: bool = False):
         """Render an ASCII chain profile as a rich table with a caption."""
-        current_time = time.time()
-        if not force_update and (current_time - self._last_print_time) < self._throttle:
-            return
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            state = self._state_for_monitor(monitor_id)
+            current_time = time.time()
+            last_print = float(state.get("last_print_time") or 0.0)
+            if not force_update and (current_time - last_print) < self._throttle:
+                return
 
-        if caption == self._last_caption and ascii_plot == self._last_ascii_plot:
-            return
+            if caption == state.get("caption") and ascii_plot == state.get("ascii_plot"):
+                return
 
-        self._last_print_time = current_time
-        self._last_ascii_plot = ascii_plot
-        self._last_caption = caption
-        self._last_status_message = None
+            state["last_print_time"] = current_time
+            state["ascii_plot"] = ascii_plot
+            state["caption"] = caption
+            state["status_message"] = None
+            self._last_print_time = current_time
+            self._sync_legacy_fields(state)
 
-        if self.use_rich:
-            if self._status_active:
-                self._status.stop()
-                self._status_active = False
-            table = Table(show_header=False, box=box.SIMPLE, caption=caption)
-            table.add_column("Chain")
-            table.add_row(ascii_plot)
-
-            if self._live is None:
-                self._live = Live(
-                    table,
-                    console=_console,
-                    refresh_per_second=4,
-                    auto_refresh=False,
-                )
-                self._live.start()
-                self._live.refresh()
+            if self.use_rich:
+                self._render_live_monitors()
             else:
-                self._live.update(table)
-                self._live.refresh()
-        else:
-            sys.stdout.write(f"\n{caption}\n{ascii_plot}\n")
-            sys.stdout.flush()
-        _write_progress_chain_payload(
-            {
-                "ascii_plot": self._last_ascii_plot,
-                "caption": self._last_caption,
-                "plot": self._last_chain_plot_payload,
-                "history": list(self._chain_plot_history),
-            }
-        )
+                sys.stdout.write(f"\n[{monitor_id}] {caption}\n{ascii_plot}\n")
+                sys.stdout.flush()
+            self._write_current_payload(monitor_id, state)
 
     def _update_live_caption(self, message: str):
         """Update live table caption without repainting duplicate frames."""
-        if self._live is None or self._last_ascii_plot is None:
-            return
-        if message == self._last_status_message:
-            return
-        self._last_status_message = message
-        self._last_caption = message
-        table = Table(show_header=False, box=box.SIMPLE, caption=message)
-        table.add_column("Chain")
-        table.add_row(self._last_ascii_plot)
-        self._live.update(table)
-        self._live.refresh()
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            state = self._state_for_monitor(monitor_id)
+            if message == state.get("status_message"):
+                return
+            state["status_message"] = message
+            state["caption"] = message
+            self._sync_legacy_fields(state)
+            if self._live is not None or self.use_rich:
+                self._render_live_monitors()
 
     def preserve_chain_snapshot(self, note: Optional[str] = None):
         """Persist the current live chain table into scrollback, then reset live mode."""
-        if self._last_ascii_plot is None:
-            return
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            state = self._state_for_monitor(monitor_id)
+            ascii_plot = state.get("ascii_plot")
+            if ascii_plot is None:
+                return
 
-        caption = note if note else "Chain snapshot"
+            caption = note if note else f"Chain snapshot ({monitor_id})"
 
-        if self.use_rich:
-            table = Table(show_header=False, box=box.SIMPLE, caption=caption)
-            table.add_column("Chain")
-            table.add_row(self._last_ascii_plot)
+            if self.use_rich:
+                table = Table(show_header=False, box=box.SIMPLE, caption=caption)
+                table.add_column("Chain")
+                table.add_row(str(ascii_plot))
 
-            if self._live is not None:
-                self._live.stop()
-                self._live = None
+                if self._live is not None:
+                    self._live.stop()
+                    self._live = None
 
-            _console.print(table)
-        else:
-            sys.stdout.write(f"\n{caption}\n{self._last_ascii_plot}\n")
-            sys.stdout.flush()
+                _console.print(table)
+            else:
+                sys.stdout.write(f"\n[{monitor_id}] {caption}\n{ascii_plot}\n")
+                sys.stdout.flush()
 
     def record_chain_plot(self, chain, caption: str):
-        try:
-            x_vals = [float(v) for v in chain.integrated_path_length]
-        except Exception:
-            x_vals = []
-        try:
-            y_vals = [float(v) for v in chain.energies_kcalmol]
-        except Exception:
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            state = self._state_for_monitor(monitor_id)
             try:
-                y_vals = [float(v) for v in chain.energies]
+                x_vals = [float(v) for v in chain.integrated_path_length]
             except Exception:
-                y_vals = []
-        start_smiles, end_smiles = _endpoint_smiles_for_chain(chain)
-        self._last_chain_plot_payload = {
-            "caption": caption,
-            "x": x_vals,
-            "y": y_vals,
-            "reactant_smiles": start_smiles if start_smiles != "N/A" else "",
-            "product_smiles": end_smiles if end_smiles != "N/A" else "",
-        }
-        if x_vals and y_vals and len(x_vals) == len(y_vals):
-            self._chain_plot_history.append(
-                {
-                    "caption": caption,
-                    "x": x_vals,
-                    "y": y_vals,
-                    "reactant_smiles": start_smiles if start_smiles != "N/A" else "",
-                    "product_smiles": end_smiles if end_smiles != "N/A" else "",
-                }
-            )
-            self._chain_plot_history = self._chain_plot_history[-120:]
-        _write_progress_chain_payload(
-            {
-                "ascii_plot": self._last_ascii_plot,
+                x_vals = []
+            try:
+                y_vals = [float(v) for v in chain.energies_kcalmol]
+            except Exception:
+                try:
+                    y_vals = [float(v) for v in chain.energies]
+                except Exception:
+                    y_vals = []
+            start_smiles, end_smiles = _endpoint_smiles_for_chain(chain)
+            chain_plot_payload = {
                 "caption": caption,
-                "plot": self._last_chain_plot_payload,
-                "history": list(self._chain_plot_history),
+                "x": x_vals,
+                "y": y_vals,
+                "reactant_smiles": start_smiles if start_smiles != "N/A" else "",
+                "product_smiles": end_smiles if end_smiles != "N/A" else "",
             }
-        )
+            state["chain_plot_payload"] = chain_plot_payload
+            if x_vals and y_vals and len(x_vals) == len(y_vals):
+                history = list(state.get("chain_plot_history") or [])
+                history.append(chain_plot_payload)
+                state["chain_plot_history"] = history[-120:]
+            self._sync_legacy_fields(state)
+            self._write_current_payload(monitor_id, state)
 
     def get_live_chain_payload(self):
-        if self._last_ascii_plot is None and self._last_chain_plot_payload is None:
-            return None
-        payload = {
-            "ascii_plot": self._last_ascii_plot,
-            "caption": self._last_caption,
-            "plot": self._last_chain_plot_payload,
-            "history": list(self._chain_plot_history),
-        }
-        _write_progress_chain_payload(payload)
-        return payload
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            state = self._state_for_monitor(monitor_id)
+            if state.get("ascii_plot") is None and state.get("chain_plot_payload") is None:
+                return None
+            payload = {
+                "ascii_plot": state.get("ascii_plot"),
+                "caption": state.get("caption"),
+                "plot": state.get("chain_plot_payload"),
+                "history": list(state.get("chain_plot_history") or []),
+                "monitor_id": monitor_id,
+                "monitors": self._monitors_payload(),
+            }
+            _write_progress_chain_payload(payload)
+            return payload
 
     def flush(self):
         """Flush stdout."""
@@ -425,26 +527,28 @@ class ProgressPrinter:
 
     def print_persistent(self, message: str, ascii_block: Optional[str] = None):
         """Print a persistent message block, safely stopping any active live renderer first."""
-        _append_progress_log(message)
-        if ascii_block:
-            _append_progress_log(ascii_block)
-        if self.use_rich and self._live is not None:
-            self._live.stop()
-            self._live = None
-        if self.use_rich and self._status and self._status_active:
-            self._status.stop()
-            self._status_active = False
+        with self._lock:
+            monitor_id = _active_monitor_id()
+            _append_progress_log(f"[{monitor_id}] {message}")
+            if ascii_block:
+                _append_progress_log(f"[{monitor_id}] {ascii_block}")
+            if self.use_rich and self._live is not None:
+                self._live.stop()
+                self._live = None
+            if self.use_rich and self._status and self._status_active:
+                self._status.stop()
+                self._status_active = False
 
-        if self.use_rich:
-            if ascii_block:
-                _console.print()
-                _console.print(Text(ascii_block, style="cyan"), markup=False)
-            _console.print(f"[bold green]{message}[/bold green]")
-        else:
-            if ascii_block:
-                print()
-                print(ascii_block)
-            print(message)
+            if self.use_rich:
+                if ascii_block:
+                    _console.print()
+                    _console.print(Text(ascii_block, style="cyan"), markup=False)
+                _console.print(f"[bold green][{monitor_id}] {message}[/bold green]")
+            else:
+                if ascii_block:
+                    print()
+                    print(ascii_block)
+                print(f"[{monitor_id}] {message}")
 
         # Optional raw stdout mirror for terminals that aggressively redraw
         # live regions. Disabled by default to avoid duplicate prints.

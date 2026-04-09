@@ -35,7 +35,7 @@ from neb_dynamics.mepd_drive import (
     MepdDriveServer,
 )
 from neb_dynamics.scripts import main_cli
-from neb_dynamics.scripts.progress import ProgressPrinter
+from neb_dynamics.scripts.progress import ProgressPrinter, progress_monitor
 from neb_dynamics.retropaths_queue import _run_single_item_worker
 from neb_dynamics.retropaths_workflow import RetropathsWorkspace, apply_reactions_to_node, run_nanoreactor_for_node
 from neb_dynamics.molecule import Molecule
@@ -404,6 +404,40 @@ def test_drive_command_passes_hawaii_discovery_tools(monkeypatch, tmp_path):
     assert calls["served"] is True
 
 
+def test_drive_command_passes_parallel_autosplit_options(monkeypatch, tmp_path):
+    calls = {}
+
+    class _FakeServer:
+        server_address = ("127.0.0.1", 48123)
+
+        def serve_forever(self):
+            calls["served"] = True
+
+        def shutdown(self):
+            calls["shutdown"] = True
+
+        def server_close(self):
+            calls["closed"] = True
+
+    monkeypatch.setattr(
+        main_cli,
+        "launch_mepd_drive",
+        lambda **kwargs: calls.update(kwargs) or _FakeServer(),
+    )
+
+    main_cli.drive(
+        inputs=str(tmp_path / "inputs.toml"),
+        directory=str(tmp_path / "drive"),
+        parallel_autosplit_nebs=True,
+        parallel_autosplit_workers=6,
+        no_open=True,
+    )
+
+    assert calls["parallel_autosplit_nebs"] is True
+    assert calls["parallel_autosplit_workers"] == 6
+    assert calls["served"] is True
+
+
 def test_submit_apply_reactions_errors_when_retropaths_unavailable(monkeypatch, tmp_path):
     server = object.__new__(MepdDriveServer)
     server.state_lock = __import__("threading").Lock()
@@ -538,6 +572,8 @@ def test_initialize_workspace_job_clears_existing_workspace(monkeypatch, tmp_pat
     )
 
     assert created["directory"] == workspace_dir.resolve()
+    assert created["parallel_autosplit_nebs"] is False
+    assert created["parallel_autosplit_workers"] == 4
     assert stale.exists() is False
     assert result["workspace"]["root_smiles"] == "C=C"
 
@@ -2642,6 +2678,8 @@ def test_launch_mepd_drive_loads_existing_workspace_on_startup(monkeypatch, tmp_
     assert captured["initial_state"] == loaded
     assert captured["inputs_fp"] is None
     assert captured["network_splits"] is True
+    assert captured["parallel_autosplit_nebs"] is False
+    assert captured["parallel_autosplit_workers"] == 4
 
 
 def test_launch_mepd_drive_emits_startup_progress_for_existing_workspace(monkeypatch, tmp_path):
@@ -5126,6 +5164,38 @@ def test_progress_printer_writes_live_chain_payload_file(monkeypatch, tmp_path):
     assert payload["ascii_plot"] == "chain ascii"
 
 
+def test_progress_printer_writes_parallel_monitor_payload(monkeypatch, tmp_path):
+    chain_fp = tmp_path / "drive_neb_parallel.chain.json"
+    monkeypatch.setenv("MEPD_DRIVE_CHAIN_JSON", str(chain_fp))
+    printer = ProgressPrinter(use_rich=False)
+
+    chain_a = SimpleNamespace(
+        integrated_path_length=[0.0, 1.0],
+        energies_kcalmol=[0.0, 1.0],
+    )
+    chain_b = SimpleNamespace(
+        integrated_path_length=[0.0, 1.0],
+        energies_kcalmol=[0.0, 2.0],
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.scripts.progress._endpoint_smiles_for_chain",
+        lambda _chain: ("C=C", "CCO"),
+    )
+
+    with progress_monitor("branch-1"):
+        printer.record_chain_plot(chain_a, "branch-1 step")
+        printer.print_chain_ascii("branch-1 ascii", "branch-1 step", force_update=True)
+    with progress_monitor("branch-2"):
+        printer.record_chain_plot(chain_b, "branch-2 step")
+        printer.print_chain_ascii("branch-2 ascii", "branch-2 step", force_update=True)
+
+    payload = __import__("json").loads(chain_fp.read_text())
+    assert payload["monitor_id"] == "branch-2"
+    assert "monitors" in payload
+    assert payload["monitors"]["branch-1"]["ascii_plot"] == "branch-1 ascii"
+    assert payload["monitors"]["branch-2"]["ascii_plot"] == "branch-2 ascii"
+
+
 def test_run_single_item_worker_creates_queue_output_parent(monkeypatch, tmp_path):
     writes = {}
 
@@ -5156,6 +5226,43 @@ def test_run_single_item_worker_creates_queue_output_parent(monkeypatch, tmp_pat
     assert Path(result["result_dir"]).name == "pair_1_0_msmep"
     assert writes["history"].name == "pair_1_0_msmep"
     assert writes["chain"].parent.name == "queue_runs"
+
+
+def test_run_single_item_worker_uses_parallel_recursive_runner_when_enabled(monkeypatch, tmp_path):
+    writes = {}
+    captured = {}
+
+    class _FakeHistory:
+        output_chain = SimpleNamespace(write_to_disk=lambda fp: writes.setdefault("chain", Path(fp)))
+
+        def write_to_disk(self, folder_name, write_qcio=False):
+            folder = Path(folder_name)
+            folder.mkdir(parents=True, exist_ok=True)
+            writes["history"] = folder
+
+    class _FakeMSMEP:
+        def __init__(self, inputs):
+            self.inputs = inputs
+
+        def run_parallel_recursive_minimize(self, pair, max_workers=None):
+            captured["pair"] = pair
+            captured["max_workers"] = max_workers
+            return _FakeHistory()
+
+    monkeypatch.setattr("neb_dynamics.retropaths_queue.MSMEP", _FakeMSMEP)
+
+    result = _run_single_item_worker(
+        pair="pair",
+        run_inputs=SimpleNamespace(),
+        result_dir=str(tmp_path / "queue_runs" / "pair_1_0_msmep"),
+        output_chain_xyz=str(tmp_path / "queue_runs" / "pair_1_0.xyz"),
+        parallel_recursive=True,
+        parallel_workers=3,
+    )
+
+    assert Path(result["result_dir"]).name == "pair_1_0_msmep"
+    assert captured["pair"] == "pair"
+    assert captured["max_workers"] == 3
 
 
 def test_build_neb_live_payload_prefers_live_chain_endpoints(monkeypatch, tmp_path):
@@ -5196,6 +5303,50 @@ def test_build_neb_live_payload_prefers_live_chain_endpoints(monkeypatch, tmp_pa
     assert payload_calls == ["C=C.O", "CCO"]
     assert live["reactant_structure"]["smiles"] == "C=C.O"
     assert live["product_structure"]["smiles"] == "CCO"
+
+
+def test_build_neb_live_payload_includes_parallel_monitors(tmp_path):
+    chain_fp = tmp_path / "drive_neb_parallel_1_0.chain.json"
+    chain_fp.write_text(
+        __import__("json").dumps(
+            {
+                "ascii_plot": "branch-2 ascii",
+                "caption": "branch-2 step",
+                "plot": {"x": [0.0, 1.0], "y": [0.0, 2.0]},
+                "history": [],
+                "monitor_id": "branch-2",
+                "monitors": {
+                    "branch-1": {
+                        "ascii_plot": "branch-1 ascii",
+                        "caption": "branch-1 step",
+                        "plot": {"x": [0.0, 1.0], "y": [0.0, 1.0]},
+                        "history": [],
+                    },
+                    "branch-2": {
+                        "ascii_plot": "branch-2 ascii",
+                        "caption": "branch-2 step",
+                        "plot": {"x": [0.0, 1.0], "y": [0.0, 2.0]},
+                        "history": [],
+                    },
+                },
+            }
+        )
+    )
+
+    live = _build_neb_live_payload(
+        {
+            "type": "neb",
+            "chain_fp": str(chain_fp),
+            "source_node": 1,
+            "target_node": 0,
+            "progress_fp": str(tmp_path / "progress.log"),
+        },
+        workspace=None,
+    )
+
+    assert "monitors" in live
+    assert live["monitors"]["branch-1"]["ascii_plot"] == "branch-1 ascii"
+    assert live["monitors"]["branch-2"]["ascii_plot"] == "branch-2 ascii"
 
 
 def test_submit_minimize_surfaces_requested_node_error(monkeypatch, tmp_path):

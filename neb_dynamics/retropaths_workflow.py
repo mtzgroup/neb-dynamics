@@ -74,6 +74,8 @@ class RetropathsWorkspace:
     max_nodes: int = 40
     max_depth: int = 4
     max_parallel_nebs: int = 1
+    parallel_autosplit_nebs: bool = False
+    parallel_autosplit_workers: int = 4
 
     @property
     def directory(self) -> Path:
@@ -143,6 +145,8 @@ def create_workspace(
     max_nodes: int = 40,
     max_depth: int = 4,
     max_parallel_nebs: int = 1,
+    parallel_autosplit_nebs: bool = False,
+    parallel_autosplit_workers: int = 4,
 ) -> RetropathsWorkspace:
     run_name = name or default_workspace_name(root_smiles, environment_smiles)
     workdir = Path(directory).resolve() if directory else (Path.cwd() / run_name).resolve()
@@ -157,6 +161,8 @@ def create_workspace(
         max_nodes=max_nodes,
         max_depth=max_depth,
         max_parallel_nebs=max_parallel_nebs,
+        parallel_autosplit_nebs=bool(parallel_autosplit_nebs),
+        parallel_autosplit_workers=max(1, int(parallel_autosplit_workers)),
     )
     workspace.write()
     return workspace

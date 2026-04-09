@@ -34,7 +34,14 @@ from qcio import Structure
 from neb_dynamics.pathminimizers.fneb import FreezingNEB
 from neb_dynamics.pathminimizers.nebdlf import DLFindNEB
 from neb_dynamics.inputs import RunInputs
-from neb_dynamics.scripts.progress import print_neb_step, preserve_chain_snapshot, start_status, update_status, stop_status
+from neb_dynamics.scripts.progress import (
+    print_neb_step,
+    preserve_chain_snapshot,
+    progress_monitor,
+    start_status,
+    update_status,
+    stop_status,
+)
 
 
 def _get_verbose(inputs: RunInputs) -> bool:
@@ -264,9 +271,10 @@ class MSMEP:
         else:
             bounded_workers = max(1, min(int(max_workers), cpu_cap))
 
-        root_history, root_children = self._run_recursive_step(
-            input_chain=input_chain, tree_node_index=tree_node_index
-        )
+        with progress_monitor(f"branch-{int(tree_node_index)}"):
+            root_history, root_children = self._run_recursive_step(
+                input_chain=input_chain, tree_node_index=tree_node_index
+            )
         if not root_children:
             return root_history
 
@@ -800,8 +808,9 @@ def _parallel_recursive_step_worker(
     except Exception:
         pass
 
-    runner = MSMEP(inputs=local_inputs)
-    return runner._run_recursive_step(
-        input_chain=input_chain,
-        tree_node_index=tree_node_index,
-    )
+    with progress_monitor(f"branch-{int(tree_node_index)}"):
+        runner = MSMEP(inputs=local_inputs)
+        return runner._run_recursive_step(
+            input_chain=input_chain,
+            tree_node_index=tree_node_index,
+        )

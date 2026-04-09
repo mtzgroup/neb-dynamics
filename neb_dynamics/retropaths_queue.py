@@ -658,9 +658,19 @@ def _run_single_item_worker(
     run_inputs: RunInputs,
     result_dir: str,
     output_chain_xyz: str,
+    *,
+    parallel_recursive: bool = False,
+    parallel_workers: int | None = None,
 ) -> dict[str, str]:
     msmep = MSMEP(inputs=run_inputs)
-    history = msmep.run_recursive_minimize(pair)
+    if parallel_recursive:
+        resolved_workers = None if parallel_workers is None else max(1, int(parallel_workers))
+        history = msmep.run_parallel_recursive_minimize(
+            pair,
+            max_workers=resolved_workers,
+        )
+    else:
+        history = msmep.run_recursive_minimize(pair)
     output_chain = getattr(history, "output_chain", None)
     if output_chain is None:
         raise RuntimeError("Recursive MSMEP returned no output_chain.")

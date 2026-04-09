@@ -3493,6 +3493,8 @@ def drive(
     max_nodes: Annotated[int, typer.Option("--max-nodes", help="Retropaths maximum number of nodes")] = 40,
     max_depth: Annotated[int, typer.Option("--max-depth", help="Retropaths maximum search depth")] = 4,
     max_parallel_nebs: Annotated[int, typer.Option("--max-parallel-nebs", help="Number of autosplitting NEBs to run concurrently")] = 1,
+    parallel_autosplit_nebs: Annotated[bool, typer.Option("--parallel-autosplit-nebs/--no-parallel-autosplit-nebs", help="Run each autosplitting NEB tree with parallel recursive branch fan-out.")] = False,
+    parallel_autosplit_workers: Annotated[int, typer.Option("--parallel-autosplit-workers", help="Max workers per autosplitting NEB tree when --parallel-autosplit-nebs is enabled.")] = 4,
     network_splits: Annotated[bool, typer.Option("--network-splits/--no-network-splits", help="Use recursive autosplit results to build the displayed network overlay")] = True,
     hawaii: Annotated[bool, typer.Option("--hawaii/--no-hawaii", help="Run autonomous connect/NEB/Hessian exploration loop on startup")] = False,
     hawaii_discovery_tools: Annotated[str, typer.Option("--hawaii-discovery-tools", help="Comma-separated Hawaii discovery tools: hessian-sample, retropaths, nanoreactor. Empty string disables discovery.")] = None,
@@ -3509,6 +3511,8 @@ def drive(
         raise typer.BadParameter(
             "Choose either bootstrap inputs (--smiles/--start-xyz-fp/--inputs) or --workspace/--directory to load an existing run, not both."
         )
+    if parallel_autosplit_workers < 1:
+        raise typer.BadParameter("--parallel-autosplit-workers must be at least 1.")
     if (smiles or has_xyz_bootstrap) and inputs is None:
         raise typer.BadParameter("--inputs/-i is required when using --smiles or --start-xyz-fp.")
     if end_xyz_fp and not has_xyz_bootstrap and not smiles:
@@ -3533,6 +3537,8 @@ def drive(
         "max_nodes": max_nodes,
         "max_depth": max_depth,
         "max_parallel_nebs": max_parallel_nebs,
+        "parallel_autosplit_nebs": parallel_autosplit_nebs,
+        "parallel_autosplit_workers": parallel_autosplit_workers,
         "network_splits": network_splits,
         "hawaii": hawaii,
         "hawaii_discovery_tools": hawaii_discovery_tools,
