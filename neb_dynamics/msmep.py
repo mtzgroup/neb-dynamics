@@ -3,6 +3,7 @@ import logging
 import copy
 import os
 import concurrent.futures
+import contextlib
 from dataclasses import dataclass
 from types import SimpleNamespace
 
@@ -422,6 +423,13 @@ class MSMEP:
                 child_index = next_tree_index
                 next_tree_index += 1
                 progress_printer.mark_monitor_active(f"branch-{child_index}")
+                if hasattr(progress_printer, "set_monitor_status"):
+                    progress_printer.set_monitor_status(
+                        f"branch-{child_index}",
+                        "Running in worker process"
+                        if use_process_workers
+                        else "Running",
+                    )
                 if use_process_workers:
                     child_payload = _chain_payload_for_worker(child_chain)
                     future = executor.submit(
@@ -475,6 +483,11 @@ class MSMEP:
                         worker_trace = traceback.format_exc().strip()
                         if attempt < max_worker_attempts:
                             retry_attempt = attempt + 1
+                            if hasattr(progress_printer, "set_monitor_status"):
+                                progress_printer.set_monitor_status(
+                                    f"branch-{child_index}",
+                                    f"Retrying (attempt {retry_attempt}/{max_worker_attempts})",
+                                )
                             if use_process_workers:
                                 retry_payload = _chain_payload_for_worker(child_chain)
                                 retry_future = executor.submit(
@@ -1074,8 +1087,12 @@ def _parallel_recursive_step_worker_from_payload(
 ) -> tuple[TreeNode, list[Chain]]:
     local_inputs = RunInputs(**copy.deepcopy(run_inputs_payload))
     local_chain = _chain_from_worker_payload(input_chain_payload)
-    return _parallel_recursive_step_worker(
-        run_inputs=local_inputs,
-        input_chain=local_chain,
-        tree_node_index=tree_node_index,
-    )
+    # Subprocess workers should not write rich/live progress to the shared
+    # terminal; keep rendering centralized in the parent scheduler process.
+    with open(os.devnull, "w", encoding="utf-8") as devnull:
+        with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+            return _parallel_recursive_step_worker(
+                run_inputs=local_inputs,
+                input_chain=local_chain,
+                tree_node_index=tree_node_index,
+            )

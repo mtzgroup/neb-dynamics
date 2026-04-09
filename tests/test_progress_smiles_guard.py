@@ -112,6 +112,16 @@ def test_monitor_active_state_toggles_without_dropping_payload_state():
     assert payload["branch-7"]["active"] is False
 
 
+def test_set_monitor_status_updates_caption_without_activation():
+    printer = progress.ProgressPrinter(use_rich=False)
+    printer.set_monitor_status("branch-3", "Running in worker process")
+
+    state = printer._state_for_monitor("branch-3")
+    assert state["status_message"] == "Running in worker process"
+    assert state["caption"] == "Running in worker process"
+    assert "branch-3" not in printer._active_monitor_ids
+
+
 def test_active_ascii_for_live_is_dense_two_line_summary():
     printer = progress.ProgressPrinter(use_rich=False)
     state = {"chain_plot_payload": {"y": [0.0, 1.5, -0.5, 2.0, 1.0]}}

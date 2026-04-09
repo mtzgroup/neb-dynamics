@@ -285,6 +285,18 @@ class ProgressPrinter:
             if self.use_rich and self._live is not None:
                 self._render_live_monitors()
 
+    def set_monitor_status(self, monitor_id: str, message: str) -> None:
+        with self._lock:
+            monitor = str(monitor_id or "").strip()
+            if not monitor:
+                return
+            state = self._state_for_monitor(monitor)
+            text = str(message or "").strip()
+            state["status_message"] = text or None
+            state["caption"] = text or state.get("caption")
+            if self.use_rich and self._live is not None:
+                self._render_live_monitors()
+
     def clear_path_so_far(self) -> None:
         with self._lock:
             state = self._state_for_monitor(self._path_monitor_id)
