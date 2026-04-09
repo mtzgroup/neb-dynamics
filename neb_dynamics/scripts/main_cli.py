@@ -1464,6 +1464,14 @@ def run(
             help='whether to run a transition state optimization on each TS guess')] = False,
         minimize_ends: bool = False,
         recursive: bool = False,
+        parallel: Annotated[bool, typer.Option(
+            "--parallel",
+            help="Run recursive autosplitting in parallel with bounded worker concurrency.",
+        )] = False,
+        parallel_workers: Annotated[int | None, typer.Option(
+            "--parallel-workers",
+            help="Maximum number of concurrent recursive split workers used by --parallel. Defaults to min(4, CPU count).",
+        )] = None,
         name: str = None,
         charge: int = 0,
         multiplicity: int = 1,
@@ -1484,6 +1492,27 @@ def run(
     # Print header
     console.print(BANNER)
 
+    if parallel and recursive:
+        raise typer.BadParameter(
+            "--parallel cannot be combined with --recursive. Use one mode."
+        )
+    if parallel and network_splits:
+        raise typer.BadParameter(
+            "--parallel cannot be combined with --network-splits."
+        )
+
+    cpu_cap = max(1, int(os.cpu_count() or 1))
+    default_parallel_workers = min(4, cpu_cap)
+    if parallel_workers is None:
+        parallel_workers = default_parallel_workers
+    if parallel_workers < 1:
+        raise typer.BadParameter("--parallel-workers must be at least 1.")
+    if parallel_workers > cpu_cap:
+        console.print(
+            f"[yellow]⚠ Requested {parallel_workers} parallel workers exceeds CPU count ({cpu_cap}). Capping to {cpu_cap}.[/yellow]"
+        )
+        parallel_workers = cpu_cap
+
     if network_splits and not recursive:
         console.print(
             Panel(
@@ -1498,11 +1527,17 @@ def run(
 
     table = Table(box=None, show_header=False)
     table.add_column(style="dim")
+    mode_label = "parallel" if parallel else ("recursive" if recursive else "regular")
     table.add_row("[bold cyan]Command:[/bold cyan]", "[white]run[/white]")
     table.add_row("[bold cyan]Method:[/bold cyan]",
-                  f"[yellow]{'recursive' if recursive else 'regular'}[/yellow]")
+                  f"[yellow]{mode_label}[/yellow]")
     table.add_row("[bold cyan]SMILES mode:[/bold cyan]",
                   f"[yellow]{use_smiles}[/yellow]")
+    table.add_row("[bold cyan]Parallel:[/bold cyan]",
+                  f"[yellow]{parallel}[/yellow]")
+    if parallel:
+        table.add_row("[bold cyan]Parallel workers:[/bold cyan]",
+                      f"[yellow]{parallel_workers}[/yellow]")
     table.add_row("[bold cyan]Network splits:[/bold cyan]",
                   f"[yellow]{network_splits}[/yellow]")
     console.print(table)
@@ -1643,7 +1678,190 @@ def run(
     chain_for_profile = None
     fp = Path("mep_output")
 
-    if recursive:
+    if parallel:
+        if name is not None:
+            name = Path(name)
+            data_dir = Path(name).resolve().parent
+            foldername = data_dir / name.stem
+            filename = data_dir / (name.stem + ".xyz")
+        else:
+            data_dir = Path(os.getcwd())
+            foldername = data_dir / f"{fp.stem}_parallel_msmep"
+            filename = data_dir / f"{fp.stem}_parallel_msmep.xyz"
+        status_fp = _run_status_path(data_dir, filename.stem)
+        _write_run_status(
+            status_fp,
+            base_name=filename.stem,
+            run_state="running",
+            phase="parallel_recursive_request",
+            recursive=False,
+            parallel=True,
+            network_splits=False,
+            path_min_method=str(program_input.path_min_method),
+        )
+
+        if not program_input.path_min_inputs.do_elem_step_checks:
+            console.print(
+                "[yellow]⚠ WARNING: do_elem_step_checks is set to False. This may cause issues with recursive splitting.[/yellow]")
+            console.print(
+                "[yellow]Making it True to ensure proper functioning of recursive splitting.[/yellow]")
+            program_input.path_min_inputs.do_elem_step_checks = True
+
+        console.print(
+            f"[bold magenta]▶ RUNNING PARALLEL AUTOSPLITTING {program_input.path_min_method} (max_workers={parallel_workers})[/bold magenta]"
+        )
+        try:
+            history = m.run_parallel_recursive_minimize(
+                chain,
+                max_workers=parallel_workers,
+            )
+        except Exception:
+            _write_run_status(
+                status_fp,
+                base_name=filename.stem,
+                run_state="failed",
+                phase="parallel_recursive_request",
+                recursive=False,
+                parallel=True,
+                network_splits=False,
+                path_min_method=str(program_input.path_min_method),
+                error=traceback.format_exc().strip(),
+            )
+            raise
+
+        if not history.data:
+            _write_run_status(
+                status_fp,
+                base_name=filename.stem,
+                run_state="failed",
+                phase="parallel_recursive_request",
+                recursive=False,
+                parallel=True,
+                network_splits=False,
+                path_min_method=str(program_input.path_min_method),
+                error="Program did not run. Likely because your endpoints are conformers of the same molecular graph.",
+            )
+            console.print("[bold red]✗ ERROR:[/bold red] Program did not run. Likely because your endpoints are conformers of the same molecular graph. Tighten the node_rms_thre and/or node_ene_thre parameters in chain_inputs and try again.")
+            raise typer.Exit(1)
+
+        successful_leaf_chains = []
+        for leaf in history.ordered_leaves:
+            if not leaf.data:
+                continue
+            leaf_chain = None
+            if getattr(leaf.data, "chain_trajectory", None):
+                leaf_chain = leaf.data.chain_trajectory[-1]
+            elif getattr(leaf.data, "optimized", None) is not None:
+                leaf_chain = leaf.data.optimized
+            if leaf_chain is not None:
+                successful_leaf_chains.append(leaf_chain)
+
+        if not successful_leaf_chains:
+            _write_run_status(
+                status_fp,
+                base_name=filename.stem,
+                run_state="failed",
+                phase="parallel_recursive_request",
+                recursive=False,
+                parallel=True,
+                network_splits=False,
+                path_min_method=str(program_input.path_min_method),
+                error="Parallel autosplitting produced no successful leaf chains.",
+            )
+            console.print(
+                "[bold red]✗ ERROR:[/bold red] Parallel autosplitting did not yield any successful leaf chains."
+            )
+            raise typer.Exit(1)
+
+        if len(successful_leaf_chains) == 1:
+            merged_chain = successful_leaf_chains[0]
+        else:
+            merged_chain = _concat_chains(
+                successful_leaf_chains, program_input.chain_inputs
+            )
+        failed_leaves = sum(
+            1 for leaf in history.depth_first_ordered_nodes
+            if leaf.is_leaf and not bool(leaf.data)
+        )
+        if failed_leaves > 0:
+            console.print(
+                f"[yellow]⚠ {failed_leaves} parallel branch(es) failed. Writing a partial merged chain from successful leaves.[/yellow]"
+            )
+
+        leaves_nebs = [obj for obj in history.get_optimization_history() if obj]
+        end_time = time.time()
+        merged_chain.write_to_disk(filename, write_qcio=write_qcio)
+        history.write_to_disk(foldername, write_qcio=write_qcio)
+        chain_for_profile = merged_chain
+        _write_run_status(
+            status_fp,
+            base_name=filename.stem,
+            run_state="completed",
+            phase="complete",
+            recursive=False,
+            parallel=True,
+            network_splits=False,
+            path_min_method=str(program_input.path_min_method),
+            output_chain_path=filename,
+            tree_path=foldername,
+        )
+
+        if use_tsopt:
+            for i, leaf in enumerate(history.ordered_leaves):
+                if not leaf.data:
+                    continue
+                if not leaf.data.chain_trajectory:
+                    console.print(
+                        f"[yellow]⚠ Skipping TS optimization on leaf {i}: no chain trajectory.[/yellow]"
+                    )
+                    continue
+                console.print(
+                    f"[bold cyan]⟳ Running TS opt on leaf {i}...[/bold cyan]")
+                try:
+                    ts_node, tsres = _compute_ts_node(
+                        engine=program_input.engine,
+                        ts_guess=leaf.data.chain_trajectory[-1].get_ts_node(),
+                    )
+                except Exception:
+                    console.print(
+                        f"[yellow]⚠ TS optimization crashed on leaf {i}: {traceback.format_exc()}[/yellow]"
+                    )
+                    continue
+
+                if tsres is not None and hasattr(tsres, "save"):
+                    tsres.save(data_dir / (filename.stem+f"_tsres_{i}.qcio"))
+                if ts_node is not None:
+                    ts_node.structure.save(
+                        data_dir / (filename.stem+f"_ts_{i}.xyz"))
+                    if create_irc:
+                        try:
+                            irc = compute_irc_chain(
+                                ts_node=ts_node,
+                                engine=program_input.engine,
+                            )
+                            irc.write_to_disk(
+                                filename.stem+f"_tsres_{i}_IRC.xyz")
+
+                        except Exception:
+                            console.print(
+                                f"[yellow]⚠ IRC failed: {traceback.format_exc()}[/yellow]")
+                            console.print(
+                                "[yellow]IRC failed. Continuing...[/yellow]")
+                else:
+                    console.print(
+                        f"[yellow]⚠ TS optimization did not converge on leaf {i}...[/yellow]")
+
+        tot_grad_calls = sum(getattr(obj, "grad_calls_made", 0)
+                             for obj in leaves_nebs)
+        geom_grad_calls = sum(
+            getattr(obj, "geom_grad_calls_made", 0) for obj in leaves_nebs
+        )
+        console.print(
+            f"[bold green]✓[/bold green] [cyan]Made {tot_grad_calls} gradient calls total.[/cyan]")
+        console.print(
+            f"[bold green]✓[/bold green] [cyan]Made {geom_grad_calls} gradient for geometry optimizations.[/cyan]")
+
+    elif recursive:
         if name is not None:
             name = Path(name)
             data_dir = Path(name).resolve().parent
@@ -1660,6 +1878,7 @@ def run(
             run_state="running",
             phase="initial_recursive_request",
             recursive=True,
+            parallel=False,
             network_splits=network_splits,
             path_min_method=str(program_input.path_min_method),
         )
@@ -1697,6 +1916,7 @@ def run(
                     run_state="failed",
                     phase="initial_recursive_request",
                     recursive=True,
+                    parallel=False,
                     network_splits=network_splits,
                     path_min_method=str(program_input.path_min_method),
                     error=traceback.format_exc().strip(),
@@ -1710,6 +1930,7 @@ def run(
                 run_state="failed",
                 phase="initial_recursive_request",
                 recursive=True,
+                parallel=False,
                 network_splits=network_splits,
                 path_min_method=str(program_input.path_min_method),
                 error="Program did not run. Likely because your endpoints are conformers of the same molecular graph.",
@@ -1729,6 +1950,7 @@ def run(
             run_state="running" if network_splits else "completed",
             phase="network_splits" if network_splits else "complete",
             recursive=True,
+            parallel=False,
             network_splits=network_splits,
             path_min_method=str(program_input.path_min_method),
             output_chain_path=filename,
@@ -1762,6 +1984,7 @@ def run(
                 run_state="completed",
                 phase="complete",
                 recursive=True,
+                parallel=False,
                 network_splits=network_splits,
                 path_min_method=str(program_input.path_min_method),
                 output_chain_path=filename,
@@ -1839,6 +2062,7 @@ def run(
             run_state="running",
             phase="path_minimization",
             recursive=False,
+            parallel=False,
             network_splits=False,
             path_min_method=str(program_input.path_min_method),
         )
@@ -1853,6 +2077,7 @@ def run(
                 run_state="failed",
                 phase="path_minimization",
                 recursive=False,
+                parallel=False,
                 network_splits=False,
                 path_min_method=str(program_input.path_min_method),
                 error=traceback.format_exc().strip(),
@@ -1881,6 +2106,7 @@ def run(
             run_state="completed",
             phase="complete",
             recursive=False,
+            parallel=False,
             network_splits=False,
             path_min_method=str(program_input.path_min_method),
             output_chain_path=filename,
@@ -2777,6 +3003,8 @@ def status(
         summary.add_row("Phase", str(run_status.get("phase", "unknown")))
         if "recursive" in run_status:
             summary.add_row("Recursive", str(run_status.get("recursive")))
+        if "parallel" in run_status:
+            summary.add_row("Parallel", str(run_status.get("parallel")))
         if "network_splits" in run_status:
             summary.add_row("Network splits", str(
                 run_status.get("network_splits")))

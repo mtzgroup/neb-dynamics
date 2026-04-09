@@ -212,6 +212,7 @@ def _write_run_status(
     run_state: str,
     phase: str,
     recursive: bool | None = None,
+    parallel: bool | None = None,
     network_splits: bool | None = None,
     path_min_method: str | None = None,
     output_chain_path: Path | None = None,
@@ -229,6 +230,8 @@ def _write_run_status(
     }
     if recursive is not None:
         payload["recursive"] = recursive
+    if parallel is not None:
+        payload["parallel"] = parallel
     if network_splits is not None:
         payload["network_splits"] = network_splits
     if path_min_method is not None:

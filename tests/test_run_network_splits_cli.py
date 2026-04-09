@@ -1,8 +1,10 @@
 import json
+import os
 from types import SimpleNamespace
 
 import networkx as nx
 import numpy as np
+import pytest
 from qcio import Structure
 
 from neb_dynamics.chain import Chain
@@ -83,6 +85,33 @@ class _RegularFakeMSMEP:
         self.inputs = inputs
         self.recursive_calls = 0
         self.regular_calls = 0
+
+    def run_recursive_minimize(self, input_chain: Chain):
+        self.recursive_calls += 1
+        return _history_from_segments([(0.0, 1.0), (1.0, 2.0)], self.inputs.chain_inputs)
+
+    def run_minimize_chain(self, input_chain: Chain):
+        self.regular_calls += 1
+        chain = _chain_from_xs([0.0, 1.0, 2.0], self.inputs.chain_inputs)
+        neb = _FakeNEB(chain)
+        neb.geom_grad_calls_made = 0
+        return neb, SimpleNamespace(is_elem_step=True)
+
+
+class _ParallelFakeMSMEP:
+    def __init__(self, inputs):
+        self.inputs = inputs
+        self.parallel_calls = 0
+        self.recursive_calls = 0
+        self.regular_calls = 0
+        self.requested_max_workers = None
+
+    def run_parallel_recursive_minimize(self, input_chain: Chain, max_workers: int | None = None):
+        self.parallel_calls += 1
+        self.requested_max_workers = max_workers
+        history = _history_from_segments([(0.0, 1.0), (1.0, 2.0)], self.inputs.chain_inputs)
+        history.children.append(TreeNode(data=None, children=[], index=3))
+        return history
 
     def run_recursive_minimize(self, input_chain: Chain):
         self.recursive_calls += 1
@@ -315,6 +344,59 @@ def test_run_network_splits_forces_recursive_mode(monkeypatch, tmp_path):
     status_payload = json.loads((tmp_path / "forced_status.json").read_text())
     assert status_payload["recursive"] is True
     assert status_payload["network_splits"] is True
+
+
+def test_parallel_run_rejects_recursive_mode():
+    with pytest.raises(Exception, match="--parallel cannot be combined with --recursive"):
+        main_cli.run(
+            recursive=True,
+            parallel=True,
+        )
+
+
+def test_parallel_run_rejects_network_splits():
+    with pytest.raises(Exception, match="--parallel cannot be combined with --network-splits"):
+        main_cli.run(
+            parallel=True,
+            network_splits=True,
+        )
+
+
+def test_parallel_run_uses_parallel_recursive_runner_and_writes_partial_status(monkeypatch, tmp_path):
+    params = ChainInputs()
+    program_inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(do_elem_step_checks=True),
+        chain_inputs=params,
+        engine=SimpleNamespace(),
+    )
+    runner = _ParallelFakeMSMEP(program_inputs)
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(lambda path: program_inputs))
+    monkeypatch.setattr(main_cli, "MSMEP", lambda inputs: runner)
+    monkeypatch.setattr(main_cli, "_render_runinputs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main_cli, "read_multiple_structure_from_file", lambda *args, **kwargs: [_structure_at_x(0.0), _structure_at_x(2.0)])
+    monkeypatch.chdir(tmp_path)
+
+    main_cli.run(
+        geometries="dummy.xyz",
+        inputs="dummy.toml",
+        recursive=False,
+        parallel=True,
+        parallel_workers=999,
+        network_splits=False,
+        name="parallel_case",
+    )
+
+    assert runner.parallel_calls == 1
+    assert runner.recursive_calls == 0
+    assert runner.regular_calls == 0
+    assert runner.requested_max_workers == max(1, int(os.cpu_count() or 1))
+
+    snapshot = main_cli._load_status_snapshot(str(tmp_path / "parallel_case.xyz"))
+    assert snapshot["run_status"]["parallel"] is True
+    assert snapshot["run_status"]["recursive"] is False
+    assert snapshot["run_status"]["network_splits"] is False
 
 
 def test_run_network_splits_resumes_from_saved_tree_and_request_artifacts(monkeypatch, tmp_path):

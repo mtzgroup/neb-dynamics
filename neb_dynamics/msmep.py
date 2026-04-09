@@ -1,6 +1,8 @@
 import traceback
 import logging
 import copy
+import os
+import concurrent.futures
 from dataclasses import dataclass
 
 import sys
@@ -201,6 +203,117 @@ class MSMEP:
         except ElectronicStructureError as e:
             e.obj.save("/tmp/failed_output.qcio")
             return TreeNode(data=None, children=[], index=tree_node_index)
+
+    def _run_recursive_step(self, input_chain: Chain, tree_node_index: int) -> tuple[TreeNode, list[Chain]]:
+        """Run a single recursive minimization step and return child fragments to continue."""
+        import neb_dynamics.chainhelpers as ch
+        if isinstance(input_chain, list):
+            input_chain = Chain.model_validate(
+                {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
+        self._disable_molecular_graphs(input_chain)
+
+        if getattr(self.inputs.path_min_inputs, "skip_identical_graphs", True) and input_chain[0].has_molecular_graph:
+            if _is_connectivity_identical(
+                input_chain[0],
+                input_chain[-1],
+                verbose=_get_verbose(self.inputs),
+            ):
+                return TreeNode(data=None, children=[], index=tree_node_index), []
+
+        ch._reset_node_convergence(input_chain)
+        self.inputs.engine.compute_gradients(input_chain)
+
+        if is_identical(
+            self=input_chain[0],
+            other=input_chain[-1],
+            fragment_rmsd_cutoff=self.inputs.chain_inputs.node_rms_thre,
+            kcal_mol_cutoff=self.inputs.chain_inputs.node_ene_thre,
+            verbose=False,
+        ):
+            return TreeNode(data=None, children=[], index=tree_node_index), []
+
+        root_neb_obj, elem_step_results = self.run_minimize_chain(
+            input_chain=input_chain
+        )
+        history_node = TreeNode(data=root_neb_obj, children=[], index=tree_node_index)
+
+        if elem_step_results.is_elem_step:
+            return history_node, []
+
+        chain_trajectory = getattr(root_neb_obj, "chain_trajectory", None) or []
+        if not chain_trajectory:
+            return history_node, []
+        split_chain = chain_trajectory[-1]
+        sequence_of_chains = self.make_sequence_of_chains(
+            chain=split_chain,
+            split_method=elem_step_results.splitting_criterion,
+            minimization_results=elem_step_results.minimization_results,
+        )
+        return history_node, sequence_of_chains
+
+    def run_parallel_recursive_minimize(
+        self,
+        input_chain: Chain,
+        tree_node_index: int = 0,
+        max_workers: int | None = None,
+    ) -> TreeNode:
+        """Recursively autosplit NEBs, evaluating split branches in parallel."""
+        cpu_cap = max(1, int(os.cpu_count() or 1))
+        if max_workers is None:
+            bounded_workers = min(4, cpu_cap)
+        else:
+            bounded_workers = max(1, min(int(max_workers), cpu_cap))
+
+        root_history, root_children = self._run_recursive_step(
+            input_chain=input_chain, tree_node_index=tree_node_index
+        )
+        if not root_children:
+            return root_history
+
+        next_tree_index = tree_node_index + 1
+        pending: dict[concurrent.futures.Future, tuple[TreeNode, int, int]] = {}
+
+        def _submit_children(
+            executor: concurrent.futures.Executor,
+            parent_node: TreeNode,
+            child_fragments: list[Chain],
+        ) -> None:
+            nonlocal next_tree_index
+            parent_node.children = [None] * len(child_fragments)
+            for child_position, child_chain in enumerate(child_fragments):
+                child_index = next_tree_index
+                next_tree_index += 1
+                future = executor.submit(
+                    _parallel_recursive_step_worker,
+                    self.inputs,
+                    child_chain,
+                    child_index,
+                )
+                pending[future] = (parent_node, child_position, child_index)
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=bounded_workers
+        ) as executor:
+            _submit_children(executor, root_history, root_children)
+            while pending:
+                done, _ = concurrent.futures.wait(
+                    tuple(pending.keys()),
+                    return_when=concurrent.futures.FIRST_COMPLETED,
+                )
+                for future in done:
+                    parent_node, child_position, child_index = pending.pop(future)
+                    try:
+                        child_history, child_children = future.result()
+                    except Exception:
+                        child_history = TreeNode(
+                            data=None, children=[], index=child_index
+                        )
+                        child_children = []
+                    parent_node.children[child_position] = child_history
+                    if child_children:
+                        _submit_children(executor, child_history, child_children)
+
+        return root_history
 
     def _create_interpolation(self, chain: Chain):
         import neb_dynamics.chainhelpers as ch
@@ -670,3 +783,25 @@ class MSMEP:
             chains = self._do_maxima_based_split(chain, minimization_results)
 
         return chains
+
+
+def _parallel_recursive_step_worker(
+    run_inputs: RunInputs,
+    input_chain: Chain,
+    tree_node_index: int,
+) -> tuple[TreeNode, list[Chain]]:
+    try:
+        local_inputs = copy.deepcopy(run_inputs)
+    except Exception:
+        local_inputs = run_inputs
+
+    try:
+        local_inputs.path_min_inputs.v = True
+    except Exception:
+        pass
+
+    runner = MSMEP(inputs=local_inputs)
+    return runner._run_recursive_step(
+        input_chain=input_chain,
+        tree_node_index=tree_node_index,
+    )
