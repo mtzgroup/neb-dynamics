@@ -898,7 +898,9 @@ def _parallel_recursive_step_worker(
             local_inputs = run_inputs
 
     try:
-        local_inputs.path_min_inputs.v = True
+        # Keep branch workers in non-verbose mode so transient rich panels from
+        # elementary-step checks do not fight with the live ASCII monitors.
+        local_inputs.path_min_inputs.v = False
     except Exception:
         pass
 

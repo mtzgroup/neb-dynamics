@@ -6,6 +6,7 @@ from qcio import Structure
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs
 from neb_dynamics.msmep import MSMEP
+import neb_dynamics.msmep as msmep_module
 from neb_dynamics.nodes.node import StructureNode
 
 
@@ -57,3 +58,35 @@ def test_qmmm_run_minimize_disables_molecular_graphs(monkeypatch):
 
     assert all(node.has_molecular_graph is False for node in chain)
     assert all(node.graph is None for node in chain)
+
+
+def test_parallel_worker_forces_non_verbose_for_live_monitor_stability(monkeypatch):
+    worker_inputs = SimpleNamespace(path_min_inputs=SimpleNamespace(v=True))
+    captured = {}
+
+    monkeypatch.setattr(
+        msmep_module,
+        "_clone_run_inputs_for_worker",
+        lambda _run_inputs: worker_inputs,
+    )
+
+    class _FakeRunner:
+        def __init__(self, inputs):
+            self.inputs = inputs
+            captured["init_v"] = self.inputs.path_min_inputs.v
+
+        def _run_recursive_step(self, input_chain, tree_node_index):
+            captured["step_v"] = self.inputs.path_min_inputs.v
+            return ("history", [])
+
+    monkeypatch.setattr(msmep_module, "MSMEP", _FakeRunner)
+
+    out = msmep_module._parallel_recursive_step_worker(
+        run_inputs=SimpleNamespace(),
+        input_chain=object(),
+        tree_node_index=4,
+    )
+
+    assert out == ("history", [])
+    assert captured["init_v"] is False
+    assert captured["step_v"] is False
