@@ -95,22 +95,59 @@ def _to_plain_dict(value):
 
 def _clone_run_inputs_for_worker(run_inputs: RunInputs) -> RunInputs:
     """Build an isolated RunInputs instance for a worker thread."""
-    return RunInputs(
-        engine_name=getattr(run_inputs, "engine_name", "chemcloud"),
-        program=getattr(run_inputs, "program", "xtb"),
-        chemcloud_queue=getattr(run_inputs, "chemcloud_queue", None),
-        write_qcio=bool(getattr(run_inputs, "write_qcio", False)),
-        qmmm_inputs=_to_plain_dict(getattr(run_inputs, "qmmm_inputs", None)),
-        nanoreactor_inputs=_to_plain_dict(
+    payload = _run_inputs_payload_for_worker(run_inputs)
+    return RunInputs(**payload)
+
+
+def _run_inputs_payload_for_worker(run_inputs: RunInputs) -> dict:
+    """Build a serialization-safe RunInputs payload for workers."""
+    return {
+        "engine_name": getattr(run_inputs, "engine_name", "chemcloud"),
+        "program": getattr(run_inputs, "program", "xtb"),
+        "chemcloud_queue": getattr(run_inputs, "chemcloud_queue", None),
+        "write_qcio": bool(getattr(run_inputs, "write_qcio", False)),
+        "qmmm_inputs": _to_plain_dict(getattr(run_inputs, "qmmm_inputs", None)),
+        "nanoreactor_inputs": _to_plain_dict(
             getattr(run_inputs, "nanoreactor_inputs", None)
         ),
-        path_min_method=getattr(run_inputs, "path_min_method", "NEB"),
-        path_min_inputs=_to_plain_dict(getattr(run_inputs, "path_min_inputs", None)),
-        chain_inputs=_to_plain_dict(getattr(run_inputs, "chain_inputs", None)),
-        gi_inputs=_to_plain_dict(getattr(run_inputs, "gi_inputs", None)),
-        network_inputs=_to_plain_dict(getattr(run_inputs, "network_inputs", None)),
-        program_kwds=_to_plain_dict(getattr(run_inputs, "program_kwds", None)),
-        optimizer_kwds=_to_plain_dict(getattr(run_inputs, "optimizer_kwds", None)),
+        "path_min_method": getattr(run_inputs, "path_min_method", "NEB"),
+        "path_min_inputs": _to_plain_dict(
+            getattr(run_inputs, "path_min_inputs", None)
+        ),
+        "chain_inputs": _to_plain_dict(getattr(run_inputs, "chain_inputs", None)),
+        "gi_inputs": _to_plain_dict(getattr(run_inputs, "gi_inputs", None)),
+        "network_inputs": _to_plain_dict(
+            getattr(run_inputs, "network_inputs", None)
+        ),
+        "program_kwds": _to_plain_dict(getattr(run_inputs, "program_kwds", None)),
+        "optimizer_kwds": _to_plain_dict(getattr(run_inputs, "optimizer_kwds", None)),
+    }
+
+
+def _chain_payload_for_worker(input_chain: Chain) -> dict:
+    return {
+        "nodes": [
+            node.to_serializable() if hasattr(node, "to_serializable") else copy.deepcopy(node)
+            for node in input_chain.nodes
+        ],
+        "parameters": _to_plain_dict(input_chain.parameters),
+    }
+
+
+def _chain_from_worker_payload(payload: dict) -> Chain:
+    nodes = []
+    for item in list(payload.get("nodes") or []):
+        if isinstance(item, dict) and "structure" in item:
+            nodes.append(StructureNode.from_serializable(copy.deepcopy(item)))
+        elif hasattr(item, "copy"):
+            nodes.append(item.copy())
+        else:
+            nodes.append(copy.deepcopy(item))
+    return Chain.model_validate(
+        {
+            "nodes": nodes,
+            "parameters": payload.get("parameters"),
+        }
     )
 
 
@@ -364,6 +401,14 @@ class MSMEP:
         ] = {}
         branch_failures: list[str] = []
         max_worker_attempts = 2
+        engine_name = str(getattr(self.inputs, "engine_name", "") or "").strip().lower()
+        compute_program = str(
+            getattr(getattr(self.inputs, "engine", None), "compute_program", "") or ""
+        ).strip().lower()
+        use_process_workers = engine_name == "qcop" and compute_program == "qcop"
+        run_inputs_payload = (
+            _run_inputs_payload_for_worker(self.inputs) if use_process_workers else None
+        )
 
         def _submit_children(
             executor: concurrent.futures.Executor,
@@ -377,12 +422,21 @@ class MSMEP:
                 child_index = next_tree_index
                 next_tree_index += 1
                 progress_printer.mark_monitor_active(f"branch-{child_index}")
-                future = executor.submit(
-                    _parallel_recursive_step_worker,
-                    self.inputs,
-                    child_chain,
-                    child_index,
-                )
+                if use_process_workers:
+                    child_payload = _chain_payload_for_worker(child_chain)
+                    future = executor.submit(
+                        _parallel_recursive_step_worker_from_payload,
+                        run_inputs_payload,
+                        child_payload,
+                        child_index,
+                    )
+                else:
+                    future = executor.submit(
+                        _parallel_recursive_step_worker,
+                        self.inputs,
+                        child_chain,
+                        child_index,
+                    )
                 pending[future] = (
                     parent_node,
                     child_position,
@@ -391,7 +445,12 @@ class MSMEP:
                     int(attempt),
                 )
 
-        with concurrent.futures.ThreadPoolExecutor(
+        executor_cls = (
+            concurrent.futures.ProcessPoolExecutor
+            if use_process_workers
+            else concurrent.futures.ThreadPoolExecutor
+        )
+        with executor_cls(
             max_workers=bounded_workers
         ) as executor:
             _submit_children(executor, root_history, root_children)
@@ -416,12 +475,21 @@ class MSMEP:
                         worker_trace = traceback.format_exc().strip()
                         if attempt < max_worker_attempts:
                             retry_attempt = attempt + 1
-                            retry_future = executor.submit(
-                                _parallel_recursive_step_worker,
-                                self.inputs,
-                                child_chain,
-                                child_index,
-                            )
+                            if use_process_workers:
+                                retry_payload = _chain_payload_for_worker(child_chain)
+                                retry_future = executor.submit(
+                                    _parallel_recursive_step_worker_from_payload,
+                                    run_inputs_payload,
+                                    retry_payload,
+                                    child_index,
+                                )
+                            else:
+                                retry_future = executor.submit(
+                                    _parallel_recursive_step_worker,
+                                    self.inputs,
+                                    child_chain,
+                                    child_index,
+                                )
                             pending[retry_future] = (
                                 parent_node,
                                 child_position,
@@ -987,7 +1055,27 @@ def _parallel_recursive_step_worker(
 
     with progress_monitor(f"branch-{int(tree_node_index)}"):
         runner = MSMEP(inputs=local_inputs)
-        return runner._run_recursive_step(
+        history, child_chains = runner._run_recursive_step(
             input_chain=local_chain,
             tree_node_index=tree_node_index,
         )
+        try:
+            if getattr(history, "data", None) is not None:
+                history.data.engine = None
+        except Exception:
+            pass
+        return history, child_chains
+
+
+def _parallel_recursive_step_worker_from_payload(
+    run_inputs_payload: dict,
+    input_chain_payload: dict,
+    tree_node_index: int,
+) -> tuple[TreeNode, list[Chain]]:
+    local_inputs = RunInputs(**copy.deepcopy(run_inputs_payload))
+    local_chain = _chain_from_worker_payload(input_chain_payload)
+    return _parallel_recursive_step_worker(
+        run_inputs=local_inputs,
+        input_chain=local_chain,
+        tree_node_index=tree_node_index,
+    )

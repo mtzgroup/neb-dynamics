@@ -387,3 +387,125 @@ def test_parallel_scheduler_runs_multiple_branch_workers_concurrently(monkeypatc
 
     assert history is root_history
     assert entered["max"] >= 2
+
+
+def test_parallel_scheduler_uses_process_pool_for_local_qcop(monkeypatch):
+    inputs = SimpleNamespace(
+        engine_name="qcop",
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(v=False),
+        chain_inputs=ChainInputs(),
+        gi_inputs=SimpleNamespace(nimages=2),
+        optimizer_kwds={"name": "cg", "timestep": 0.1},
+        engine=SimpleNamespace(compute_program="qcop"),
+    )
+    m = MSMEP(inputs=inputs)
+    nodes = [StructureNode(structure=_structure_at_x(0.5)), StructureNode(structure=_structure_at_x(1.5))]
+    chain = Chain.model_validate({"nodes": nodes, "parameters": inputs.chain_inputs})
+
+    root_data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+    root_history = msmep_module.TreeNode(data=root_data, children=[], index=0)
+    monkeypatch.setattr(
+        MSMEP,
+        "_run_recursive_step",
+        lambda self, input_chain, tree_node_index: (root_history, [chain]),
+    )
+
+    captured = {"process_executor_used": False}
+
+    class _FakeProcessExecutor:
+        def __init__(self, max_workers):
+            captured["process_executor_used"] = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, *args, **kwargs):
+            fut = concurrent.futures.Future()
+            try:
+                fut.set_result(fn(*args, **kwargs))
+            except Exception as exc:
+                fut.set_exception(exc)
+            return fut
+
+    monkeypatch.setattr(
+        msmep_module.concurrent.futures, "ProcessPoolExecutor", _FakeProcessExecutor
+    )
+
+    class _FakePrinter:
+        def clear_path_so_far(self):
+            return None
+
+        def mark_monitor_active(self, monitor_id):
+            return None
+
+        def mark_monitor_inactive(self, monitor_id):
+            return None
+
+        def update_path_so_far(self, chain, caption=""):
+            return None
+
+    monkeypatch.setattr(msmep_module, "get_progress_printer", lambda: _FakePrinter())
+
+    def _fake_worker_payload(run_inputs_payload, input_chain_payload, tree_node_index):
+        data = SimpleNamespace(
+            chain_trajectory=[chain], optimized=chain, engine=SimpleNamespace()
+        )
+        return msmep_module.TreeNode(data=data, children=[], index=tree_node_index), []
+
+    monkeypatch.setattr(
+        msmep_module,
+        "_parallel_recursive_step_worker_from_payload",
+        _fake_worker_payload,
+    )
+
+    history = m.run_parallel_recursive_minimize(chain, max_workers=2)
+
+    assert history is root_history
+    assert captured["process_executor_used"] is True
+
+
+def test_parallel_worker_strips_engine_before_return(monkeypatch):
+    worker_inputs = SimpleNamespace(path_min_inputs=SimpleNamespace(v=True))
+    monkeypatch.setattr(
+        msmep_module,
+        "_clone_run_inputs_for_worker",
+        lambda _run_inputs: worker_inputs,
+    )
+
+    chain = Chain.model_validate(
+        {
+            "nodes": [
+                StructureNode(structure=_structure_at_x(0.12)),
+                StructureNode(structure=_structure_at_x(0.92)),
+            ],
+            "parameters": ChainInputs(),
+        }
+    )
+
+    class _FakeRunner:
+        def __init__(self, inputs):
+            self.inputs = inputs
+
+        def _run_recursive_step(self, input_chain, tree_node_index):
+            data = SimpleNamespace(
+                chain_trajectory=[chain],
+                optimized=chain,
+                engine=SimpleNamespace(lock=object()),
+            )
+            return msmep_module.TreeNode(data=data, children=[], index=tree_node_index), []
+
+    monkeypatch.setattr(msmep_module, "MSMEP", _FakeRunner)
+
+    out_history, out_children = msmep_module._parallel_recursive_step_worker(
+        run_inputs=SimpleNamespace(),
+        input_chain=chain,
+        tree_node_index=9,
+    )
+
+    assert out_children == []
+    assert out_history.index == 9
+    assert out_history.data.engine is None
