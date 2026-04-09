@@ -1807,10 +1807,24 @@ def run(
                 f"[yellow]⚠ {len(parallel_failures)} branch worker failure(s) occurred during "
                 "parallel autosplitting; recovered branches were retained where possible.[/yellow]"
             )
-        failed_leaves = sum(
-            1 for leaf in history.depth_first_ordered_nodes
-            if leaf.is_leaf and not bool(leaf.data)
+        identical_skipped_leaves = sum(
+            1
+            for leaf in history.depth_first_ordered_nodes
+            if leaf.is_leaf
+            and not bool(leaf.data)
+            and getattr(leaf, "leaf_status", "") == "identical_endpoints"
         )
+        failed_leaves = sum(
+            1
+            for leaf in history.depth_first_ordered_nodes
+            if leaf.is_leaf
+            and not bool(leaf.data)
+            and getattr(leaf, "leaf_status", "") != "identical_endpoints"
+        )
+        if identical_skipped_leaves > 0:
+            console.print(
+                f"[yellow]⚠ {identical_skipped_leaves} parallel branch(es) were skipped because endpoints were identical.[/yellow]"
+            )
         if failed_leaves > 0:
             console.print(
                 f"[yellow]⚠ {failed_leaves} parallel branch(es) failed. Writing a partial merged chain from successful leaves.[/yellow]"

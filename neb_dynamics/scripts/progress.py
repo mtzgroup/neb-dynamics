@@ -106,6 +106,8 @@ class ProgressPrinter:
         self._monitor_states: dict[str, dict] = {}
         self._lock = threading.RLock()
         self._monitor_column_width = 44
+        self._compact_plot_width = 36
+        self._compact_plot_height = 6
 
         # Throttle updates to avoid too much output
         self._throttle = 0.5  # Only print every 0.5 seconds by default
@@ -116,6 +118,33 @@ class ProgressPrinter:
             return monitor
         label = f"{monitor} | {caption}"
         return _truncate_label(label, self._monitor_column_width)
+
+    def _compact_ascii_for_live(self, state: dict) -> str:
+        payload = state.get("chain_plot_payload") or {}
+        y_vals = payload.get("y") or []
+        if isinstance(y_vals, list) and len(y_vals) >= 2:
+            labels = [str(i) for i in range(len(y_vals))]
+            try:
+                return _build_ascii_energy_profile(
+                    y_vals,
+                    labels,
+                    width=self._compact_plot_width,
+                    height=self._compact_plot_height,
+                )
+            except Exception:
+                pass
+
+        ascii_plot = str(state.get("ascii_plot") or "").strip()
+        if not ascii_plot:
+            return "(waiting for first chain update)"
+        lines = ascii_plot.splitlines()
+        # Trim to keep multi-monitor output readable in smaller terminals.
+        max_lines = self._compact_plot_height + 4
+        if len(lines) <= max_lines:
+            return ascii_plot
+        kept = lines[:max_lines]
+        kept.append("... (compact view)")
+        return "\n".join(kept)
 
     def _state_for_monitor(self, monitor_id: str | None = None) -> dict:
         key = str(monitor_id or _active_monitor_id() or "main")
@@ -156,11 +185,15 @@ class ProgressPrinter:
             overflow="ellipsis",
         )
         table.add_column("Chain")
+        compact_mode = len(self._monitor_states) > 1
         for monitor_id in sorted(self._monitor_states.keys()):
             state = self._monitor_states[monitor_id]
             caption = str(state.get("status_message") or state.get("caption") or "").strip()
             label = self._format_monitor_label(monitor_id=monitor_id, caption=caption)
-            chain_ascii = state.get("ascii_plot") or "(waiting for first chain update)"
+            if compact_mode:
+                chain_ascii = self._compact_ascii_for_live(state)
+            else:
+                chain_ascii = state.get("ascii_plot") or "(waiting for first chain update)"
             table.add_row(label, str(chain_ascii))
 
         if self._live is None:

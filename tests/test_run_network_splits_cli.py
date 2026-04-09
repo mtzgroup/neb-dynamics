@@ -152,6 +152,22 @@ class _ParallelAllFailedMSMEP:
         return history
 
 
+class _ParallelIdenticalSkipMSMEP:
+    def __init__(self, inputs):
+        self.inputs = inputs
+        self.parallel_calls = 0
+
+    def run_parallel_recursive_minimize(
+        self, input_chain: Chain, max_workers: int | None = None
+    ):
+        self.parallel_calls += 1
+        history = _history_from_segments([(0.0, 1.0)], self.inputs.chain_inputs)
+        skipped = TreeNode(data=None, children=[], index=2)
+        skipped.leaf_status = "identical_endpoints"
+        history.children.append(skipped)
+        return history
+
+
 def test_run_recursive_network_splits_enqueues_intermediate_targets(monkeypatch, tmp_path):
     params = ChainInputs()
     expensive_inputs = SimpleNamespace(
@@ -461,6 +477,43 @@ def test_parallel_run_falls_back_to_root_chain_when_all_child_leaves_fail(monkey
     snapshot = main_cli._load_status_snapshot(str(tmp_path / "parallel_all_failed.xyz"))
     assert snapshot["run_status"]["run_state"] == "completed"
     assert snapshot["run_status"]["parallel"] is True
+
+
+def test_parallel_run_reports_identical_endpoint_skips_not_failures(
+    monkeypatch, tmp_path, capsys
+):
+    params = ChainInputs()
+    program_inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(do_elem_step_checks=True),
+        chain_inputs=params,
+        engine=SimpleNamespace(),
+    )
+    runner = _ParallelIdenticalSkipMSMEP(program_inputs)
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(lambda path: program_inputs))
+    monkeypatch.setattr(main_cli, "MSMEP", lambda inputs: runner)
+    monkeypatch.setattr(main_cli, "_render_runinputs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        main_cli,
+        "read_multiple_structure_from_file",
+        lambda *args, **kwargs: [_structure_at_x(0.0), _structure_at_x(2.0)],
+    )
+    monkeypatch.chdir(tmp_path)
+
+    main_cli.run(
+        geometries="dummy.xyz",
+        inputs="dummy.toml",
+        recursive=False,
+        parallel=True,
+        parallel_workers=2,
+        network_splits=False,
+        name="parallel_identical_skip",
+    )
+
+    out = capsys.readouterr().out
+    assert "were skipped because endpoints were identical" in out
+    assert "parallel branch(es) failed" not in out
 
 
 def test_run_network_splits_resumes_from_saved_tree_and_request_artifacts(monkeypatch, tmp_path):

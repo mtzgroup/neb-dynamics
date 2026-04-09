@@ -64,6 +64,12 @@ def _normalize_path_method(path_min_method: str) -> str:
     return aliases.get(method, method)
 
 
+def _empty_leaf(index: int, status: str) -> TreeNode:
+    node = TreeNode(data=None, children=[], index=index)
+    setattr(node, "leaf_status", status)
+    return node
+
+
 def _to_plain_dict(value):
     if value is None:
         return None
@@ -190,7 +196,7 @@ class MSMEP:
                     print(msg)
                 else:
                     update_status(msg)
-                return TreeNode(data=None, children=[], index=tree_node_index)
+                return _empty_leaf(tree_node_index, status="identical_endpoints")
 
         ch._reset_node_convergence(input_chain)
         self.inputs.engine.compute_gradients(input_chain)
@@ -207,7 +213,7 @@ class MSMEP:
                 print(msg)
             else:
                 update_status(msg)
-            return TreeNode(data=None, children=[], index=tree_node_index)
+            return _empty_leaf(tree_node_index, status="identical_endpoints")
 
         try:
             root_neb_obj, elem_step_results = self.run_minimize_chain(
@@ -253,7 +259,7 @@ class MSMEP:
 
         except ElectronicStructureError as e:
             e.obj.save("/tmp/failed_output.qcio")
-            return TreeNode(data=None, children=[], index=tree_node_index)
+            return _empty_leaf(tree_node_index, status="electronic_structure_error")
 
     def _run_recursive_step(self, input_chain: Chain, tree_node_index: int) -> tuple[TreeNode, list[Chain]]:
         """Run a single recursive minimization step and return child fragments to continue."""
@@ -269,7 +275,7 @@ class MSMEP:
                 input_chain[-1],
                 verbose=_get_verbose(self.inputs),
             ):
-                return TreeNode(data=None, children=[], index=tree_node_index), []
+                return _empty_leaf(tree_node_index, status="identical_endpoints"), []
 
         ch._reset_node_convergence(input_chain)
         self.inputs.engine.compute_gradients(input_chain)
@@ -281,7 +287,7 @@ class MSMEP:
             kcal_mol_cutoff=self.inputs.chain_inputs.node_ene_thre,
             verbose=False,
         ):
-            return TreeNode(data=None, children=[], index=tree_node_index), []
+            return _empty_leaf(tree_node_index, status="identical_endpoints"), []
 
         root_neb_obj, elem_step_results = self.run_minimize_chain(
             input_chain=input_chain
@@ -380,8 +386,8 @@ class MSMEP:
                                 f"worker traceback:\n{worker_trace}\n"
                                 f"retry traceback:\n{retry_trace}"
                             )
-                            child_history = TreeNode(
-                                data=None, children=[], index=child_index
+                            child_history = _empty_leaf(
+                                child_index, status="worker_failure"
                             )
                             child_children = []
                     parent_node.children[child_position] = child_history

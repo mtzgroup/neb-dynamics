@@ -65,3 +65,15 @@ def test_monitor_label_is_bounded_to_fixed_width():
     )
     assert len(label) <= 20
     assert label.startswith("branch-001")
+
+
+def test_compact_ascii_for_live_uses_payload_series():
+    printer = progress.ProgressPrinter(use_rich=False)
+    state = {
+        "chain_plot_payload": {"y": [0.0, 1.0, 0.3, 1.2]},
+        "ascii_plot": "unused",
+    }
+
+    out = printer._compact_ascii_for_live(state)
+
+    assert "node index" in out
