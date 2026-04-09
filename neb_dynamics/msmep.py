@@ -372,6 +372,7 @@ class MSMEP:
             for child_position, child_chain in enumerate(child_fragments):
                 child_index = next_tree_index
                 next_tree_index += 1
+                progress_printer.mark_monitor_active(f"branch-{child_index}")
                 future = executor.submit(
                     _parallel_recursive_step_worker,
                     self.inputs,
@@ -418,6 +419,7 @@ class MSMEP:
                             )
                             child_children = []
                     parent_node.children[child_position] = child_history
+                    progress_printer.mark_monitor_inactive(f"branch-{child_index}")
                     if not child_children:
                         leaf_chain = _leaf_chain_from_tree_node(child_history)
                         if leaf_chain is not None:

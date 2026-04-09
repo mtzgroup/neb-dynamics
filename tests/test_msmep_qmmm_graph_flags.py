@@ -90,3 +90,60 @@ def test_parallel_worker_forces_non_verbose_for_live_monitor_stability(monkeypat
     assert out == ("history", [])
     assert captured["init_v"] is False
     assert captured["step_v"] is False
+
+
+def test_parallel_scheduler_marks_child_monitors_active_and_inactive(monkeypatch):
+    inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(v=False),
+        chain_inputs=ChainInputs(),
+        gi_inputs=SimpleNamespace(nimages=2),
+        optimizer_kwds={"name": "cg", "timestep": 0.1},
+        engine=SimpleNamespace(),
+    )
+    m = MSMEP(inputs=inputs)
+    nodes = [StructureNode(structure=_structure_at_x(0.1)), StructureNode(structure=_structure_at_x(0.9))]
+    chain = Chain.model_validate({"nodes": nodes, "parameters": inputs.chain_inputs})
+
+    root_data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+    root_history = msmep_module.TreeNode(data=root_data, children=[], index=0)
+
+    monkeypatch.setattr(
+        MSMEP,
+        "_run_recursive_step",
+        lambda self, input_chain, tree_node_index: (root_history, [chain, chain]),
+    )
+
+    def _fake_worker(run_inputs, input_chain, tree_node_index):
+        data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+        return msmep_module.TreeNode(data=data, children=[], index=tree_node_index), []
+
+    monkeypatch.setattr(msmep_module, "_parallel_recursive_step_worker", _fake_worker)
+
+    class _FakePrinter:
+        def __init__(self):
+            self.active = []
+            self.inactive = []
+            self.path_updates = 0
+
+        def clear_path_so_far(self):
+            return None
+
+        def mark_monitor_active(self, monitor_id):
+            self.active.append(monitor_id)
+
+        def mark_monitor_inactive(self, monitor_id):
+            self.inactive.append(monitor_id)
+
+        def update_path_so_far(self, chain, caption=""):
+            self.path_updates += 1
+
+    fake_printer = _FakePrinter()
+    monkeypatch.setattr(msmep_module, "get_progress_printer", lambda: fake_printer)
+
+    history = m.run_parallel_recursive_minimize(chain, max_workers=2)
+
+    assert history is root_history
+    assert set(fake_printer.active) >= {"branch-1", "branch-2"}
+    assert set(fake_printer.inactive) >= {"branch-1", "branch-2"}
+    assert fake_printer.path_updates >= 1
