@@ -2,6 +2,7 @@ import traceback
 import logging
 import copy
 import os
+import time
 import concurrent.futures
 import contextlib
 from dataclasses import dataclass
@@ -398,7 +399,7 @@ class MSMEP:
         next_tree_index = tree_node_index + 1
         completed_leaf_chains_by_index: dict[int, Chain] = {}
         pending: dict[
-            concurrent.futures.Future, tuple[TreeNode, int, int, Chain, int]
+            concurrent.futures.Future, tuple[TreeNode, int, int, Chain, int, float]
         ] = {}
         branch_failures: list[str] = []
         max_worker_attempts = 2
@@ -451,6 +452,7 @@ class MSMEP:
                     child_index,
                     child_chain,
                     int(attempt),
+                    time.time(),
                 )
 
         executor_cls = (
@@ -465,8 +467,26 @@ class MSMEP:
             while pending:
                 done, _ = concurrent.futures.wait(
                     tuple(pending.keys()),
+                    timeout=1.0,
                     return_when=concurrent.futures.FIRST_COMPLETED,
                 )
+                if not done:
+                    if use_process_workers and hasattr(progress_printer, "set_monitor_status"):
+                        now = time.time()
+                        for (
+                            _parent_node,
+                            _child_position,
+                            child_index,
+                            _child_chain,
+                            attempt,
+                            submitted_at,
+                        ) in pending.values():
+                            elapsed = max(0, int(now - float(submitted_at)))
+                            progress_printer.set_monitor_status(
+                                f"branch-{child_index}",
+                                f"Running in worker process (attempt {attempt}/{max_worker_attempts}, {elapsed}s)",
+                            )
+                    continue
                 for future in done:
                     (
                         parent_node,
@@ -474,6 +494,7 @@ class MSMEP:
                         child_index,
                         child_chain,
                         attempt,
+                        _submitted_at,
                     ) = pending.pop(
                         future
                     )
@@ -509,6 +530,7 @@ class MSMEP:
                                 child_index,
                                 child_chain,
                                 retry_attempt,
+                                time.time(),
                             )
                             continue
                         branch_failures.append(
