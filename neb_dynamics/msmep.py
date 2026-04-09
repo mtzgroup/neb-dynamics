@@ -343,7 +343,9 @@ class MSMEP:
         if max_workers is None:
             bounded_workers = min(4, cpu_cap)
         else:
-            bounded_workers = max(1, min(int(max_workers), cpu_cap))
+            # Honor explicit user-requested parallelism. `os.cpu_count()` can
+            # under-report available capacity in constrained launch contexts.
+            bounded_workers = max(1, int(max_workers))
 
         progress_printer = get_progress_printer()
         progress_printer.clear_path_so_far()

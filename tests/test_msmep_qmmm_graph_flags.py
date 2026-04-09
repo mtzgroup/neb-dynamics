@@ -1,3 +1,4 @@
+import concurrent.futures
 from types import SimpleNamespace
 
 import numpy as np
@@ -147,3 +148,78 @@ def test_parallel_scheduler_marks_child_monitors_active_and_inactive(monkeypatch
     assert set(fake_printer.active) >= {"branch-1", "branch-2"}
     assert set(fake_printer.inactive) >= {"branch-1", "branch-2"}
     assert fake_printer.path_updates >= 1
+
+
+def test_parallel_scheduler_honors_explicit_worker_count_when_cpu_count_is_low(
+    monkeypatch,
+):
+    inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(v=False),
+        chain_inputs=ChainInputs(),
+        gi_inputs=SimpleNamespace(nimages=2),
+        optimizer_kwds={"name": "cg", "timestep": 0.1},
+        engine=SimpleNamespace(),
+    )
+    m = MSMEP(inputs=inputs)
+    nodes = [StructureNode(structure=_structure_at_x(0.2)), StructureNode(structure=_structure_at_x(1.2))]
+    chain = Chain.model_validate({"nodes": nodes, "parameters": inputs.chain_inputs})
+
+    root_data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+    root_history = msmep_module.TreeNode(data=root_data, children=[], index=0)
+
+    monkeypatch.setattr(
+        MSMEP,
+        "_run_recursive_step",
+        lambda self, input_chain, tree_node_index: (root_history, [chain, chain]),
+    )
+
+    def _fake_worker(run_inputs, input_chain, tree_node_index):
+        data = SimpleNamespace(chain_trajectory=[chain], optimized=chain)
+        return msmep_module.TreeNode(data=data, children=[], index=tree_node_index), []
+
+    monkeypatch.setattr(msmep_module, "_parallel_recursive_step_worker", _fake_worker)
+    monkeypatch.setattr(msmep_module.os, "cpu_count", lambda: 1)
+
+    captured: dict[str, int] = {}
+
+    class _FakeExecutor:
+        def __init__(self, max_workers):
+            captured["max_workers"] = int(max_workers)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, fn, *args, **kwargs):
+            fut = concurrent.futures.Future()
+            try:
+                fut.set_result(fn(*args, **kwargs))
+            except Exception as exc:  # pragma: no cover
+                fut.set_exception(exc)
+            return fut
+
+    monkeypatch.setattr(
+        msmep_module.concurrent.futures, "ThreadPoolExecutor", _FakeExecutor
+    )
+
+    class _FakePrinter:
+        def clear_path_so_far(self):
+            return None
+
+        def mark_monitor_active(self, monitor_id):
+            return None
+
+        def mark_monitor_inactive(self, monitor_id):
+            return None
+
+        def update_path_so_far(self, chain, caption=""):
+            return None
+
+    monkeypatch.setattr(msmep_module, "get_progress_printer", lambda: _FakePrinter())
+
+    m.run_parallel_recursive_minimize(chain, max_workers=50)
+
+    assert captured["max_workers"] == 50

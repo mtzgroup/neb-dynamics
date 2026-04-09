@@ -1509,9 +1509,8 @@ def run(
         raise typer.BadParameter("--parallel-workers must be at least 1.")
     if parallel_workers > cpu_cap:
         console.print(
-            f"[yellow]⚠ Requested {parallel_workers} parallel workers exceeds CPU count ({cpu_cap}). Capping to {cpu_cap}.[/yellow]"
+            f"[yellow]⚠ Requested {parallel_workers} parallel workers exceeds detected CPU count ({cpu_cap}). Continuing with requested value; tune based on your host capacity.[/yellow]"
         )
-        parallel_workers = cpu_cap
 
     if network_splits and not recursive:
         console.print(

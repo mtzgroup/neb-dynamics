@@ -434,7 +434,7 @@ def test_parallel_run_uses_parallel_recursive_runner_and_writes_partial_status(m
     assert runner.parallel_calls == 1
     assert runner.recursive_calls == 0
     assert runner.regular_calls == 0
-    assert runner.requested_max_workers == max(1, int(os.cpu_count() or 1))
+    assert runner.requested_max_workers == 999
 
     snapshot = main_cli._load_status_snapshot(str(tmp_path / "parallel_case.xyz"))
     assert snapshot["run_status"]["parallel"] is True
