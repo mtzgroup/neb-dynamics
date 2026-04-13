@@ -185,6 +185,7 @@ class QCOPEngine(Engine):
     biaser: ChainBiaser = None
     collect_files: bool = False
     write_qcio: bool = False
+    print_stdout: bool = False
 
     def __post_init__(self):
         self.chemcloud_queue = _resolve_chemcloud_queue(self.chemcloud_queue)
@@ -309,7 +310,10 @@ class QCOPEngine(Engine):
 
     def compute_func(self, *args, **kwargs):
         if self.compute_program == "qcop":
-            return qcop.compute(*args, **kwargs)
+            call_kwargs = dict(kwargs)
+            if self.print_stdout:
+                call_kwargs.setdefault("print_stdout", True)
+            return qcop.compute(*args, **call_kwargs)
         elif self.compute_program == "chemcloud":
             try:
                 call_kwargs = dict(kwargs)

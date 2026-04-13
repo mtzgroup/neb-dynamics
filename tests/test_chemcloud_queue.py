@@ -196,6 +196,35 @@ def test_runinputs_toml_chemcloud_queue_propagates(tmp_path: Path):
     assert run_inputs.engine.chemcloud_queue == "toml-queue"
 
 
+def test_runinputs_toml_qcop_print_stdout_propagates(tmp_path: Path):
+    inputs_fp = tmp_path / "inputs.toml"
+    inputs_fp.write_text(
+        "\n".join(
+            [
+                'engine_name = "qcop"',
+                'program = "xtb"',
+                "print_stdout = true",
+            ]
+        )
+    )
+    run_inputs = RunInputs.open(inputs_fp)
+    assert run_inputs.print_stdout is True
+    assert run_inputs.engine.print_stdout is True
+
+
+def test_qcop_engine_print_stdout_forwarded_to_qcop(monkeypatch):
+    captured = {}
+
+    def _fake_compute(*args, **kwargs):
+        captured["print_stdout"] = kwargs.get("print_stdout")
+        return None
+
+    monkeypatch.setattr(qcop_module.qcop, "compute", _fake_compute)
+    eng = QCOPEngine(compute_program="qcop", print_stdout=True)
+    eng.compute_func("xtb", object())
+    assert captured["print_stdout"] is True
+
+
 def test_qcop_engine_chemcloud_batches_geometry_optimizations(monkeypatch):
     captured = {"calls": 0, "input_len": None}
 

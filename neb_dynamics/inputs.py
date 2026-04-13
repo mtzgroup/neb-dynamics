@@ -319,6 +319,7 @@ class RunInputs:
     program: str = "xtb"
     chemcloud_queue: str = None
     write_qcio: bool = False
+    print_stdout: bool = False
     qmmm_inputs: dict = None
     nanoreactor_inputs: dict = None
 
@@ -455,6 +456,7 @@ class RunInputs:
                              compute_program=self.engine_name,
                              chemcloud_queue=self.chemcloud_queue,
                              write_qcio=self.write_qcio,
+                             print_stdout=self.print_stdout,
                              )
         elif self.engine_name == 'qmmm':
             from neb_dynamics.engines.qmmm import QMMMEngine
