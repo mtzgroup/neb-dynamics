@@ -170,6 +170,86 @@ class QMMMEngine(Engine):
         return out
 
     @staticmethod
+    def _coerce_frozen_atom_indices(raw: list[int] | tuple[int, ...] | str | None) -> list[int]:
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            tokens = raw.replace(",", " ").split()
+            out: list[int] = []
+            for tok in tokens:
+                tok = tok.strip()
+                if not tok:
+                    continue
+                out.append(int(tok))
+            return out
+        return [int(v) for v in raw]
+
+    @staticmethod
+    def _extract_constraints_atom_indices(tcin_text: str) -> list[int]:
+        indices: list[int] = []
+        in_constraints = False
+        for raw_line in tcin_text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+            lower = line.lower()
+            if lower.startswith("$constraints"):
+                in_constraints = True
+                continue
+            if in_constraints and lower.startswith("$end"):
+                in_constraints = False
+                continue
+            if in_constraints and lower.startswith("$"):
+                in_constraints = False
+                continue
+            if not in_constraints:
+                continue
+
+            tokens = line.split()
+            if not tokens or tokens[0].lower() != "atom" or len(tokens) < 2:
+                continue
+            m = re.search(r"-?\d+", tokens[1])
+            if not m:
+                continue
+            atom_idx_1_based = int(m.group())
+            if atom_idx_1_based <= 0:
+                continue
+            indices.append(atom_idx_1_based - 1)
+
+        return sorted(set(indices))
+
+    @staticmethod
+    def _strip_constraints_blocks(tcin_text: str) -> str:
+        out_lines: list[str] = []
+        in_constraints = False
+        for raw_line in tcin_text.splitlines():
+            stripped = raw_line.strip().lower()
+            if stripped.startswith("$constraints"):
+                in_constraints = True
+                continue
+            if in_constraints and stripped.startswith("$end"):
+                in_constraints = False
+                continue
+            if in_constraints:
+                continue
+            out_lines.append(raw_line)
+        return "\n".join(out_lines).rstrip() + "\n"
+
+    def _with_constraints(self, tcin_text: str, frozen_atom_indices: list[int] | None) -> str:
+        explicit_frozen = {idx for idx in (frozen_atom_indices or []) if int(idx) >= 0}
+        existing_frozen = set(self._extract_constraints_atom_indices(tcin_text))
+        all_frozen = sorted(existing_frozen.union(int(v) for v in explicit_frozen))
+
+        base_text = self._strip_constraints_blocks(tcin_text)
+        if len(all_frozen) == 0:
+            return base_text
+
+        constraint_lines = ["$constraints"]
+        constraint_lines.extend(f"atom {idx + 1}" for idx in all_frozen)
+        constraint_lines.append("$end")
+        return base_text.rstrip() + "\n\n" + "\n".join(constraint_lines) + "\n"
+
+    @staticmethod
     def _extract_output_files(output) -> dict | None:
         for files_obj in (
             getattr(output, "files", None),
@@ -221,10 +301,19 @@ class QMMMEngine(Engine):
     def _compute_minimize_output(self, rst7_string: str, keywords: dict | None = None):
         tcin_text = self._with_run_type(self.inp_file, "minimize")
         min_kwds = self._normalize_minimize_keywords(keywords)
+        frozen_override = self._coerce_frozen_atom_indices(
+            min_kwds.pop("frozen_atom_indices", None)
+        )
+        if len(frozen_override) == 0:
+            frozen_override = list(self.frozen_atom_indices or [])
         # TeraChem's new minimizer is unstable for this QMMM workflow; force legacy minimizer.
         min_kwds["new_minimizer"] = "no"
         tcin_text = self._apply_tcin_overrides(
             tcin_text, min_kwds
+        )
+        tcin_text = self._with_constraints(
+            tcin_text=tcin_text,
+            frozen_atom_indices=frozen_override,
         )
         inp = self._construct_input(rst7_string, tcin_text=tcin_text)
         self._dump_debug_inputs([rst7_string])

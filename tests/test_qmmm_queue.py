@@ -500,6 +500,110 @@ def test_qmmm_geometry_optimization_forces_new_minimizer_no(monkeypatch, tmp_pat
     assert "new_minimizer yes" not in captured["tcin"]
 
 
+def test_qmmm_geometry_optimization_adds_constraints_from_frozen_atom_indices(monkeypatch, tmp_path):
+    _write_minimal_qmmm_files(tmp_path)
+    captured = {}
+
+    class _FakeOut:
+        def __init__(self, files):
+            self.files = files
+            self.stdout = "ok"
+
+    def _fake_compute(*args, **kwargs):
+        fi = args[1]
+        captured["tcin"] = fi.files["tc.in"]
+        optim_xyz = (
+            "1\n"
+            "frame0\n"
+            "H 0.000000 0.000000 0.000000\n"
+            "1\n"
+            "frame1\n"
+            "H 0.100000 0.000000 0.000000\n"
+        )
+        return _FakeOut(files={"optim.xyz": optim_xyz})
+
+    monkeypatch.setattr(qmmm_module, "compute", _fake_compute)
+    eng = QMMMEngine(
+        tcin_text="run gradient\n",
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+        frozen_atom_indices=[0],
+    )
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0]]),
+            symbols=["H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    _ = eng.compute_geometry_optimization(node=node, keywords={"maxiter": 10})
+
+    assert "run minimize" in captured["tcin"]
+    assert "$constraints" in captured["tcin"]
+    assert "atom 1" in captured["tcin"]
+    assert "$end" in captured["tcin"]
+    assert "frozen_atom_indices" not in captured["tcin"]
+
+
+def test_qmmm_geometry_optimization_constraints_block_dedupes_existing(monkeypatch, tmp_path):
+    _write_minimal_qmmm_files(tmp_path)
+    captured = {}
+
+    class _FakeOut:
+        def __init__(self, files):
+            self.files = files
+            self.stdout = "ok"
+
+    def _fake_compute(*args, **kwargs):
+        fi = args[1]
+        captured["tcin"] = fi.files["tc.in"]
+        optim_xyz = (
+            "1\n"
+            "frame0\n"
+            "H 0.000000 0.000000 0.000000\n"
+            "1\n"
+            "frame1\n"
+            "H 0.100000 0.000000 0.000000\n"
+        )
+        return _FakeOut(files={"optim.xyz": optim_xyz})
+
+    monkeypatch.setattr(qmmm_module, "compute", _fake_compute)
+    eng = QMMMEngine(
+        tcin_text="\n".join(
+            [
+                "run gradient",
+                "$constraints",
+                "atom 1",
+                "$end",
+                "",
+            ]
+        ),
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+        frozen_atom_indices=[0, 0],
+    )
+    node = StructureNode(
+        structure=Structure(
+            geometry=np.array([[0.0, 0.0, 0.0]]),
+            symbols=["H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    _ = eng.compute_geometry_optimization(node=node, keywords=None)
+
+    assert captured["tcin"].count("$constraints") == 1
+    assert captured["tcin"].count("atom 1") == 1
+    assert captured["tcin"].count("$end") == 1
+
+
 def test_qmmm_transition_state_returns_final_node_with_energy(monkeypatch, tmp_path):
     _write_minimal_qmmm_files(tmp_path)
     captured = {}
