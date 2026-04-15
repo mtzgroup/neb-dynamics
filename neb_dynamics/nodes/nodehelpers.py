@@ -565,7 +565,16 @@ def _is_connectivity_identical(
     connectivity_identical = self.graph.remove_Hs().is_bond_isomorphic_to(
         other.graph.remove_Hs()
     )
-    natom = len(self.coords)
+    comparison_inds_self = getattr(self, "comparison_atom_indices", None)
+    comparison_inds_other = getattr(other, "comparison_atom_indices", None)
+    if (
+        comparison_inds_self is not None
+        and comparison_inds_other is not None
+        and len(comparison_inds_self) == len(comparison_inds_other)
+    ):
+        natom = len(comparison_inds_self)
+    else:
+        natom = len(self.coords)
     smi1 = ""
     smi2 = ""
     stereochem_identical = True
@@ -582,7 +591,8 @@ def _is_connectivity_identical(
                 print("Constructing smiles failed. Pretending this check succeeded.")
             stereochem_identical = True
     else:
-        print("System too large. Not checking stereochemistry.")
+        if verbose:
+            print("System too large. Not checking stereochemistry.")
         stereochem_identical = True
 
     # Always collect results for final consolidated report

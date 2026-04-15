@@ -99,6 +99,7 @@ from neb_dynamics.scripts._cli_runtime import (
     print_banner,
 )
 from neb_dynamics.scripts import _cli_visualize
+from neb_dynamics.scripts.progress import stop_status
 
 # Custom theme for Claude Code-like styling
 custom_theme = Theme({
@@ -1747,7 +1748,10 @@ def run(
                 chain,
                 max_workers=parallel_workers,
             )
-        except Exception:
+        except KeyboardInterrupt:
+            stop_status()
+            raise
+        except BaseException:
             _write_run_status(
                 status_fp,
                 base_name=filename.stem,
@@ -1759,9 +1763,26 @@ def run(
                 path_min_method=str(program_input.path_min_method),
                 error=traceback.format_exc().strip(),
             )
+            stop_status()
             raise
 
         if not history.data:
+            leaf_status = str(getattr(history, "leaf_status", "") or "unknown")
+            if leaf_status == "identical_endpoints":
+                empty_history_msg = (
+                    "Program did not run because endpoints were classified as identical "
+                    "under current thresholds (node_rms_thre/node_ene_thre)."
+                )
+            elif leaf_status == "electronic_structure_error":
+                empty_history_msg = (
+                    "Program did not run because electronic structure evaluation failed "
+                    "during recursive minimization."
+                )
+            else:
+                empty_history_msg = (
+                    "Program did not run. Likely because your endpoints are conformers "
+                    "of the same molecular graph."
+                )
             _write_run_status(
                 status_fp,
                 base_name=filename.stem,
@@ -1771,9 +1792,13 @@ def run(
                 parallel=True,
                 network_splits=network_splits,
                 path_min_method=str(program_input.path_min_method),
-                error="Program did not run. Likely because your endpoints are conformers of the same molecular graph.",
+                error=f"{empty_history_msg} leaf_status={leaf_status}",
             )
-            console.print("[bold red]✗ ERROR:[/bold red] Program did not run. Likely because your endpoints are conformers of the same molecular graph. Tighten the node_rms_thre and/or node_ene_thre parameters in chain_inputs and try again.")
+            stop_status()
+            console.print(
+                f"[bold red]✗ ERROR:[/bold red] {empty_history_msg} "
+                "Tighten node_rms_thre/node_ene_thre in chain_inputs and try again."
+            )
             raise typer.Exit(1)
 
         successful_leaf_chains = []
@@ -2040,7 +2065,10 @@ def run(
         else:
             try:
                 history = m.run_recursive_minimize(chain)
-            except Exception:
+            except KeyboardInterrupt:
+                stop_status()
+                raise
+            except BaseException:
                 _write_run_status(
                     status_fp,
                     base_name=filename.stem,
@@ -2052,9 +2080,26 @@ def run(
                     path_min_method=str(program_input.path_min_method),
                     error=traceback.format_exc().strip(),
                 )
+                stop_status()
                 raise
 
         if not history.data:
+            leaf_status = str(getattr(history, "leaf_status", "") or "unknown")
+            if leaf_status == "identical_endpoints":
+                empty_history_msg = (
+                    "Program did not run because endpoints were classified as identical "
+                    "under current thresholds (node_rms_thre/node_ene_thre)."
+                )
+            elif leaf_status == "electronic_structure_error":
+                empty_history_msg = (
+                    "Program did not run because electronic structure evaluation failed "
+                    "during recursive minimization."
+                )
+            else:
+                empty_history_msg = (
+                    "Program did not run. Likely because your endpoints are conformers "
+                    "of the same molecular graph."
+                )
             _write_run_status(
                 status_fp,
                 base_name=filename.stem,
@@ -2064,9 +2109,13 @@ def run(
                 parallel=False,
                 network_splits=network_splits,
                 path_min_method=str(program_input.path_min_method),
-                error="Program did not run. Likely because your endpoints are conformers of the same molecular graph.",
+                error=f"{empty_history_msg} leaf_status={leaf_status}",
             )
-            console.print("[bold red]✗ ERROR:[/bold red] Program did not run. Likely because your endpoints are conformers of the same molecular graph. Tighten the node_rms_thre and/or node_ene_thre parameters in chain_inputs and try again.")
+            stop_status()
+            console.print(
+                f"[bold red]✗ ERROR:[/bold red] {empty_history_msg} "
+                "Tighten node_rms_thre/node_ene_thre in chain_inputs and try again."
+            )
             raise typer.Exit(1)
 
         leaves_nebs = [
