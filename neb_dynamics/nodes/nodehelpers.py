@@ -565,21 +565,16 @@ def _is_connectivity_identical(
     connectivity_identical = self.graph.remove_Hs().is_bond_isomorphic_to(
         other.graph.remove_Hs()
     )
-    comparison_inds_self = getattr(self, "comparison_atom_indices", None)
-    comparison_inds_other = getattr(other, "comparison_atom_indices", None)
-    if (
-        comparison_inds_self is not None
-        and comparison_inds_other is not None
-        and len(comparison_inds_self) == len(comparison_inds_other)
-    ):
-        natom = len(comparison_inds_self)
-    else:
-        natom = len(self.coords)
+    full_natom_self = len(self.coords)
+    full_natom_other = len(other.coords)
     smi1 = ""
     smi2 = ""
     stereochem_identical = True
 
-    if natom < 100:  # arbitrary number, else this takes too long
+    # Stereochemical SMILES generation is unsafe/too expensive for very large systems.
+    # Keep this gate on full system size (not active-atom subset size) to avoid
+    # hard exits in OpenBabel/RDKit for protein-scale QMMM structures.
+    if full_natom_self < 100 and full_natom_other < 100:
         try:
 
             smi1 = structure_to_smiles(self.structure)
