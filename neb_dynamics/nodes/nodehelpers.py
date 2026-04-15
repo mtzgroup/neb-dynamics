@@ -570,11 +570,14 @@ def _is_connectivity_identical(
     smi1 = ""
     smi2 = ""
     stereochem_identical = True
+    disable_smiles = bool(getattr(self, "disable_smiles", False)) or bool(
+        getattr(other, "disable_smiles", False)
+    )
 
     # Stereochemical SMILES generation is unsafe/too expensive for very large systems.
     # Keep this gate on full system size (not active-atom subset size) to avoid
     # hard exits in OpenBabel/RDKit for protein-scale QMMM structures.
-    if full_natom_self < 100 and full_natom_other < 100:
+    if (not disable_smiles) and full_natom_self < 100 and full_natom_other < 100:
         try:
 
             smi1 = structure_to_smiles(self.structure)

@@ -73,14 +73,15 @@ class SubGraphMatcher:
     @staticmethod
     def _safe_smiles_label(mol) -> str:
         """
-        Best-effort label for timeout logging.
-        `force_smiles()` can fail for some graphs (e.g. RDKit kekulization
-        issues), and timeout handlers must never raise secondary exceptions.
+        Best-effort label for timeout logging without any SMILES conversion.
+        Timeout handlers must never trigger expensive/cascading chemistry work.
         """
         try:
-            return str(mol.force_smiles())
+            n_nodes = len(mol.nodes)
+            n_edges = len(mol.edges)
+            return f"<graph nodes={n_nodes} edges={n_edges}>"
         except Exception:
-            return "<smiles_unavailable>"
+            return "<graph_unavailable>"
 
     def is_isomorphic(self, g):
         """

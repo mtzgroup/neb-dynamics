@@ -1007,6 +1007,10 @@ def _endpoint_smiles_for_chain(chain):
         return "N/A", "N/A"
     start_node = chain.nodes[0]
     end_node = chain.nodes[-1]
+    if bool(getattr(start_node, "disable_smiles", False)) or bool(
+        getattr(end_node, "disable_smiles", False)
+    ):
+        return "N/A", "N/A"
     if not (
         getattr(start_node, "has_molecular_graph", False)
         and getattr(end_node, "has_molecular_graph", False)
@@ -1016,6 +1020,8 @@ def _endpoint_smiles_for_chain(chain):
         return "N/A", "N/A"
 
     def _safe_node_smiles(node) -> str:
+        if bool(getattr(node, "disable_smiles", False)):
+            return "N/A"
         graph = getattr(node, "graph", None)
         if graph is not None:
             try:

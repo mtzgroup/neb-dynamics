@@ -129,6 +129,7 @@ class QMMMEngine(Engine):
             has_molecular_graph=has_graph,
             graph=graph,
             comparison_atom_indices=active_indices,
+            disable_smiles=True,
         )
 
     def _dump_debug_inputs(self, rst7_strings: list[str]) -> None:

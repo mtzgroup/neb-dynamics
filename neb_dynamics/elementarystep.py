@@ -78,6 +78,9 @@ def _print_new_structure(node: Node, message: str = "new structure found!") -> N
     """Print a notification for a newly discovered structure."""
     if node is None:
         return
+    if bool(getattr(node, "disable_smiles", False)):
+        print_persistent(message=message, ascii_block="new structure")
+        return
     if not getattr(node, "has_molecular_graph", False):
         print_persistent(message=message, ascii_block="new structure")
         return
