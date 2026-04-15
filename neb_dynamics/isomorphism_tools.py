@@ -2,10 +2,10 @@ import threading
 from contextlib import nullcontext
 
 import networkx as nx
-from timeout_timer import timeout, TimeoutInterrupt
+from timeout_timer import timeout
 
 
-class TimeoutIsomorphism(TimeoutInterrupt):
+class TimeoutIsomorphism(Exception):
     pass
 
 
