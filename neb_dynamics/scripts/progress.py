@@ -1014,14 +1014,27 @@ def _endpoint_smiles_for_chain(chain):
         and getattr(end_node, "graph", None) is not None
     ):
         return "N/A", "N/A"
-    try:
-        start = structure_to_smiles(start_node.structure)
-    except Exception:
-        start = "N/A"
-    try:
-        end = structure_to_smiles(end_node.structure)
-    except Exception:
-        end = "N/A"
+
+    def _safe_node_smiles(node) -> str:
+        graph = getattr(node, "graph", None)
+        if graph is not None:
+            try:
+                return str(graph.force_smiles())
+            except Exception:
+                pass
+        try:
+            natom = len(node.coords)
+        except Exception:
+            natom = 0
+        if natom >= 100:
+            return "N/A"
+        try:
+            return structure_to_smiles(node.structure)
+        except Exception:
+            return "N/A"
+
+    start = _safe_node_smiles(start_node)
+    end = _safe_node_smiles(end_node)
     return start, end
 
 

@@ -81,10 +81,18 @@ def _print_new_structure(node: Node, message: str = "new structure found!") -> N
     if not getattr(node, "has_molecular_graph", False):
         print_persistent(message=message, ascii_block="new structure")
         return
+    smi = ""
     try:
-        smi = structure_to_smiles(node.structure)
+        if getattr(node, "graph", None) is not None:
+            smi = str(node.graph.force_smiles())
     except Exception:
         smi = ""
+    if not smi:
+        try:
+            if len(node.coords) < 100:
+                smi = structure_to_smiles(node.structure)
+        except Exception:
+            smi = ""
     ascii_art = _render_molecule_ascii(
         smi, width=60, height=12) if smi else "new structure"
     print_persistent(message=message, ascii_block=ascii_art)
