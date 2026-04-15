@@ -215,7 +215,7 @@ class MSMEP:
         return optimizer_map[optimizer_name](**kwds)
 
     def _should_disable_graphs(self) -> bool:
-        return self.inputs.engine.__class__.__name__ == "QMMMEngine"
+        return bool(getattr(self.inputs.engine, "disable_molecular_graphs", False))
 
     def _disable_molecular_graphs(self, chain: Chain) -> None:
         if not self._should_disable_graphs():

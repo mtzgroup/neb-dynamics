@@ -25,6 +25,7 @@ import os
 
 from qcio import Structure, ProgramOutput
 from neb_dynamics.helper_functions import parse_symbols_from_prmtop, rst7_to_coords_and_indices, parse_qmmm_gradients
+from neb_dynamics.qcio_structure_helpers import structure_to_molecule
 
 from pathlib import Path
 
@@ -95,6 +96,40 @@ class QMMMEngine(Engine):
         _, indices_coordinates = rst7_to_coords_and_indices(
             self.ref_rst7_react)
         self.indices_coordinates = indices_coordinates
+
+    def _active_atom_indices_for_structure(self, structure: Structure) -> list[int]:
+        n_atoms = len(structure.symbols)
+        frozen_set = {i for i in self.frozen_atom_indices if 0 <= i < n_atoms}
+        active_indices = [i for i in range(n_atoms) if i not in frozen_set]
+        if not active_indices:
+            active_indices = list(range(n_atoms))
+        return active_indices
+
+    @staticmethod
+    def _subset_structure(structure: Structure, atom_indices: list[int]) -> Structure:
+        idx = np.array(atom_indices, dtype=int)
+        return Structure(
+            symbols=np.array(structure.symbols)[idx],
+            geometry=np.array(structure.geometry)[idx],
+            charge=structure.charge,
+            multiplicity=structure.multiplicity,
+        )
+
+    def _make_structure_node(self, structure: Structure) -> StructureNode:
+        active_indices = self._active_atom_indices_for_structure(structure)
+        try:
+            active_structure = self._subset_structure(structure, active_indices)
+            graph = structure_to_molecule(active_structure)
+            has_graph = True
+        except Exception:
+            graph = None
+            has_graph = False
+        return StructureNode(
+            structure=structure,
+            has_molecular_graph=has_graph,
+            graph=graph,
+            comparison_atom_indices=active_indices,
+        )
 
     def _dump_debug_inputs(self, rst7_strings: list[str]) -> None:
         if not self.debug_dump_inputs or len(rst7_strings) == 0:
@@ -509,7 +544,7 @@ class QMMMEngine(Engine):
                 msg="QMMM minimize completed but no optimization trajectory was found (optim.xyz missing).",
                 obj=output,
             )
-        return [StructureNode(structure=struct) for struct in structures]
+        return [self._make_structure_node(struct) for struct in structures]
 
     @staticmethod
     def _normalize_minimize_keywords(keywords: dict | None) -> dict:
@@ -685,9 +720,8 @@ class QMMMEngine(Engine):
         final_active_bohr = np.array(xyzs[-1]) * ANGSTROM_TO_BOHR
         final_coords_bohr = np.array(node.coords, dtype=float).copy()
         final_coords_bohr[np.array(active_atom_indices, dtype=int)] = final_active_bohr
-        ts_node = node.copy().update_coords(final_coords_bohr)
-        ts_node.has_molecular_graph = False
-        ts_node.graph = None
+        updated_node = node.copy().update_coords(final_coords_bohr)
+        ts_node = self._make_structure_node(updated_node.structure)
         ts_node._cached_energy = self.compute_energies([ts_node])[0]
         return ts_node
 

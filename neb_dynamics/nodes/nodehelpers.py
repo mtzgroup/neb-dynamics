@@ -398,6 +398,27 @@ def _is_conformer_identical(
     verbose: bool = True,
 ) -> bool:
 
+    def _comparison_coords(node_a: Node, node_b: Node):
+        inds_a = getattr(node_a, "comparison_atom_indices", None)
+        inds_b = getattr(node_b, "comparison_atom_indices", None)
+        if inds_a is None or inds_b is None:
+            return node_a.coords, node_b.coords, False
+        try:
+            arr_a = np.array(inds_a, dtype=int)
+            arr_b = np.array(inds_b, dtype=int)
+        except Exception:
+            return node_a.coords, node_b.coords, False
+        if arr_a.size == 0 or arr_b.size == 0:
+            return node_a.coords, node_b.coords, False
+        if arr_a.shape != arr_b.shape or not np.array_equal(arr_a, arr_b):
+            return node_a.coords, node_b.coords, False
+        if int(np.min(arr_a)) < 0:
+            return node_a.coords, node_b.coords, False
+        max_index = int(np.max(arr_a))
+        if max_index >= len(node_a.coords) or max_index >= len(node_b.coords):
+            return node_a.coords, node_b.coords, False
+        return node_a.coords[arr_a], node_b.coords[arr_b], True
+
     if verbose:
         if _rich_available:
             _console.print(Panel.fit(
@@ -406,11 +427,13 @@ def _is_conformer_identical(
             ))
         else:
             print("\n\tVerifying if two geometries are identical.")
+    use_subset_coords = False
     if isinstance(self, XYNode):
         global_dist = np.linalg.norm(other.coords - self.coords)
     else:
-        global_dist, aligned_geometry = align_geom(
-            refgeom=other.coords, geom=self.coords
+        self_coords, other_coords, use_subset_coords = _comparison_coords(self, other)
+        global_dist, _aligned_geometry = align_geom(
+            refgeom=other_coords, geom=self_coords
         )
 
     per_frag_dists = []
@@ -435,45 +458,48 @@ def _is_conformer_identical(
                 ))
             else:
                 print("\t\tGraphs identical. Checking distances...")
-        self_frags = split_structure_into_frags(self.structure)
-        other_frags = split_structure_into_frags(other.structure)
-        if len(self_frags) != len(other_frags):
-            if verbose:
-                if _rich_available:
-                    _console.print(Panel.fit(
-                        "[bold red]Fragments differed in number. Not identical.[/bold red]",
-                        border_style="red"
-                    ))
-                else:
-                    print("\t\tFragments differed in number. Not identical.")
-            return False
+        if use_subset_coords:
+            per_frag_dists.append(global_dist)
+        else:
+            self_frags = split_structure_into_frags(self.structure)
+            other_frags = split_structure_into_frags(other.structure)
+            if len(self_frags) != len(other_frags):
+                if verbose:
+                    if _rich_available:
+                        _console.print(Panel.fit(
+                            "[bold red]Fragments differed in number. Not identical.[/bold red]",
+                            border_style="red"
+                        ))
+                    else:
+                        print("\t\tFragments differed in number. Not identical.")
+                return False
 
-        info_self = [(i, len(structure.geometry), structure.symbols)
-                     for i, structure in enumerate(self_frags)]  # index, sys_size, symbols
+            info_self = [(i, len(structure.geometry), structure.symbols)
+                         for i, structure in enumerate(self_frags)]  # index, sys_size, symbols
 
-        info_other = [(i, len(structure.geometry), structure.symbols)
-                      for i, structure in enumerate(other_frags)]
+            info_other = [(i, len(structure.geometry), structure.symbols)
+                          for i, structure in enumerate(other_frags)]
 
-        sorted_info_self = sorted(info_self, key=lambda x: (x[1], x[2]))
-        sorted_info_other = sorted(info_other, key=lambda x: (x[1], x[2]))
+            sorted_info_self = sorted(info_self, key=lambda x: (x[1], x[2]))
+            sorted_info_other = sorted(info_other, key=lambda x: (x[1], x[2]))
 
-        inds_self = [val[0] for val in sorted_info_self]
-        inds_other = [val[0] for val in sorted_info_other]
+            inds_self = [val[0] for val in sorted_info_self]
+            inds_other = [val[0] for val in sorted_info_other]
 
-        for i_self, i_other in zip(inds_self, inds_other):
-            frag_self = self_frags[i_self]
-            frag_other = other_frags[i_other]
+            for i_self, i_other in zip(inds_self, inds_other):
+                frag_self = self_frags[i_self]
+                frag_other = other_frags[i_other]
 
-            frag_dist, _ = align_geom(
-                refgeom=frag_self.geometry, geom=frag_other.geometry
-            )
-            per_frag_dists.append(frag_dist)
-            if verbose:
-                if _rich_available:
-                    _console.print(
-                        f"[dim]Fragment distance: {frag_dist:.4f}[/dim]")
-                else:
-                    print(f"\t\t\tfrag dist: {frag_dist}")
+                frag_dist, _ = align_geom(
+                    refgeom=frag_self.geometry, geom=frag_other.geometry
+                )
+                per_frag_dists.append(frag_dist)
+                if verbose:
+                    if _rich_available:
+                        _console.print(
+                            f"[dim]Fragment distance: {frag_dist:.4f}[/dim]")
+                    else:
+                        print(f"\t\t\tfrag dist: {frag_dist}")
     else:
         per_frag_dists.append(global_dist)
 

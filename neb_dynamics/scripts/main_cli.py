@@ -840,7 +840,29 @@ def _write_recursive_split_request_artifacts(
     write_qcio: bool = False,
 ):
     output_dir.mkdir(parents=True, exist_ok=True)
-    history.output_chain.write_to_disk(
+    output_chain: Chain | None = None
+    leaf_chains: list[Chain] = []
+    for leaf in history.ordered_leaves:
+        if not leaf.data:
+            continue
+        if getattr(leaf.data, "chain_trajectory", None):
+            leaf_chains.append(leaf.data.chain_trajectory[-1])
+        elif getattr(leaf.data, "optimized", None) is not None:
+            leaf_chains.append(leaf.data.optimized)
+    if len(leaf_chains) == 1:
+        output_chain = leaf_chains[0]
+    elif len(leaf_chains) > 1:
+        output_chain = _concat_chains(leaf_chains, leaf_chains[0].parameters)
+    elif history.data is not None:
+        if getattr(history.data, "chain_trajectory", None):
+            output_chain = history.data.chain_trajectory[-1]
+        elif getattr(history.data, "optimized", None) is not None:
+            output_chain = history.data.optimized
+
+    if output_chain is None:
+        raise ValueError("Recursive split request history produced no output chain.")
+
+    output_chain.write_to_disk(
         output_dir / f"request_{request_id}.xyz", write_qcio=write_qcio)
     history.write_to_disk(
         output_dir / f"request_{request_id}_msmep", write_qcio=write_qcio)
@@ -1011,6 +1033,8 @@ def _run_recursive_network_splits(
     output_dir: Path,
     base_name: str,
     status_fp: Path | None = None,
+    parallel_recursive: bool = False,
+    parallel_workers: int | None = None,
 ) -> tuple[list[dict], Path | None, Path]:
     manifest_fp = _recursive_split_manifest_path(
         output_dir=output_dir, base_name=base_name)
@@ -1150,6 +1174,10 @@ def _run_recursive_network_splits(
         )
 
     msmep_runner = MSMEP(inputs=program_input)
+    parallel_recursive = bool(parallel_recursive)
+    resolved_parallel_workers = (
+        None if parallel_workers is None else max(1, int(parallel_workers))
+    )
     while queue:
         request = queue.pop(0)
         existing_history = _load_recursive_split_request_history(
@@ -1198,8 +1226,14 @@ def _run_recursive_network_splits(
         )
         if existing_history is None:
             try:
-                request_history = msmep_runner.run_recursive_minimize(
-                    request_chain)
+                if parallel_recursive:
+                    request_history = msmep_runner.run_parallel_recursive_minimize(
+                        request_chain,
+                        max_workers=resolved_parallel_workers,
+                    )
+                else:
+                    request_history = msmep_runner.run_recursive_minimize(
+                        request_chain)
             except Exception:
                 _upsert_request_record(
                     request_records,
@@ -1496,10 +1530,6 @@ def run(
         raise typer.BadParameter(
             "--parallel cannot be combined with --recursive. Use one mode."
         )
-    if parallel and network_splits:
-        raise typer.BadParameter(
-            "--parallel cannot be combined with --network-splits."
-        )
 
     cpu_cap = max(1, int(os.cpu_count() or 1))
     default_parallel_workers = min(4, cpu_cap)
@@ -1512,7 +1542,7 @@ def run(
             f"[yellow]⚠ Requested {parallel_workers} parallel workers exceeds detected CPU count ({cpu_cap}). Continuing with requested value; tune based on your host capacity.[/yellow]"
         )
 
-    if network_splits and not recursive:
+    if network_splits and not recursive and not parallel:
         console.print(
             Panel(
                 "[bold yellow]--network-splits requires recursive MSMEP.[/bold yellow]\n"
@@ -1633,7 +1663,10 @@ def run(
     write_qcio = bool(getattr(program_input, "write_qcio", False))
 
     # minimize endpoints if requested
-    all_nodes = [StructureNode(structure=s) for s in all_structs]
+    if program_input.engine.__class__.__name__ == "QMMMEngine":
+        all_nodes = [program_input.engine._make_structure_node(s) for s in all_structs]
+    else:
+        all_nodes = [StructureNode(structure=s) for s in all_structs]
     if minimize_ends:
         console.print("[bold cyan]⟳ Minimizing input endpoints...[/bold cyan]")
         batch_optimizer = getattr(
@@ -1695,7 +1728,7 @@ def run(
             phase="parallel_recursive_request",
             recursive=False,
             parallel=True,
-            network_splits=False,
+            network_splits=network_splits,
             path_min_method=str(program_input.path_min_method),
         )
 
@@ -1722,7 +1755,7 @@ def run(
                 phase="parallel_recursive_request",
                 recursive=False,
                 parallel=True,
-                network_splits=False,
+                network_splits=network_splits,
                 path_min_method=str(program_input.path_min_method),
                 error=traceback.format_exc().strip(),
             )
@@ -1736,7 +1769,7 @@ def run(
                 phase="parallel_recursive_request",
                 recursive=False,
                 parallel=True,
-                network_splits=False,
+                network_splits=network_splits,
                 path_min_method=str(program_input.path_min_method),
                 error="Program did not run. Likely because your endpoints are conformers of the same molecular graph.",
             )
@@ -1779,7 +1812,7 @@ def run(
                     phase="parallel_recursive_request",
                     recursive=False,
                     parallel=True,
-                    network_splits=False,
+                    network_splits=network_splits,
                     path_min_method=str(program_input.path_min_method),
                     error="Parallel autosplitting produced no successful leaf chains.",
                 )
@@ -1840,18 +1873,69 @@ def run(
         merged_chain.write_to_disk(filename, write_qcio=write_qcio)
         history.write_to_disk(foldername, write_qcio=write_qcio)
         chain_for_profile = merged_chain
-        _write_run_status(
-            status_fp,
-            base_name=filename.stem,
-            run_state="completed",
-            phase="complete",
-            recursive=False,
-            parallel=True,
-            network_splits=False,
-            path_min_method=str(program_input.path_min_method),
-            output_chain_path=filename,
-            tree_path=foldername,
-        )
+        if network_splits:
+            _write_run_status(
+                status_fp,
+                base_name=filename.stem,
+                run_state="running",
+                phase="network_splits",
+                recursive=False,
+                parallel=True,
+                network_splits=True,
+                path_min_method=str(program_input.path_min_method),
+                output_chain_path=filename,
+                tree_path=foldername,
+            )
+            network_dir = data_dir / f"{filename.stem}_network_splits"
+            console.print(
+                "[bold magenta]▶ RUNNING FOLLOW-ON NETWORK SPLIT REQUESTS[/bold magenta]"
+            )
+            request_records, network_fp, manifest_fp = _run_recursive_network_splits(
+                history=history,
+                program_input=program_input,
+                initial_start=chain[0],
+                initial_end=chain[-1],
+                output_dir=network_dir,
+                base_name=filename.stem,
+                status_fp=status_fp,
+                parallel_recursive=True,
+                parallel_workers=parallel_workers,
+            )
+            console.print(
+                f"[cyan]Completed {len(request_records)} total recursive pair requests.[/cyan]"
+            )
+            if network_fp is not None:
+                console.print(
+                    f"[cyan]Network summary written to {network_fp}[/cyan]"
+                )
+            _write_run_status(
+                status_fp,
+                base_name=filename.stem,
+                run_state="completed",
+                phase="complete",
+                recursive=False,
+                parallel=True,
+                network_splits=True,
+                path_min_method=str(program_input.path_min_method),
+                output_chain_path=filename,
+                tree_path=foldername,
+                network_splits_dir=network_dir,
+                manifest_fp=manifest_fp,
+                network_fp=network_fp,
+            )
+        else:
+            _write_run_status(
+                status_fp,
+                base_name=filename.stem,
+                run_state="completed",
+                phase="complete",
+                recursive=False,
+                parallel=True,
+                network_splits=False,
+                path_min_method=str(program_input.path_min_method),
+                output_chain_path=filename,
+                tree_path=foldername,
+            )
 
         if use_tsopt:
             for i, leaf in enumerate(history.ordered_leaves):
@@ -2362,7 +2446,10 @@ def run_refine(
     console.print("[bold cyan]Expensive-level Inputs[/bold cyan]")
     _render_runinputs(expensive_input)
 
-    all_nodes = [StructureNode(structure=s) for s in all_structs]
+    if cheap_input.engine.__class__.__name__ == "QMMMEngine":
+        all_nodes = [cheap_input.engine._make_structure_node(s) for s in all_structs]
+    else:
+        all_nodes = [StructureNode(structure=s) for s in all_structs]
     if minimize_ends:
         console.print(
             "[bold cyan]⟳ Minimizing input endpoints at cheap level...[/bold cyan]")

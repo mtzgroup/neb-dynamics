@@ -92,6 +92,13 @@ def _print_new_structure(node: Node, message: str = "new structure found!") -> N
 
 def _classify_new_structure(node: Node, reactant: Node, product: Node) -> str:
     """Classify a discovered structure relative to endpoint molecular graphs."""
+    graphs_available = all(
+        getattr(x, "has_molecular_graph", False)
+        for x in (node, reactant, product)
+    )
+    if not graphs_available:
+        return "new structure found!"
+
     same_as_reactant = _is_connectivity_identical(
         node, reactant, verbose=False, collect_comparison=False)
     same_as_product = _is_connectivity_identical(
@@ -114,6 +121,10 @@ def _deduplicate_discoveries(nodes: list[Node], reactant: Node, product: Node) -
     structures with the same classification, print only once.
     """
     unique: list[tuple[Node, str]] = []
+    graphs_available = all(
+        getattr(x, "has_molecular_graph", False)
+        for x in [reactant, product, *nodes]
+    )
     for node in nodes:
         msg = _classify_new_structure(
             node=node, reactant=reactant, product=product)
@@ -121,7 +132,7 @@ def _deduplicate_discoveries(nodes: list[Node], reactant: Node, product: Node) -
         for seen_node, seen_msg in unique:
             if seen_msg != msg:
                 continue
-            if _is_connectivity_identical(node, seen_node, verbose=False):
+            if graphs_available and _is_connectivity_identical(node, seen_node, verbose=False):
                 duplicate = True
                 break
         if not duplicate:

@@ -123,13 +123,18 @@ class StructureNode(Node):
     converged: bool = False
     _cached_energy: float = None
     _cached_gradient: list = None
+    comparison_atom_indices: list[int] | None = None
 
     _cached_result: Union[ProgramOutput, FakeQCIOOutput] = None
     graph: Molecule = None
 
     def __post_init__(self):
-        if self.graph is None:
+        if self.comparison_atom_indices is not None:
+            self.comparison_atom_indices = [int(i) for i in self.comparison_atom_indices]
+        if self.has_molecular_graph and self.graph is None:
             self.graph = structure_to_molecule(self.structure)
+        if not self.has_molecular_graph:
+            self.graph = None
         if self._cached_result is not None:
             self._cached_energy = self._cached_result.results.energy
             self._cached_gradient = self._cached_result.results.gradient

@@ -70,6 +70,18 @@ class SubGraphMatcher:
             return nullcontext()
         return timeout(timeout_seconds, exception=TimeoutIsomorphism)
 
+    @staticmethod
+    def _safe_smiles_label(mol) -> str:
+        """
+        Best-effort label for timeout logging.
+        `force_smiles()` can fail for some graphs (e.g. RDKit kekulization
+        issues), and timeout handlers must never raise secondary exceptions.
+        """
+        try:
+            return str(mol.force_smiles())
+        except Exception:
+            return "<smiles_unavailable>"
+
     def is_isomorphic(self, g):
         """
         returns a boolean to see if it's isomorphic.
@@ -85,7 +97,8 @@ class SubGraphMatcher:
                 result = GM.is_isomorphic()
         except TimeoutIsomorphism:
             print(
-                f"A SubGraphMatcher timeout error occurred in is_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}."
+                "A SubGraphMatcher timeout error occurred in is_isomorphic "
+                f"{self._safe_smiles_label(self.mol)} -> {self._safe_smiles_label(g)}."
             )
             result = False
         return result
@@ -105,8 +118,8 @@ class SubGraphMatcher:
                 result = GM.is_isomorphic()
         except TimeoutIsomorphism:
             print(
-                f"A SubGraphMatcher timeout error occurred in is_isomorphic {self.mol.force_smiles()} \
-                    -> {g.force_smiles()}."
+                "A SubGraphMatcher timeout error occurred in is_isomorphic "
+                f"{self._safe_smiles_label(self.mol)} -> {self._safe_smiles_label(g)}."
             )
             result = False
         return result
@@ -127,7 +140,8 @@ class SubGraphMatcher:
                 isos = [a for a in GM.isomorphisms_iter()]
         except TimeoutIsomorphism:
             print(
-                f"A SubGraphMatcher timeout error occurred in get_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}."
+                "A SubGraphMatcher timeout error occurred in get_isomorphisms "
+                f"{self._safe_smiles_label(self.mol)} -> {self._safe_smiles_label(g)}."
             )
             isos = []
         return isos
@@ -147,7 +161,8 @@ class SubGraphMatcher:
                 result = GM.subgraph_is_isomorphic()
         except TimeoutIsomorphism:
             print(
-                f"A SubGraphMatcher timeout error occurred in is_subgraph_isomorphic {self.mol.force_smiles()} -> {g.force_smiles()}."
+                "A SubGraphMatcher timeout error occurred in is_subgraph_isomorphic "
+                f"{self._safe_smiles_label(self.mol)} -> {self._safe_smiles_label(g)}."
             )
             result = False
         return result
@@ -168,7 +183,8 @@ class SubGraphMatcher:
                 isos = [a for a in GM.subgraph_isomorphisms_iter()]
         except TimeoutIsomorphism:
             print(
-                f"A SubGraphMatcher timeout error occurred in get_subgraph_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}."
+                "A SubGraphMatcher timeout error occurred in get_subgraph_isomorphisms "
+                f"{self._safe_smiles_label(self.mol)} -> {self._safe_smiles_label(g)}."
             )
             isos = []
         return isos
@@ -189,7 +205,8 @@ class SubGraphMatcher:
                 isos = [a for a in GM.subgraph_isomorphisms_iter()]
         except TimeoutIsomorphism:
             print(
-                f"A SubGraphMatcher timeout error occurred in get_subgraph_isomorphisms {self.mol.force_smiles()} -> {g.force_smiles()}."
+                "A SubGraphMatcher timeout error occurred in get_subgraph_isomorphisms "
+                f"{self._safe_smiles_label(self.mol)} -> {self._safe_smiles_label(g)}."
             )
             isos = []
         return isos
