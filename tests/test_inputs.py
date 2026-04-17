@@ -1,4 +1,6 @@
 from neb_dynamics.inputs import RunInputs
+from neb_dynamics.pathminimizers.mlpgi import _resolve_optimizer_config_values
+import pytest
 
 
 def test_runinputs_fsm_uses_empty_path_min_inputs():
@@ -31,6 +33,54 @@ def test_runinputs_neb_dlf_has_expected_defaults():
     assert defaults["skip_identical_graphs"] is True
     assert defaults["collect_files"] is True
     assert isinstance(defaults["dlfind_keywords"], dict)
+
+
+def test_runinputs_mlpgi_has_expected_defaults():
+    inputs = RunInputs(path_min_method="mlpgi")
+
+    defaults = vars(inputs.path_min_inputs)
+    assert defaults["backend"] == "fairchem"
+    assert defaults["fire_stage1_iter"] == 200
+    assert defaults["fire_stage2_iter"] == 500
+    assert defaults["variance_penalty_weight"] == pytest.approx(0.0433641)
+    assert defaults["fire_conv_geolen_tol"] == pytest.approx(0.25)
+    assert defaults["fire_conv_erelpeak_tol"] == pytest.approx(0.25)
+    assert defaults["refinement_step_interval"] == 10
+    assert defaults["refinement_dynamic_threshold_fraction"] == pytest.approx(0.1)
+    assert defaults["do_elem_step_checks"] is True
+    assert defaults["skip_identical_graphs"] is True
+
+
+def test_mlpgi_optimizer_fire_conv_tolerances_use_kcal_input_units():
+    cfg = _resolve_optimizer_config_values(
+        {
+            "fire_conv_geolen_tol": 0.25,
+            "fire_conv_erelpeak_tol": 0.25,
+        }
+    )
+
+    assert cfg["fire_conv_geolen_tol"] == pytest.approx(0.010841025)
+    assert cfg["fire_conv_erelpeak_tol"] == pytest.approx(0.010841025)
+
+
+def test_mlpgi_optimizer_aliases_map_to_config_values():
+    cfg = _resolve_optimizer_config_values(
+        {
+            "beta": 1.0,
+            "tau_refine": 8,
+            "cutoff": 10,
+            "convergence_window": 12,
+            "path_length_tolerance": 0.25,
+            "barrier_height_tolerance": 0.25,
+        }
+    )
+
+    assert cfg["variance_penalty_weight"] == pytest.approx(0.0433641)
+    assert cfg["refinement_step_interval"] == 8
+    assert cfg["refinement_dynamic_threshold_fraction"] == pytest.approx(0.1)
+    assert cfg["fire_conv_window"] == 12
+    assert cfg["fire_conv_geolen_tol"] == pytest.approx(0.010841025)
+    assert cfg["fire_conv_erelpeak_tol"] == pytest.approx(0.010841025)
 
 
 def test_runinputs_ase_omol25_reports_missing_fairchem(monkeypatch):

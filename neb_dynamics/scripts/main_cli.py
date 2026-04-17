@@ -3364,6 +3364,11 @@ def run_refine(
             Use this if you have precompted a path you want to use. Do not use this with smiles.')] = None,
         inputs: Annotated[str, typer.Option("--inputs", "-i",
                                             help='path to expensive RunInputs toml file')] = None,
+        mode: Annotated[Literal["neb", "ts-irc"], typer.Option(
+            "--mode",
+            help="Refinement mode: 'neb' for high-quality pairwise NEBs, or 'ts-irc' for TS optimization + IRC network refinement.",
+            case_sensitive=False,
+        )] = "neb",
         cheap_inputs: Annotated[str, typer.Option("--cheap-inputs", "-ci",
                                                   help='optional path to cheaper RunInputs toml file for initial discovery')] = None,
         recycle_nodes: Annotated[bool, typer.Option(
@@ -3380,11 +3385,23 @@ def run_refine(
         name: str = None,
         charge: int = 0,
         multiplicity: int = 1,
+        output_directory: Annotated[str, typer.Option(
+            "--output-directory", "-o",
+            help="TS/IRC mode only: directory for the refined workspace output.",
+        )] = None,
+        use_bigchem: Annotated[bool, typer.Option(
+            "--use-bigchem/--no-use-bigchem",
+            help="TS/IRC mode only: use BigChem for Hessian-backed TS/IRC steps when supported.",
+        )] = False,
+        write_status_html_output: Annotated[bool, typer.Option(
+            "--write-status-html/--no-write-status-html",
+            help="TS/IRC mode only: generate full status.html for the refined workspace (slower).",
+        )] = False,
         rst7_prmtop: Annotated[str, typer.Option(
             "--rst7-prmtop",
             help="Path to AMBER prmtop used to map atomic symbols when converting rst7 endpoints.",
         )] = None):
-    """Two-stage refinement: cheap discovery -> expensive minima/path refinement."""
+    """Two-stage refinement: cheap discovery -> configurable expensive refinement."""
     console.print(BANNER)
 
     if inputs is None:
@@ -3393,14 +3410,29 @@ def run_refine(
         )
         raise typer.Exit(1)
 
+    mode_normalized = str(mode).strip().lower().replace("_", "-")
+    if mode_normalized not in {"neb", "ts-irc"}:
+        raise typer.BadParameter("--mode must be either 'neb' or 'ts-irc'.")
+
     if network_splits and not recursive:
         recursive = True
+
+    if mode_normalized == "ts-irc" and recycle_nodes:
+        console.print(
+            "[yellow]⚠ --recycle-nodes applies only to --mode neb and will be ignored.[/yellow]"
+        )
+    if mode_normalized == "neb" and (output_directory or use_bigchem or write_status_html_output):
+        console.print(
+            "[yellow]⚠ --output-directory, --use-bigchem, and --write-status-html apply only to --mode ts-irc and will be ignored.[/yellow]"
+        )
 
     start_time = time.time()
     table = Table(box=None, show_header=False)
     table.add_column(style="dim")
     table.add_row("[bold cyan]Command:[/bold cyan]",
                   "[white]run-refine[/white]")
+    table.add_row("[bold cyan]Mode:[/bold cyan]",
+                  f"[yellow]{mode_normalized}[/yellow]")
     table.add_row("[bold cyan]SMILES mode:[/bold cyan]",
                   f"[yellow]{use_smiles}[/yellow]")
     table.add_row("[bold cyan]Method:[/bold cyan]",
@@ -3413,6 +3445,14 @@ def run_refine(
                   f"[yellow]{inputs}[/yellow]")
     table.add_row("[bold cyan]Recycle Nodes:[/bold cyan]",
                   f"[yellow]{recycle_nodes}[/yellow]")
+    if mode_normalized == "ts-irc":
+        if output_directory:
+            table.add_row("[bold cyan]Output Directory:[/bold cyan]",
+                          f"[yellow]{Path(output_directory).expanduser().resolve()}[/yellow]")
+        table.add_row("[bold cyan]Use BigChem:[/bold cyan]",
+                      f"[yellow]{use_bigchem}[/yellow]")
+        table.add_row("[bold cyan]Write status.html:[/bold cyan]",
+                      f"[yellow]{write_status_html_output}[/yellow]")
     console.print(table)
     console.print()
 
@@ -3582,6 +3622,63 @@ def run_refine(
     console.print(
         f"[cyan]Discovered {len(cheap_minima)} unique cheap minima (including endpoints).[/cyan]"
     )
+
+    if mode_normalized == "ts-irc":
+        refinement_inputs_path = Path(inputs).expanduser().resolve()
+        source_pot = _source_obj_to_refinement_pot(
+            cheap_output_chain,
+            source_label=base_name,
+        )
+        source_workspace = _create_synthetic_refine_workspace(
+            source_pot=source_pot,
+            refinement_inputs_fp=refinement_inputs_path,
+            base_name=base_name,
+            output_root=Path.cwd(),
+        )
+        console.print(
+            f"[cyan]Using discovered cheap path with {len(cheap_output_chain.nodes)} nodes as TS/IRC refinement source.[/cyan]"
+        )
+
+        with Progress(
+            SpinnerColumn(style="cyan"),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=36),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Preparing refinement...", total=1)
+
+            def _on_progress(event: dict[str, object]) -> None:
+                message = str(event.get("message") or "Running refinement...")
+                total = int(event.get("total") or 1)
+                current = int(event.get("current") or 0)
+                total = max(1, total)
+                current = max(0, min(total, current))
+                progress.update(
+                    task,
+                    description=message,
+                    total=total,
+                    completed=current,
+                )
+
+            with _suppress_rdkit_valence_warnings():
+                summary = refine_drive_workspace_network(
+                    source_workspace,
+                    refinement_inputs_fp=refinement_inputs_path,
+                    refined_workspace_dir=(Path(output_directory).expanduser().resolve() if output_directory else None),
+                    refined_run_name=name,
+                    use_bigchem=use_bigchem,
+                    write_status_html_output=write_status_html_output,
+                    progress=_on_progress,
+                )
+            progress.update(task, description="Refinement complete.", total=1, completed=1)
+
+        _print_ts_irc_refine_summary(
+            summary,
+            title="[bold green]✓ run-refine (ts-irc) Complete[/bold green]",
+        )
+        return
 
     console.print(
         "[bold magenta]▶ REOPTIMIZING MINIMA AT EXPENSIVE LEVEL[/bold magenta]")
@@ -4361,11 +4458,26 @@ def make_default_inputs(
             "--name", help='path to output toml file')] = None,
         path_min_method: Annotated[str, typer.Option("--path-min-method", "-pmm",
                                                      help='name of path minimization.\
-                                                          Options are: [neb, fneb, mlpgi, neb-dlf]')] = "neb"):
+                                                          Options are: [neb, fsm/fneb, mlpgi, neb-dlf]')] = "neb"):
     console.print(BANNER)
     if name is None:
         name = Path(Path(os.getcwd()) / 'default_inputs')
-    ri = RunInputs(path_min_method=path_min_method)
+    normalized_method = str(path_min_method or "").strip().lower().replace("_", "-")
+    method_aliases = {
+        "neb": "neb",
+        "fsm": "fneb",
+        "fneb": "fneb",
+        "mlpgi": "mlpgi",
+        "neb-dlf": "neb-dlf",
+        "nebdlf": "neb-dlf",
+    }
+    resolved_method = method_aliases.get(normalized_method)
+    if resolved_method is None:
+        raise typer.BadParameter(
+            "--path-min-method/-pmm must be one of: neb, fsm (alias: fneb), mlpgi, neb-dlf."
+        )
+
+    ri = RunInputs(path_min_method=resolved_method)
     out = Path(name)
     ri.save(out.parent / (out.stem+".toml"))
     console.print(

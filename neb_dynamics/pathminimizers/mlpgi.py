@@ -13,11 +13,82 @@ import warnings
 from neb_dynamics.scripts.progress import update_status, print_persistent
 warnings.filterwarnings('ignore')
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from neb_dynamics import Chain, RunInputs
 from neb_dynamics.constants import ANGSTROM_TO_BOHR
 
 import torch
+
+_KCAL_MOL_TO_EV = 0.0433641
+
+
+def _parameter_dict(parameters: object | None) -> dict:
+    if parameters is None:
+        return {}
+    if isinstance(parameters, dict):
+        return dict(parameters)
+    if hasattr(parameters, "__dict__"):
+        return dict(parameters.__dict__)
+    return {}
+
+
+def _coerce_refinement_fraction(value):
+    fraction = float(value)
+    return fraction / 100.0 if fraction > 1.0 else fraction
+
+
+def _kcal_mol_to_ev(value):
+    return float(value) * _KCAL_MOL_TO_EV
+
+
+def _resolve_optimizer_config_values(parameters: object | None) -> dict:
+    # Defaults correspond to Table 1 in 10.1021/acs.jctc.5c01221.
+    config_values = {
+        "fire_stage1_iter": 200,
+        "fire_stage2_iter": 500,
+        "fire_grad_tol": 1e-2,
+        "variance_penalty_weight": 0.0433641,  # 1 kcal/mol in eV
+        "fire_conv_window": 20,
+        "fire_conv_geolen_tol": 0.0108410,     # 0.25 kcal/mol in eV
+        "fire_conv_erelpeak_tol": 0.0108410,   # 0.25 kcal/mol in eV
+        "refinement_step_interval": 10,
+        "refinement_dynamic_threshold_fraction": 0.1,
+        "tangent_project": True,
+        "climb": True,
+        "alpha_climb": 0.5,
+    }
+
+    raw = _parameter_dict(parameters)
+    config_keys = {f.name for f in fields(OptimizerConfig)}
+    kcal_inputs = {"fire_conv_geolen_tol", "fire_conv_erelpeak_tol"}
+    for key in config_keys - kcal_inputs:
+        if raw.get(key) is not None:
+            config_values[key] = raw[key]
+    if raw.get("fire_conv_geolen_tol") is not None:
+        config_values["fire_conv_geolen_tol"] = _kcal_mol_to_ev(raw["fire_conv_geolen_tol"])
+    if raw.get("fire_conv_erelpeak_tol") is not None:
+        config_values["fire_conv_erelpeak_tol"] = _kcal_mol_to_ev(raw["fire_conv_erelpeak_tol"])
+
+    # Paper/CLI compatibility aliases in path_min_inputs.
+    if raw.get("beta") is not None and raw.get("variance_penalty_weight") is None:
+        config_values["variance_penalty_weight"] = _kcal_mol_to_ev(raw["beta"])
+    if raw.get("tau_refine") is not None and raw.get("refinement_step_interval") is None:
+        config_values["refinement_step_interval"] = int(raw["tau_refine"])
+    if raw.get("cutoff") is not None and raw.get("refinement_dynamic_threshold_fraction") is None:
+        config_values["refinement_dynamic_threshold_fraction"] = _coerce_refinement_fraction(raw["cutoff"])
+    if raw.get("convergence_window") is not None and raw.get("fire_conv_window") is None:
+        config_values["fire_conv_window"] = int(raw["convergence_window"])
+    if raw.get("path_length_tolerance") is not None and raw.get("fire_conv_geolen_tol") is None:
+        config_values["fire_conv_geolen_tol"] = _kcal_mol_to_ev(raw["path_length_tolerance"])
+    if raw.get("barrier_height_tolerance") is not None and raw.get("fire_conv_erelpeak_tol") is None:
+        config_values["fire_conv_erelpeak_tol"] = _kcal_mol_to_ev(raw["barrier_height_tolerance"])
+
+    # If users provide percentages (e.g. 10), normalize to fraction (0.1).
+    config_values["refinement_dynamic_threshold_fraction"] = _coerce_refinement_fraction(
+        config_values["refinement_dynamic_threshold_fraction"]
+    )
+    return config_values
+
 
 @dataclass
 class MLPGI(PathMinimizer):
@@ -33,39 +104,12 @@ class MLPGI(PathMinimizer):
     _verbose: bool = False
 
     def __post_init__(self):
-        geodesic_optimizer_defaults = {
-        # Backend and Device Settings
-        #'backend': 'fairchem',
-        #'dtype': 'float32',
-        #'device': 'cuda',
-
-        # Optimization Iterations and Tolerances
-        'fire_stage1_iter': 200,
-        'fire_stage2_iter': 500,
-        'fire_grad_tol': 1e-2,
-
-        # Path/Energy Convergence Parameters
-        'variance_penalty_weight': 0.0433641,
-        'fire_conv_window': 20,
-        'fire_conv_geolen_tol': 0.0108410,
-        'fire_conv_erelpeak_tol': 0.0108410,
-
-        # Refinement Settings
-        'refinement_step_interval': 10,
-        'refinement_dynamic_threshold_fraction': 0.1,
-
-        # Force/Climbing Settings
-        'tangent_project': True,
-        'climb': True,
-        'alpha_climb': 0.5,
-        }
-        # 1. Define Configuration
-        self.config = OptimizerConfig(**geodesic_optimizer_defaults)
+        self.config = OptimizerConfig(**_resolve_optimizer_config_values(self.parameters))
 
         logger = logging.getLogger('geodesic')
         logger.propagate = False
         logger.setLevel(logging.WARNING)
-        self._verbose = bool(getattr(self.parameters, "v", False))
+        self._verbose = bool(_parameter_dict(self.parameters).get("v", False))
 
     def _status(self, message: str, persistent: bool = False):
         if self._verbose:
@@ -172,5 +216,3 @@ class MLPGI(PathMinimizer):
         self.optimized = new_chain
         self._status("MLPGI: complete", persistent=True)
         return elem_step_results
-
-

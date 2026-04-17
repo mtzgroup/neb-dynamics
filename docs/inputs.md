@@ -140,8 +140,89 @@ Any provided values override these defaults.
 
 ## `path_min_inputs` for `MLPGI`
 
-`MLPGI` uses an empty default table on this branch. Keys are effectively
-backend-specific passthrough.
+`MLPGI` defaults now map directly to the two-stage geodesic optimization
+configuration described in:
+
+- [Locating Ab Initio Transition States via Geodesic Construction on Machine-Learned Potential Energy Surfaces](https://doi.org/10.1021/acs.jctc.5c01221)
+- [ArXiv full text with Table 1 / Section II](https://arxiv.org/html/2507.17968v2)
+
+### MLPGI keys
+
+| Key | Default | Units | Notes |
+| --- | --- | --- | --- |
+| `skip_identical_graphs` | `true` | — | MSMEP endpoint short-circuit |
+| `do_elem_step_checks` | `true` | — | Run elementary-step checks |
+| `v` | `false` | — | Verbose progress |
+| `backend` | `"fairchem"` | — | MLP backend (`fairchem`, `mace`, etc.) |
+| `model_path` | `"esen_sm_conserving_all.pt"` | path | Checkpoint path or repo filename |
+| `auto_download_model` | `false` | — | Auto-fetch checkpoint when missing |
+| `model_repo` | `"facebook/OMol25"` | repo id | Hugging Face repo used for download |
+| `model_cache_dir` | `null` | path | Optional download cache directory |
+| `hf_token` | `null` | token | Optional auth token for gated repos |
+| `device` | `null` | — | Auto-selects CUDA/CPU when `null` |
+| `dtype` | `"float32"` | — | Torch dtype (`float32`, `float64`) |
+| `fire_stage1_iter` | `200` | iterations | Initial relaxation stage max iterations |
+| `fire_stage2_iter` | `500` | iterations | Refinement stage max iterations |
+| `fire_grad_tol` | `0.01` | eV/Angstrom | FIRE infinity-norm gradient tolerance |
+| `variance_penalty_weight` | `0.0433641` | eV | Segment penalty weight (`beta = 1 kcal/mol`) |
+| `fire_conv_window` | `20` | iterations | Convergence window size |
+| `fire_conv_geolen_tol` | `0.25` | kcal/mol | Path-length span tolerance (converted to eV internally) |
+| `fire_conv_erelpeak_tol` | `0.25` | kcal/mol | Barrier-span tolerance (converted to eV internally) |
+| `refinement_step_interval` | `10` | iterations | Check interval for node insertion |
+| `refinement_dynamic_threshold_fraction` | `0.1` | fraction | Refinement cutoff (`10%`) |
+| `tangent_project` | `true` | — | Project tangent component from path-length gradient |
+| `climb` | `true` | — | Enable climbing image in stage 2 |
+| `alpha_climb` | `0.5` | — | Climbing force scaling factor |
+
+### Compatibility aliases
+
+To make paper-style input keys work directly in `[path_min_inputs]`, MLPGI also accepts:
+
+| Alias key | Interpreted as | Conversion |
+| --- | --- | --- |
+| `beta` | `variance_penalty_weight` | kcal/mol -> eV |
+| `tau_refine` | `refinement_step_interval` | direct |
+| `cutoff` | `refinement_dynamic_threshold_fraction` | `%` if value > 1, else fraction |
+| `convergence_window` | `fire_conv_window` | direct |
+| `path_length_tolerance` | `fire_conv_geolen_tol` | kcal/mol -> eV |
+| `barrier_height_tolerance` | `fire_conv_erelpeak_tol` | kcal/mol -> eV |
+
+### Tuning guide (paper-aligned)
+
+Use these defaults first. They were reported by the paper for robust behavior.
+
+| If you need... | Primary knobs | Practical direction |
+| --- | --- | --- |
+| Better TS-region focus | `climb`, `alpha_climb` | Keep `climb=true`; increase `alpha_climb` cautiously. The paper warns large values (for example `>1`) can become unstable. |
+| More aggressive refinement | `refinement_step_interval`, `refinement_dynamic_threshold_fraction` | Lower interval and/or increase cutoff fraction to insert nodes more readily near poorly fit segments. |
+| Smoother spacing in energy | `variance_penalty_weight` (or `beta`) | Raise slightly to enforce more uniform energy-space segment lengths; lower if refinement over-constrains the path. |
+| Stricter convergence | `fire_grad_tol`, `fire_conv_geolen_tol`, `fire_conv_erelpeak_tol`, `fire_conv_window` | Decrease tolerances and/or increase window. This improves stability checks but costs more iterations. |
+| Faster runs | `fire_stage1_iter`, `fire_stage2_iter` | Reduce iteration caps for cheaper, less-refined guesses. |
+| Better throughput | `device`, `dtype` | Use GPU when available; the paper notes geodesic optimization can involve hundreds of iterations over ~40 nodes/midpoints. |
+
+Example:
+
+```toml
+path_min_method = "mlpgi"
+
+[path_min_inputs]
+backend = "fairchem"
+model_path = "esen_sm_conserving_all.pt"
+auto_download_model = true
+device = "cuda"
+dtype = "float32"
+
+# Paper-style aliases (also accepted)
+beta = 1.0
+tau_refine = 10
+cutoff = 10
+
+# Or use canonical internal keys directly
+fire_stage1_iter = 200
+fire_stage2_iter = 500
+fire_grad_tol = 0.01
+alpha_climb = 0.5
+```
 
 ## `path_min_inputs` for `NEB-DLF`
 

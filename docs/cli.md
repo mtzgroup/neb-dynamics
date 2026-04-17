@@ -68,8 +68,9 @@ mepd run --start react.rst7 --end prod.rst7 --rst7-prmtop ref.prmtop --inputs qm
 
 Run a two-stage refinement workflow:
 1. run a cheap discovery MEP/MSMEP,
-2. reoptimize discovered minima at an expensive level,
-3. run expensive pair-path minimizations between adjacent refined minima.
+2. refine at expensive level using either:
+   - `--mode neb`: reoptimize minima + pairwise expensive NEBs
+   - `--mode ts-irc`: TS optimization + IRC network refinement
 
 ```bash
 mepd run-refine PATH.xyz --inputs expensive.toml --cheap-inputs cheap.toml
@@ -83,9 +84,13 @@ mepd run-refine PATH.xyz --inputs expensive.toml --cheap-inputs cheap.toml
 | `--end`, `-e` | Path to end structure file (or SMILES with `--use-smiles`) |
 | `geometries` | Path to approximate path file (same convention as `run`) |
 | `--inputs`, `-i` | Required expensive RunInputs TOML |
+| `--mode` | Refinement mode: `neb` (default) or `ts-irc` |
 | `--cheap-inputs`, `-ci` | Optional cheap RunInputs TOML (defaults to `--inputs`) |
 | `--recursive` | Use recursive MSMEP in cheap stage and expensive pair stage |
 | `--recycle-nodes` | Seed expensive pair runs with cheap-path nodes instead of fresh interpolation |
+| `--output-directory`, `-o` | TS/IRC mode only: output directory for refined workspace |
+| `--use-bigchem` | TS/IRC mode only: use BigChem Hessian-backed TS/IRC when supported |
+| `--write-status-html` | TS/IRC mode only: generate full status.html for refined workspace |
 | `--minimize-ends` | Minimize endpoints at cheap level before discovery |
 | `--name` | Prefix for output files |
 | `--charge` | Molecular charge (default: 0) |
@@ -97,18 +102,35 @@ mepd run-refine PATH.xyz --inputs expensive.toml --cheap-inputs cheap.toml
 mepd run-refine examples/oxycope.xyz \
   -i expensive_chemcloud_terachem.toml \
   -ci cheap_chemcloud_crest.toml \
+  --mode neb \
   --recursive \
   --recycle-nodes \
   --name oxycope_refine
 ```
 
+TS/IRC refinement from a cheap discovered path:
+
+```bash
+mepd run-refine examples/oxycope.xyz \
+  -i expensive_chemcloud_terachem.toml \
+  -ci cheap_chemcloud_crest.toml \
+  --mode ts-irc \
+  --output-directory oxycope_ts_irc_refined \
+  --use-bigchem \
+  --write-status-html
+```
+
 **Outputs:**
 
-- `<name>_cheap.xyz`
-- `<name>_cheap_msmep/` (recursive cheap stage)
-- `<name>_refined_minima.xyz`
-- `<name>_refined_pairs/`
-- `<name>_refined.xyz`
+- Always:
+  - `<name>_cheap.xyz`
+  - `<name>_cheap_msmep/` (recursive cheap stage)
+- `--mode neb`:
+  - `<name>_refined_minima.xyz`
+  - `<name>_refined_pairs/`
+  - `<name>_refined.xyz`
+- `--mode ts-irc`:
+  - Refined workspace directory (default auto-generated under current directory, or `--output-directory`)
 
 ---
 
@@ -182,7 +204,7 @@ mepd make-default-inputs --name inputs.toml
 | Option | Description |
 |--------|-------------|
 | `--name` | Path to output TOML file |
-| `--path-min-method`, `-pmm` | Path minimization method: `neb`, `fneb`, `mlpgi`, or `neb-dlf` (default: neb) |
+| `--path-min-method`, `-pmm` | Path minimization method: `neb`, `fsm` (alias: `fneb`), `mlpgi`, or `neb-dlf` (default: `neb`) |
 
 ---
 
@@ -637,7 +659,14 @@ dtype = "float32"
 model_path = "esen_sm_conserving_all.pt"
 model_repo = "facebook/OMol25"
 auto_download_model = true
+beta = 1.0
+tau_refine = 10
+cutoff = 10
+alpha_climb = 0.5
 ```
+
+For the full MLPGI parameter list and tuning guidance (including canonical keys
+and paper-compatible aliases), see [Input Parameters](inputs.md#path_min_inputs-for-mlpgi).
 
 `write_qcio` is a top-level optional flag and defaults to `false`. When enabled, saved CLI outputs also include cached `qcio.ProgramOutput` sidecars (`*.qcio`), which can take substantial disk space.
 
