@@ -673,6 +673,45 @@ def _extract_normal_modes_from_hessian_result(
     return [np.array(mode) for mode in normal_modes], [float(freq) for freq in frequencies]
 
 
+def _extract_cartesian_hessian_matrix(
+    hessres: Any,
+    *,
+    natoms: int | None = None,
+) -> np.ndarray | None:
+    candidates: list[Any] = []
+
+    if hessres is None:
+        return None
+
+    candidates.append(getattr(hessres, "return_result", None))
+    results = getattr(hessres, "results", None)
+    if results is not None:
+        candidates.append(getattr(results, "hessian", None))
+        candidates.append(getattr(results, "return_result", None))
+    if isinstance(hessres, dict):
+        candidates.append(hessres.get("hessian"))
+        candidates.append(hessres.get("return_result"))
+        nested_results = hessres.get("results")
+        if isinstance(nested_results, dict):
+            candidates.append(nested_results.get("hessian"))
+            candidates.append(nested_results.get("return_result"))
+
+    ncart = (3 * int(natoms)) if natoms is not None else None
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        with contextlib.suppress(Exception):
+            arr = np.asarray(candidate, dtype=float)
+            if arr.ndim == 1 and ncart is not None and arr.size == ncart * ncart:
+                arr = arr.reshape((ncart, ncart))
+            if arr.ndim != 2:
+                continue
+            if ncart is not None and arr.shape != (ncart, ncart):
+                continue
+            return arr
+    return None
+
+
 def _node_structure_charge_multiplicity(node: StructureNode | None) -> tuple[int, int] | None:
     if node is None:
         return None
@@ -881,11 +920,13 @@ def _peak_node_from_chain(chain: Any) -> StructureNode:
 
 def _ensure_node_graph(node: StructureNode, *, fallback: StructureNode | None = None) -> StructureNode:
     graph_like = getattr(node, "graph", None)
-    if graph_like is None and fallback is not None:
-        graph_like = getattr(fallback, "graph", None)
     if graph_like is None and getattr(node, "structure", None) is not None:
         with contextlib.suppress(Exception):
             graph_like = structure_to_molecule(node.structure)
+    # Prefer endpoint-derived connectivity for IRC minima; TS fallback should be a
+    # last resort when endpoint graph construction fails.
+    if graph_like is None and fallback is not None:
+        graph_like = getattr(fallback, "graph", None)
     if graph_like is not None:
         node.graph = graph_like
         node.has_molecular_graph = True
@@ -1039,7 +1080,6 @@ def _compute_irc_chain_with_geometric(
     keywords: dict[str, Any] | None = None,
     use_bigchem: bool = False,
 ) -> Chain:
-    del use_bigchem  # GeomeTRIC IRC path is explicit and does not use BigChem Hessian wiring here.
     try:
         import geometric.engine  # type: ignore
         import geometric.molecule  # type: ignore
@@ -1100,12 +1140,44 @@ def _compute_irc_chain_with_geometric(
         template_node=ref_node,
     )
 
-    with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmpf:
-        output = geometric.optimize.run_optimizer(  # type: ignore[name-defined]
-            customengine=custom_engine,
-            input=tmpf.name,
-            **irc_keywords,
-        )
+    hessian_tmp_path: Path | None = None
+    if bool(use_bigchem):
+        irc_keywords.setdefault("bigchem", True)
+        if "hessian" not in irc_keywords:
+            try:
+                hessres = _compute_hessian_result_for_sampling(
+                    engine,
+                    ref_node,
+                    use_bigchem=True,
+                )
+            except Exception as exc:
+                raise RuntimeError(
+                    "Failed to compute a BigChem Hessian for IRC initialization."
+                ) from exc
+            hessian = _extract_cartesian_hessian_matrix(
+                hessres,
+                natoms=len(getattr(ref_node.structure, "symbols", []) or []),
+            )
+            if hessian is None:
+                raise RuntimeError(
+                    "BigChem Hessian result did not contain a usable Cartesian Hessian matrix."
+                )
+            with tempfile.NamedTemporaryFile(mode="w+", suffix=".txt", delete=False) as hess_file:
+                np.savetxt(hess_file.name, hessian)
+                hessian_tmp_path = Path(hess_file.name)
+            irc_keywords["hessian"] = f"file:{hessian_tmp_path}"
+
+    try:
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False) as tmpf:
+            output = geometric.optimize.run_optimizer(  # type: ignore[name-defined]
+                customengine=custom_engine,
+                input=tmpf.name,
+                **irc_keywords,
+            )
+    finally:
+        if hessian_tmp_path is not None:
+            with contextlib.suppress(Exception):
+                hessian_tmp_path.unlink()
     xyzs = list(getattr(output, "xyzs", []) or [])
     if len(xyzs) < 2:
         raise RuntimeError("Geometric IRC did not return a usable trajectory.")
@@ -1370,22 +1442,50 @@ def refine_drive_workspace_network(
     compute_program = str(getattr(getattr(run_inputs, "engine", None), "compute_program", "") or "").strip().lower()
     chemcloud_mode = engine_name == "chemcloud" or compute_program == "chemcloud"
 
-    ts_jobs: list[dict[str, Any]] = []
+    ts_jobs_by_connection: dict[tuple[int, int], dict[str, Any]] = {}
     for source_node, target_node, chain_index, chain in edge_records:
         try:
             ts_guess = chain.get_ts_node().copy()
         except Exception:
             ts_guess = _peak_node_from_chain(chain)
         ts_guess = _ensure_node_graph(ts_guess)
+        ts_guess_barrier = float("inf")
+        with contextlib.suppress(Exception):
+            ts_guess_barrier = float(chain.get_eA_chain())
+        connection_key = tuple(sorted((int(source_node), int(target_node))))
         stem = f"edge_{source_node}_{target_node}_chain_{chain_index}"
-        ts_jobs.append(
-            {
-                "source_node": int(source_node),
-                "target_node": int(target_node),
-                "chain_index": int(chain_index),
-                "ts_guess": ts_guess,
-                "stem": stem,
-            }
+        candidate_job = {
+            "source_node": int(source_node),
+            "target_node": int(target_node),
+            "chain_index": int(chain_index),
+            "ts_guess": ts_guess,
+            "stem": stem,
+            "connection_nodes": [int(connection_key[0]), int(connection_key[1])],
+            "ts_guess_barrier": float(ts_guess_barrier),
+        }
+        incumbent = ts_jobs_by_connection.get(connection_key)
+        if incumbent is None or float(candidate_job["ts_guess_barrier"]) < float(incumbent.get("ts_guess_barrier", float("inf"))):
+            ts_jobs_by_connection[connection_key] = candidate_job
+
+    ts_jobs: list[dict[str, Any]] = sorted(
+        ts_jobs_by_connection.values(),
+        key=lambda job: (
+            int(job["connection_nodes"][0]),
+            int(job["connection_nodes"][1]),
+            int(job["source_node"]),
+            int(job["target_node"]),
+            int(job["chain_index"]),
+        ),
+    )
+    if len(ts_jobs) < len(edge_records):
+        _emit_progress(
+            (
+                "Deduplicated TS guesses by undirected connection: "
+                f"{len(edge_records)} candidates -> {len(ts_jobs)} optimization jobs."
+            ),
+            phase="collect",
+            current=total_edges,
+            total=total_edges,
         )
 
     ts_guesses_attempted = len(ts_jobs)
@@ -2921,6 +3021,14 @@ def _history_leaf_chains(history: TreeNode) -> list[Chain]:
     return chains
 
 
+def _reversed_chain(chain: Chain) -> Chain:
+    reversed_chain = chain.copy()
+    reversed_chain.nodes = list(reversed(reversed_chain.nodes))
+    if getattr(reversed_chain, "velocity", None):
+        reversed_chain.velocity = list(reversed(reversed_chain.velocity))
+    return reversed_chain
+
+
 def _elementary_step_label(base_reaction: str | None, leaf_index: int, total_leaves: int) -> str:
     reaction = (base_reaction or "Elementary-Step").strip() or "Elementary-Step"
     if total_leaves <= 1:
@@ -3529,18 +3637,29 @@ def load_partial_annotated_pot(
             chain_copy = leaf_chain.copy()
             chain_copy.nodes[0] = start_node
             chain_copy.nodes[-1] = end_node
-            chains_by_edge.setdefault((start_index, end_index), []).append(chain_copy)
+            persisted_source = int(start_index)
+            persisted_target = int(end_index)
+            if (
+                not pot.graph.has_edge(persisted_source, persisted_target)
+                and pot.graph.has_edge(persisted_target, persisted_source)
+            ):
+                chain_copy = _reversed_chain(chain_copy)
+                persisted_source, persisted_target = persisted_target, persisted_source
 
-            if not pot.graph.has_edge(start_index, end_index):
+            chains_by_edge.setdefault((persisted_source, persisted_target), []).append(chain_copy)
+
+            if not pot.graph.has_edge(persisted_source, persisted_target):
                 edge_attrs = {}
                 if source_pot.graph.has_edge(item.source_node, item.target_node):
                     edge_attrs = dict(source_pot.graph.edges[(item.source_node, item.target_node)])
+                elif source_pot.graph.has_edge(item.target_node, item.source_node):
+                    edge_attrs = dict(source_pot.graph.edges[(item.target_node, item.source_node)])
                 edge_attrs["reaction"] = _elementary_step_label(
                     base_reaction=item.reaction,
                     leaf_index=leaf_index,
                     total_leaves=total_leaves,
                 )
-                pot.graph.add_edge(start_index, end_index, **edge_attrs)
+                pot.graph.add_edge(persisted_source, persisted_target, **edge_attrs)
         _emit_progress(
             f"Annotated completed NEB item {item_index}/{total_items}.",
             item_index,

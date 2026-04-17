@@ -221,13 +221,16 @@ mepd visualize path/to/result
 `result` can be either:
 
 - a NEB output `.xyz` with sibling `<stem>_history/` folder
+- a Pot network `.json`
 - a recursive MSMEP TreeNode folder containing `adj_matrix.txt`
+- a drive workspace directory (for example `mepd-drive-1775282164/`)
+- a drive `workspace.json` file
 
 **Options:**
 
 | Option | Description |
 |--------|-------------|
-| `result_path` | Path to result `.xyz` or TreeNode folder |
+| `result_path` | Path to result `.xyz`, network `.json`, TreeNode folder, or drive workspace |
 | `--output`, `-o` | Output HTML path (default: `<name>_visualize.html`) |
 | `--qminds-fp` | Path to `qmindices.dat` to visualize only selected atoms |
 | `--atom-indices` | Comma/space-separated atom indices for subset visualization |
@@ -240,6 +243,7 @@ mepd visualize path/to/result
 ```bash
 mepd visualize mep_output_neb.xyz
 mepd visualize mep_output_msmep --output msmep_view.html
+mepd visualize mepd-drive-1775282164
 mepd visualize mep_output_neb.xyz --qminds-fp qmindices.dat
 mepd visualize mep_output_neb.xyz --atom-indices "12,13,14,15"
 ```

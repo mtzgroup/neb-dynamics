@@ -111,6 +111,32 @@ def test_build_retropaths_neb_queue_refreshes_legacy_atom_mismatch_failures(tmp_
     assert "legacy" not in queue.attempted_pairs
 
 
+def test_build_retropaths_neb_queue_refreshes_lock_pickle_failures(tmp_path):
+    nodes = {0: _node_at_x(0.0), 1: _node_at_x(1.0)}
+    pot = _test_pot(nodes, [(1, 0)])
+    queue_fp = tmp_path / "queue.json"
+
+    RetropathsNEBQueue(
+        items=[
+            NEBQueueItem(
+                job_id="1->0",
+                source_node=1,
+                target_node=0,
+                attempt_key="legacy-lock",
+                status="failed",
+                error="TypeError: cannot pickle '_thread.lock' object",
+            )
+        ],
+        attempted_pairs={"legacy-lock": {"status": "failed"}},
+    ).write_to_disk(queue_fp)
+
+    queue = build_retropaths_neb_queue(pot=pot, queue_fp=queue_fp)
+
+    assert queue.items[0].status == "pending"
+    assert queue.items[0].attempt_key != "legacy-lock"
+    assert "legacy-lock" not in queue.attempted_pairs
+
+
 def test_build_retropaths_neb_queue_keeps_skipped_attempted_when_signature_changes_after_completion(tmp_path):
     original_nodes = {0: _node_at_x(0.0), 1: _node_at_x(1.0)}
     original_attempt_key = pair_attempt_key(original_nodes[1], original_nodes[0])
@@ -300,6 +326,11 @@ def _fake_run_inputs():
         chain_inputs=ChainInputs(),
         path_min_inputs=SimpleNamespace(do_elem_step_checks=False),
     )
+
+
+class _NoDeepcopyRunInputs(SimpleNamespace):
+    def __deepcopy__(self, memo):
+        raise TypeError("cannot pickle '_thread.lock' object")
 
 
 def _energetic_like_three_atom_node() -> StructureNode:
@@ -537,3 +568,59 @@ def test_run_retropaths_neb_queue_supports_parallel_workers(
 
     assert [item.status for item in queue.items] == ["completed", "completed"]
     assert state["max_active"] >= 2
+
+
+def test_run_retropaths_neb_queue_parallel_handles_uncopyable_run_inputs(
+    monkeypatch, tmp_path
+):
+    nodes = {0: _node_at_x(0.0), 1: _node_at_x(1.0), 2: _node_at_x(2.0)}
+    pot = _test_pot(nodes, [(1, 0), (2, 0)])
+    for _, attrs in pot.graph.nodes(data=True):
+        attrs["endpoint_optimized"] = True
+    queue_fp = tmp_path / "queue.json"
+    output_dir = tmp_path / "out"
+
+    run_inputs = _NoDeepcopyRunInputs(
+        engine=_NoOpEngine(),
+        chain_inputs=ChainInputs(),
+        path_min_inputs=SimpleNamespace(do_elem_step_checks=False),
+        engine_name="chemcloud",
+        program="crest",
+    )
+
+    def _fake_payload_worker(
+        pair_payload,
+        run_inputs_payload,
+        result_dir,
+        output_chain_xyz,
+        *,
+        parallel_recursive=False,
+        parallel_workers=None,
+    ):
+        Path(result_dir).mkdir(parents=True, exist_ok=True)
+        Path(output_chain_xyz).write_text("")
+        return {"result_dir": result_dir, "output_chain_xyz": output_chain_xyz}
+
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_queue._run_single_item_worker_from_payload",
+        _fake_payload_worker,
+    )
+
+    class _CompatThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
+        def __init__(self, max_workers=None, mp_context=None):
+            super().__init__(max_workers=max_workers)
+
+    monkeypatch.setattr(
+        "neb_dynamics.retropaths_queue.concurrent.futures.ProcessPoolExecutor",
+        _CompatThreadPoolExecutor,
+    )
+
+    queue = run_retropaths_neb_queue(
+        pot=pot,
+        run_inputs=run_inputs,
+        queue_fp=queue_fp,
+        output_dir=output_dir,
+        max_parallel_nebs=2,
+    )
+
+    assert [item.status for item in queue.items] == ["completed", "completed"]

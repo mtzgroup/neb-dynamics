@@ -378,6 +378,7 @@ class ProgressPrinter:
         if self._status_active and self._status is not None:
             self._status.stop()
             self._status_active = False
+        rows, page_meta = self._build_live_rows()
         table = Table(show_header=True, box=box.SIMPLE)
         table.add_column(
             "Monitor",
@@ -389,14 +390,34 @@ class ProgressPrinter:
             overflow="ellipsis",
         )
         table.add_column("Chain")
-        active_monitor_ids = sorted(self._active_monitor_ids)
-        visible_ids, page_meta = self._visible_monitor_ids(active_monitor_ids)
         if page_meta.get("total_pages", 1) > 1:
             table.title = (
                 "Parallel Branch Monitors "
                 f"({page_meta['start']}-{page_meta['end']} of {page_meta['total']}, "
                 f"page {page_meta['page']}/{page_meta['total_pages']})"
             )
+        for label, chain_ascii in rows:
+            table.add_row(label, chain_ascii)
+
+        if self._live is None:
+            self._live = Live(
+                table,
+                console=_console,
+                refresh_per_second=4,
+                auto_refresh=False,
+            )
+            self._live.start()
+            self._live.refresh()
+        else:
+            self._live.update(table)
+            self._live.refresh()
+
+    def _build_live_rows(self) -> tuple[list[tuple[str, str]], dict]:
+        rows: list[tuple[str, str]] = []
+
+        active_monitor_ids = sorted(self._active_monitor_ids)
+        visible_ids, page_meta = self._visible_monitor_ids(active_monitor_ids)
+
         path_state = self._monitor_states.get(self._path_monitor_id) or {}
         path_ready = bool(path_state.get("ascii_plot") or path_state.get("chain_plot_payload"))
         show_path_monitor = path_ready or bool(active_monitor_ids)
@@ -406,7 +427,27 @@ class ProgressPrinter:
                 caption=str(path_state.get("caption") or "").strip(),
             )
             path_ascii = self._compact_ascii_for_live(path_state)
-            table.add_row(label, str(path_ascii))
+            rows.append((label, str(path_ascii)))
+
+        main_state = self._monitor_states.get("main") or {}
+        main_ready = bool(
+            main_state.get("ascii_plot")
+            or main_state.get("status_message")
+            or main_state.get("caption")
+            or main_state.get("chain_plot_payload")
+        )
+        if main_ready:
+            caption = str(
+                main_state.get("status_message") or main_state.get("caption") or ""
+            ).strip()
+            label = self._format_monitor_label("main", caption)
+            chain_ascii = (
+                main_state.get("ascii_plot")
+                or main_state.get("status_message")
+                or main_state.get("caption")
+                or "(waiting for first chain update)"
+            )
+            rows.append((label, str(chain_ascii)))
 
         compact_mode = len(active_monitor_ids) > 1
         for monitor_id in visible_ids:
@@ -422,20 +463,8 @@ class ProgressPrinter:
                     or state.get("caption")
                     or "(waiting for first chain update)"
                 )
-            table.add_row(label, str(chain_ascii))
-
-        if self._live is None:
-            self._live = Live(
-                table,
-                console=_console,
-                refresh_per_second=4,
-                auto_refresh=False,
-            )
-            self._live.start()
-            self._live.refresh()
-        else:
-            self._live.update(table)
-            self._live.refresh()
+            rows.append((label, str(chain_ascii)))
+        return rows, page_meta
 
     def _monitors_payload(self) -> dict[str, dict]:
         payload: dict[str, dict] = {}

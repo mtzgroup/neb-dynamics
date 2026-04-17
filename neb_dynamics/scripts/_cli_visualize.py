@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import heapq
 import io
 import json
@@ -674,6 +675,26 @@ def _subset_tree_layers_for_visualization(
     return subset_layers
 
 
+def _resolve_drive_workspace_network_json(result_dir: Path) -> Path | None:
+    result_dir = Path(result_dir)
+    if not result_dir.is_dir():
+        return None
+
+    has_workspace_marker = (result_dir / "workspace.json").exists()
+    network_candidates = [
+        result_dir / "neb_pot_annotated.json",
+        result_dir / "neb_pot.json",
+        result_dir / "retropaths_pot.json",
+    ]
+    if not has_workspace_marker and not any(fp.exists() for fp in network_candidates):
+        return None
+
+    for fp in network_candidates:
+        if fp.exists():
+            return fp
+    return None
+
+
 def _load_visualization_data(
     result_path: Path,
     deps: VisualizationDeps,
@@ -721,11 +742,26 @@ def _load_visualization_data(
                 chain_trajectory=None,
                 tree_layers=collect_tree_layers(tree),
             )
-        raise ValueError(
-            "Directory input must be a TreeNode folder containing adj_matrix.txt."
-        )
+        drive_network_fp = _resolve_drive_workspace_network_json(result_path)
+        if drive_network_fp is not None:
+            result_path = drive_network_fp
+        else:
+            raise ValueError(
+                "Directory input must be a TreeNode folder containing adj_matrix.txt "
+                "or a drive workspace directory containing neb_pot_annotated.json, "
+                "neb_pot.json, or retropaths_pot.json."
+            )
 
     if result_path.suffix.lower() == ".json":
+        if result_path.name == "workspace.json":
+            drive_network_fp = _resolve_drive_workspace_network_json(result_path.parent)
+            if drive_network_fp is None:
+                raise ValueError(
+                    "workspace.json input did not resolve to a drive network file. "
+                    "Expected neb_pot_annotated.json, neb_pot.json, or retropaths_pot.json "
+                    f"in {result_path.parent}."
+                )
+            result_path = drive_network_fp
         try:
             pot = deps.Pot.read_from_disk(result_path)
             endpoint_hints = load_network_endpoint_hints(result_path) or {}
@@ -764,30 +800,38 @@ def _load_visualization_data(
                 ),
             )
             path = []
-            if (
-                root_idx is not None
-                and target_idx is not None
-                and deps.nx.has_path(pot.graph, root_idx, target_idx)
-            ):
-                best_path_nodes, _ = best_path(
-                    pot,
-                    root_idx=root_idx,
-                    target_idx=target_idx,
-                )
-                path = [int(v) for v in best_path_nodes] if best_path_nodes else []
+            with contextlib.suppress(Exception):
+                if (
+                    root_idx is not None
+                    and target_idx is not None
+                    and deps.nx.has_path(pot.graph, root_idx, target_idx)
+                ):
+                    best_path_nodes, _ = best_path(
+                        pot,
+                        root_idx=root_idx,
+                        target_idx=target_idx,
+                    )
+                    path = [int(v) for v in best_path_nodes] if best_path_nodes else []
             default_chain = path_chain_from_pot(pot, path)
             if default_chain is None:
-                first_edge = next(iter(pot.graph.edges), None)
-                if first_edge is not None:
-                    default_chain = best_chain_for_directed_edge(
-                        pot, int(first_edge[0]), int(first_edge[1])
-                    ).copy()
-                else:
+                for source, target in pot.graph.edges:
+                    with contextlib.suppress(Exception):
+                        default_chain = best_chain_for_directed_edge(
+                            pot, int(source), int(target)
+                        ).copy()
+                        break
+                if default_chain is None:
                     root_td = (
                         pot.graph.nodes[root_idx].get("td")
-                        if root_idx is not None
+                        if root_idx is not None and root_idx in pot.graph.nodes
                         else None
                     )
+                    if root_td is None:
+                        for node_idx in pot.graph.nodes:
+                            candidate_td = pot.graph.nodes[node_idx].get("td")
+                            if candidate_td is not None:
+                                root_td = candidate_td
+                                break
                     if root_td is None:
                         raise ValueError(
                             "Pot network has no visualizable chains or node geometries."
@@ -836,7 +880,8 @@ def _load_visualization_data(
         raise ValueError(
             "Could not detect serialized result type. For network visualization provide a Pot .json; for NEB provide the .xyz output "
             "that has a sibling '<stem>_history/' folder; for recursive MSMEP provide "
-            "the TreeNode directory with adj_matrix.txt; or provide a valid chain xyz."
+            "the TreeNode directory with adj_matrix.txt; for drive visualization provide the drive workspace directory "
+            "(or workspace.json); or provide a valid chain xyz."
         ) from exc
 
 
@@ -889,20 +934,23 @@ def _resolve_network_highlight(
     if root_idx is not None and target_idx is not None and deps.nx.has_path(
         pot.graph.to_undirected(), root_idx, target_idx
     ):
-        best_path_nodes, best_path_peak = best_path(
-            pot, root_idx=root_idx, target_idx=target_idx
-        )
-        highlighted_path = [int(v) for v in best_path_nodes] if best_path_nodes else []
-        highlighted_edges = {
-            (int(a), int(b))
-            for a, b in zip(highlighted_path[:-1], highlighted_path[1:])
-        }
-        try:
-            root_energy = float(pot.graph.nodes[root_idx]["td"].energy)
-            if best_path_peak is not None:
-                apparent_barrier = float((best_path_peak - root_energy) * 627.5)
-        except Exception:
-            apparent_barrier = None
+        with contextlib.suppress(Exception):
+            best_path_nodes, best_path_peak = best_path(
+                pot, root_idx=root_idx, target_idx=target_idx
+            )
+            highlighted_path = (
+                [int(v) for v in best_path_nodes] if best_path_nodes else []
+            )
+            highlighted_edges = {
+                (int(a), int(b))
+                for a, b in zip(highlighted_path[:-1], highlighted_path[1:])
+            }
+            try:
+                root_energy = float(pot.graph.nodes[root_idx]["td"].energy)
+                if best_path_peak is not None:
+                    apparent_barrier = float((best_path_peak - root_energy) * 627.5)
+            except Exception:
+                apparent_barrier = None
 
     return root_idx, target_idx, highlighted_path, highlighted_edges, apparent_barrier
 
@@ -949,6 +997,28 @@ def _build_network_visualization_payload(
             return (a, b) if (a, b) in pot.graph.edges else (b, a)
         return (a, b) if b_cost < a_cost else (b, a)
 
+    def _fallback_chain_for_edge(source: int, target: int):
+        source_td = pot.graph.nodes[source].get("td")
+        target_td = pot.graph.nodes[target].get("td")
+        if source_td is None or target_td is None:
+            return None
+        return deps.Chain.model_validate(
+            {
+                "nodes": [source_td.copy(), target_td.copy()],
+                "parameters": deps.ChainInputs(),
+            }
+        )
+
+    def _edge_barrier(source: int, target: int) -> float | None:
+        if not pot.graph.has_edge(source, target):
+            return None
+        raw = pot.graph.edges[(source, target)].get("barrier")
+        if raw is None:
+            return None
+        with contextlib.suppress(Exception):
+            return float(raw)
+        return None
+
     nodes_payload = []
     for node_idx, coords in layout.items():
         nodes_payload.append(
@@ -970,27 +1040,24 @@ def _build_network_visualization_payload(
             continue
         seen_pairs.add(pair_key)
         source, target = _preferred_pair_orientation(int(raw_source), int(raw_target))
+        fallback = False
         try:
             best_chain = _best_chain_between_nodes(pot, source, target, deps)
         except Exception:
-            continue
-        try:
-            forward_barrier = (
-                float(pot.graph.edges[(source, target)].get("barrier", 0.0))
-                if pot.graph.has_edge(source, target)
-                else float(pot.graph.edges[(target, source)].get("barrier", 0.0))
-            )
-        except Exception:
-            continue
+            best_chain = _fallback_chain_for_edge(source, target)
+            fallback = True
+            if best_chain is None:
+                continue
+        forward_barrier = _edge_barrier(source, target)
+        if forward_barrier is None:
+            forward_barrier = _edge_barrier(target, source)
+        if forward_barrier is None:
+            forward_barrier = 0.0
         if atom_indices is not None:
             best_chain = _subset_chain_for_visualization(
                 best_chain, atom_indices, deps
             )
-        reverse_barrier = None
-        if pot.graph.has_edge(target, source):
-            reverse_barrier = float(
-                pot.graph.edges[(target, source)].get("barrier", 0.0)
-            )
+        reverse_barrier = _edge_barrier(target, source)
         pair_sum = (
             forward_barrier + reverse_barrier
             if reverse_barrier is not None
@@ -1006,6 +1073,7 @@ def _build_network_visualization_payload(
                 "reverse_barrier": reverse_barrier,
                 "pair_barrier_sum": pair_sum,
                 "highlight": (source, target) in highlighted_edges,
+                "fallback": fallback,
                 "viz": _serialize_chains_for_visualization([best_chain]),
             }
         )
@@ -1081,6 +1149,42 @@ def _build_chain_visualizer_html(
     .row {{ display: flex; gap: 16px; align-items: flex-start; }}
     .panel {{ flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 12px; }}
     .controls {{ margin-bottom: 12px; }}
+    .network-tools {{
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }}
+    .network-tool-button {{
+      width: 32px;
+      height: 32px;
+      border: 1px solid rgba(99, 213, 255, 0.36);
+      border-radius: 8px;
+      background: rgba(6, 14, 26, 0.86);
+      color: rgba(233, 241, 255, 0.96);
+      font-size: 16px;
+      cursor: pointer;
+    }}
+    .network-tool-button:hover {{
+      border-color: rgba(126, 240, 199, 0.6);
+      color: #7ef0c7;
+    }}
+    .network-canvas-shell {{
+      position: relative;
+      border: 1px solid #1f304b;
+      border-radius: 8px;
+      overflow: hidden;
+    }}
+    .network-svg {{
+      width: 100%;
+      height: 320px;
+      display: block;
+      cursor: grab;
+      touch-action: none;
+      background: radial-gradient(circle at 20% 18%, rgba(99, 213, 255, 0.11), transparent 20%), radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%), linear-gradient(180deg, #0d1728 0%, #08111f 100%);
+    }}
+    .network-svg.is-panning {{ cursor: grabbing; }}
+    .network-label {{ pointer-events: none; user-select: none; }}
     img {{ width: 100%; max-width: 700px; }}
   </style>
 </head>
@@ -1094,7 +1198,15 @@ def _build_chain_visualizer_html(
     </div>
     <div id="networkPanel" style="{network_panel_style} margin-bottom: 12px;">
       <div style="font-weight: 600; margin-bottom: 6px;">Reaction Network</div>
-      <svg id="networkSvg" width="100%" height="320" viewBox="0 0 900 320" style="border: 1px solid #1f304b; border-radius: 8px; background: radial-gradient(circle at 20% 18%, rgba(99, 213, 255, 0.11), transparent 20%), radial-gradient(circle at 82% 12%, rgba(126, 240, 199, 0.08), transparent 18%), linear-gradient(180deg, #0d1728 0%, #08111f 100%);"></svg>
+      <div class="network-tools">
+        <button id="networkZoomIn" class="network-tool-button" type="button" title="Zoom in">+</button>
+        <button id="networkZoomOut" class="network-tool-button" type="button" title="Zoom out">-</button>
+        <button id="networkResetView" class="network-tool-button" type="button" title="Reset view">R</button>
+        <span style="font-size: 12px; color: #6b7280;">Scroll to zoom and drag empty space to pan.</span>
+      </div>
+      <div class="network-canvas-shell">
+        <svg id="networkSvg" class="network-svg" viewBox="0 0 900 320"></svg>
+      </div>
       <div id="networkInfo" style="font-size: 12px; color: #666; margin-top: 6px;">Click an edge to load the corresponding best NEB pair. The best overall path is highlighted in gold.</div>
     </div>
     <label for="chainSelect">Chain: </label>
@@ -1276,6 +1388,8 @@ def _build_chain_visualizer_html(
     let currentGroup = {default_group_index};
     let currentChain = 0;
     let currentNetworkEdgeId = null;
+    const networkView = {{ x: 0, y: 0, scale: 1, minScale: 0.35, maxScale: 4.5, suppressClickUntil: 0 }};
+    let networkCanvas = null;
     function getCurrentLayer() {{
       return layers[currentLayer] || null;
     }}
@@ -1387,12 +1501,123 @@ def _build_chain_visualizer_html(
       }});
       updateTreeSelection();
     }}
+    function applyNetworkViewTransform() {{
+      const viewport = networkCanvas?.viewport;
+      if (!viewport) return;
+      viewport.setAttribute(
+        "transform",
+        `translate(${{networkView.x.toFixed(3)}},${{networkView.y.toFixed(3)}}) scale(${{networkView.scale.toFixed(4)}})`,
+      );
+    }}
+    function networkSvgCoordsFromEvent(event) {{
+      const canvas = networkCanvas;
+      if (!canvas?.svg) return {{ x: 0, y: 0 }};
+      const bounds = canvas.svg.getBoundingClientRect();
+      if (!bounds.width || !bounds.height) {{
+        return {{ x: canvas.width / 2, y: canvas.height / 2 }};
+      }}
+      return {{
+        x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
+        y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
+      }};
+    }}
+    function zoomNetworkAt(factor, centerX = null, centerY = null) {{
+      const canvas = networkCanvas;
+      if (!canvas) return;
+      const oldScale = Number(networkView.scale || 1);
+      const nextScale = Math.max(
+        Number(networkView.minScale || 0.35),
+        Math.min(Number(networkView.maxScale || 4.5), oldScale * Number(factor || 1)),
+      );
+      if (!Number.isFinite(nextScale) || nextScale === oldScale) return;
+      const cx = centerX == null ? canvas.width / 2 : Number(centerX);
+      const cy = centerY == null ? canvas.height / 2 : Number(centerY);
+      const ratio = nextScale / oldScale;
+      networkView.x = cx - ratio * (cx - Number(networkView.x || 0));
+      networkView.y = cy - ratio * (cy - Number(networkView.y || 0));
+      networkView.scale = nextScale;
+      applyNetworkViewTransform();
+    }}
+    function resetNetworkView() {{
+      networkView.x = 0;
+      networkView.y = 0;
+      networkView.scale = 1;
+      applyNetworkViewTransform();
+    }}
+    function bindNetworkInteractionHandlers(svg) {{
+      if (!svg || svg.dataset.interactionsBound === "true") return;
+      svg.dataset.interactionsBound = "true";
+      svg.addEventListener("wheel", (event) => {{
+        event.preventDefault();
+        const coords = networkSvgCoordsFromEvent(event);
+        zoomNetworkAt(event.deltaY < 0 ? 1.12 : 1 / 1.12, coords.x, coords.y);
+      }}, {{ passive: false }});
+      svg.addEventListener("mousedown", (event) => {{
+        if (event.button !== 0) return;
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        if (
+          target.closest(".network-node")
+          || target.closest(".network-edge-hitbox")
+          || target.closest(".network-edge-line")
+        ) {{
+          return;
+        }}
+        const canvas = networkCanvas;
+        if (!canvas) return;
+        canvas.panning = true;
+        canvas.panOrigin = {{
+          mouseX: event.clientX,
+          mouseY: event.clientY,
+          viewX: Number(networkView.x || 0),
+          viewY: Number(networkView.y || 0),
+        }};
+        svg.classList.add("is-panning");
+        event.preventDefault();
+      }});
+      window.addEventListener("mousemove", (event) => {{
+        const canvas = networkCanvas;
+        if (!canvas?.panning || !canvas.panOrigin || !canvas.svg) return;
+        const bounds = canvas.svg.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        const dx = ((event.clientX - canvas.panOrigin.mouseX) / bounds.width) * canvas.width;
+        const dy = ((event.clientY - canvas.panOrigin.mouseY) / bounds.height) * canvas.height;
+        if (Math.abs(dx) + Math.abs(dy) > 1.5) {{
+          networkView.suppressClickUntil = Date.now() + 150;
+        }}
+        networkView.x = canvas.panOrigin.viewX + dx;
+        networkView.y = canvas.panOrigin.viewY + dy;
+        applyNetworkViewTransform();
+      }});
+      window.addEventListener("mouseup", (event) => {{
+        const canvas = networkCanvas;
+        if (!canvas?.panning || event.button !== 0) return;
+        canvas.panning = false;
+        canvas.panOrigin = null;
+        if (canvas.svg) {{
+          canvas.svg.classList.remove("is-panning");
+        }}
+      }});
+    }}
     function renderNetworkGraph() {{
       const svg = document.getElementById("networkSvg");
       if (!svg || !networkPayload || !networkPayload.nodes || !networkPayload.nodes.length) return;
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       const width = 900;
       const height = 320;
+      svg.setAttribute("viewBox", `0 0 ${{width}} ${{height}}`);
+      const viewport = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      svg.appendChild(viewport);
+      networkCanvas = {{
+        svg,
+        viewport,
+        width,
+        height,
+        panning: false,
+        panOrigin: null,
+      }};
+      bindNetworkInteractionHandlers(svg);
+      applyNetworkViewTransform();
       const pad = 34;
       const xs = networkPayload.nodes.map((node) => node.x);
       const ys = networkPayload.nodes.map((node) => node.y);
@@ -1421,6 +1646,7 @@ def _build_chain_visualizer_html(
         group.style.cursor = "pointer";
 
         const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("class", "network-edge-line");
         line.setAttribute("x1", String(src.x));
         line.setAttribute("y1", String(src.y));
         line.setAttribute("x2", String(dst.x));
@@ -1428,9 +1654,13 @@ def _build_chain_visualizer_html(
         line.setAttribute("stroke", edge.highlight ? DRIVE_VIZ_COLORS.edgeHighlight : DRIVE_VIZ_COLORS.edge);
         line.setAttribute("stroke-width", edge.highlight ? "4" : "2.25");
         line.setAttribute("opacity", edge.highlight ? "0.95" : "0.85");
+        if (edge.fallback) {{
+          line.setAttribute("stroke-dasharray", "6 4");
+        }}
         group.appendChild(line);
 
         const hit = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        hit.setAttribute("class", "network-edge-hitbox");
         hit.setAttribute("x1", String(src.x));
         hit.setAttribute("y1", String(src.y));
         hit.setAttribute("x2", String(dst.x));
@@ -1446,11 +1676,13 @@ def _build_chain_visualizer_html(
         label.setAttribute("y", String(midY - 8));
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("font-size", "11");
+        label.setAttribute("class", "network-label");
         label.setAttribute("fill", DRIVE_VIZ_COLORS.labelMuted);
         label.textContent = `${{edge.source}}→${{edge.target}}`;
         group.appendChild(label);
 
         group.addEventListener("click", () => {{
+          if (Date.now() < Number(networkView.suppressClickUntil || 0)) return;
           currentNetworkEdgeId = edge.id;
           currentChain = 0;
           syncChainOptions();
@@ -1459,13 +1691,14 @@ def _build_chain_visualizer_html(
           renderFrame(parseInt(slider.value, 10));
           updateNetworkSelection();
         }});
-        svg.appendChild(group);
+        viewport.appendChild(group);
       }});
 
       networkPayload.nodes.forEach((node) => {{
         const data = nodeMap[node.id];
         const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
         const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("class", "network-node");
         circle.setAttribute("cx", String(data.x));
         circle.setAttribute("cy", String(data.y));
         circle.setAttribute("r", data.is_root || data.is_target ? "13" : "11");
@@ -1486,10 +1719,11 @@ def _build_chain_visualizer_html(
         label.setAttribute("y", String(data.y + 24));
         label.setAttribute("text-anchor", "middle");
         label.setAttribute("font-size", "11");
+        label.setAttribute("class", "network-label");
         label.setAttribute("fill", DRIVE_VIZ_COLORS.label);
         label.textContent = data.label;
         group.appendChild(label);
-        svg.appendChild(group);
+        viewport.appendChild(group);
       }});
       updateNetworkSelection();
     }}
@@ -1497,10 +1731,16 @@ def _build_chain_visualizer_html(
       const svg = document.getElementById("networkSvg");
       const info = document.getElementById("networkInfo");
       if (!svg || !networkPayload || !networkPayload.edges) return;
+      if (!networkPayload.edges.length) {{
+        if (info) {{
+          info.textContent = "No NEB-backed edges are available yet in this network. Nodes are shown for context.";
+        }}
+        return;
+      }}
       const selected = getCurrentNetworkEdge();
       svg.querySelectorAll("g[data-edge-id]").forEach((elem) => {{
         const edge = networkPayload.edges.find((item) => item.id === elem.getAttribute("data-edge-id"));
-        const line = elem.querySelector("line");
+        const line = elem.querySelector(".network-edge-line");
         if (!line || !edge) return;
         const selectedEdge = selected && selected.id === edge.id;
         line.setAttribute("stroke", selectedEdge ? DRIVE_VIZ_COLORS.edgeSelected : (edge.highlight ? DRIVE_VIZ_COLORS.edgeHighlight : DRIVE_VIZ_COLORS.edge));
@@ -1514,7 +1754,8 @@ def _build_chain_visualizer_html(
       const reverse = selected.reverse_barrier === null || selected.reverse_barrier === undefined
         ? "n/a"
         : selected.reverse_barrier.toFixed(2);
-      info.textContent = `Selected edge ${{selected.source}}→${{selected.target}} | forward barrier: ${{selected.barrier.toFixed(2)}} kcal/mol | reverse barrier: ${{reverse}} kcal/mol | pair sum: ${{selected.pair_barrier_sum.toFixed(2)}} kcal/mol`;
+      const fallbackNote = selected.fallback ? " | approximate endpoint pair (no NEB chain available)" : "";
+      info.textContent = `Selected edge ${{selected.source}}→${{selected.target}} | forward barrier: ${{selected.barrier.toFixed(2)}} kcal/mol | reverse barrier: ${{reverse}} kcal/mol | pair sum: ${{selected.pair_barrier_sum.toFixed(2)}} kcal/mol${{fallbackNote}}`;
     }}
     function updateTreeSelection() {{
       const svg = document.getElementById("treeSvg");
@@ -1618,6 +1859,18 @@ def _build_chain_visualizer_html(
     }}
     const slider = document.getElementById("frameSlider");
     const chainSelect = document.getElementById("chainSelect");
+    const networkZoomInButton = document.getElementById("networkZoomIn");
+    const networkZoomOutButton = document.getElementById("networkZoomOut");
+    const networkResetViewButton = document.getElementById("networkResetView");
+    if (networkZoomInButton) {{
+      networkZoomInButton.addEventListener("click", () => zoomNetworkAt(1.18));
+    }}
+    if (networkZoomOutButton) {{
+      networkZoomOutButton.addEventListener("click", () => zoomNetworkAt(1 / 1.18));
+    }}
+    if (networkResetViewButton) {{
+      networkResetViewButton.addEventListener("click", () => resetNetworkView());
+    }}
     chainSelect.addEventListener("change", (e) => {{
       currentChain = parseInt(e.target.value, 10) || 0;
       syncSlider(0);
@@ -1627,9 +1880,11 @@ def _build_chain_visualizer_html(
     }});
     slider.addEventListener("input", (e) => renderFrame(parseInt(e.target.value, 10)));
     renderTreeGraph();
-    if (networkPayload && networkPayload.edges && networkPayload.edges.length) {{
-      const highlighted = networkPayload.edges.find((edge) => edge.highlight);
-      currentNetworkEdgeId = highlighted ? highlighted.id : networkPayload.edges[0].id;
+    if (networkPayload && networkPayload.nodes && networkPayload.nodes.length) {{
+      if (networkPayload.edges && networkPayload.edges.length) {{
+        const highlighted = networkPayload.edges.find((edge) => edge.highlight);
+        currentNetworkEdgeId = highlighted ? highlighted.id : networkPayload.edges[0].id;
+      }}
       renderNetworkGraph();
     }}
     syncChainOptions();

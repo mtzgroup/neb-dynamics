@@ -397,12 +397,83 @@ def test_parallel_run_rejects_recursive_mode():
         )
 
 
-def test_parallel_run_rejects_network_splits():
-    with pytest.raises(Exception, match="--parallel cannot be combined with --network-splits"):
-        main_cli.run(
-            parallel=True,
-            network_splits=True,
-        )
+def test_parallel_run_supports_network_splits_and_uses_parallel_runner(monkeypatch, tmp_path):
+    params = ChainInputs()
+    program_inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(do_elem_step_checks=True),
+        chain_inputs=params,
+        engine=SimpleNamespace(),
+    )
+
+    class _ParallelNetworkSplitMSMEP:
+        def __init__(self, inputs):
+            self.inputs = inputs
+            self.parallel_calls = 0
+            self.recursive_calls = 0
+            self.requested_max_workers: list[int | None] = []
+
+        def run_parallel_recursive_minimize(
+            self, input_chain: Chain, max_workers: int | None = None
+        ):
+            self.parallel_calls += 1
+            self.requested_max_workers.append(max_workers)
+            pair = (
+                float(input_chain[0].coords[1][0]),
+                float(input_chain[-1].coords[1][0]),
+            )
+            if pair == (0.0, 3.0):
+                return _history_from_segments(
+                    [(0.0, 1.0), (1.0, 2.0), (2.0, 3.0)],
+                    self.inputs.chain_inputs,
+                )
+            if pair == (1.0, 3.0):
+                return _history_from_segments([(1.0, 3.0)], self.inputs.chain_inputs)
+            raise AssertionError(f"Unexpected pair request: {pair}")
+
+        def run_recursive_minimize(self, input_chain: Chain):
+            self.recursive_calls += 1
+            raise AssertionError(
+                "run_recursive_minimize should not be used when --parallel is enabled."
+            )
+
+    runner = _ParallelNetworkSplitMSMEP(program_inputs)
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(lambda path: program_inputs))
+    monkeypatch.setattr(main_cli, "MSMEP", lambda inputs: runner)
+    monkeypatch.setattr(main_cli, "NetworkBuilder", lambda *args, **kwargs: SimpleNamespace(msmep_data_dir=None, create_rxn_network=lambda file_pattern="*_msmep": _FakePot()))
+    monkeypatch.setattr(
+        main_cli,
+        "_match_network_endpoint_indices_by_connectivity",
+        lambda pot, start_node, end_node: {"root_index": 0, "target_index": 1},
+    )
+    monkeypatch.setattr(main_cli, "plot_results_from_pot_obj", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main_cli, "_render_runinputs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main_cli, "read_multiple_structure_from_file", lambda *args, **kwargs: [_structure_at_x(0.0), _structure_at_x(3.0)])
+    monkeypatch.setattr(main_cli, "is_identical", lambda a, b, **kwargs: np.allclose(a.coords, b.coords))
+    monkeypatch.chdir(tmp_path)
+
+    main_cli.run(
+        geometries="dummy.xyz",
+        inputs="dummy.toml",
+        recursive=False,
+        parallel=True,
+        parallel_workers=6,
+        network_splits=True,
+        name="parallel_splits",
+    )
+
+    assert runner.parallel_calls == 2
+    assert runner.recursive_calls == 0
+    assert runner.requested_max_workers == [6, 6]
+
+    snapshot = main_cli._load_status_snapshot(str(tmp_path / "parallel_splits.xyz"))
+    assert snapshot["run_status"]["parallel"] is True
+    assert snapshot["run_status"]["recursive"] is False
+    assert snapshot["run_status"]["network_splits"] is True
+    manifest = snapshot.get("manifest") or {}
+    assert manifest.get("total_requests") == 2
+    assert manifest.get("counts", {}).get("completed") == 2
 
 
 def test_parallel_run_uses_parallel_recursive_runner_and_writes_partial_status(monkeypatch, tmp_path):

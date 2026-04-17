@@ -127,6 +127,132 @@ def test_load_chain_for_visualization_detects_network_json(monkeypatch, tmp_path
     assert out.network_pot is fake_pot
 
 
+def test_load_chain_for_visualization_handles_best_path_errors(monkeypatch, tmp_path):
+    json_fp = tmp_path / "network.json"
+    json_fp.write_text("{}")
+    expected = _chain()
+    graph = main_cli.nx.DiGraph()
+    graph.add_edge(0, 1)
+    fake_pot = SimpleNamespace(graph=graph)
+
+    monkeypatch.setattr(
+        main_cli.Pot,
+        "read_from_disk",
+        staticmethod(lambda path: fake_pot),
+    )
+    monkeypatch.setattr(main_cli, "_find_pot_root_node_index", lambda pot: 0)
+    monkeypatch.setattr(main_cli, "_find_pot_target_node_index", lambda pot, target_idx_hint=None: 1)
+    monkeypatch.setattr(main_cli.nx, "has_path", lambda *args, **kwargs: True)
+
+    def _raise_best_path(_pot, _root_idx, _target_idx):
+        raise RuntimeError("no energies")
+
+    monkeypatch.setattr(main_cli, "_best_path_by_apparent_barrier", _raise_best_path)
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: None)
+    monkeypatch.setattr(main_cli, "_best_chain_for_directed_edge", lambda pot, source, target: expected)
+
+    out = main_cli._load_visualization_data(json_fp)
+    assert len(out.chain.nodes) == len(expected.nodes)
+    assert out.network_pot is fake_pot
+
+
+def test_load_chain_for_visualization_skips_non_visualizable_first_edge(monkeypatch, tmp_path):
+    json_fp = tmp_path / "network.json"
+    json_fp.write_text("{}")
+    expected = _chain()
+    graph = main_cli.nx.DiGraph()
+    graph.add_edge(0, 1)
+    graph.add_edge(1, 2)
+    fake_pot = SimpleNamespace(graph=graph)
+
+    monkeypatch.setattr(
+        main_cli.Pot,
+        "read_from_disk",
+        staticmethod(lambda path: fake_pot),
+    )
+    monkeypatch.setattr(main_cli, "_find_pot_root_node_index", lambda pot: 0)
+    monkeypatch.setattr(main_cli, "_find_pot_target_node_index", lambda pot, target_idx_hint=None: 2)
+    monkeypatch.setattr(main_cli.nx, "has_path", lambda *args, **kwargs: True)
+
+    def _raise_best_path(_pot, _root_idx, _target_idx):
+        raise RuntimeError("missing energies")
+
+    def _best_chain(_pot, source, target):
+        if int(source) == 0 and int(target) == 1:
+            raise ValueError("no chain")
+        return expected
+
+    monkeypatch.setattr(main_cli, "_best_path_by_apparent_barrier", _raise_best_path)
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: None)
+    monkeypatch.setattr(main_cli, "_best_chain_for_directed_edge", _best_chain)
+
+    out = main_cli._load_visualization_data(json_fp)
+    assert len(out.chain.nodes) == len(expected.nodes)
+    assert out.network_pot is fake_pot
+
+
+def test_load_chain_for_visualization_detects_drive_workspace_folder(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "mepd-drive-1775282164"
+    workspace_dir.mkdir()
+    (workspace_dir / "workspace.json").write_text("{}")
+    (workspace_dir / "neb_pot.json").write_text("{}")
+    (workspace_dir / "neb_pot_annotated.json").write_text("{}")
+    expected = _chain()
+    fake_pot = SimpleNamespace(graph=SimpleNamespace(edges=[]))
+    captured = {}
+
+    def _fake_read(path):
+        captured["path"] = Path(path)
+        return fake_pot
+
+    monkeypatch.setattr(
+        main_cli.Pot,
+        "read_from_disk",
+        staticmethod(_fake_read),
+    )
+    monkeypatch.setattr(main_cli, "_find_pot_root_node_index", lambda pot: 0)
+    monkeypatch.setattr(main_cli, "_find_pot_target_node_index", lambda pot, target_idx_hint=None: 1)
+    monkeypatch.setattr(main_cli.nx, "has_path", lambda *args, **kwargs: True)
+    monkeypatch.setattr(main_cli, "_best_path_by_apparent_barrier", lambda pot, root_idx, target_idx: ([0, 1], 1.0))
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: expected)
+
+    out = main_cli._load_visualization_data(workspace_dir)
+    assert out.chain is expected
+    assert out.network_pot is fake_pot
+    assert captured["path"] == workspace_dir / "neb_pot_annotated.json"
+
+
+def test_load_chain_for_visualization_detects_drive_workspace_json(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "mepd-drive-1775282164"
+    workspace_dir.mkdir()
+    workspace_json = workspace_dir / "workspace.json"
+    workspace_json.write_text("{}")
+    (workspace_dir / "neb_pot.json").write_text("{}")
+    expected = _chain()
+    fake_pot = SimpleNamespace(graph=SimpleNamespace(edges=[]))
+    captured = {}
+
+    def _fake_read(path):
+        captured["path"] = Path(path)
+        return fake_pot
+
+    monkeypatch.setattr(
+        main_cli.Pot,
+        "read_from_disk",
+        staticmethod(_fake_read),
+    )
+    monkeypatch.setattr(main_cli, "_find_pot_root_node_index", lambda pot: 0)
+    monkeypatch.setattr(main_cli, "_find_pot_target_node_index", lambda pot, target_idx_hint=None: 1)
+    monkeypatch.setattr(main_cli.nx, "has_path", lambda *args, **kwargs: True)
+    monkeypatch.setattr(main_cli, "_best_path_by_apparent_barrier", lambda pot, root_idx, target_idx: ([0, 1], 1.0))
+    monkeypatch.setattr(main_cli, "_path_chain_from_pot", lambda pot, path: expected)
+
+    out = main_cli._load_visualization_data(workspace_json)
+    assert out.chain is expected
+    assert out.network_pot is fake_pot
+    assert captured["path"] == workspace_dir / "neb_pot.json"
+
+
 def test_load_network_visualization_uses_sibling_manifest_endpoint_hints(monkeypatch, tmp_path):
     json_fp = tmp_path / "rgs_network.json"
     json_fp.write_text("{}")
@@ -490,6 +616,13 @@ def test_build_chain_visualizer_html_network_mode_has_edge_graph(monkeypatch):
     assert "#ff8eb0" in html
     assert "#ffd166" in html
     assert "linear-gradient(180deg, #0d1728 0%, #08111f 100%)" in html
+    assert "networkPayload && networkPayload.nodes && networkPayload.nodes.length" in html
+    assert "No NEB-backed edges are available yet in this network" in html
+    assert 'id="networkZoomIn"' in html
+    assert 'id="networkZoomOut"' in html
+    assert 'id="networkResetView"' in html
+    assert "function zoomNetworkAt" in html
+    assert "network-svg.is-panning" in html
 
 
 def test_best_chain_for_directed_edge_orients_chain_to_source_target():
@@ -624,6 +757,23 @@ def test_network_visualization_highlights_target_path_across_reversed_edges():
     assert payload["highlighted_path"] == [0, 1, 2, 3, 4]
     highlighted_ids = {edge["id"] for edge in payload["edges"] if edge["highlight"]}
     assert highlighted_ids == {"0->1", "1->2", "2->3", "3->4"}
+
+
+def test_network_visualization_falls_back_to_endpoint_pair_when_no_neb_chain():
+    graph = main_cli.nx.DiGraph()
+    graph.add_node(0, td=_node(0.0, 0.0), root=True)
+    graph.add_node(1, td=_node(1.0, 0.0))
+    graph.add_edge(0, 1, list_of_nebs=[], barrier=1.2)
+    pot = SimpleNamespace(graph=graph, target=None)
+
+    payload = main_cli._build_network_visualization_payload(pot)
+    assert len(payload["edges"]) == 1
+    edge = payload["edges"][0]
+    assert edge["id"] == "0->1"
+    assert edge["fallback"] is True
+    assert edge["barrier"] == pytest.approx(1.2)
+    assert len(edge["viz"]["chains"]) == 1
+    assert len(edge["viz"]["chains"][0]["frames"]) == 2
 
 
 def test_path_chain_from_pot_reverses_pair_chain_when_needed():

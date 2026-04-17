@@ -6,15 +6,15 @@ chemcloud_queue = 'cpu'
 [path_min_inputs]
 climb = false
 en_thre = 0.0001
-rms_grad_thre = 0.001
+rms_grad_thre = 0.01
 max_rms_grad_thre = 0.01
 skip_identical_graphs = true
-ts_grad_thre = 0.05
-ts_spring_thre = 0.02
+ts_grad_thre = 0.01
+ts_spring_thre = 0.01
 barrier_thre = 0.1
 early_stop_force_thre = 0.03
-negative_steps_thre = 5
-positive_steps_thre = 10
+negative_steps_thre = 3
+positive_steps_thre = 50
 use_geodesic_tangent = false
 do_elem_step_checks = true
 max_steps = 500
@@ -104,5 +104,5 @@ basis = "gfn2"
 [program_kwds.model.extras]
 
 [optimizer_kwds]
-# timestep = 0.5
+timestep = 0.5
 name = 'cg'

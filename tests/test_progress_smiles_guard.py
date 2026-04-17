@@ -144,3 +144,18 @@ def test_active_ascii_for_live_uses_status_when_no_plot_data():
     out = printer._active_ascii_for_live(state)
 
     assert out == "Running in worker process (attempt 1/2, 8s)"
+
+
+def test_build_live_rows_includes_main_monitor_updates():
+    printer = progress.ProgressPrinter(use_rich=False)
+    main_state = printer._state_for_monitor("main")
+    main_state["ascii_plot"] = "main-chain-ascii"
+    main_state["caption"] = "step 2 | TS gperp: 0.1200"
+
+    rows, _meta = printer._build_live_rows()
+
+    assert rows
+    labels = [label for label, _chain in rows]
+    chains = [chain for _label, chain in rows]
+    assert any(label.startswith("main") for label in labels)
+    assert any("main-chain-ascii" in chain for chain in chains)

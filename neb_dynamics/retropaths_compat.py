@@ -20,6 +20,12 @@ def _reversed_chain(chain: Chain) -> Chain:
     return reversed_chain
 
 
+def _pair_barrier_components(chain: Chain) -> tuple[float, float]:
+    forward = float(chain.get_eA_chain())
+    reverse = float(_reversed_chain(chain).get_eA_chain())
+    return forward, reverse
+
+
 def copy_graph_like_molecule(source_molecule: Any) -> Molecule:
     """
     Copy a retropaths-like molecule graph into a neb-dynamics Molecule without
@@ -149,45 +155,96 @@ def annotate_pot_with_neb_results(
         node_index: [] for node_index in pot.graph.nodes
     }
 
-    all_chains_by_edge: dict[tuple[int, int], list[Chain]] = {}
+    pair_candidates: dict[tuple[int, int], list[tuple[int, int, Chain]]] = {}
     edge_reaction_labels: dict[tuple[int, int], str] = {}
     for (node1, node2), chains in chains_by_edge.items():
         if len(chains) == 0:
             continue
-        all_chains_by_edge.setdefault((node1, node2), []).extend(chains)
+        pair_key = tuple(sorted((int(node1), int(node2))))
+        pair_candidates.setdefault(pair_key, []).extend(
+            [(int(node1), int(node2), chain) for chain in chains]
+        )
         if pot.graph.has_edge(node1, node2):
             reaction = pot.graph.edges[(node1, node2)].get("reaction")
             if reaction:
                 edge_reaction_labels[(node1, node2)] = str(reaction)
-        reverse_key = (node2, node1)
-        reverse_chains = [_reversed_chain(chain) for chain in chains]
-        all_chains_by_edge.setdefault(reverse_key, []).extend(reverse_chains)
-        if (node1, node2) in edge_reaction_labels:
-            edge_reaction_labels[reverse_key] = edge_reaction_labels[(node1, node2)]
+        if pot.graph.has_edge(node2, node1):
+            reverse_reaction = pot.graph.edges[(node2, node1)].get("reaction")
+            if reverse_reaction:
+                edge_reaction_labels[(node2, node1)] = str(reverse_reaction)
 
-    for (node1, node2), chains in all_chains_by_edge.items():
-        if len(chains) == 0:
+    for pair_key, candidates in pair_candidates.items():
+        if len(candidates) == 0:
             continue
 
-        barriers = [chain.get_eA_chain() for chain in chains]
-        barrier = min(barriers)
-        if barrier > maximum_barrier_height:
+        node_a, node_b = pair_key
+        has_ab = pot.graph.has_edge(node_a, node_b)
+        has_ba = pot.graph.has_edge(node_b, node_a)
+        if has_ab and not has_ba:
+            edge_key = (node_a, node_b)
+        elif has_ba and not has_ab:
+            edge_key = (node_b, node_a)
+        else:
+            count_ab = sum(
+                1 for source, target, _chain in candidates if (source, target) == (node_a, node_b)
+            )
+            count_ba = sum(
+                1 for source, target, _chain in candidates if (source, target) == (node_b, node_a)
+            )
+            edge_key = (node_b, node_a) if count_ba > count_ab else (node_a, node_b)
+
+        node1, node2 = edge_key
+        reverse_key = (node2, node1)
+
+        oriented_candidates: list[Chain] = []
+        for source, target, chain in candidates:
+            if (source, target) == edge_key:
+                oriented_candidates.append(chain.copy())
+            elif (source, target) == reverse_key:
+                oriented_candidates.append(_reversed_chain(chain))
+
+        if len(oriented_candidates) == 0:
             continue
 
         if not pot.graph.has_edge(node1, node2):
             pot.graph.add_edge(node1, node2)
+
+        scored_candidates = []
+        for chain in oriented_candidates:
+            forward_barrier, reverse_barrier = _pair_barrier_components(chain)
+            scored_candidates.append((forward_barrier + reverse_barrier, forward_barrier, reverse_barrier, chain))
+        scored_candidates.sort(key=lambda item: item[0])
+        pair_barrier_sum, barrier, reverse_barrier, best_chain = scored_candidates[0]
+        if barrier > maximum_barrier_height:
+            continue
+
         edge_attrs = pot.graph.edges[(node1, node2)]
-        edge_attrs["list_of_nebs"] = chains
+        edge_attrs["list_of_nebs"] = [best_chain]
         edge_attrs["barrier"] = barrier
+        edge_attrs["reverse_barrier"] = reverse_barrier
+        edge_attrs["pair_barrier_sum"] = pair_barrier_sum
         edge_attrs["exp_neg_barrier"] = np.exp(-barrier)
+        reaction_label = edge_reaction_labels.get((node1, node2))
+        if reaction_label is None:
+            reaction_label = edge_reaction_labels.get((node2, node1))
         edge_attrs["reaction"] = edge_reaction_labels.get(
             (node1, node2),
             edge_attrs.get("reaction") or f"eA ({node1}-{node2}): {barrier}",
         )
 
-        for chain in chains:
-            node_conformers[node1].append(chain[0])
-            node_conformers[node2].append(chain[-1])
+        if reaction_label is not None:
+            edge_attrs["reaction"] = reaction_label
+
+        if pot.graph.has_edge(*reverse_key):
+            reverse_attrs = pot.graph.edges[reverse_key]
+            reverse_attrs["list_of_nebs"] = []
+            reverse_attrs.pop("barrier", None)
+            reverse_attrs.pop("reverse_barrier", None)
+            reverse_attrs.pop("pair_barrier_sum", None)
+            reverse_attrs.pop("exp_neg_barrier", None)
+
+        node_conformers[node1].append(best_chain[0])
+        node_conformers[node2].append(best_chain[-1])
 
     for node_index, conformers in node_conformers.items():
         if len(conformers) == 0:

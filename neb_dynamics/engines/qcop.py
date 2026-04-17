@@ -462,16 +462,21 @@ class QCOPEngine(Engine):
                 self.geometry_optimizer, dpi, collect_files=self.collect_files)
 
         else:  # DEC162025: Trying again... # OCT062025: bug where terachem optimizations werent being passed.
+            tc_keywords = dict(getattr(self.program_args, "keywords", {}) or {})
+            tc_keywords.update(
+                {
+                    "purify": "no",
+                    "new_minimizer": "yes",
+                }
+            )
 
             prog_input = ProgramInput(
                 structure=node.structure,
                 # Can be "energy", "gradient", "hessian", "optimization", "transition_state"
                 calctype="optimization",  # type: ignore
                 model=self.program_args.model,
-                keywords={
-                    "purify": "no",
-                    "new_minimizer": "yes",
-                },  # new_minimizer yes is required
+                # Preserve user-provided TeraChem keywords while enforcing required flags.
+                keywords=tc_keywords,
             )
 
             output = self.compute_func(
@@ -702,15 +707,20 @@ class QCOPEngine(Engine):
                     )
                 )
             else:
+                tc_keywords = dict(getattr(self.program_args, "keywords", {}) or {})
+                tc_keywords.update(
+                    {
+                        "purify": "no",
+                        "new_minimizer": "yes",
+                    }
+                )
                 program_inputs.append(
                     ProgramInput(
                         structure=node.structure,
                         calctype="optimization",  # type: ignore
                         model=self.program_args.model,
-                        keywords={
-                            "purify": "no",
-                            "new_minimizer": "yes",
-                        },
+                        # Preserve user-provided TeraChem keywords while enforcing required flags.
+                        keywords=tc_keywords,
                     )
                 )
 

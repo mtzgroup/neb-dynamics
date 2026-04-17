@@ -95,6 +95,33 @@ def test_conjugate_gradient_handles_zero_previous_gradient_without_nan():
     np.testing.assert_allclose(new_chain.coordinates, chain.coordinates - 0.1 * grads, atol=1e-12)
 
 
+def test_conjugate_gradient_restarts_when_direction_is_not_descent():
+    chain = _make_xy_chain(np.array([[1.0, 1.0]]))
+    grads = np.array([[1.0, 1.0]])
+    opt = ConjugateGradient(timestep=0.1, max_step_norm=10.0)
+    # Seed a stale ascent direction that would dominate without a descent safeguard.
+    opt.g_old = np.array([[0.01, 0.01]])
+    opt.p_old = np.array([1.0, 1.0])
+
+    new_chain = opt.optimize_step(chain=chain, chain_gradients=grads)
+
+    # Restart should recover steepest descent exactly.
+    np.testing.assert_allclose(new_chain.coordinates, chain.coordinates - 0.1 * grads, atol=1e-12)
+
+
+def test_conjugate_gradient_clips_step_norm_per_image():
+    chain = _make_xy_chain(np.array([[0.0, 0.0], [0.0, 0.0]]))
+    grads = np.array([[3.0, 4.0], [0.06, 0.08]])
+    opt = ConjugateGradient(timestep=1.0, max_step_norm=0.2)
+
+    new_chain = opt.optimize_step(chain=chain, chain_gradients=grads)
+    steps = new_chain.coordinates - chain.coordinates
+    step_norms = np.linalg.norm(steps, axis=1)
+
+    assert step_norms[0] <= 0.2 + 1e-12
+    np.testing.assert_allclose(step_norms[1], 0.1, atol=1e-12)
+
+
 def test_amg_adapts_timestep_and_stays_finite():
     chain = _make_xy_chain(np.array([[1.0, -1.0], [0.5, 0.25]]))
     opt = AdaptiveMomentumGradient(timestep=0.05, max_step_norm=0.2)

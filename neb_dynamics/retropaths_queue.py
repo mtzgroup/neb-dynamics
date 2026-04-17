@@ -17,7 +17,12 @@ import numpy as np
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs, RunInputs
 from neb_dynamics.molecule import Molecule
-from neb_dynamics.msmep import MSMEP
+from neb_dynamics.msmep import (
+    MSMEP,
+    _chain_from_worker_payload,
+    _chain_payload_for_worker,
+    _run_inputs_payload_for_worker,
+)
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
 from neb_dynamics.nodes.node import StructureNode
 from neb_dynamics.pot import Pot
@@ -629,6 +634,7 @@ def _is_retryable_legacy_failure(item: NEBQueueItem) -> bool:
         "is not JSON serializable",
         "Recovered stale running queue item before restart.",
         "signal only works in main thread",
+        "cannot pickle '_thread.lock' object",
     )
     return any(pattern in item.error for pattern in retryable_patterns)
 
@@ -685,6 +691,27 @@ def _run_single_item_worker(
         "result_dir": str(result_dir_path),
         "output_chain_xyz": str(output_chain_fp),
     }
+
+
+def _run_single_item_worker_from_payload(
+    pair_payload: dict[str, Any],
+    run_inputs_payload: dict[str, Any],
+    result_dir: str,
+    output_chain_xyz: str,
+    *,
+    parallel_recursive: bool = False,
+    parallel_workers: int | None = None,
+) -> dict[str, str]:
+    local_inputs = RunInputs(**copy.deepcopy(run_inputs_payload))
+    local_pair = _chain_from_worker_payload(copy.deepcopy(pair_payload))
+    return _run_single_item_worker(
+        local_pair,
+        local_inputs,
+        result_dir,
+        output_chain_xyz,
+        parallel_recursive=parallel_recursive,
+        parallel_workers=parallel_workers,
+    )
 
 
 def build_retropaths_neb_queue(
@@ -986,12 +1013,13 @@ def run_retropaths_neb_queue(
             continue
         runnable_items.append(item)
 
-    def _item_job_payload(item: NEBQueueItem) -> tuple[Chain, RunInputs, str, str]:
-        local_inputs = copy.deepcopy(run_inputs)
-        pair = _make_pair_chain(pot=pot, item=item, run_inputs=local_inputs)
+    run_inputs_payload = _run_inputs_payload_for_worker(run_inputs)
+
+    def _item_job_payload(item: NEBQueueItem) -> tuple[Chain, str, str]:
+        pair = _make_pair_chain(pot=pot, item=item, run_inputs=run_inputs)
         result_dir = output_dir / f"pair_{item.source_node}_{item.target_node}_msmep"
         output_chain_fp = output_dir / f"pair_{item.source_node}_{item.target_node}.xyz"
-        return pair, local_inputs, str(result_dir), str(output_chain_fp)
+        return pair, str(result_dir), str(output_chain_fp)
 
     def _mark_completed(item: NEBQueueItem, result: dict[str, str]) -> None:
         item.status = "completed"
@@ -1024,8 +1052,12 @@ def run_retropaths_neb_queue(
     if max_parallel_nebs == 1:
         for item in runnable_items:
             try:
+                pair, result_dir, output_chain_xyz = _item_job_payload(item)
                 result = _run_single_item_worker(
-                    *_item_job_payload(item),
+                    pair,
+                    run_inputs,
+                    result_dir,
+                    output_chain_xyz,
                     parallel_recursive=parallel_recursive,
                     parallel_workers=resolved_parallel_workers,
                 )
@@ -1042,15 +1074,19 @@ def run_retropaths_neb_queue(
         max_workers=max_parallel_nebs,
         mp_context=ctx,
     ) as executor:
-        future_to_item = {
-            executor.submit(
-                _run_single_item_worker,
-                *_item_job_payload(item),
+        future_to_item: dict[concurrent.futures.Future, NEBQueueItem] = {}
+        for item in runnable_items:
+            pair, result_dir, output_chain_xyz = _item_job_payload(item)
+            future = executor.submit(
+                _run_single_item_worker_from_payload,
+                _chain_payload_for_worker(pair),
+                run_inputs_payload,
+                result_dir,
+                output_chain_xyz,
                 parallel_recursive=parallel_recursive,
                 parallel_workers=resolved_parallel_workers,
-            ): item
-            for item in runnable_items
-        }
+            )
+            future_to_item[future] = item
         for future in concurrent.futures.as_completed(future_to_item):
             item = future_to_item[future]
             try:

@@ -446,6 +446,25 @@ class NEB(PathMinimizer):
                 nsteps_negative_grad_corr = 0
             prev_grad_corr = grad_corr
 
+            step_down = float(getattr(self.optimizer, "step_down", 0.5))
+            step_up = float(getattr(self.optimizer, "step_up", 1.2))
+            min_timestep = float(
+                getattr(
+                    self.optimizer,
+                    "min_timestep",
+                    max(1e-6, 1e-3 * self.orig_timestep),
+                )
+            )
+            max_timestep = float(
+                getattr(
+                    self.optimizer,
+                    "max_timestep",
+                    max(self.orig_timestep, 4.0 * self.orig_timestep),
+                )
+            )
+            if max_timestep < min_timestep:
+                min_timestep, max_timestep = max_timestep, min_timestep
+
             if nsteps_negative_grad_corr >= self.parameters.negative_steps_thre:
                 if self.parameters.v and _rich_available:
                     _console.print(Panel.fit(
@@ -458,8 +477,9 @@ class NEB(PathMinimizer):
                 else:
                     update_status(
                         "Step size causing oscillations. Decreasing by 50%.")
-                # self.optimizer.timestep *= 0.5
-                self.optimizer.timestep -= 0.5*self.orig_timestep
+                self.optimizer.timestep = max(
+                    min_timestep, self.optimizer.timestep * step_down
+                )
                 nsteps_negative_grad_corr = 0
             elif nsteps_pos_grad_corr >= self.parameters.positive_steps_thre:
                 if self.parameters.v and _rich_available:
@@ -474,8 +494,9 @@ class NEB(PathMinimizer):
                 else:
                     update_status(
                         f"Step size stable for {nsteps_pos_grad_corr} steps. Increasing by 20%.")
-                # self.optimizer.timestep *= 1.2
-                self.optimizer.timestep += 0.2*self.orig_timestep
+                self.optimizer.timestep = min(
+                    max_timestep, self.optimizer.timestep * step_up
+                )
                 nsteps_pos_grad_corr = 0
 
             caption = format_neb_caption(

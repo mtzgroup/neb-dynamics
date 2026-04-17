@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 import networkx as nx
 import numpy as np
-from typing import List
+from typing import Any, List, Literal
 from itertools import product
 from neb_dynamics.pot import plot_results_from_pot_obj
 from neb_dynamics.pot import Pot
@@ -24,6 +24,7 @@ from neb_dynamics.qcio_structure_helpers import read_multiple_structure_from_fil
 from neb_dynamics.nodes.nodehelpers import displace_by_dr
 from neb_dynamics.msmep import MSMEP
 from neb_dynamics.chain import Chain
+from neb_dynamics.molecule import Molecule
 from neb_dynamics.engines.engine import build_hessian_result_from_matrix
 from neb_dynamics.TreeNode import TreeNode
 from neb_dynamics.neb import NEB
@@ -513,6 +514,146 @@ def _extract_minima_nodes(history: TreeNode) -> list[StructureNode]:
     return minima
 
 
+def _load_precomputed_refine_source(
+    source: Any,
+    *,
+    charge: int,
+    multiplicity: int,
+) -> TreeNode | NEB | Chain | Pot | RetropathsWorkspace:
+    """Load a refine source from an object or filesystem path."""
+    if isinstance(source, RetropathsWorkspace):
+        return source
+    if isinstance(source, (TreeNode, NEB, Chain, Pot)):
+        return source
+
+    source_path = Path(source).expanduser().resolve()
+    if not source_path.exists():
+        raise FileNotFoundError(
+            f"Precomputed source path does not exist: {source_path}"
+        )
+
+    def _resolve_network_source_chain_or_pot(network_fp: Path) -> Chain | Pot:
+        with contextlib.suppress(Exception):
+            return Pot.read_from_disk(network_fp)
+        chain = _load_best_path_chain_from_network_json(network_fp)
+        if chain is None:
+            raise ValueError(
+                f"Could not extract a best-path chain from network source: {network_fp}"
+            )
+        return chain
+
+    if source_path.name == "workspace.json":
+        return RetropathsWorkspace.read(source_path.parent)
+
+    if source_path.is_dir():
+        workspace_fp = source_path / "workspace.json"
+        if workspace_fp.exists():
+            return RetropathsWorkspace.read(source_path)
+        adj_matrix_fp = source_path / "adj_matrix.txt"
+        if adj_matrix_fp.exists():
+            return TreeNode.read_from_disk(
+                folder_name=source_path,
+                charge=charge,
+                multiplicity=multiplicity,
+            )
+        network_fps = sorted(source_path.glob("*_network.json"))
+        if len(network_fps) == 1:
+            return _resolve_network_source_chain_or_pot(network_fps[0])
+        if len(network_fps) > 1:
+            raise ValueError(
+                "Network-splits directory contains multiple *_network.json files. "
+                "Pass the desired network JSON file path explicitly."
+            )
+        raise ValueError(
+            "Directory source must be a TreeNode folder containing adj_matrix.txt "
+            "or a *_network_splits directory containing exactly one *_network.json."
+        )
+
+    if source_path.suffix.lower() == ".json":
+        return _resolve_network_source_chain_or_pot(source_path)
+
+    history_folder = source_path.parent / f"{source_path.stem}_history"
+    if history_folder.exists():
+        return NEB.read_from_disk(
+            fp=source_path,
+            history_folder=history_folder,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+    if source_path.suffix.lower() == ".xyz":
+        try:
+            structures = read_multiple_structure_from_file(
+                str(source_path), charge=charge, spinmult=multiplicity
+            )
+        except ValueError:
+            structures = read_multiple_structure_from_file(
+                str(source_path), charge=None, spinmult=None
+            )
+        if len(structures) >= 2:
+            return Chain.model_validate(
+                {
+                    "nodes": [StructureNode(structure=s) for s in structures],
+                    "parameters": ChainInputs(),
+                }
+            )
+    raise ValueError(
+        "File source must be one of: workspace.json, network .json, "
+        "NEB .xyz with sibling '<stem>_history/' folder, or multi-structure chain .xyz."
+    )
+
+
+def _extract_refine_source_chain_and_minima(
+    source_obj: TreeNode | NEB | Chain | Pot | RetropathsWorkspace,
+) -> tuple[Chain, list[StructureNode], ChainInputs, str]:
+    if isinstance(source_obj, TreeNode):
+        cheap_output_chain = source_obj.output_chain
+        cheap_minima = _extract_minima_nodes(source_obj)
+        source_kind = "TreeNode"
+    elif isinstance(source_obj, NEB):
+        cheap_output_chain = (
+            source_obj.chain_trajectory[-1]
+            if source_obj.chain_trajectory
+            else source_obj.optimized
+        )
+        if cheap_output_chain is None:
+            raise ValueError("Loaded NEB source has no optimized chain.")
+        cheap_minima = _extract_minima_nodes_from_chain(cheap_output_chain)
+        source_kind = "NEB"
+    elif isinstance(source_obj, Chain):
+        cheap_output_chain = source_obj.copy()
+        cheap_minima = [node.copy() for node in cheap_output_chain.nodes]
+        source_kind = "NetworkBestPath"
+    elif isinstance(source_obj, Pot):
+        cheap_output_chain = _load_best_path_chain_from_pot(source_obj)
+        if cheap_output_chain is None:
+            raise ValueError("Loaded network source has no extractable path chain.")
+        cheap_minima = [node.copy() for node in cheap_output_chain.nodes]
+        source_kind = "Network"
+    elif isinstance(source_obj, RetropathsWorkspace):
+        cheap_output_chain = _load_best_path_chain_from_workspace(source_obj)
+        if cheap_output_chain is None:
+            raise ValueError(
+                f"Could not extract a best-path chain from workspace source: {source_obj.directory}"
+            )
+        cheap_minima = [node.copy() for node in cheap_output_chain.nodes]
+        source_kind = "DriveWorkspace"
+    else:
+        raise TypeError(
+            "source_obj must be a TreeNode, NEB, Chain, Pot, or RetropathsWorkspace instance."
+        )
+
+    if cheap_output_chain is None:
+        raise ValueError("Precomputed source produced no output chain.")
+    if len(cheap_output_chain.nodes) < 2:
+        raise ValueError("Precomputed source output chain must contain at least 2 nodes.")
+    return (
+        cheap_output_chain,
+        cheap_minima,
+        cheap_output_chain.parameters,
+        source_kind,
+    )
+
+
 def _extract_minima_nodes_from_chain(chain: Chain) -> list[StructureNode]:
     """Extract endpoints + strict local minima from a single optimized chain."""
     if len(chain.nodes) == 0:
@@ -545,6 +686,146 @@ def _dedupe_minima_nodes(nodes: list[StructureNode], chain_inputs: ChainInputs) 
         if not duplicate:
             unique_nodes.append(node.copy())
     return unique_nodes
+
+
+def _load_best_path_chain_from_pot(
+    pot: Pot,
+    *,
+    root_idx: int | None = None,
+    target_idx: int | None = None,
+) -> Chain | None:
+    if root_idx is None:
+        root_idx = _find_pot_root_node_index(pot)
+    if target_idx is None:
+        target_idx = _find_pot_target_node_index(pot)
+    if (
+        root_idx is not None
+        and target_idx is not None
+        and nx.has_path(pot.graph, root_idx, target_idx)
+    ):
+        best_path_nodes, _ = _best_path_by_apparent_barrier(
+            pot,
+            root_idx=root_idx,
+            target_idx=target_idx,
+        )
+        if best_path_nodes:
+            chain = _path_chain_from_pot(pot, [int(v) for v in best_path_nodes])
+            if chain is not None:
+                return chain
+
+    first_edge = next(iter(pot.graph.edges), None)
+    if first_edge is None:
+        return None
+    with contextlib.suppress(Exception):
+        return _best_chain_for_directed_edge(
+            pot, int(first_edge[0]), int(first_edge[1])
+        ).copy()
+    return None
+
+
+def _load_pot_from_workspace(workspace: RetropathsWorkspace) -> Pot | None:
+    for candidate_fp in (workspace.annotated_neb_pot_fp, workspace.neb_pot_fp):
+        if not candidate_fp.exists():
+            continue
+        with contextlib.suppress(Exception):
+            return Pot.read_from_disk(candidate_fp)
+    return None
+
+
+def _load_best_path_chain_from_workspace(
+    workspace: RetropathsWorkspace,
+) -> Chain | None:
+    for candidate_fp in (workspace.annotated_neb_pot_fp, workspace.neb_pot_fp):
+        if not candidate_fp.exists():
+            continue
+        chain = _load_best_path_chain_from_network_json(candidate_fp)
+        if chain is not None:
+            return chain
+        with contextlib.suppress(Exception):
+            pot = Pot.read_from_disk(candidate_fp)
+            chain = _load_best_path_chain_from_pot(pot)
+            if chain is not None:
+                return chain
+    return None
+
+
+def _load_best_path_chain_from_network_json(network_fp: Path) -> Chain | None:
+    network_path = Path(network_fp).expanduser().resolve()
+    if not network_path.exists():
+        return None
+
+    best_path_candidates: list[Path] = []
+    if network_path.name.endswith("_network.json"):
+        best_path_candidates.append(
+            network_path.with_name(
+                network_path.name.replace("_network.json", "_best_path.json")
+            )
+        )
+    best_path_candidates.append(
+        network_path.parent / f"{network_path.stem}_best_path.json"
+    )
+    # dedupe while preserving order
+    seen = set()
+    deduped_candidates = []
+    for candidate in best_path_candidates:
+        key = str(candidate.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_candidates.append(candidate)
+
+    for best_path_fp in deduped_candidates:
+        if not best_path_fp.exists():
+            continue
+        try:
+            payload = json.loads(best_path_fp.read_text(encoding="utf-8"))
+            path = [int(v) for v in payload.get("path") or []]
+            if len(path) < 2:
+                continue
+            pot = Pot.read_from_disk(network_path)
+            chain = _path_chain_from_pot(pot, path)
+            if chain is not None:
+                return chain
+        except Exception:
+            continue
+
+    try:
+        pot = Pot.read_from_disk(network_path)
+    except Exception:
+        return None
+
+    endpoint_hints = _load_network_endpoint_hints(network_path) or {}
+    start_node, end_node = _load_network_endpoint_structures(network_path)
+    connectivity_hints = _match_network_endpoint_indices_by_connectivity(
+        pot,
+        start_node=start_node,
+        end_node=end_node,
+    )
+    if connectivity_hints:
+        endpoint_hints.update(
+            {k: v for k, v in connectivity_hints.items() if v is not None}
+        )
+    endpoint_hints = endpoint_hints or None
+
+    root_idx = (
+        int(endpoint_hints["root_index"])
+        if endpoint_hints and endpoint_hints.get("root_index") is not None
+        else _find_pot_root_node_index(pot)
+    )
+    target_idx = _find_pot_target_node_index(
+        pot,
+        target_idx_hint=(
+            int(endpoint_hints["target_index"])
+            if endpoint_hints and endpoint_hints.get("target_index") is not None
+            else None
+        ),
+    )
+
+    return _load_best_path_chain_from_pot(
+        pot,
+        root_idx=root_idx,
+        target_idx=target_idx,
+    )
 
 
 def _load_best_path_chain_from_network_splits(
@@ -596,6 +877,369 @@ def _dedupe_minima_and_sources(
             unique_minima.append(node.copy())
             unique_sources.append(source.copy())
     return unique_minima, unique_sources
+
+
+def _run_single_geometry_optimization(engine, node: StructureNode) -> list[StructureNode]:
+    try:
+        return engine.compute_geometry_optimization(
+            node, keywords={'coordsys': 'cart', 'maxiter': 500}
+        )
+    except TypeError:
+        return engine.compute_geometry_optimization(node)
+
+
+def _summarize_refine_exception(exc: Exception) -> str:
+    text = str(exc).strip()
+    if not text:
+        text = repr(exc)
+
+    # ChemCloud task-output schema mismatch often appears when failed tasks are
+    # materialized with a ProgramOutput layout incompatible with local qcio.
+    if isinstance(exc, ExternalProgramError) and "ProgramOutput schema" in text:
+        return (
+            f"{text} "
+            "Likely a ChemCloud/qcio schema mismatch while reading a failed task output."
+        )
+
+    one_line = " ".join(line.strip() for line in text.splitlines() if line.strip())
+    return f"{type(exc).__name__}: {one_line}" if one_line else type(exc).__name__
+
+
+def _source_display_text(source: Any) -> str:
+    if isinstance(source, RetropathsWorkspace):
+        return str(source.directory)
+    if isinstance(source, Path):
+        return str(source)
+    if isinstance(source, str):
+        return source
+    return f"<{type(source).__name__}>"
+
+
+def _infer_refine_base_name(source: Any, explicit_name: str | None) -> str:
+    if explicit_name is not None:
+        return explicit_name
+
+    source_path: Path | None = None
+    if isinstance(source, Path):
+        source_path = source
+    elif isinstance(source, str):
+        with contextlib.suppress(Exception):
+            source_path = Path(source).expanduser().resolve()
+    elif isinstance(source, RetropathsWorkspace):
+        source_path = source.directory
+
+    if source_path is None:
+        inferred_name = "mep_output"
+    else:
+        inferred_name = source_path.stem
+        if source_path.name == "workspace.json":
+            inferred_name = source_path.parent.name
+        for suffix in ("_parallel_msmep", "_msmep", "_neb"):
+            if inferred_name.endswith(suffix):
+                inferred_name = inferred_name[: -len(suffix)]
+                break
+        if not inferred_name:
+            inferred_name = "mep_output"
+    return f"{inferred_name}_refine"
+
+
+def _clone_chain_with_graph_fallback(chain: Chain) -> Chain:
+    cloned_nodes: list[StructureNode] = []
+    for node in chain.nodes:
+        node_copy = node.copy()
+        if getattr(node_copy, "graph", None) is None:
+            with contextlib.suppress(Exception):
+                _ = node_copy.graph
+        cloned_nodes.append(node_copy)
+    return Chain.model_validate(
+        {"nodes": cloned_nodes, "parameters": chain.parameters}
+    )
+
+
+def _chains_to_refinement_pot(
+    chains: list[Chain],
+    *,
+    source_label: str,
+) -> Pot:
+    usable_chains = [
+        _clone_chain_with_graph_fallback(chain)
+        for chain in chains
+        if chain is not None and len(getattr(chain, "nodes", []) or []) >= 2
+    ]
+    if not usable_chains:
+        raise ValueError("No valid chains available to construct a refinement network.")
+
+    chain_inputs = usable_chains[0].parameters or ChainInputs()
+    node_registry: list[StructureNode] = []
+    graph = nx.DiGraph()
+
+    root_idx: int | None = None
+    target_idx: int | None = None
+    for chain_idx, chain in enumerate(usable_chains):
+        start_node = chain.nodes[0].copy()
+        end_node = chain.nodes[-1].copy()
+        start_idx = _register_recursive_split_node(
+            node=start_node,
+            registry=node_registry,
+            chain_inputs=chain_inputs,
+        )
+        end_idx = _register_recursive_split_node(
+            node=end_node,
+            registry=node_registry,
+            chain_inputs=chain_inputs,
+        )
+        if root_idx is None:
+            root_idx = int(start_idx)
+        target_idx = int(end_idx)
+
+        for node_index, node in ((start_idx, start_node), (end_idx, end_node)):
+            node_attrs = graph.nodes[node_index] if graph.has_node(node_index) else {}
+            molecule = getattr(node, "graph", None) or node_attrs.get("molecule") or Molecule()
+            graph.add_node(
+                node_index,
+                molecule=molecule,
+                td=node.copy(),
+                converged=True,
+                endpoint_optimized=True,
+                generated_by="refine_source",
+            )
+        edge_key = (int(start_idx), int(end_idx))
+        if not graph.has_edge(*edge_key):
+            graph.add_edge(
+                edge_key[0],
+                edge_key[1],
+                reaction=f"source_chain_{chain_idx}",
+                list_of_nebs=[],
+                generated_by="refine_source",
+            )
+        graph.edges[edge_key].setdefault("list_of_nebs", [])
+        graph.edges[edge_key]["list_of_nebs"].append(chain.copy())
+
+    if root_idx is None or target_idx is None:
+        raise ValueError("Could not determine root/target nodes from source chains.")
+
+    for node_index in graph.nodes:
+        graph.nodes[node_index]["root"] = int(node_index) == int(root_idx)
+        graph.nodes[node_index]["requested_target"] = int(node_index) == int(target_idx)
+
+    root_molecule = graph.nodes[root_idx].get("molecule") or Molecule()
+    target_molecule = graph.nodes[target_idx].get("molecule") or Molecule()
+    pot = Pot(
+        root=root_molecule,
+        target=target_molecule,
+        multiplier=1,
+        rxn_name=source_label,
+    )
+    pot.graph = graph
+    return pot
+
+
+def _source_obj_to_refinement_pot(
+    source_obj: TreeNode | NEB | Chain | Pot | RetropathsWorkspace,
+    *,
+    source_label: str,
+) -> Pot:
+    if isinstance(source_obj, Pot):
+        return source_obj.model_copy(deep=True)
+    if isinstance(source_obj, RetropathsWorkspace):
+        pot = _load_pot_from_workspace(source_obj)
+        if pot is None:
+            raise ValueError(
+                f"No readable neb_pot(.json) found in workspace: {source_obj.directory}"
+            )
+        return pot
+    if isinstance(source_obj, Chain):
+        return _chains_to_refinement_pot([source_obj], source_label=source_label)
+    if isinstance(source_obj, NEB):
+        out_chain = (
+            source_obj.chain_trajectory[-1]
+            if source_obj.chain_trajectory
+            else source_obj.optimized
+        )
+        if out_chain is None:
+            raise ValueError("Loaded NEB source has no optimized chain.")
+        return _chains_to_refinement_pot([out_chain], source_label=source_label)
+    if isinstance(source_obj, TreeNode):
+        chains: list[Chain] = []
+        for leaf in source_obj.ordered_leaves:
+            if not leaf.data:
+                continue
+            chain = (
+                leaf.data.chain_trajectory[-1]
+                if leaf.data.chain_trajectory
+                else leaf.data.optimized
+            )
+            if chain is not None and len(chain.nodes) >= 2:
+                chains.append(chain)
+        if not chains:
+            chains = [source_obj.output_chain]
+        return _chains_to_refinement_pot(chains, source_label=source_label)
+    raise TypeError(
+        "source_obj must be TreeNode, NEB, Chain, Pot, or RetropathsWorkspace."
+    )
+
+
+def _next_available_directory(base_dir: Path) -> Path:
+    candidate = base_dir
+    suffix = 1
+    while candidate.exists():
+        candidate = base_dir.with_name(f"{base_dir.name}_{suffix}")
+        suffix += 1
+    return candidate
+
+
+def _create_synthetic_refine_workspace(
+    *,
+    source_pot: Pot,
+    refinement_inputs_fp: Path,
+    base_name: str,
+    output_root: Path,
+) -> RetropathsWorkspace:
+    workspace_dir = _next_available_directory(output_root / f"{base_name}_source_workspace")
+    root_smiles = ""
+    with contextlib.suppress(Exception):
+        root_smiles = str(source_pot.root.force_smiles())
+    if not root_smiles:
+        root_smiles = base_name
+
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name=workspace_dir.name,
+        root_smiles=root_smiles,
+        environment_smiles="",
+        inputs_fp=str(refinement_inputs_fp.resolve()),
+        reactions_fp="",
+    )
+    workspace.write()
+    source_pot.write_to_disk(workspace.neb_pot_fp)
+    source_pot.write_to_disk(workspace.annotated_neb_pot_fp)
+    if not workspace.retropaths_pot_fp.exists():
+        workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+    return workspace
+
+
+def _print_ts_irc_refine_summary(summary: dict[str, Any], *, title: str) -> None:
+    table = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    table.add_column(style="bold cyan")
+    table.add_column(style="white")
+    table.add_row("Source Workspace", str(summary["source_workspace"]))
+    table.add_row("Refined Workspace", str(summary["workspace"]))
+    table.add_row("Inputs", str(summary["inputs_fp"]))
+    table.add_row("Edges Scanned", str(summary["edges_scanned"]))
+    table.add_row("Edges With Chains", str(summary["edges_with_chains"]))
+    table.add_row("TS Attempted", str(summary["ts_guesses_attempted"]))
+    table.add_row("TS Submitted", str(summary.get("ts_jobs_submitted", summary["ts_guesses_attempted"])))
+    table.add_row("TS Converged", str(summary["ts_converged"]))
+    table.add_row("TS Failed", str(summary.get("ts_failed", 0)))
+    if summary.get("ts_top_errors"):
+        table.add_row("TS Top Error", str(summary.get("ts_top_errors", [""])[0]))
+    if summary.get("ts_failure_log"):
+        table.add_row("TS Failure Log", str(summary["ts_failure_log"]))
+    table.add_row("IRC Submitted", str(summary.get("irc_jobs_submitted", summary["ts_converged"])))
+    table.add_row("IRC Converged", str(summary["irc_converged"]))
+    table.add_row("IRC Failed", str(summary.get("irc_failed", 0)))
+    if summary.get("irc_top_errors"):
+        table.add_row("IRC Top Error", str(summary.get("irc_top_errors", [""])[0]))
+    if summary.get("irc_failure_log"):
+        table.add_row("IRC Failure Log", str(summary["irc_failure_log"]))
+    table.add_row("ChemCloud Parallel", str(bool(summary.get("chemcloud_parallel", False))))
+    table.add_row("Use BigChem", str(bool(summary.get("use_bigchem", False))))
+    table.add_row("Added Nodes", str(summary["added_nodes"]))
+    table.add_row("Added Edges", str(summary["added_edges"]))
+    table.add_row("Final Nodes", str(summary["final_nodes"]))
+    table.add_row("Final Edges", str(summary["final_edges"]))
+    table.add_row("Queue Items", str(summary["queue_items"]))
+    table.add_row("Artifacts", str(summary["artifacts_dir"]))
+    console.print(Panel(table, title=title, border_style="green"))
+
+
+def _is_chemcloud_runinputs(run_inputs: RunInputs) -> bool:
+    engine = getattr(run_inputs, "engine", None)
+    engine_name = str(getattr(run_inputs, "engine_name", "") or "").lower()
+    compute_program = str(getattr(engine, "compute_program", "") or "").lower()
+    return engine_name == "chemcloud" or compute_program == "chemcloud"
+
+
+def _reoptimize_minima_for_refinement(
+    minima: list[StructureNode],
+    expensive_input: RunInputs,
+    *,
+    source_geometry_label: str,
+) -> tuple[list[StructureNode], list[StructureNode], int, int]:
+    """Optimize minima at expensive level, with ChemCloud batch submission when available."""
+    refined_minima: list[StructureNode] = []
+    refined_source_minima: list[StructureNode] = []
+    dropped_count = 0
+    kept_unoptimized_count = 0
+
+    engine = expensive_input.engine
+    batch_trajectories: list[list[StructureNode]] | None = None
+    batch_optimizer = getattr(engine, "compute_geometry_optimizations", None)
+    if _is_chemcloud_runinputs(expensive_input) and callable(batch_optimizer):
+        console.print(
+            "[dim]Submitting batched expensive-level geometry optimizations for minima...[/dim]"
+        )
+        try:
+            try:
+                trajectories = batch_optimizer(
+                    minima, keywords={'coordsys': 'cart', 'maxiter': 500}
+                )
+            except TypeError:
+                trajectories = batch_optimizer(minima)
+            if len(trajectories) != len(minima):
+                console.print(
+                    "[yellow]⚠ Batched geometry optimization returned an unexpected number of results; falling back to per-minimum optimization.[/yellow]"
+                )
+            else:
+                batch_trajectories = trajectories
+        except Exception as exc:
+            console.print(
+                "[yellow]⚠ Batched geometry optimization submission failed; falling back to per-minimum optimization.[/yellow]"
+            )
+            console.print(
+                f"[yellow]Reason:[/yellow] {_summarize_refine_exception(exc)}"
+            )
+
+    for i, node in enumerate(minima):
+        optimized_successfully = False
+        failure_reason = ""
+        if batch_trajectories is not None:
+            traj = batch_trajectories[i] if i < len(batch_trajectories) else []
+            if traj:
+                opt_node = traj[-1]
+                optimized_successfully = True
+            else:
+                opt_node = _clear_node_cached_properties(node)
+                failure_reason = "Batch optimization returned no trajectory."
+                kept_unoptimized_count += 1
+        else:
+            try:
+                traj = _run_single_geometry_optimization(engine, node)
+                opt_node = traj[-1]
+                optimized_successfully = True
+            except Exception as exc:
+                opt_node = _clear_node_cached_properties(node)
+                failure_reason = _summarize_refine_exception(exc)
+                kept_unoptimized_count += 1
+
+        if not optimized_successfully:
+            console.print(
+                f"[yellow]⚠ Failed to optimize minimum {i}; keeping {source_geometry_label} geometry for refinement.[/yellow]"
+            )
+            if failure_reason:
+                console.print(f"[yellow]Reason:[/yellow] {failure_reason}")
+
+        if optimized_successfully and node.has_molecular_graph and opt_node.has_molecular_graph:
+            same_connectivity = _is_connectivity_identical(
+                node, opt_node, verbose=False
+            )
+            if not same_connectivity:
+                dropped_count += 1
+                continue
+        refined_minima.append(opt_node)
+        refined_source_minima.append(node.copy())
+
+    return refined_minima, refined_source_minima, dropped_count, kept_unoptimized_count
 
 
 def _clear_node_cached_properties(node: StructureNode) -> StructureNode:
@@ -2356,6 +3000,360 @@ def run(
         _ascii_profile_for_chain(chain_for_profile)
 
 
+@app.command("refine")
+def refine(
+        source: Annotated[str, typer.Argument(
+            help="Source for refinement: TreeNode folder/object, NEB output/object, chain .xyz/object, network .json or *_network_splits directory, or mepd-drive workspace")] = None,
+        inputs: Annotated[str, typer.Option("--inputs", "-i",
+                                            help='path to expensive RunInputs toml file')] = None,
+        mode: Annotated[Literal["neb", "ts-irc"], typer.Option(
+            "--mode",
+            help="Refinement mode: 'neb' for high-quality pairwise NEBs, or 'ts-irc' for TS optimization + IRC network refinement.",
+            case_sensitive=False,
+        )] = "neb",
+        recycle_nodes: Annotated[bool, typer.Option(
+            "--recycle-nodes",
+            help="Reuse source path nodes as initial guess for expensive pair refinement.",
+        )] = False,
+        recursive: bool = False,
+        parallel: Annotated[bool, typer.Option(
+            "--parallel",
+            help="Run recursive autosplitting in parallel with bounded worker concurrency.",
+        )] = False,
+        parallel_workers: Annotated[int | None, typer.Option(
+            "--parallel-workers",
+            help="Maximum number of concurrent recursive split workers used by --parallel. Defaults to min(4, CPU count).",
+        )] = None,
+        output_directory: Annotated[str, typer.Option(
+            "--output-directory", "-o",
+            help="TS/IRC mode only: directory for the refined workspace output.",
+        )] = None,
+        use_bigchem: Annotated[bool, typer.Option(
+            "--use-bigchem/--no-use-bigchem",
+            help="TS/IRC mode only: use BigChem for Hessian-backed TS/IRC steps when supported.",
+        )] = False,
+        write_status_html_output: Annotated[bool, typer.Option(
+            "--write-status-html/--no-write-status-html",
+            help="TS/IRC mode only: generate full status.html for the refined workspace (slower).",
+        )] = False,
+        name: str = None,
+        charge: int = 0,
+        multiplicity: int = 1):
+    """Refine precomputed results using either NEB or TS/IRC workflows."""
+    console.print(BANNER)
+
+    if inputs is None:
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] --inputs/-i is required for refine."
+        )
+        raise typer.Exit(1)
+    if source is None:
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] source path is required."
+        )
+        raise typer.Exit(1)
+
+    mode_normalized = str(mode).strip().lower().replace("_", "-")
+    if mode_normalized not in {"neb", "ts-irc"}:
+        raise typer.BadParameter("--mode must be either 'neb' or 'ts-irc'.")
+
+    start_time = time.time()
+    base_name = _infer_refine_base_name(source, name)
+    source_display = _source_display_text(source)
+    refinement_inputs_path = Path(inputs).expanduser().resolve()
+
+    if mode_normalized == "ts-irc":
+        if recursive or parallel or recycle_nodes:
+            console.print(
+                "[yellow]⚠ --recursive, --parallel, --parallel-workers, and --recycle-nodes apply only to --mode neb and will be ignored.[/yellow]"
+            )
+
+        with console.status("[bold cyan]Loading source object and input parameters...[/bold cyan]"):
+            source_obj = _load_precomputed_refine_source(
+                source=source,
+                charge=charge,
+                multiplicity=multiplicity,
+            )
+            if not refinement_inputs_path.exists():
+                raise FileNotFoundError(
+                    f"Refinement inputs file was not found: {refinement_inputs_path}"
+                )
+
+        if isinstance(source_obj, RetropathsWorkspace):
+            source_workspace = source_obj
+            source_kind = "DriveWorkspace"
+        else:
+            source_pot = _source_obj_to_refinement_pot(
+                source_obj,
+                source_label=base_name,
+            )
+            source_workspace = _create_synthetic_refine_workspace(
+                source_pot=source_pot,
+                refinement_inputs_fp=refinement_inputs_path,
+                base_name=base_name,
+                output_root=Path.cwd(),
+            )
+            source_kind = type(source_obj).__name__
+
+        table = Table(box=None, show_header=False)
+        table.add_column(style="dim")
+        table.add_row("[bold cyan]Command:[/bold cyan]", "[white]refine[/white]")
+        table.add_row("[bold cyan]Mode:[/bold cyan]", "[yellow]ts-irc[/yellow]")
+        table.add_row("[bold cyan]Source:[/bold cyan]", f"[yellow]{source_display}[/yellow]")
+        table.add_row("[bold cyan]Source Type:[/bold cyan]", f"[yellow]{source_kind}[/yellow]")
+        table.add_row("[bold cyan]Source Workspace:[/bold cyan]", f"[yellow]{source_workspace.directory}[/yellow]")
+        table.add_row("[bold cyan]Inputs:[/bold cyan]", f"[yellow]{refinement_inputs_path}[/yellow]")
+        if output_directory:
+            table.add_row("[bold cyan]Output Directory:[/bold cyan]", f"[yellow]{Path(output_directory).expanduser().resolve()}[/yellow]")
+        table.add_row("[bold cyan]Use BigChem:[/bold cyan]", f"[yellow]{use_bigchem}[/yellow]")
+        table.add_row("[bold cyan]Write status.html:[/bold cyan]", f"[yellow]{write_status_html_output}[/yellow]")
+        console.print(table)
+        console.print()
+
+        with Progress(
+            SpinnerColumn(style="cyan"),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(bar_width=36),
+            TaskProgressColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Preparing refinement...", total=1)
+
+            def _on_progress(event: dict[str, object]) -> None:
+                message = str(event.get("message") or "Running refinement...")
+                total = int(event.get("total") or 1)
+                current = int(event.get("current") or 0)
+                total = max(1, total)
+                current = max(0, min(total, current))
+                progress.update(
+                    task,
+                    description=message,
+                    total=total,
+                    completed=current,
+                )
+
+            with _suppress_rdkit_valence_warnings():
+                summary = refine_drive_workspace_network(
+                    source_workspace,
+                    refinement_inputs_fp=refinement_inputs_path,
+                    refined_workspace_dir=(Path(output_directory).expanduser().resolve() if output_directory else None),
+                    refined_run_name=name,
+                    use_bigchem=use_bigchem,
+                    write_status_html_output=write_status_html_output,
+                    progress=_on_progress,
+                )
+            progress.update(task, description="Refinement complete.", total=1, completed=1)
+
+        _print_ts_irc_refine_summary(
+            summary,
+            title="[bold green]✓ refine (ts-irc) Complete[/bold green]",
+        )
+        return
+
+    if output_directory or use_bigchem or write_status_html_output:
+        console.print(
+            "[yellow]⚠ --output-directory, --use-bigchem, and --write-status-html apply only to --mode ts-irc and will be ignored.[/yellow]"
+        )
+
+    if parallel and recursive:
+        raise typer.BadParameter(
+            "--parallel cannot be combined with --recursive. Use one mode."
+        )
+
+    cpu_cap = max(1, int(os.cpu_count() or 1))
+    default_parallel_workers = min(4, cpu_cap)
+    if parallel_workers is None:
+        parallel_workers = default_parallel_workers
+    if parallel_workers < 1:
+        raise typer.BadParameter("--parallel-workers must be at least 1.")
+    if parallel_workers > cpu_cap:
+        console.print(
+            f"[yellow]⚠ Requested {parallel_workers} parallel workers exceeds detected CPU count ({cpu_cap}). Continuing with requested value; tune based on your host capacity.[/yellow]"
+        )
+
+    with console.status("[bold cyan]Loading source object and input parameters...[/bold cyan]"):
+        source_obj = _load_precomputed_refine_source(
+            source=source,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
+        expensive_input = RunInputs.open(str(refinement_inputs_path))
+
+    cheap_output_chain, cheap_minima, cheap_chain_inputs, source_kind = (
+        _extract_refine_source_chain_and_minima(source_obj)
+    )
+    if len(cheap_minima) == 0:
+        cheap_minima = _extract_minima_nodes_from_chain(cheap_output_chain)
+
+    table = Table(box=None, show_header=False)
+    table.add_column(style="dim")
+    table.add_row("[bold cyan]Command:[/bold cyan]",
+                  "[white]refine[/white]")
+    table.add_row("[bold cyan]Mode:[/bold cyan]",
+                  "[yellow]neb[/yellow]")
+    table.add_row("[bold cyan]Source:[/bold cyan]",
+                  f"[yellow]{source_display}[/yellow]")
+    table.add_row("[bold cyan]Source Type:[/bold cyan]",
+                  f"[yellow]{source_kind}[/yellow]")
+    table.add_row("[bold cyan]Expensive Inputs:[/bold cyan]",
+                  f"[yellow]{refinement_inputs_path}[/yellow]")
+    mode_label = "parallel" if parallel else ("recursive" if recursive else "regular")
+    table.add_row("[bold cyan]Method:[/bold cyan]",
+                  f"[yellow]{mode_label}[/yellow]")
+    table.add_row("[bold cyan]Parallel:[/bold cyan]",
+                  f"[yellow]{parallel}[/yellow]")
+    if parallel:
+        table.add_row("[bold cyan]Parallel workers:[/bold cyan]",
+                      f"[yellow]{parallel_workers}[/yellow]")
+    table.add_row("[bold cyan]Recycle Nodes:[/bold cyan]",
+                  f"[yellow]{recycle_nodes}[/yellow]")
+    console.print(table)
+    console.print()
+
+    console.print("[bold cyan]Expensive-level Inputs[/bold cyan]")
+    _render_runinputs(expensive_input)
+
+    data_dir = Path(os.getcwd())
+    cheap_chain_fp = data_dir / f"{base_name}_cheap.xyz"
+    cheap_output_chain.write_to_disk(cheap_chain_fp)
+
+    cheap_minima = _dedupe_minima_nodes(cheap_minima, cheap_chain_inputs)
+    console.print(
+        f"[cyan]Discovered {len(cheap_minima)} unique source minima (including endpoints).[/cyan]"
+    )
+
+    console.print(
+        "[bold magenta]▶ REOPTIMIZING MINIMA AT EXPENSIVE LEVEL[/bold magenta]")
+    refined_minima, refined_source_minima, dropped_count, kept_unoptimized_count = (
+        _reoptimize_minima_for_refinement(
+            cheap_minima,
+            expensive_input,
+            source_geometry_label="source",
+        )
+    )
+
+    refined_minima, refined_source_minima = _dedupe_minima_and_sources(
+        refined_minima, refined_source_minima, expensive_input.chain_inputs
+    )
+    if len(refined_minima) < 2:
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] Fewer than 2 minima remain after expensive-level refinement."
+        )
+        raise typer.Exit(1)
+
+    refined_minima_chain = Chain.model_validate(
+        {"nodes": refined_minima, "parameters": expensive_input.chain_inputs}
+    )
+    refined_minima_fp = data_dir / f"{base_name}_refined_minima.xyz"
+    refined_minima_chain.write_to_disk(refined_minima_fp)
+    console.print(
+        f"[cyan]Retained {len(refined_minima)} minima, dropped {dropped_count} due to connectivity changes, kept {kept_unoptimized_count} without expensive optimization.[/cyan]"
+    )
+
+    console.print(
+        "[bold magenta]▶ EXPENSIVE PAIRWISE PATH MINIMIZATION[/bold magenta]")
+    pair_dir = data_dir / f"{base_name}_refined_pairs"
+    pair_dir.mkdir(exist_ok=True)
+    expensive_msmep = MSMEP(inputs=expensive_input)
+    if (recursive or parallel) and not expensive_input.path_min_inputs.do_elem_step_checks:
+        console.print(
+            "[yellow]⚠ WARNING: expensive do_elem_step_checks is False with --recursive/--parallel. Setting it to True.[/yellow]"
+        )
+        expensive_input.path_min_inputs.do_elem_step_checks = True
+
+    pair_chains: list[Chain] = []
+    pair_inds = list(zip(range(len(refined_minima) - 1),
+                     range(1, len(refined_minima))))
+    for i, j in pair_inds:
+        endpoint_pair = Chain.model_validate(
+            {"nodes": [refined_minima[i], refined_minima[j]],
+                "parameters": expensive_input.chain_inputs}
+        )
+        pair = endpoint_pair
+        if recycle_nodes:
+            recycled_pair = _build_recycled_pair_chain(
+                cheap_output_chain=cheap_output_chain,
+                cheap_start_ref=refined_source_minima[i],
+                cheap_end_ref=refined_source_minima[j],
+                expensive_start=refined_minima[i],
+                expensive_end=refined_minima[j],
+                cheap_chain_inputs=cheap_chain_inputs,
+                expensive_chain_inputs=expensive_input.chain_inputs,
+                expected_nimages=expensive_input.gi_inputs.nimages,
+            )
+            if recycled_pair is not None:
+                pair = recycled_pair
+            else:
+                console.print(
+                    f"[yellow]⚠ Could not recycle source nodes for pair ({i}, {j}); using fresh interpolation.[/yellow]"
+                )
+        try:
+            if recursive:
+                pair_history = expensive_msmep.run_recursive_minimize(pair)
+                if not pair_history.data:
+                    console.print(
+                        f"[yellow]⚠ Pair ({i}, {j}) failed at expensive level; skipping.[/yellow]"
+                    )
+                    continue
+                out_chain = pair_history.output_chain
+                pair_history.write_to_disk(pair_dir / f"pair_{i}_{j}_msmep")
+            elif parallel:
+                pair_history = expensive_msmep.run_parallel_recursive_minimize(
+                    pair,
+                    max_workers=parallel_workers,
+                )
+                if not pair_history.data:
+                    console.print(
+                        f"[yellow]⚠ Pair ({i}, {j}) failed at expensive level; skipping.[/yellow]"
+                    )
+                    continue
+                out_chain = pair_history.output_chain
+                pair_history.write_to_disk(pair_dir / f"pair_{i}_{j}_msmep")
+            else:
+                neb_obj, _ = expensive_msmep.run_minimize_chain(pair)
+                out_chain = neb_obj.chain_trajectory[-1] if neb_obj.chain_trajectory else neb_obj.optimized
+            if out_chain is None:
+                console.print(
+                    f"[yellow]⚠ Pair ({i}, {j}) failed at expensive level; skipping.[/yellow]"
+                )
+                continue
+            pair_chains.append(out_chain)
+            out_chain.write_to_disk(pair_dir / f"pair_{i}_{j}.xyz")
+        except Exception:
+            console.print(
+                f"[yellow]⚠ Pair ({i}, {j}) failed at expensive level; skipping.[/yellow]"
+            )
+            continue
+
+    if len(pair_chains) == 0:
+        console.print(
+            "[bold red]✗ ERROR:[/bold red] No expensive sequential pair paths converged."
+        )
+        raise typer.Exit(1)
+
+    refined_chain = _concat_chains(
+        pair_chains, expensive_input.chain_inputs)
+    refined_chain_fp = data_dir / f"{base_name}_refined.xyz"
+    refined_chain.write_to_disk(refined_chain_fp)
+
+    elapsed = time.time() - start_time
+    summary = Table(box=box.ROUNDED, border_style="green", show_header=False)
+    summary.add_column(style="bold cyan")
+    summary.add_column(style="white")
+    summary.add_row(
+        "⏱ Walltime:", f"[yellow]{elapsed/60:.1f} min[/yellow]" if elapsed > 60 else f"[yellow]{elapsed:.1f} s[/yellow]")
+    summary.add_row("📁 Source chain:", f"[cyan]{cheap_chain_fp}[/cyan]")
+    summary.add_row("📁 Refined minima:", f"[cyan]{refined_minima_fp}[/cyan]")
+    summary.add_row("📁 Refined chain:", f"[cyan]{refined_chain_fp}[/cyan]")
+    summary.add_row("🔗 Pair sequence:",
+                    f"[white]{pair_inds}[/white]")
+    console.print(Panel(
+        summary, title="[bold green]✓ refine Complete![/bold green]", border_style="green"))
+
+    _ascii_profile_for_chain(refined_chain)
+
+
 @app.command("run-refine")
 def run_refine(
         start: Annotated[str, typer.Option(
@@ -2587,41 +3585,13 @@ def run_refine(
 
     console.print(
         "[bold magenta]▶ REOPTIMIZING MINIMA AT EXPENSIVE LEVEL[/bold magenta]")
-    refined_minima: list[StructureNode] = []
-    refined_source_minima: list[StructureNode] = []
-    dropped_count = 0
-    kept_unoptimized_count = 0
-    for i, node in enumerate(cheap_minima):
-        optimized_successfully = False
-        try:
-            try:
-                traj = expensive_input.engine.compute_geometry_optimization(
-                    node, keywords={'coordsys': 'cart', 'maxiter': 500}
-                )
-            except TypeError:
-                traj = expensive_input.engine.compute_geometry_optimization(
-                    node)
-            opt_node = traj[-1]
-            optimized_successfully = True
-        except Exception:
-            console.print(
-                f"[yellow]⚠ Failed to optimize minimum {i}; keeping cheap-level geometry for refinement.[/yellow]"
-            )
-            console.print(
-                f"[yellow]Reason:[/yellow] {traceback.format_exc().strip()}"
-            )
-            opt_node = _clear_node_cached_properties(node)
-            kept_unoptimized_count += 1
-
-        if optimized_successfully and node.has_molecular_graph and opt_node.has_molecular_graph:
-            same_connectivity = _is_connectivity_identical(
-                node, opt_node, verbose=False
-            )
-            if not same_connectivity:
-                dropped_count += 1
-                continue
-        refined_minima.append(opt_node)
-        refined_source_minima.append(node.copy())
+    refined_minima, refined_source_minima, dropped_count, kept_unoptimized_count = (
+        _reoptimize_minima_for_refinement(
+            cheap_minima,
+            expensive_input,
+            source_geometry_label="cheap-level",
+        )
+    )
 
     refined_minima, refined_source_minima = _dedupe_minima_and_sources(
         refined_minima, refined_source_minima, expensive_input.chain_inputs
@@ -3249,7 +4219,7 @@ def status(
 
 @app.command("visualize")
 def visualize(
-    result_path: Annotated[str, typer.Argument(help="Path to a NEB result .xyz or TreeNode result folder")],
+    result_path: Annotated[str, typer.Argument(help="Path to a NEB result .xyz, network .json, TreeNode folder, or drive workspace folder")],
     output_html: Annotated[str, typer.Option(
         "--output", "-o", help="Output HTML file path")] = None,
     qminds_fp: Annotated[str, typer.Option(
@@ -3563,7 +4533,7 @@ def status_cmd(
         webbrowser.open(status_fp.resolve().as_uri())
 
 
-@app.command("drive-refine")
+@app.command("drive-refine", hidden=True)
 def drive_refine(
     workspace: Annotated[str, typer.Option("--workspace", "-w", help="Path to a drive workspace directory or workspace.json")] = None,
     inputs: Annotated[str, typer.Option("--inputs", "-i", help="RunInputs TOML for TS/IRC refinement")] = None,
@@ -3572,86 +4542,22 @@ def drive_refine(
     use_bigchem: Annotated[bool, typer.Option("--use-bigchem/--no-use-bigchem", help="Use BigChem for Hessian-backed TS/IRC steps when supported")] = False,
     write_status_html_output: Annotated[bool, typer.Option("--write-status-html/--no-write-status-html", help="Generate full status.html for refined workspace (slower)")] = False,
 ):
-    console.print(BANNER)
     if workspace is None:
         raise typer.BadParameter("--workspace/-w is required.")
     if inputs is None:
         raise typer.BadParameter("--inputs/-i is required.")
-
-    workspace_path = Path(workspace).expanduser().resolve()
-    workspace_dir = workspace_path.parent if workspace_path.name == "workspace.json" else workspace_path
-    workspace_json = workspace_dir / "workspace.json"
-    if not workspace_json.exists():
-        raise typer.BadParameter(f"No workspace.json found at: {workspace_dir}")
-
-    source_workspace = RetropathsWorkspace.read(workspace_dir)
-    with Progress(
-        SpinnerColumn(style="cyan"),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=36),
-        TaskProgressColumn(),
-        TimeElapsedColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Preparing refinement...", total=1)
-
-        def _on_progress(event: dict[str, object]) -> None:
-            message = str(event.get("message") or "Running refinement...")
-            total = int(event.get("total") or 1)
-            current = int(event.get("current") or 0)
-            total = max(1, total)
-            current = max(0, min(total, current))
-            progress.update(
-                task,
-                description=message,
-                total=total,
-                completed=current,
-            )
-
-        with _suppress_rdkit_valence_warnings():
-            summary = refine_drive_workspace_network(
-                source_workspace,
-                refinement_inputs_fp=Path(inputs).expanduser().resolve(),
-                refined_workspace_dir=(Path(output_directory).expanduser().resolve() if output_directory else None),
-                refined_run_name=name,
-                use_bigchem=use_bigchem,
-                write_status_html_output=write_status_html_output,
-                progress=_on_progress,
-            )
-        progress.update(task, description="Refinement complete.", total=1, completed=1)
-
-    table = Table(box=box.ROUNDED, border_style="green", show_header=False)
-    table.add_column(style="bold cyan")
-    table.add_column(style="white")
-    table.add_row("Source Workspace", str(summary["source_workspace"]))
-    table.add_row("Refined Workspace", str(summary["workspace"]))
-    table.add_row("Inputs", str(summary["inputs_fp"]))
-    table.add_row("Edges Scanned", str(summary["edges_scanned"]))
-    table.add_row("Edges With Chains", str(summary["edges_with_chains"]))
-    table.add_row("TS Attempted", str(summary["ts_guesses_attempted"]))
-    table.add_row("TS Submitted", str(summary.get("ts_jobs_submitted", summary["ts_guesses_attempted"])))
-    table.add_row("TS Converged", str(summary["ts_converged"]))
-    table.add_row("TS Failed", str(summary.get("ts_failed", 0)))
-    if summary.get("ts_top_errors"):
-        table.add_row("TS Top Error", str(summary.get("ts_top_errors", [""])[0]))
-    if summary.get("ts_failure_log"):
-        table.add_row("TS Failure Log", str(summary["ts_failure_log"]))
-    table.add_row("IRC Submitted", str(summary.get("irc_jobs_submitted", summary["ts_converged"])))
-    table.add_row("IRC Converged", str(summary["irc_converged"]))
-    table.add_row("IRC Failed", str(summary.get("irc_failed", 0)))
-    if summary.get("irc_top_errors"):
-        table.add_row("IRC Top Error", str(summary.get("irc_top_errors", [""])[0]))
-    if summary.get("irc_failure_log"):
-        table.add_row("IRC Failure Log", str(summary["irc_failure_log"]))
-    table.add_row("ChemCloud Parallel", str(bool(summary.get("chemcloud_parallel", False))))
-    table.add_row("Use BigChem", str(bool(summary.get("use_bigchem", False))))
-    table.add_row("Added Nodes", str(summary["added_nodes"]))
-    table.add_row("Added Edges", str(summary["added_edges"]))
-    table.add_row("Final Nodes", str(summary["final_nodes"]))
-    table.add_row("Final Edges", str(summary["final_edges"]))
-    table.add_row("Queue Items", str(summary["queue_items"]))
-    table.add_row("Artifacts", str(summary["artifacts_dir"]))
-    console.print(Panel(table, title="[bold green]✓ drive-refine Complete[/bold green]", border_style="green"))
+    console.print(
+        "[yellow]⚠ `mepd drive-refine` is deprecated; use `mepd refine --mode ts-irc` instead.[/yellow]"
+    )
+    refine(
+        source=workspace,
+        inputs=inputs,
+        mode="ts-irc",
+        output_directory=output_directory,
+        use_bigchem=use_bigchem,
+        write_status_html_output=write_status_html_output,
+        name=name,
+    )
 
 
 @app.command("drive")

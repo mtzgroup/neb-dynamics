@@ -151,23 +151,18 @@ def test_annotate_pot_with_neb_results_populates_networkbuilder_style_fields():
     annotate_pot_with_neb_results(converted, {(4, 0): [chain]})
 
     edge_data = converted.graph.edges[(4, 0)]
-    assert edge_data["list_of_nebs"] == [chain]
+    assert len(edge_data["list_of_nebs"]) == 1
     assert edge_data["barrier"] == chain.get_eA_chain()
+    assert edge_data["reverse_barrier"] != edge_data["barrier"]
+    assert edge_data["pair_barrier_sum"] == edge_data["barrier"] + edge_data["reverse_barrier"]
     assert edge_data["exp_neg_barrier"] == np.exp(-chain.get_eA_chain())
-
-    reverse_edge_data = converted.graph.edges[(0, 4)]
-    reverse_chain = reverse_edge_data["list_of_nebs"][0]
-    assert reverse_chain[0].energy == chain[-1].energy
-    assert reverse_chain[-1].energy == chain[0].energy
-    assert reverse_edge_data["barrier"] == reverse_chain.get_eA_chain()
-    assert reverse_edge_data["barrier"] != edge_data["barrier"]
     assert edge_data["reaction"] == "demo"
-    assert reverse_edge_data["reaction"] == "demo"
+    assert not converted.graph.has_edge(0, 4)
 
     node0 = converted.graph.nodes[0]
     node4 = converted.graph.nodes[4]
     assert node4["td"].energy == 0.0
     assert node4["node_energy"] == 0.0
-    assert node4["node_energies"] == [0.0, 0.0]
+    assert node4["node_energies"] == [0.0]
     assert node0["td"].energy == 0.01
-    assert node0["node_energies"] == [0.01, 0.01]
+    assert node0["node_energies"] == [0.01]
