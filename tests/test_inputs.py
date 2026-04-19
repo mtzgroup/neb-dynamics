@@ -108,3 +108,87 @@ def test_runinputs_ase_omol25_reports_missing_fairchem(monkeypatch):
         assert "Python 3.14" in msg
     else:
         raise AssertionError("Expected ModuleNotFoundError when fairchem.core is unavailable")
+
+
+def test_runinputs_ase_omol25_uses_configured_model_path_and_device(monkeypatch):
+    import sys
+    import types
+
+    calls = {}
+
+    def _fake_load_predict_unit(model_path, device):
+        calls["model_path"] = model_path
+        calls["device"] = device
+        return "predictor"
+
+    class _FakeFAIRChemCalculator:
+        def __init__(self, predictor, task_name):
+            calls["predictor"] = predictor
+            calls["task_name"] = task_name
+
+    fairchem_core = types.ModuleType("fairchem.core")
+    fairchem_core.pretrained_mlip = types.SimpleNamespace(
+        load_predict_unit=_fake_load_predict_unit
+    )
+    fairchem_core.FAIRChemCalculator = _FakeFAIRChemCalculator
+
+    fairchem_root = types.ModuleType("fairchem")
+    fairchem_root.core = fairchem_core
+
+    monkeypatch.setitem(sys.modules, "fairchem", fairchem_root)
+    monkeypatch.setitem(sys.modules, "fairchem.core", fairchem_core)
+
+    run_inputs = RunInputs(
+        engine_name="ase",
+        program="omol25",
+        program_kwds={},
+        path_min_method="fsm",
+        path_min_inputs={
+            "model_path": "/tmp/custom_omol25_checkpoint.pt",
+            "device": "cpu",
+        },
+    )
+
+    assert run_inputs.engine.__class__.__name__ == "ASEEngine"
+    assert calls["model_path"] == "/tmp/custom_omol25_checkpoint.pt"
+    assert calls["device"] == "cpu"
+    assert calls["predictor"] == "predictor"
+    assert calls["task_name"] == "omol"
+
+
+def test_runinputs_ase_omol25_raises_with_model_path_context(monkeypatch):
+    import sys
+    import types
+
+    def _fake_load_predict_unit(model_path, device):
+        raise RuntimeError("load failed")
+
+    class _FakeFAIRChemCalculator:
+        def __init__(self, predictor, task_name):
+            pass
+
+    fairchem_core = types.ModuleType("fairchem.core")
+    fairchem_core.pretrained_mlip = types.SimpleNamespace(
+        load_predict_unit=_fake_load_predict_unit
+    )
+    fairchem_core.FAIRChemCalculator = _FakeFAIRChemCalculator
+
+    fairchem_root = types.ModuleType("fairchem")
+    fairchem_root.core = fairchem_core
+
+    monkeypatch.setitem(sys.modules, "fairchem", fairchem_root)
+    monkeypatch.setitem(sys.modules, "fairchem.core", fairchem_core)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        RunInputs(
+            engine_name="ase",
+            program="omol25",
+            program_kwds={},
+            path_min_method="fsm",
+            path_min_inputs={"model_path": "/tmp/missing.pt", "device": "cpu"},
+        )
+
+    msg = str(excinfo.value)
+    assert "Failed to load OMol25 model for ASE engine" in msg
+    assert "model_path='/tmp/missing.pt'" in msg
+    assert "device='cpu'" in msg

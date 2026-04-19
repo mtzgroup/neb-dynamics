@@ -72,6 +72,14 @@ timestep = 0.5
 | `program_kwds` | `table` | inferred from `engine_name`/`program` | Parsed into `qcio.ProgramArgs` for `qcop` / `chemcloud` |
 | `optimizer_kwds` | `table` | `{ name = "cg", timestep = 0.5 }` | See optimizer names below |
 
+Notes:
+- For `engine_name = "ase"` with `program = "omol25"`, the FAIR-Chem checkpoint for
+  endpoint minimization and all ASE energy/gradient calls is resolved from:
+  `program_kwds.model_path` (or `path_min_inputs.model_path`) and
+  `program_kwds.device` (or `path_min_inputs.device`).
+- If omitted, fallback defaults are `model_path = "/home/diptarka/fairchem/esen_sm_conserving_all.pt"`
+  and `device = "cuda"`.
+
 ## `path_min_inputs` for `NEB`
 
 These keys are accepted when `path_min_method = "NEB"`.

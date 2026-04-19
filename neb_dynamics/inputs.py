@@ -68,6 +68,8 @@ _MLPGI_DEFAULT_PATH_MIN_INPUTS = {
     "alpha_climb": 0.5,
 }
 
+_ASE_OMOL25_DEFAULT_MODEL_PATH = "/home/diptarka/fairchem/esen_sm_conserving_all.pt"
+
 
 def _normalized_path_method(path_min_method: str) -> str:
     method = str(path_min_method or "").strip().upper().replace("_", "-")
@@ -78,6 +80,40 @@ def _normalized_path_method(path_min_method: str) -> str:
         "DL-FIND": "NEB-DLF",
     }
     return aliases.get(method, method)
+
+
+def _resolve_ase_omol25_model_settings(
+    path_min_inputs: object | None,
+    program_kwds: object | None,
+) -> tuple[str, str]:
+    """Resolve FAIR-Chem model settings for ASE OMol25 from user-provided inputs."""
+    model_path = None
+    device = None
+
+    for source in (program_kwds, path_min_inputs):
+        payload = _serialize_input_value(source)
+        if not isinstance(payload, dict):
+            continue
+
+        if model_path is None:
+            model_path = payload.get("model_path")
+        if device is None:
+            device = payload.get("device")
+
+        model_payload = payload.get("model")
+        if isinstance(model_payload, dict):
+            if model_path is None:
+                model_path = (
+                    model_payload.get("model_path")
+                    or model_payload.get("path")
+                )
+            if device is None:
+                device = model_payload.get("device")
+
+    return (
+        str(model_path or _ASE_OMOL25_DEFAULT_MODEL_PATH),
+        str(device or "cuda"),
+    )
 
 
 def _format_tc_value(value):
@@ -526,8 +562,20 @@ class RunInputs:
                         "Install a compatible fairchem-core build (currently unavailable on Python 3.14) "
                         "or use a different engine/program."
                     ) from exc
-                predictor = pretrained_mlip.load_predict_unit(
-                    "/home/diptarka/fairchem/esen_sm_conserving_all.pt", device="cuda")
+                model_path, model_device = _resolve_ase_omol25_model_settings(
+                    self.path_min_inputs,
+                    self.program_kwds,
+                )
+                try:
+                    predictor = pretrained_mlip.load_predict_unit(
+                        model_path,
+                        device=model_device,
+                    )
+                except Exception as exc:
+                    raise RuntimeError(
+                        "Failed to load OMol25 model for ASE engine "
+                        f"(model_path='{model_path}', device='{model_device}')."
+                    ) from exc
                 calc = FAIRChemCalculator(predictor, task_name="omol")
             else:
                 raise ValueError(f"Unsupported program: {self.program}")
