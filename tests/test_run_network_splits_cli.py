@@ -715,6 +715,95 @@ def test_nonrecursive_run_writes_status_snapshot(monkeypatch, tmp_path):
     assert snapshot["run_status"]["run_state"] == "completed"
 
 
+def test_run_hydrates_cached_xyz_sidecars_when_available(monkeypatch, tmp_path):
+    params = ChainInputs()
+    program_inputs = SimpleNamespace(
+        path_min_method="FNEB",
+        path_min_inputs=SimpleNamespace(do_elem_step_checks=True),
+        chain_inputs=params,
+        engine=SimpleNamespace(),
+    )
+
+    class _CacheAwareMSMEP:
+        def __init__(self, inputs):
+            self.inputs = inputs
+            self.cache_energies = None
+            self.cache_gradients = None
+
+        def run_minimize_chain(self, input_chain: Chain):
+            self.cache_energies = [node._cached_energy for node in input_chain.nodes]
+            self.cache_gradients = [np.array(node._cached_gradient) for node in input_chain.nodes]
+            chain = _chain_from_xs([0.0, 1.0, 2.0], self.inputs.chain_inputs)
+            neb = _FakeNEB(chain)
+            neb.geom_grad_calls_made = 0
+            return neb, SimpleNamespace(is_elem_step=True)
+
+    runner = _CacheAwareMSMEP(program_inputs)
+
+    cache_nodes = [StructureNode(structure=_structure_at_x(0.0)), StructureNode(structure=_structure_at_x(2.0))]
+    cache_nodes[0]._cached_energy = 111.0
+    cache_nodes[1]._cached_energy = 222.0
+    cache_nodes[0]._cached_gradient = np.full_like(cache_nodes[0].coords, 1.0)
+    cache_nodes[1]._cached_gradient = np.full_like(cache_nodes[1].coords, 2.0)
+    cache_chain = Chain.model_validate({"nodes": cache_nodes, "parameters": params})
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(lambda path: program_inputs))
+    monkeypatch.setattr(main_cli, "MSMEP", lambda inputs: runner)
+    monkeypatch.setattr(main_cli, "_render_runinputs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main_cli, "read_multiple_structure_from_file", lambda *args, **kwargs: [_structure_at_x(0.0), _structure_at_x(2.0)])
+    monkeypatch.setattr(main_cli.Chain, "from_xyz", lambda *args, **kwargs: cache_chain)
+    monkeypatch.setattr(main_cli, "_write_neb_results_with_history", lambda n, filename: filename.write_text("ok") or True)
+
+    (tmp_path / "dummy.xyz").write_text("placeholder xyz")
+    (tmp_path / "dummy.energies").write_text("placeholder")
+    (tmp_path / "dummy.gradients").write_text("placeholder")
+    (tmp_path / "dummy_grad_shapes.txt").write_text("2 2 3")
+
+    monkeypatch.chdir(tmp_path)
+    main_cli.run(
+        geometries="dummy.xyz",
+        inputs="dummy.toml",
+        recursive=False,
+        network_splits=False,
+        name="with_cache",
+    )
+
+    assert runner.cache_energies == [111.0, 222.0]
+    assert np.allclose(runner.cache_gradients[0], np.full((2, 3), 1.0))
+    assert np.allclose(runner.cache_gradients[1], np.full((2, 3), 2.0))
+
+
+def test_run_skips_xyz_cache_hydration_when_sidecars_missing(monkeypatch, tmp_path):
+    params = ChainInputs()
+    program_inputs = SimpleNamespace(
+        path_min_method="FNEB",
+        path_min_inputs=SimpleNamespace(do_elem_step_checks=True),
+        chain_inputs=params,
+        engine=SimpleNamespace(),
+    )
+    runner = _RegularFakeMSMEP(program_inputs)
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(lambda path: program_inputs))
+    monkeypatch.setattr(main_cli, "MSMEP", lambda inputs: runner)
+    monkeypatch.setattr(main_cli, "_render_runinputs", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(main_cli, "read_multiple_structure_from_file", lambda *args, **kwargs: [_structure_at_x(0.0), _structure_at_x(2.0)])
+    monkeypatch.setattr(main_cli.Chain, "from_xyz", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("from_xyz should not be called when sidecars are missing")))
+    monkeypatch.setattr(main_cli, "_write_neb_results_with_history", lambda n, filename: filename.write_text("ok") or True)
+
+    (tmp_path / "dummy.xyz").write_text("placeholder xyz")
+    monkeypatch.chdir(tmp_path)
+
+    main_cli.run(
+        geometries="dummy.xyz",
+        inputs="dummy.toml",
+        recursive=False,
+        network_splits=False,
+        name="without_cache",
+    )
+
+    assert runner.regular_calls == 1
+
+
 def test_load_status_snapshot_prefers_run_status_and_manifest(tmp_path):
     status_fp = tmp_path / "rgs_status.json"
     manifest_fp = tmp_path / "rgs_network_splits" / "rgs_request_manifest.json"

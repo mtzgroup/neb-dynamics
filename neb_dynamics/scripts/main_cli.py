@@ -250,6 +250,84 @@ def _write_neb_results_with_history(
     )
 
 
+def _maybe_hydrate_nodes_from_xyz_sidecars(
+    *,
+    geometries: str | Path,
+    nodes: list[StructureNode],
+    chain_inputs: ChainInputs,
+    charge: int,
+    multiplicity: int,
+) -> bool:
+    geom_fp = Path(geometries).expanduser().resolve()
+    energies_fp = geom_fp.parent / f"{geom_fp.stem}.energies"
+    gradients_fp = geom_fp.parent / f"{geom_fp.stem}.gradients"
+    grad_shape_fp = geom_fp.parent / f"{geom_fp.stem}_grad_shapes.txt"
+    legacy_grad_shape_fp = geom_fp.parent / "grad_shapes.txt"
+
+    if not energies_fp.exists() or not gradients_fp.exists():
+        return False
+    if not grad_shape_fp.exists() and legacy_grad_shape_fp.exists():
+        grad_shape_fp = legacy_grad_shape_fp
+    if not grad_shape_fp.exists():
+        console.print(
+            f"[yellow]⚠ Found {energies_fp.name} and {gradients_fp.name} but no grad shape file. "
+            "Skipping cache hydration and computing energies/gradients normally.[/yellow]"
+        )
+        return False
+
+    try:
+        try:
+            cache_chain = Chain.from_xyz(
+                fp=geom_fp,
+                parameters=chain_inputs,
+                charge=charge,
+                spinmult=multiplicity,
+            )
+        except ValueError:
+            cache_chain = Chain.from_xyz(
+                fp=geom_fp,
+                parameters=chain_inputs,
+                charge=None,
+                spinmult=None,
+            )
+    except Exception as exc:
+        console.print(
+            f"[yellow]⚠ Failed to load cache sidecars for {geom_fp.name}: {exc}. "
+            "Continuing without cached values.[/yellow]"
+        )
+        return False
+
+    if len(cache_chain.nodes) != len(nodes):
+        console.print(
+            f"[yellow]⚠ Cache sidecar node count mismatch for {geom_fp.name} "
+            f"(cache={len(cache_chain.nodes)}, run={len(nodes)}). "
+            "Continuing without cached values.[/yellow]"
+        )
+        return False
+
+    has_full_cache = all(
+        getattr(node, "_cached_energy", None) is not None
+        and getattr(node, "_cached_gradient", None) is not None
+        for node in cache_chain.nodes
+    )
+    if not has_full_cache:
+        console.print(
+            f"[yellow]⚠ Cache sidecars for {geom_fp.name} were incomplete. "
+            "Continuing without cached values.[/yellow]"
+        )
+        return False
+
+    for dst, src in zip(nodes, cache_chain.nodes):
+        dst._cached_result = getattr(src, "_cached_result", None)
+        dst._cached_energy = getattr(src, "_cached_energy", None)
+        dst._cached_gradient = getattr(src, "_cached_gradient", None)
+
+    console.print(
+        f"[dim]Loaded cached energies/gradients from {energies_fp.name} and {gradients_fp.name}.[/dim]"
+    )
+    return True
+
+
 def _collect_tree_layers_for_visualization(tree: TreeNode) -> list[dict]:
     return _cli_visualize._collect_tree_layers_for_visualization(tree)
 
@@ -2312,6 +2390,14 @@ def run(
         all_nodes = [program_input.engine._make_structure_node(s) for s in all_structs]
     else:
         all_nodes = [StructureNode(structure=s) for s in all_structs]
+    if geometries is not None:
+        _maybe_hydrate_nodes_from_xyz_sidecars(
+            geometries=geometries,
+            nodes=all_nodes,
+            chain_inputs=program_input.chain_inputs,
+            charge=charge,
+            multiplicity=multiplicity,
+        )
     if minimize_ends:
         console.print("[bold cyan]⟳ Minimizing input endpoints...[/bold cyan]")
         batch_optimizer = getattr(
@@ -3011,6 +3097,11 @@ def refine(
             help="Refinement mode: 'neb' for high-quality pairwise NEBs, or 'ts-irc' for TS optimization + IRC network refinement.",
             case_sensitive=False,
         )] = "neb",
+        ts_irc_edge_scope: Annotated[Literal["best-path", "all-source-edges"], typer.Option(
+            "--ts-irc-edge-scope",
+            help="TS/IRC mode only: 'best-path' uses one inferred source path; 'all-source-edges' uses every edge available in the source workspace/network.",
+            case_sensitive=False,
+        )] = "all-source-edges",
         recycle_nodes: Annotated[bool, typer.Option(
             "--recycle-nodes",
             help="Reuse source path nodes as initial guess for expensive pair refinement.",
@@ -3079,12 +3170,19 @@ def refine(
                     f"Refinement inputs file was not found: {refinement_inputs_path}"
                 )
 
-        if isinstance(source_obj, RetropathsWorkspace):
-            source_workspace = source_obj
+        ts_irc_source_obj: TreeNode | NEB | Chain | Pot | RetropathsWorkspace = source_obj
+        if ts_irc_edge_scope == "best-path" and isinstance(source_obj, (RetropathsWorkspace, Pot)):
+            best_path_chain, _best_path_minima, _best_path_inputs, _best_path_kind = (
+                _extract_refine_source_chain_and_minima(source_obj)
+            )
+            ts_irc_source_obj = best_path_chain
+
+        if isinstance(ts_irc_source_obj, RetropathsWorkspace):
+            source_workspace = ts_irc_source_obj
             source_kind = "DriveWorkspace"
         else:
             source_pot = _source_obj_to_refinement_pot(
-                source_obj,
+                ts_irc_source_obj,
                 source_label=base_name,
             )
             source_workspace = _create_synthetic_refine_workspace(
@@ -3093,7 +3191,7 @@ def refine(
                 base_name=base_name,
                 output_root=Path.cwd(),
             )
-            source_kind = type(source_obj).__name__
+            source_kind = type(ts_irc_source_obj).__name__
 
         table = Table(box=None, show_header=False)
         table.add_column(style="dim")
@@ -3101,6 +3199,7 @@ def refine(
         table.add_row("[bold cyan]Mode:[/bold cyan]", "[yellow]ts-irc[/yellow]")
         table.add_row("[bold cyan]Source:[/bold cyan]", f"[yellow]{source_display}[/yellow]")
         table.add_row("[bold cyan]Source Type:[/bold cyan]", f"[yellow]{source_kind}[/yellow]")
+        table.add_row("[bold cyan]TS/IRC Edge Scope:[/bold cyan]", f"[yellow]{ts_irc_edge_scope}[/yellow]")
         table.add_row("[bold cyan]Source Workspace:[/bold cyan]", f"[yellow]{source_workspace.directory}[/yellow]")
         table.add_row("[bold cyan]Inputs:[/bold cyan]", f"[yellow]{refinement_inputs_path}[/yellow]")
         if output_directory:
@@ -3151,9 +3250,9 @@ def refine(
         )
         return
 
-    if output_directory or use_bigchem or write_status_html_output:
+    if output_directory or use_bigchem or write_status_html_output or ts_irc_edge_scope != "all-source-edges":
         console.print(
-            "[yellow]⚠ --output-directory, --use-bigchem, and --write-status-html apply only to --mode ts-irc and will be ignored.[/yellow]"
+            "[yellow]⚠ --output-directory, --use-bigchem, --write-status-html, and --ts-irc-edge-scope apply only to --mode ts-irc and will be ignored.[/yellow]"
         )
 
     if parallel and recursive:
@@ -3369,6 +3468,11 @@ def run_refine(
             help="Refinement mode: 'neb' for high-quality pairwise NEBs, or 'ts-irc' for TS optimization + IRC network refinement.",
             case_sensitive=False,
         )] = "neb",
+        ts_irc_edge_scope: Annotated[Literal["best-path", "all-source-edges"], typer.Option(
+            "--ts-irc-edge-scope",
+            help="TS/IRC mode only: 'best-path' refines the discovered best path; 'all-source-edges' keeps all available source edges for TS/IRC.",
+            case_sensitive=False,
+        )] = "best-path",
         cheap_inputs: Annotated[str, typer.Option("--cheap-inputs", "-ci",
                                                   help='optional path to cheaper RunInputs toml file for initial discovery')] = None,
         recycle_nodes: Annotated[bool, typer.Option(
@@ -3421,9 +3525,9 @@ def run_refine(
         console.print(
             "[yellow]⚠ --recycle-nodes applies only to --mode neb and will be ignored.[/yellow]"
         )
-    if mode_normalized == "neb" and (output_directory or use_bigchem or write_status_html_output):
+    if mode_normalized == "neb" and (output_directory or use_bigchem or write_status_html_output or ts_irc_edge_scope != "best-path"):
         console.print(
-            "[yellow]⚠ --output-directory, --use-bigchem, and --write-status-html apply only to --mode ts-irc and will be ignored.[/yellow]"
+            "[yellow]⚠ --output-directory, --use-bigchem, --write-status-html, and --ts-irc-edge-scope apply only to --mode ts-irc and will be ignored.[/yellow]"
         )
 
     start_time = time.time()
@@ -3446,6 +3550,8 @@ def run_refine(
     table.add_row("[bold cyan]Recycle Nodes:[/bold cyan]",
                   f"[yellow]{recycle_nodes}[/yellow]")
     if mode_normalized == "ts-irc":
+        table.add_row("[bold cyan]TS/IRC Edge Scope:[/bold cyan]",
+                      f"[yellow]{ts_irc_edge_scope}[/yellow]")
         if output_directory:
             table.add_row("[bold cyan]Output Directory:[/bold cyan]",
                           f"[yellow]{Path(output_directory).expanduser().resolve()}[/yellow]")
@@ -3588,6 +3694,7 @@ def run_refine(
     if cheap_history is not None:
         cheap_history.write_to_disk(cheap_tree_dir)
 
+    network_splits_pot: Pot | None = None
     if recursive and network_splits and cheap_history is not None:
         network_dir = data_dir / f"{base_name}_cheap_network_splits"
         console.print(
@@ -3602,21 +3709,32 @@ def run_refine(
             base_name=f"{base_name}_cheap",
             status_fp=None,
         )
-        best_path_chain = _load_best_path_chain_from_network_splits(
-            network_fp=network_fp,
-            output_dir=network_dir,
-            base_name=f"{base_name}_cheap",
-        )
-        if best_path_chain is None:
-            console.print(
-                "[bold red]✗ ERROR:[/bold red] Network splits did not produce a best path for refinement."
+        if mode_normalized == "ts-irc" and ts_irc_edge_scope == "all-source-edges":
+            with contextlib.suppress(Exception):
+                network_splits_pot = Pot.read_from_disk(network_fp)
+            if network_splits_pot is not None:
+                console.print(
+                    "[cyan]Using full network-splits graph as TS/IRC source "
+                    f"({network_splits_pot.graph.number_of_nodes()} nodes, "
+                    f"{network_splits_pot.graph.number_of_edges()} edges).[/cyan]"
+                )
+
+        if network_splits_pot is None:
+            best_path_chain = _load_best_path_chain_from_network_splits(
+                network_fp=network_fp,
+                output_dir=network_dir,
+                base_name=f"{base_name}_cheap",
             )
-            raise typer.Exit(1)
-        cheap_output_chain = best_path_chain
-        cheap_minima = [node.copy() for node in best_path_chain.nodes]
-        console.print(
-            f"[cyan]Using best network path with {len(cheap_minima)} nodes for expensive refinement.[/cyan]"
-        )
+            if best_path_chain is None:
+                console.print(
+                    "[bold red]✗ ERROR:[/bold red] Network splits did not produce a best path for refinement."
+                )
+                raise typer.Exit(1)
+            cheap_output_chain = best_path_chain
+            cheap_minima = [node.copy() for node in best_path_chain.nodes]
+            console.print(
+                f"[cyan]Using best network path with {len(cheap_minima)} nodes for expensive refinement.[/cyan]"
+            )
 
     cheap_minima = _dedupe_minima_nodes(cheap_minima, cheap_input.chain_inputs)
     console.print(
@@ -3625,8 +3743,24 @@ def run_refine(
 
     if mode_normalized == "ts-irc":
         refinement_inputs_path = Path(inputs).expanduser().resolve()
+        ts_irc_source_obj: TreeNode | Chain | Pot = cheap_output_chain
+        ts_irc_source_note = (
+            "Using discovered cheap path with "
+            f"{len(cheap_output_chain.nodes)} nodes as TS/IRC refinement source."
+        )
+        if ts_irc_edge_scope == "all-source-edges":
+            if network_splits_pot is not None:
+                ts_irc_source_obj = network_splits_pot
+                ts_irc_source_note = (
+                    "Using network-splits source graph with "
+                    f"{network_splits_pot.graph.number_of_nodes()} nodes and "
+                    f"{network_splits_pot.graph.number_of_edges()} edges as TS/IRC refinement source."
+                )
+            elif cheap_history is not None:
+                ts_irc_source_obj = cheap_history
+                ts_irc_source_note = "Using all recursive cheap-history leaves as TS/IRC refinement source."
         source_pot = _source_obj_to_refinement_pot(
-            cheap_output_chain,
+            ts_irc_source_obj,
             source_label=base_name,
         )
         source_workspace = _create_synthetic_refine_workspace(
@@ -3635,9 +3769,7 @@ def run_refine(
             base_name=base_name,
             output_root=Path.cwd(),
         )
-        console.print(
-            f"[cyan]Using discovered cheap path with {len(cheap_output_chain.nodes)} nodes as TS/IRC refinement source.[/cyan]"
-        )
+        console.print(f"[cyan]{ts_irc_source_note}[/cyan]")
 
         with Progress(
             SpinnerColumn(style="cyan"),
