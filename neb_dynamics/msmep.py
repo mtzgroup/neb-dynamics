@@ -226,6 +226,23 @@ class MSMEP:
             if hasattr(node, "graph"):
                 node.graph = None
 
+    def _endpoint_connectivity_status(self, chain: Chain) -> str:
+        if len(chain) == 0:
+            return "Checking endpoint connectivity"
+        start = chain[0]
+        end = chain[-1]
+        src = getattr(start, "graph_atom_indices_source", None)
+        if src and src == getattr(end, "graph_atom_indices_source", None):
+            if src == "qmmm_qmindices":
+                subset_count = len(getattr(start, "comparison_atom_indices", []) or [])
+                coords = getattr(start, "coords", None)
+                total_count = len(coords) if coords is not None else 0
+                return (
+                    "Checking endpoint connectivity on reduced QM-region graphs "
+                    f"({subset_count}/{total_count} atoms from qmindices.dat)"
+                )
+        return "Checking endpoint connectivity"
+
     def run_recursive_minimize(self, input_chain: Chain, tree_node_index=0) -> TreeNode:
         """Will take a chain as an input and run NEB minimizations until it exits out.
         NEB can exit due to the chain being converged, the chain needing to be split,
@@ -248,7 +265,7 @@ class MSMEP:
 
         if getattr(self.inputs.path_min_inputs, "skip_identical_graphs", True) and input_chain[0].has_molecular_graph:
             if not _get_verbose(self.inputs):
-                update_status("Checking endpoint connectivity")
+                update_status(self._endpoint_connectivity_status(input_chain))
             if _is_connectivity_identical(
                 input_chain[0],
                 input_chain[-1],
@@ -333,6 +350,8 @@ class MSMEP:
         self._disable_molecular_graphs(input_chain)
 
         if getattr(self.inputs.path_min_inputs, "skip_identical_graphs", True) and input_chain[0].has_molecular_graph:
+            if not _get_verbose(self.inputs):
+                update_status(self._endpoint_connectivity_status(input_chain))
             if _is_connectivity_identical(
                 input_chain[0],
                 input_chain[-1],

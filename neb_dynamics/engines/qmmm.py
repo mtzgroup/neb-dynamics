@@ -90,6 +90,7 @@ class QMMMEngine(Engine):
         else:
             raise ValueError("QMMMEngine needs either tcin_text or tcin_fp.")
         self.qmindices = self.qminds_fp.read_text()
+        self.qm_atom_indices = self._parse_qm_atom_indices(self.qmindices)
         self.prmtop = self.prmtop_fp.read_text()
         self.ref_rst7_react = self.rst7_fp_react.read_text()
         self.ref_rst7_prod = self.rst7_fp_prod.read_text() if self.rst7_fp_prod else None
@@ -97,13 +98,30 @@ class QMMMEngine(Engine):
             self.ref_rst7_react)
         self.indices_coordinates = indices_coordinates
 
-    def _active_atom_indices_for_structure(self, structure: Structure) -> list[int]:
+    @staticmethod
+    def _parse_qm_atom_indices(qmindices_text: str) -> list[int]:
+        indices: list[int] = []
+        for raw_line in qmindices_text.splitlines():
+            line = raw_line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            for token in line.replace(",", " ").split():
+                m = re.search(r"-?\d+", token)
+                if not m:
+                    continue
+                idx = int(m.group())
+                if idx >= 0:
+                    indices.append(idx)
+        parsed = sorted(set(indices))
+        if len(parsed) == 0:
+            raise ValueError(
+                "QMMMEngine qmindices.dat did not contain any non-negative atom indices."
+            )
+        return parsed
+
+    def _qm_region_atom_indices_for_structure(self, structure: Structure) -> list[int]:
         n_atoms = len(structure.symbols)
-        frozen_set = {i for i in self.frozen_atom_indices if 0 <= i < n_atoms}
-        active_indices = [i for i in range(n_atoms) if i not in frozen_set]
-        if not active_indices:
-            active_indices = list(range(n_atoms))
-        return active_indices
+        return [i for i in self.qm_atom_indices if 0 <= i < n_atoms]
 
     @staticmethod
     def _subset_structure(structure: Structure, atom_indices: list[int]) -> Structure:
@@ -116,21 +134,29 @@ class QMMMEngine(Engine):
         )
 
     def _make_structure_node(self, structure: Structure) -> StructureNode:
-        active_indices = self._active_atom_indices_for_structure(structure)
+        active_indices = self._qm_region_atom_indices_for_structure(structure)
         try:
+            if len(active_indices) == 0:
+                raise ValueError(
+                    "No in-range QM indices were found for this structure; skipping graph construction."
+                )
             active_structure = self._subset_structure(structure, active_indices)
             graph = structure_to_molecule(active_structure)
             has_graph = True
         except Exception:
             graph = None
             has_graph = False
-        return StructureNode(
+        node = StructureNode(
             structure=structure,
             has_molecular_graph=has_graph,
             graph=graph,
             comparison_atom_indices=active_indices,
             disable_smiles=True,
         )
+        setattr(node, "graph_atom_indices_source", "qmmm_qmindices")
+        setattr(node, "graph_subset_atom_count", len(active_indices))
+        setattr(node, "graph_total_atom_count", len(structure.symbols))
+        return node
 
     def _dump_debug_inputs(self, rst7_strings: list[str]) -> None:
         if not self.debug_dump_inputs or len(rst7_strings) == 0:
@@ -376,7 +402,7 @@ class QMMMEngine(Engine):
     def _compute_enegrad(self, rst7_strings):
 
         inputs = [self._construct_input(string) for string in rst7_strings]
-        qminds = [int(x) for x in self.qmindices.strip().split("\n")]
+        qminds = list(self.qm_atom_indices)
         self._dump_debug_inputs(rst7_strings)
 
         try:
@@ -505,7 +531,7 @@ class QMMMEngine(Engine):
             grads = np.array([node.gradient for node in chain])
 
         except GradientsNotComputedError:
-            qminds = [int(v) for v in self.qmindices.strip().split("\n")]
+            qminds = list(self.qm_atom_indices)
 
             rst7strings = [self.structure_to_rst7(
                 qmstructure=node.structure) for node in chain]
@@ -723,6 +749,8 @@ class QMMMEngine(Engine):
         final_coords_bohr[np.array(active_atom_indices, dtype=int)] = final_active_bohr
         updated_node = node.copy().update_coords(final_coords_bohr)
         ts_node = self._make_structure_node(updated_node.structure)
+        ts_node.has_molecular_graph = False
+        ts_node.graph = None
         ts_node._cached_energy = self.compute_energies([ts_node])[0]
         return ts_node
 

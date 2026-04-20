@@ -23,6 +23,8 @@ def _structure_at_x(x: float) -> Structure:
 
 def test_qmmm_run_minimize_disables_molecular_graphs(monkeypatch):
     class QMMMEngine:
+        disable_molecular_graphs = True
+
         def compute_gradients(self, chain):
             for node in chain:
                 node._cached_gradient = np.zeros_like(node.coords)
@@ -60,6 +62,45 @@ def test_qmmm_run_minimize_disables_molecular_graphs(monkeypatch):
 
     assert all(node.has_molecular_graph is False for node in chain)
     assert all(node.graph is None for node in chain)
+
+
+def test_recursive_connectivity_status_mentions_qmregion_graph_reduction(monkeypatch):
+    class _Engine:
+        def compute_gradients(self, chain):
+            for node in chain:
+                node._cached_gradient = np.zeros_like(node.coords)
+            return np.array([node._cached_gradient for node in chain])
+
+    inputs = SimpleNamespace(
+        path_min_method="NEB",
+        path_min_inputs=SimpleNamespace(v=False, skip_identical_graphs=True),
+        chain_inputs=ChainInputs(),
+        gi_inputs=SimpleNamespace(nimages=2),
+        optimizer_kwds={"name": "cg", "timestep": 0.1},
+        engine=_Engine(),
+    )
+    m = MSMEP(inputs=inputs)
+    nodes = [StructureNode(structure=_structure_at_x(0.7)), StructureNode(structure=_structure_at_x(1.3))]
+    for node in nodes:
+        node.has_molecular_graph = True
+        node.graph_atom_indices_source = "qmmm_qmindices"
+        node.comparison_atom_indices = [0]
+    chain = Chain.model_validate({"nodes": nodes, "parameters": inputs.chain_inputs})
+
+    captured_status: list[str] = []
+    monkeypatch.setattr(msmep_module, "update_status", lambda msg: captured_status.append(str(msg)))
+    monkeypatch.setattr(msmep_module, "_is_connectivity_identical", lambda *args, **kwargs: False)
+    monkeypatch.setattr(msmep_module, "is_identical", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        MSMEP,
+        "run_minimize_chain",
+        lambda self, input_chain: (SimpleNamespace(chain_trajectory=[input_chain]), SimpleNamespace(is_elem_step=True)),
+    )
+
+    _ = m.run_recursive_minimize(chain)
+
+    assert any("reduced QM-region graphs" in msg for msg in captured_status)
+    assert any("qmindices.dat" in msg for msg in captured_status)
 
 
 def test_parallel_worker_forces_non_verbose_for_live_monitor_stability(monkeypatch):

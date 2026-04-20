@@ -234,6 +234,39 @@ def test_runinputs_qmmm_uses_chain_frozen_indices_by_default(tmp_path):
     assert run_inputs.engine.frozen_atom_indices == [0, 1, 2]
 
 
+def test_qmmm_make_structure_node_uses_qmindices_for_graph_subset(tmp_path):
+    _write_minimal_qmmm_files(tmp_path)
+    (tmp_path / "qmindices.dat").write_text("0\n2\n")
+    eng = QMMMEngine(
+        tcin_text="run gradient\n",
+        qminds_fp=tmp_path / "qmindices.dat",
+        prmtop_fp=tmp_path / "ref.prmtop",
+        rst7_fp_react=tmp_path / "ref.rst7",
+        compute_program="qcop",
+        frozen_atom_indices=[1, 2, 3],
+    )
+    node = eng._make_structure_node(
+        Structure(
+            geometry=np.array(
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                ]
+            ),
+            symbols=["H", "H", "H", "H"],
+            charge=0,
+            multiplicity=1,
+        )
+    )
+
+    assert node.comparison_atom_indices == [0, 2]
+    assert getattr(node, "graph_atom_indices_source", None) == "qmmm_qmindices"
+    assert getattr(node, "graph_subset_atom_count", None) == 2
+    assert getattr(node, "graph_total_atom_count", None) == 4
+
+
 def test_qmmm_engine_debug_dump_inputs_writes_selected_nodes(monkeypatch, tmp_path):
     _write_minimal_qmmm_files(tmp_path)
 
