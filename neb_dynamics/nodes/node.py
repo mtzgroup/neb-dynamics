@@ -125,6 +125,9 @@ class StructureNode(Node):
     _cached_gradient: list = None
     comparison_atom_indices: list[int] | None = None
     disable_smiles: bool = False
+    graph_atom_indices_source: str | None = None
+    graph_subset_atom_count: int | None = None
+    graph_total_atom_count: int | None = None
 
     _cached_result: Union[ProgramOutput, FakeQCIOOutput] = None
     graph: Molecule = None
@@ -133,6 +136,10 @@ class StructureNode(Node):
         if self.comparison_atom_indices is not None:
             self.comparison_atom_indices = [int(i) for i in self.comparison_atom_indices]
         self.disable_smiles = bool(self.disable_smiles)
+        if self.graph_subset_atom_count is not None:
+            self.graph_subset_atom_count = int(self.graph_subset_atom_count)
+        if self.graph_total_atom_count is not None:
+            self.graph_total_atom_count = int(self.graph_total_atom_count)
         if self.has_molecular_graph and self.graph is None:
             self.graph = structure_to_molecule(self.structure)
         if not self.has_molecular_graph:

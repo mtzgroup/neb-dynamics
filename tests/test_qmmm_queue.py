@@ -265,6 +265,11 @@ def test_qmmm_make_structure_node_uses_qmindices_for_graph_subset(tmp_path):
     assert getattr(node, "graph_atom_indices_source", None) == "qmmm_qmindices"
     assert getattr(node, "graph_subset_atom_count", None) == 2
     assert getattr(node, "graph_total_atom_count", None) == 4
+    node_copy = node.copy()
+    assert node_copy.comparison_atom_indices == [0, 2]
+    assert node_copy.graph_atom_indices_source == "qmmm_qmindices"
+    assert node_copy.graph_subset_atom_count == 2
+    assert node_copy.graph_total_atom_count == 4
 
 
 def test_qmmm_engine_debug_dump_inputs_writes_selected_nodes(monkeypatch, tmp_path):
