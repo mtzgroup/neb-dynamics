@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-04-09T11:06:39.116862",
+  "base_name": "oxycope_recursive_bench",
+  "run_state": "running",
+  "phase": "initial_recursive_request",
+  "recursive": true,
+  "parallel": false,
+  "network_splits": false,
+  "path_min_method": "neb"
+}

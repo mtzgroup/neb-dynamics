@@ -4877,7 +4877,7 @@ def drive(
     inputs: Annotated[str, typer.Option("--inputs", "-i", help="Path minimization RunInputs TOML")] = None,
     smiles: Annotated[str, typer.Option("--smiles", "-s", help="Root reactant SMILES to bootstrap a drive workspace before opening the UI")] = None,
     product_smiles: Annotated[str, typer.Option("--product-smiles", "--end", help="Optional product / end SMILES to bootstrap a target node and queued NEB edge")] = None,
-    start_xyz_fp: Annotated[str, typer.Option("--start-xyz-fp", "--start-xyz", "--reactant-xyz-fp", help="Path to reactant/start XYZ file used to seed endpoint geometry")] = None,
+    start_xyz_fp: Annotated[str, typer.Option("--start-xyz-fp", "--start-xyz", "--reactant-xyz-fp", help="Path to reactant/start XYZ file used to seed endpoint geometry. Multi-frame XYZ files seed one initial network node per frame.")] = None,
     end_xyz_fp: Annotated[str, typer.Option("--end-xyz-fp", "--end-xyz", "--product-xyz-fp", help="Path to product/end XYZ file used to seed endpoint geometry")] = None,
     environment: Annotated[str, typer.Option("--environment", "-e", help="Environment SMILES for SMILES-based drive initialization")] = "",
     charge: Annotated[int, typer.Option("--charge", help="Total charge for SMILES-bootstrapped drive endpoint structures")] = 0,
@@ -4899,6 +4899,7 @@ def drive(
     network_splits: Annotated[bool, typer.Option("--network-splits/--no-network-splits", help="Use recursive autosplit results to build the displayed network overlay")] = True,
     hawaii: Annotated[bool, typer.Option("--hawaii/--no-hawaii", help="Run autonomous connect/NEB/Hessian exploration loop on startup")] = False,
     hawaii_discovery_tools: Annotated[str, typer.Option("--hawaii-discovery-tools", help="Comma-separated Hawaii discovery tools: hessian-sample, retropaths, nanoreactor. Empty string disables discovery.")] = None,
+    hessian_sample_dr: Annotated[float, typer.Option("--hessian-sample-dr", help="Default Hessian sample displacement (`dr`) used by manual Drive sampling and as Hawaii's base Hessian displacement.")] = 1.0,
     no_open: Annotated[bool, typer.Option("--no-open", help="Do not auto-open the browser")] = False,
 ):
     console.print(BANNER)
@@ -4914,6 +4915,8 @@ def drive(
         )
     if parallel_autosplit_workers < 1:
         raise typer.BadParameter("--parallel-autosplit-workers must be at least 1.")
+    if float(hessian_sample_dr) <= 0:
+        raise typer.BadParameter("--hessian-sample-dr must be positive.")
     if (smiles or has_xyz_bootstrap) and inputs is None:
         raise typer.BadParameter("--inputs/-i is required when using --smiles or --start-xyz-fp.")
     if end_xyz_fp and not has_xyz_bootstrap and not smiles:
@@ -4943,6 +4946,7 @@ def drive(
         "network_splits": network_splits,
         "hawaii": hawaii,
         "hawaii_discovery_tools": hawaii_discovery_tools,
+        "hessian_sample_dr": float(hessian_sample_dr),
         "open_browser": not no_open,
     }
 

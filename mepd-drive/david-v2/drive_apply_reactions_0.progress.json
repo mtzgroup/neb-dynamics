@@ -1,0 +1,15 @@
+{
+  "network": {
+    "edges": [],
+    "nodes": [
+      {
+        "growing": false,
+        "id": 0,
+        "label": "0"
+      }
+    ]
+  },
+  "note": "Merged 0 new node(s), created 0 new edge(s), expanded 1 node(s), and optimized 0 Retropaths-generated minima (0 failed).",
+  "phase": "finished",
+  "title": "Applying reaction templates to node 0"
+}

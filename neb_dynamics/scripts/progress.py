@@ -96,7 +96,10 @@ class ProgressPrinter:
     """
 
     def __init__(self, use_rich: bool = True, update_interval: float = 0.1):
-        self.use_rich = use_rich and _rich_available
+        self._silent_terminal = str(
+            os.environ.get("NEB_DISCOVERY_SILENT_TERMINAL", "")
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.use_rich = use_rich and _rich_available and not self._silent_terminal
         self.update_interval = update_interval
         self._last_print_time = 0.0
         self._current_task_id = None
@@ -510,7 +513,7 @@ class ProgressPrinter:
                 total=total,
                 completed=0
             )
-        else:
+        elif not self._silent_terminal:
             sys.stdout.write(f"{description}\n")
             sys.stdout.flush()
 
@@ -552,7 +555,7 @@ class ProgressPrinter:
                 if not self._status_active:
                     self._status.start()
                     self._status_active = True
-            else:
+            elif not self._silent_terminal:
                 sys.stdout.write(f"[{monitor_id}] {message}\n")
                 sys.stdout.flush()
 
@@ -575,7 +578,7 @@ class ProgressPrinter:
                     self._status.start()
                     self._status_active = True
                 self._status.update(message)
-            elif not self.use_rich:
+            elif not self._silent_terminal:
                 sys.stdout.write(f"[{monitor_id}] {message}\n")
                 sys.stdout.flush()
 
@@ -662,7 +665,7 @@ class ProgressPrinter:
                     line += f"[{style}]{text}[/{style}]"
                 _console.print(line, end="\n")
                 sys.stdout.flush()
-            else:
+            elif not self._silent_terminal:
                 line = (
                     f"[{monitor_id}] step {step} | TS gperp: {ts_grad:.4f} | "
                     f"max rms: {max_rms_grad:.4f} | tspring: {ts_triplet_gspring:.4f}"
@@ -687,7 +690,7 @@ class ProgressPrinter:
                 self._live = None
             if self.use_rich:
                 _console.print(f"\n[bold green]✓[/bold green] [{monitor_id}] {message}")
-            else:
+            elif not self._silent_terminal:
                 print(f"\n[{monitor_id}] {message}")
 
     def print_warning(self, message: str):
@@ -700,7 +703,7 @@ class ProgressPrinter:
                 self._live = None
             if self.use_rich:
                 _console.print(f"[yellow]⚠ [{monitor_id}] {message}[/yellow]")
-            else:
+            elif not self._silent_terminal:
                 print(f"[{monitor_id}] WARNING: {message}")
 
     def print_error(self, message: str):
@@ -713,7 +716,7 @@ class ProgressPrinter:
                 self._live = None
             if self.use_rich:
                 _console.print(f"[bold red]✗ [{monitor_id}] {message}[/bold red]")
-            else:
+            elif not self._silent_terminal:
                 print(f"[{monitor_id}] ERROR: {message}")
 
     def print_chain_ascii(self, ascii_plot: str, caption: str, force_update: bool = False):
@@ -738,7 +741,7 @@ class ProgressPrinter:
 
             if self.use_rich:
                 self._render_live_monitors()
-            else:
+            elif not self._silent_terminal:
                 sys.stdout.write(f"\n[{monitor_id}] {caption}\n{ascii_plot}\n")
                 sys.stdout.flush()
             self._write_current_payload(monitor_id, state)
@@ -777,7 +780,7 @@ class ProgressPrinter:
                     self._live = None
 
                 _console.print(table)
-            else:
+            elif not self._silent_terminal:
                 sys.stdout.write(f"\n[{monitor_id}] {caption}\n{ascii_plot}\n")
                 sys.stdout.flush()
 
@@ -852,7 +855,7 @@ class ProgressPrinter:
                     _console.print()
                     _console.print(Text(ascii_block, style="cyan"), markup=False)
                 _console.print(f"[bold green][{monitor_id}] {message}[/bold green]")
-            else:
+            elif not self._silent_terminal:
                 if ascii_block:
                     print()
                     print(ascii_block)

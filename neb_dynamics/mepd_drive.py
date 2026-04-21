@@ -695,34 +695,85 @@ def _parse_xyz_text_to_structure(
     charge: int = 0,
     multiplicity: int = 1,
 ) -> Structure:
-    lines = [line.rstrip() for line in xyz_text.strip().splitlines() if line.strip()]
-    if len(lines) < 3:
-        raise ValueError("XYZ text must contain an atom count, comment line, and atom rows.")
-
-    try:
-        atom_count = int(lines[0].strip())
-    except ValueError as exc:
-        raise ValueError("First XYZ line must be an integer atom count.") from exc
-
-    atom_lines = lines[2 : 2 + atom_count]
-    if len(atom_lines) != atom_count:
-        raise ValueError(f"XYZ text declared {atom_count} atoms but only {len(atom_lines)} rows were provided.")
-
-    symbols: list[str] = []
-    geometry_angstrom: list[list[float]] = []
-    for line in atom_lines:
-        parts = line.split()
-        if len(parts) < 4:
-            raise ValueError(f"Invalid XYZ atom row: {line}")
-        symbols.append(parts[0])
-        geometry_angstrom.append([float(parts[1]), float(parts[2]), float(parts[3])])
-
-    return Structure(
-        symbols=symbols,
-        geometry=[[value * ANGSTROM_TO_BOHR for value in row] for row in geometry_angstrom],
+    structures = _parse_xyz_text_to_structures(
+        xyz_text,
         charge=charge,
         multiplicity=multiplicity,
     )
+    return structures[0]
+
+
+def _parse_xyz_text_to_structures(
+    xyz_text: str,
+    *,
+    charge: int = 0,
+    multiplicity: int = 1,
+) -> list[Structure]:
+    raw_lines = [line.rstrip() for line in str(xyz_text or "").splitlines()]
+    if not any(line.strip() for line in raw_lines):
+        raise ValueError("XYZ text must contain an atom count, comment line, and atom rows.")
+
+    structures: list[Structure] = []
+    line_index = 0
+    frame_index = 0
+
+    while line_index < len(raw_lines):
+        while line_index < len(raw_lines) and not raw_lines[line_index].strip():
+            line_index += 1
+        if line_index >= len(raw_lines):
+            break
+
+        frame_index += 1
+        atom_count_line = raw_lines[line_index].strip()
+        line_index += 1
+        try:
+            atom_count = int(atom_count_line)
+        except ValueError as exc:
+            if frame_index == 1:
+                raise ValueError("First XYZ line must be an integer atom count.") from exc
+            raise ValueError(f"Frame {frame_index} atom-count line must be an integer.") from exc
+        if atom_count <= 0:
+            raise ValueError(f"Frame {frame_index} must declare at least one atom.")
+        if line_index >= len(raw_lines):
+            raise ValueError(f"Frame {frame_index} is missing the XYZ comment line.")
+
+        # Consume the frame comment line.
+        line_index += 1
+
+        symbols: list[str] = []
+        geometry_angstrom: list[list[float]] = []
+        while len(symbols) < atom_count:
+            while line_index < len(raw_lines) and not raw_lines[line_index].strip():
+                line_index += 1
+            if line_index >= len(raw_lines):
+                raise ValueError(
+                    f"XYZ frame {frame_index} declared {atom_count} atoms but only {len(symbols)} rows were provided."
+                )
+            atom_line = raw_lines[line_index].strip()
+            line_index += 1
+
+            parts = atom_line.split()
+            if len(parts) < 4:
+                raise ValueError(f"Invalid XYZ atom row in frame {frame_index}: {atom_line}")
+            try:
+                x, y, z = float(parts[1]), float(parts[2]), float(parts[3])
+            except ValueError as exc:
+                raise ValueError(f"Invalid XYZ coordinates in frame {frame_index}: {atom_line}") from exc
+            symbols.append(parts[0])
+            geometry_angstrom.append([x, y, z])
+
+        structures.append(
+            Structure(
+                symbols=symbols,
+                geometry=[[value * ANGSTROM_TO_BOHR for value in row] for row in geometry_angstrom],
+                charge=int(charge),
+                multiplicity=int(multiplicity),
+            )
+        )
+
+    if not structures:
+        raise ValueError("XYZ text must contain at least one complete frame.")
+    return structures
 
 
 def _read_xyz_file_text(path_value: str | None, *, label: str) -> str:
@@ -830,6 +881,32 @@ def _resolve_species_input(
         )
 
     return _species_payload(smiles=smiles, structure=structure)
+
+
+def _resolve_additional_species_inputs(
+    *,
+    smiles: str,
+    xyz_text: str,
+    charge: int = 0,
+    multiplicity: int = 1,
+) -> list[dict[str, Any]]:
+    if str(smiles or "").strip():
+        return []
+    xyz_text = str(xyz_text or "").strip()
+    if not xyz_text:
+        return []
+    structures = _parse_xyz_text_to_structures(
+        xyz_text,
+        charge=charge,
+        multiplicity=multiplicity,
+    )
+    if len(structures) <= 1:
+        return []
+    additional_payloads: list[dict[str, Any]] = []
+    for structure in structures[1:]:
+        species_smiles = _quiet_force_smiles(structure_to_molecule(structure))
+        additional_payloads.append(_species_payload(smiles=species_smiles, structure=structure))
+    return additional_payloads
 
 
 def _species_structure_from_payload(species: dict[str, Any] | None) -> Structure | None:
@@ -1014,6 +1091,55 @@ def _apply_bootstrap_species_overrides(
         pot.graph.nodes[0]["endpoint_optimized"] = False
     pot.write_to_disk(workspace.neb_pot_fp)
     _bootstrap_product_endpoint(workspace, product)
+
+
+def _add_bootstrap_species_nodes(
+    workspace: RetropathsWorkspace,
+    *,
+    species_payloads: list[dict[str, Any]] | None,
+) -> None:
+    payloads = [dict(item) for item in (species_payloads or []) if item]
+    if not payloads or not workspace.neb_pot_fp.exists():
+        return
+
+    pot = Pot.read_from_disk(workspace.neb_pot_fp)
+    changed = False
+    for species in payloads:
+        species_graph = _species_graph_from_payload(species)
+        if species_graph is None:
+            continue
+        if _find_matching_node_by_molecule(pot, species_graph) is not None:
+            continue
+        species_td = _structure_node_from_species_payload(
+            species,
+            fallback_molecule=species_graph,
+        )
+        if species_td is None:
+            species_td = structure_node_from_graph_like_molecule(
+                species_graph,
+                charge=int(species.get("charge", 0) or 0),
+                spinmult=int(species.get("multiplicity", 1) or 1),
+            )
+        next_node_index = (max(int(node_id) for node_id in pot.graph.nodes) + 1) if pot.graph.nodes else 0
+        pot.graph.add_node(
+            int(next_node_index),
+            molecule=species_graph.copy(),
+            converged=False,
+            td=species_td,
+            endpoint_optimized=False,
+            generated_by="drive_bootstrap",
+        )
+        changed = True
+
+    if not changed:
+        return
+    pot.write_to_disk(workspace.neb_pot_fp)
+    with contextlib.suppress(Exception):
+        build_retropaths_neb_queue(
+            pot=pot,
+            queue_fp=workspace.queue_fp,
+            overwrite=False,
+        )
 
 
 def _bootstrap_minimal_drive_workspace(
@@ -1402,7 +1528,18 @@ def _extract_program_model_fields(program_kwds: Any) -> tuple[str, str]:
     return method, basis
 
 
-def _drive_defaults_payload(inputs_fp: Path | None, reactions_fp: Path | None) -> dict[str, Any]:
+def _drive_defaults_payload(
+    inputs_fp: Path | None,
+    reactions_fp: Path | None,
+    *,
+    hessian_sample_dr: float = 1.0,
+) -> dict[str, Any]:
+    try:
+        resolved_hessian_sample_dr = float(hessian_sample_dr)
+    except Exception:
+        resolved_hessian_sample_dr = 1.0
+    if resolved_hessian_sample_dr <= 0:
+        resolved_hessian_sample_dr = 1.0
     defaults = {
         "inputs_path": str(inputs_fp.resolve()) if inputs_fp else "",
         "reactions_fp": str(reactions_fp.resolve()) if reactions_fp else "",
@@ -1411,6 +1548,7 @@ def _drive_defaults_payload(inputs_fp: Path | None, reactions_fp: Path | None) -
         "program": "terachem",
         "method": "ub3lyp",
         "basis": "sto-3g",
+        "hessian_sample_dr": float(resolved_hessian_sample_dr),
     }
     if inputs_fp is None or not inputs_fp.exists():
         return defaults
@@ -2312,6 +2450,7 @@ def _initialize_workspace_job(
     network_splits: bool = True,
     progress_fp: str | None = None,
     allowed_base_dir: str | None = None,
+    additional_reactants: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     workspace_path = Path(workspace_dir).resolve()
     allowed_base = Path(allowed_base_dir).resolve() if allowed_base_dir else None
@@ -2342,6 +2481,10 @@ def _initialize_workspace_job(
             reactant=reactant,
             product=product,
         )
+        _add_bootstrap_species_nodes(
+            workspace,
+            species_payloads=additional_reactants,
+        )
         if not workspace.retropaths_pot_fp.exists():
             workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
         with contextlib.suppress(Exception):
@@ -2352,6 +2495,10 @@ def _initialize_workspace_job(
                 initialize_workspace_with_progress(workspace, progress_fp=progress_fp)
             else:
                 prepare_neb_workspace(workspace)
+            _add_bootstrap_species_nodes(
+                workspace,
+                species_payloads=additional_reactants,
+            )
             _apply_bootstrap_species_overrides(workspace, reactant=reactant, product=product)
         except Exception as exc:
             init_error = f"{type(exc).__name__}: {exc}"
@@ -2367,6 +2514,11 @@ def _initialize_workspace_job(
                         reactant=reactant,
                         product=product,
                     )
+            with contextlib.suppress(Exception):
+                _add_bootstrap_species_nodes(
+                    workspace,
+                    species_payloads=additional_reactants,
+                )
             if not workspace.retropaths_pot_fp.exists():
                 with contextlib.suppress(Exception):
                     workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
@@ -2620,7 +2772,7 @@ def _initial_input_minimization_targets(workspace: RetropathsWorkspace) -> list[
         attrs = pot.graph.nodes[node_index]
         if attrs.get("td") is None:
             continue
-        if str(attrs.get("generated_by") or "") == "drive_product_smiles":
+        if str(attrs.get("generated_by") or "") in {"drive_product_smiles", "drive_bootstrap"}:
             targets.add(int(node_index))
     return sorted(int(node_index) for node_index in targets)
 
@@ -3022,6 +3174,9 @@ def _run_unattempted_nebs(
         seen_pairs.add(pair_key)
         pending_items.append(item)
 
+    neb_progress_log_fp = str((workspace.directory / "drive_hawaii_neb.progress.log").resolve())
+    neb_chain_fp = str((workspace.directory / "drive_hawaii_neb.chain.json").resolve())
+
     if not pending_items:
         _write_hawaii_progress(
             workspace,
@@ -3035,6 +3190,8 @@ def _run_unattempted_nebs(
             dr=dr,
             control_mode=_read_hawaii_control_mode(control_fp),
             growing_nodes=[],
+            neb_progress_fp=neb_progress_log_fp,
+            neb_chain_fp=neb_chain_fp,
         )
         return 0, 0
 
@@ -3063,20 +3220,40 @@ def _run_unattempted_nebs(
         dr=dr,
         control_mode=_read_hawaii_control_mode(control_fp),
         growing_nodes=[],
+        neb_progress_fp=neb_progress_log_fp,
+        neb_chain_fp=neb_chain_fp,
     )
+
+    neb_log_path = Path(neb_progress_log_fp)
+    neb_chain_path = Path(neb_chain_fp)
+    neb_log_path.parent.mkdir(parents=True, exist_ok=True)
+    neb_chain_path.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(Exception):
+        neb_log_path.write_text("", encoding="utf-8")
+    with contextlib.suppress(Exception):
+        neb_chain_path.write_text("{}", encoding="utf-8")
+
+    old_log = os.environ.get("MEPD_DRIVE_PROGRESS_LOG")
+    old_chain = os.environ.get("MEPD_DRIVE_CHAIN_JSON")
+    old_silent = os.environ.get("NEB_DISCOVERY_SILENT_TERMINAL")
+    os.environ["MEPD_DRIVE_PROGRESS_LOG"] = str(neb_log_path)
+    os.environ["MEPD_DRIVE_CHAIN_JSON"] = str(neb_chain_path)
+    os.environ["NEB_DISCOVERY_SILENT_TERMINAL"] = "1"
 
     try:
         run_inputs = RunInputs.open(workspace.inputs_fp)
-        run_retropaths_neb_queue(
-            pot=pot,
-            run_inputs=run_inputs,
-            queue_fp=workspace.queue_fp,
-            output_dir=workspace.queue_output_dir,
-            pot_fp=workspace.neb_pot_fp,
-            max_parallel_nebs=max_parallel_nebs,
-            parallel_recursive=parallel_autosplit,
-            parallel_workers=(parallel_autosplit_workers if parallel_autosplit else None),
-        )
+        with open(neb_log_path, "a", encoding="utf-8") as neb_log_handle:
+            with redirect_stdout(neb_log_handle), redirect_stderr(neb_log_handle):
+                run_retropaths_neb_queue(
+                    pot=pot,
+                    run_inputs=run_inputs,
+                    queue_fp=workspace.queue_fp,
+                    output_dir=workspace.queue_output_dir,
+                    pot_fp=workspace.neb_pot_fp,
+                    max_parallel_nebs=max_parallel_nebs,
+                    parallel_recursive=parallel_autosplit,
+                    parallel_workers=(parallel_autosplit_workers if parallel_autosplit else None),
+                )
     except Exception as exc:
         _write_hawaii_progress(
             workspace,
@@ -3093,8 +3270,23 @@ def _run_unattempted_nebs(
             dr=dr,
             control_mode=_read_hawaii_control_mode(control_fp),
             growing_nodes=[],
+            neb_progress_fp=neb_progress_log_fp,
+            neb_chain_fp=neb_chain_fp,
         )
         return len(pending_items), len(pending_items)
+    finally:
+        if old_log is None:
+            os.environ.pop("MEPD_DRIVE_PROGRESS_LOG", None)
+        else:
+            os.environ["MEPD_DRIVE_PROGRESS_LOG"] = old_log
+        if old_chain is None:
+            os.environ.pop("MEPD_DRIVE_CHAIN_JSON", None)
+        else:
+            os.environ["MEPD_DRIVE_CHAIN_JSON"] = old_chain
+        if old_silent is None:
+            os.environ.pop("NEB_DISCOVERY_SILENT_TERMINAL", None)
+        else:
+            os.environ["NEB_DISCOVERY_SILENT_TERMINAL"] = old_silent
 
     pot = materialize_drive_graph(workspace)
     queue = build_retropaths_neb_queue(
@@ -3165,6 +3357,8 @@ def _run_unattempted_nebs(
             dr=dr,
             control_mode=_read_hawaii_control_mode(control_fp),
             growing_nodes=growing_nodes,
+            neb_progress_fp=neb_progress_log_fp,
+            neb_chain_fp=neb_chain_fp,
         )
     return attempts, failures
 
@@ -3605,6 +3799,7 @@ def _run_hawaii_autonomy(
     progress_fp: str | None = None,
     control_fp: str | None = None,
     max_hessian_candidates: int = 100,
+    hessian_sample_dr: float = 1.0,
     discovery_tools: list[str] | None = None,
 ) -> dict[str, Any]:
     workspace = RetropathsWorkspace(**workspace_data)
@@ -3613,8 +3808,18 @@ def _run_hawaii_autonomy(
         default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
     )
     current_pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
+    try:
+        base_hessian_dr = float(hessian_sample_dr)
+    except Exception:
+        base_hessian_dr = 1.0
+    if base_hessian_dr <= 0:
+        base_hessian_dr = 1.0
     hessian_enabled = "hessian-sample" in configured_tools
-    dr_schedule = (1.0, 2.0, 3.0) if hessian_enabled else (1.0,)
+    dr_schedule = (
+        tuple(base_hessian_dr * scale for scale in (1.0, 2.0, 3.0))
+        if hessian_enabled
+        else (base_hessian_dr,)
+    )
     attempted_hessian_by_dr: dict[str, set[str]] = {
         f"{float(dr):.1f}": set()
         for dr in dr_schedule
@@ -3844,7 +4049,19 @@ def _run_hawaii_autonomy(
         final_note = completion_reason
         phase = "finished"
     elif dr_index >= len(dr_schedule):
-        final_note = "Autonomous loop finished because no new minima were found at dr=1.0, 2.0, or 3.0."
+        formatted_schedule = [f"{float(value):.1f}" for value in dr_schedule]
+        if not formatted_schedule:
+            schedule_text = "1.0"
+        elif len(formatted_schedule) == 1:
+            schedule_text = formatted_schedule[0]
+        elif len(formatted_schedule) == 2:
+            schedule_text = f"{formatted_schedule[0]} or {formatted_schedule[1]}"
+        else:
+            schedule_text = ", ".join(formatted_schedule[:-1]) + f", or {formatted_schedule[-1]}"
+        final_note = (
+            "Autonomous loop finished because no new minima were found at "
+            f"dr={schedule_text}."
+        )
         phase = "finished"
     else:
         final_note = "Hawaii autonomous exploration stopped."
@@ -5732,7 +5949,8 @@ def _drive_html() -> str:
       const programDefaults = deploymentProgramDefaults(defaultsProgram);
       const defaultsMethod = String(defaults.method || programDefaults.method).trim() || programDefaults.method;
       const defaultsBasis = String(defaults.basis || programDefaults.basis).trim() || programDefaults.basis;
-      const defaultsKey = `${String(defaults.inputs_path || "")}|${defaultsEngine}|${defaultsProgram}|${defaultsMethod}|${defaultsBasis}`;
+      const defaultsHessianSampleDr = normalizeHessianSampleDr(defaults.hessian_sample_dr);
+      const defaultsKey = `${String(defaults.inputs_path || "")}|${defaultsEngine}|${defaultsProgram}|${defaultsMethod}|${defaultsBasis}|${defaultsHessianSampleDr}`;
       if (state.inputsDefaultsKey !== defaultsKey) {
         state.inputsDefaultsKey = defaultsKey;
         if (theoryEngineField) {
@@ -5747,6 +5965,7 @@ def _drive_html() -> str:
         if (theoryBasisField) {
           theoryBasisField.value = defaultsBasis;
         }
+        state.hessianSampleDr = defaultsHessianSampleDr;
       }
       if (theoryProgramField && theoryProgramField.dataset.bound !== "true") {
         theoryProgramField.dataset.bound = "true";
@@ -8458,6 +8677,7 @@ class MepdDriveServer(ThreadingHTTPServer):
         parallel_autosplit_workers: int = 4,
         network_splits: bool = True,
         hawaii_discovery_tools: Any = None,
+        hessian_sample_dr: float = 1.0,
         initial_state: dict[str, Any] | None = None,
         require_api_token: bool = False,
         api_token: str | None = None,
@@ -8477,6 +8697,9 @@ class MepdDriveServer(ThreadingHTTPServer):
             hawaii_discovery_tools,
             default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
         )
+        self.hessian_sample_dr = float(hessian_sample_dr)
+        if self.hessian_sample_dr <= 0:
+            raise ValueError("`hessian_sample_dr` must be a positive number.")
         self.require_api_token = bool(require_api_token)
         self.api_token = str(api_token or "")
         self.ui_token = self.api_token if self.require_api_token else ""
@@ -8740,6 +8963,12 @@ class MepdDriveServer(ThreadingHTTPServer):
         )
         if not reactant:
             raise ValueError("A reactant SMILES or reactant XYZ block is required.")
+        additional_reactants = _resolve_additional_species_inputs(
+            smiles=str(payload.get("reactant_smiles") or ""),
+            xyz_text=str(payload.get("reactant_xyz") or ""),
+            charge=charge,
+            multiplicity=multiplicity,
+        )
 
         product = _resolve_species_input(
             smiles=str(payload.get("product_smiles") or ""),
@@ -8830,12 +9059,13 @@ class MepdDriveServer(ThreadingHTTPServer):
             max_nodes=self.max_nodes,
             max_depth=self.max_depth,
             max_parallel_nebs=self.max_parallel_nebs,
-            parallel_autosplit_nebs=self.parallel_autosplit_nebs,
-            parallel_autosplit_workers=self.parallel_autosplit_workers,
+            parallel_autosplit_nebs=bool(getattr(self, "parallel_autosplit_nebs", False)),
+            parallel_autosplit_workers=max(1, int(getattr(self, "parallel_autosplit_workers", 4))),
             seed_only=seed_only,
             network_splits=getattr(self, "network_splits", True),
             progress_fp=progress_fp,
             allowed_base_dir=str(self.base_directory.resolve()),
+            additional_reactants=additional_reactants,
             label=initialize_label,
         )
         future.add_done_callback(_finish_initialize)
@@ -9142,6 +9372,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             progress_fp=progress_fp,
             control_fp=control_fp,
             max_hessian_candidates=100,
+            hessian_sample_dr=float(getattr(self, "hessian_sample_dr", 1.0)),
             discovery_tools=list(resolved_discovery_tools),
             label=label,
         )
@@ -9401,6 +9632,7 @@ class MepdDriveServer(ThreadingHTTPServer):
             "defaults": _drive_defaults_payload(
                 getattr(self, "inputs_fp", None),
                 getattr(self, "reactions_fp", None),
+                hessian_sample_dr=float(getattr(self, "hessian_sample_dr", 1.0)),
             ),
             "hawaii": {
                 "running": False,
@@ -9608,7 +9840,7 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 return
             if route_path == "/api/hessian-sample":
                 self.server.submit_hessian_sample(
-                    dr=float(payload.get("dr", 1.0)),
+                    dr=float(payload.get("dr", getattr(self.server, "hessian_sample_dr", 1.0))),
                     max_candidates=int(payload.get("max_candidates") or 100),
                     use_bigchem=_coerce_optional_bool(payload.get("use_bigchem")),
                     node_id=(int(payload["node_id"]) if payload.get("node_id") is not None else None),
@@ -9693,6 +9925,7 @@ def launch_mepd_drive(
     network_splits: bool = True,
     hawaii: bool = False,
     hawaii_discovery_tools: Any = None,
+    hessian_sample_dr: float = 1.0,
     open_browser: bool = True,
     startup_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> MepdDriveServer:
@@ -9700,6 +9933,9 @@ def launch_mepd_drive(
         hawaii_discovery_tools,
         default=_HAWAII_DISCOVERY_TOOL_DEFAULT,
     )
+    hessian_sample_dr = float(hessian_sample_dr)
+    if hessian_sample_dr <= 0:
+        raise ValueError("`hessian_sample_dr` must be a positive number.")
     parallel_autosplit_nebs = bool(parallel_autosplit_nebs)
     parallel_autosplit_workers = max(1, int(parallel_autosplit_workers))
     startup_base_steps = 6 if network_splits else 4
@@ -9758,6 +9994,12 @@ def launch_mepd_drive(
                 "An inputs TOML path is required to start drive from SMILES or XYZ endpoints."
             )
         reactant_payload = _resolve_species_input(
+            smiles=str(smiles or "").strip(),
+            xyz_text=reactant_xyz_text,
+            charge=int(charge),
+            multiplicity=int(multiplicity),
+        )
+        additional_reactant_payloads = _resolve_additional_species_inputs(
             smiles=str(smiles or "").strip(),
             xyz_text=reactant_xyz_text,
             charge=int(charge),
@@ -9824,6 +10066,7 @@ def launch_mepd_drive(
                 network_splits=network_splits,
                 progress_fp=None,
                 allowed_base_dir=str(base_directory.resolve()),
+                additional_reactants=additional_reactant_payloads,
             )
     else:
         base_directory = explicit_directory if explicit_directory is not None else (Path.cwd() / "mepd-drive").resolve()
@@ -9842,6 +10085,7 @@ def launch_mepd_drive(
         parallel_autosplit_workers=parallel_autosplit_workers,
         network_splits=network_splits,
         hawaii_discovery_tools=list(resolved_hawaii_discovery_tools),
+        hessian_sample_dr=hessian_sample_dr,
         initial_state=initial_state,
         require_api_token=require_api_token,
         api_token=api_token,

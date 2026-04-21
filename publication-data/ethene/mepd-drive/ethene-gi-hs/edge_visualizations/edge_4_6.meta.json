@@ -1,0 +1,40 @@
+{
+  "barrier": "182.792",
+  "cache_key": {
+    "barrier": 182.79200801785944,
+    "chains": 1,
+    "reaction": "Hessian sample edge 0->4 3",
+    "source_molecule_key": "[C]=C.[H][H]",
+    "source_node": 4,
+    "target_molecule_key": "[CH]C",
+    "target_node": 6
+  },
+  "chains": "1",
+  "edge": "4 -> 6",
+  "end": "[CH]C",
+  "href": "edge_4_6.html",
+  "reaction": "Hessian sample edge 0->4 3",
+  "source_structure": {
+    "symbols": [
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "NgpxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgLTEuMTQwMTQ1MTg0NTU5NTY1NTkgMC40ODgwODYzMzYyNzg2MDI0MyAtMC4xMTk3MzkwNTYwODI5OTc1MgpDICAtMi4zMDQ3MDM2NDY1NTY3MDI3OSAxLjAyNDA3ODU3MDk5NTE5NDI4IC0wLjE3MTk2MjM3MjU4MDAyMDczCkggIDIuMjcxNDAyNjY4OTYyMjk2MzcgLTEuMTk1MDAwMjE0NDg4MTcxMDYgLTAuMDg3ODYxOTEzMDE5MjgyNTYKSCAgMi4zNjk2NjgzNTQyMTkwMjExMSAtMC43OTQyOTYxMDQzOTkyOTE5OSAwLjU3MDYyNjM2OTE4NTc3NDE0CkggIC0wLjczMTAwMDQ1OTQ3NDQ0MDgxIC0wLjEyODg2OTAwMjc2NTYwOTk3IC0wLjkwNzM0OTM2NDg3NTQzMTgzCkggIC0wLjQ2NTIyMTczMjU5MDYwNzczIDAuNjA2MDAwNDE0MzgwMjc2NDEgMC43MTYyODYzMzczNzA5NTgzNwo="
+  },
+  "start": "[C]=C.[H][H]",
+  "target_structure": {
+    "symbols": [
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "NgpxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgMC43ODM3MDE3ODY0NzUwMjQ4NiAwLjU1NDI1ODI5MTUxNTgxMTE5IC0wLjUzNjU5MDY2Mzc5MDA0MjE3CkMgIC0wLjM2NTk4ODE0NDM0OTc3MjE3IC0wLjE2NTQ3MjU5NDI5Nzk4MjgxIC0wLjAxODU5MDA4NTQxNzkyMTU3CkggIDAuMTA1ODUwMDYwOTk0NzU3MTMgLTEuMTYyMjA5ODQ1ODE4Mjk1MjMgLTAuMDAxMzMwNTY3MjQwNzc3NjMKSCAgMS4zOTMzNjg1NTYwMDg5MzMyOCAwLjk1MTA2MzYwNjA5MzI3MjAxIDAuMjk2NDc5MzE4MjQwNjI4OTAKSCAgLTEuMTg3NTY0ODQyNzY3MDAxODAgLTAuMjI2NDg5NzE2MDc2OTI3MzEgLTAuNzMxNjQ2MzE3MDAyODQ3NDMKSCAgLTAuNzI5MzY3NDE2MzYxOTQxMTMgMC4wNDg4NTAyNTg1ODUxMjE5OSAwLjk5MTY3ODMxNTIxMTk1OTkzCg=="
+  }
+}

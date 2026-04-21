@@ -1,0 +1,91 @@
+{
+    "extras": {},
+    "input_data": {
+        "keywords": {
+            "maxiter": 500,
+            "transition": true
+        },
+        "structure": {
+            "extras": {},
+            "symbols": [
+                "C",
+                "C",
+                "H",
+                "H",
+                "H",
+                "H"
+            ],
+            "geometry": [
+                [
+                    -0.11965308281273057,
+                    -0.3730473974676768,
+                    -0.41727648788605953
+                ],
+                [
+                    -1.04519692434089,
+                    1.5198725683165901,
+                    -1.8932542007178832
+                ],
+                [
+                    0.5866901440551885,
+                    -2.1909004543582857,
+                    1.4160412353760834
+                ],
+                [
+                    2.146075807127495,
+                    -1.6460276975955732,
+                    0.7315164244874234
+                ],
+                [
+                    -2.1996211792776683,
+                    0.6286575682811248,
+                    0.2463962886556954
+                ],
+                [
+                    0.631705235250495,
+                    2.0614454128257105,
+                    -0.08342325991525931
+                ]
+            ],
+            "charge": 0,
+            "multiplicity": 1,
+            "identifiers": {
+                "extras": {}
+            },
+            "connectivity": []
+        },
+        "extras": {},
+        "files": {},
+        "cmdline_args": [],
+        "calctype": "transition_state",
+        "subprogram": "terachem",
+        "subprogram_args": {
+            "keywords": {
+                "threads": 1
+            },
+            "extras": {},
+            "files": {},
+            "cmdline_args": [],
+            "model": {
+                "extras": {},
+                "method": "uwb97xd3",
+                "basis": "def2-svp"
+            }
+        }
+    },
+    "success": false,
+    "data": {
+        "extras": {},
+        "files": {}
+    },
+    "traceback": "Traceback (most recent call last):\n  File \"/opt/conda/lib/python3.12/site-packages/qcop/adapters/geometric.py\", line 110, in compute_results\n    optimizer.optimizeGeometry()\n  File \"/opt/conda/lib/python3.12/site-packages/geometric/optimize.py\", line 1042, in optimizeGeometry\n    raise GeomOptNotConvergedError(\"Optimizer.optimizeGeometry() failed to converge.\")\ngeometric.errors.GeomOptNotConvergedError: Optimizer.optimizeGeometry() failed to converge.\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/opt/conda/lib/python3.12/site-packages/qcop/adapters/base.py\", line 160, in compute\n    results, stdout = self.compute_results(\n                      ^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/conda/lib/python3.12/site-packages/qcop/adapters/geometric.py\", line 112, in compute_results\n    raise ExternalProgramError(\nqcop.exceptions.ExternalProgramError: geomeTRIC optimization failed. See the traceback above for details.\n",
+    "provenance": {
+        "extras": {},
+        "program": "geometric",
+        "program_version": "1.1",
+        "scratch_dir": "/tmp/tmppsoms9vh",
+        "wall_time": 5581.838161,
+        "hostname": "fire-09-02",
+        "hostcpus": 12
+    }
+}

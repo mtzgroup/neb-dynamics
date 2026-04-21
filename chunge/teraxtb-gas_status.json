@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-04-17T11:21:56.114973",
+  "base_name": "teraxtb-gas",
+  "run_state": "completed",
+  "phase": "complete",
+  "recursive": true,
+  "parallel": false,
+  "network_splits": false,
+  "path_min_method": "neb",
+  "output_chain_path": "/Users/janestrada/mepd/neb-dynamics/chunge/teraxtb-gas.xyz",
+  "tree_path": "/Users/janestrada/mepd/neb-dynamics/chunge/teraxtb-gas"
+}

@@ -1,0 +1,12 @@
+{
+  "environment_smiles": "",
+  "inputs_fp": "/home/jdep/T3D_data/networks/DavidDumas/drive/mepd-drive/_drive_inputs/david.toml",
+  "max_depth": 4,
+  "max_nodes": 40,
+  "max_parallel_nebs": 1,
+  "reactions_fp": "/home/jdep/T3D_data/.venv/lib/retropaths/data/reactions.p",
+  "root_smiles": "CC(C)(c1ccc([O])cc1)c1ccc([O])cc1.O.O.O=C=O.[Na].[Na]",
+  "run_name": "david",
+  "timeout_seconds": 30,
+  "workdir": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/david"
+}

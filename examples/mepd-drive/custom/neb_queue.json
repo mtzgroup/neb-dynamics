@@ -1,0 +1,28 @@
+{
+  "attempted_pairs": {
+    "86163ae3b2d017b78fb71afa96b2f14d6cb32874cfdf1a8ced32a514de86a62c": {
+      "job_id": "0->1",
+      "source_node": 0,
+      "started_at": "2026-04-07T15:22:20",
+      "status": "running",
+      "target_node": 1
+    }
+  },
+  "items": [
+    {
+      "attempt_key": "86163ae3b2d017b78fb71afa96b2f14d6cb32874cfdf1a8ced32a514de86a62c",
+      "created_at": "2026-04-07T22:22:20.706151+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "0->1",
+      "output_chain_xyz": null,
+      "reaction": "Product target",
+      "result_dir": null,
+      "source_node": 0,
+      "started_at": "2026-04-07T15:22:20",
+      "status": "running",
+      "target_node": 1
+    }
+  ],
+  "version": 1
+}

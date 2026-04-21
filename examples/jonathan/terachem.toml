@@ -1,0 +1,80 @@
+engine_name = "chemcloud"
+program = "terachem"
+write_qcio = true
+path_min_method = "neb"
+
+[qmmm_inputs]
+
+[nanoreactor_inputs]
+
+[path_min_inputs]
+climb = false
+en_thre = 0.0001
+rms_grad_thre = 0.02
+max_rms_grad_thre = 0.05
+skip_identical_graphs = true
+ts_grad_thre = 0.05
+ts_spring_thre = 0.02
+barrier_thre = 0.1
+early_stop_force_thre = 0.0
+negative_steps_thre = 5
+positive_steps_thre = 10
+use_geodesic_tangent = false
+do_elem_step_checks = false
+max_steps = 500
+v = false
+
+[chain_inputs]
+k = 0.1
+delta_k = 0.09
+do_parallel = true
+use_geodesic_interpolation = true
+friction_optimal_gi = true
+node_freezing = true
+node_rms_thre = 5.0
+node_ene_thre = 5.0
+frozen_atom_indices = ""
+
+[gi_inputs]
+nimages = 10
+friction = 0.001
+nudge = 0.1
+align = true
+
+[gi_inputs.extra_kwds]
+
+[network_inputs]
+n_max_conformers = 10
+subsample_confs = true
+conf_rmsd_cutoff = 0.5
+network_nodes_are_conformers = false
+maximum_barrier_height = 1000
+use_slurm = false
+verbose = true
+tolerate_kinks = true
+CREST_temp = 298.15
+CREST_ewin = 6.0
+collapse_node_rms_thre = 5.0
+collapse_node_ene_thre = 5.0
+
+[program_kwds]
+cmdline_args = []
+
+[program_kwds.keywords]
+cis = "yes"
+cistarget = 1
+cisnumstates = 1
+
+[program_kwds.extras]
+
+[program_kwds.files]
+
+[program_kwds.model]
+method = "b3lyp"
+basis = "sto-3g"
+
+[program_kwds.model.extras]
+
+[optimizer_kwds]
+name = "cg"
+timestep = 0.5

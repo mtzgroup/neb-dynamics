@@ -1,0 +1,9 @@
+{
+  "generated_at": "2026-04-08T14:34:50.466696",
+  "base_name": "dakin_baseline",
+  "run_state": "running",
+  "phase": "path_minimization",
+  "recursive": false,
+  "network_splits": false,
+  "path_min_method": "neb"
+}

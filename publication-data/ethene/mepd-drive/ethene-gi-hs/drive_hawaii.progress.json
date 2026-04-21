@@ -1,0 +1,271 @@
+{
+  "control_mode": "go",
+  "dr": 3.0,
+  "neb": {},
+  "network": {
+    "edges": [
+      {
+        "source": 0,
+        "target": 1
+      },
+      {
+        "source": 0,
+        "target": 2
+      },
+      {
+        "source": 0,
+        "target": 3
+      },
+      {
+        "source": 0,
+        "target": 4
+      },
+      {
+        "source": 0,
+        "target": 5
+      },
+      {
+        "source": 0,
+        "target": 6
+      },
+      {
+        "source": 0,
+        "target": 7
+      },
+      {
+        "source": 1,
+        "target": 0
+      },
+      {
+        "source": 1,
+        "target": 2
+      },
+      {
+        "source": 1,
+        "target": 3
+      },
+      {
+        "source": 1,
+        "target": 4
+      },
+      {
+        "source": 1,
+        "target": 5
+      },
+      {
+        "source": 1,
+        "target": 6
+      },
+      {
+        "source": 1,
+        "target": 7
+      },
+      {
+        "source": 2,
+        "target": 0
+      },
+      {
+        "source": 2,
+        "target": 1
+      },
+      {
+        "source": 2,
+        "target": 3
+      },
+      {
+        "source": 2,
+        "target": 4
+      },
+      {
+        "source": 2,
+        "target": 5
+      },
+      {
+        "source": 2,
+        "target": 6
+      },
+      {
+        "source": 2,
+        "target": 7
+      },
+      {
+        "source": 3,
+        "target": 0
+      },
+      {
+        "source": 3,
+        "target": 1
+      },
+      {
+        "source": 3,
+        "target": 2
+      },
+      {
+        "source": 3,
+        "target": 4
+      },
+      {
+        "source": 3,
+        "target": 5
+      },
+      {
+        "source": 3,
+        "target": 6
+      },
+      {
+        "source": 3,
+        "target": 7
+      },
+      {
+        "source": 4,
+        "target": 0
+      },
+      {
+        "source": 4,
+        "target": 1
+      },
+      {
+        "source": 4,
+        "target": 2
+      },
+      {
+        "source": 4,
+        "target": 3
+      },
+      {
+        "source": 4,
+        "target": 5
+      },
+      {
+        "source": 4,
+        "target": 6
+      },
+      {
+        "source": 4,
+        "target": 7
+      },
+      {
+        "source": 5,
+        "target": 0
+      },
+      {
+        "source": 5,
+        "target": 2
+      },
+      {
+        "source": 5,
+        "target": 3
+      },
+      {
+        "source": 5,
+        "target": 4
+      },
+      {
+        "source": 5,
+        "target": 6
+      },
+      {
+        "source": 5,
+        "target": 7
+      },
+      {
+        "source": 6,
+        "target": 0
+      },
+      {
+        "source": 6,
+        "target": 1
+      },
+      {
+        "source": 6,
+        "target": 2
+      },
+      {
+        "source": 6,
+        "target": 3
+      },
+      {
+        "source": 6,
+        "target": 4
+      },
+      {
+        "source": 6,
+        "target": 7
+      },
+      {
+        "source": 7,
+        "target": 0
+      },
+      {
+        "source": 7,
+        "target": 1
+      },
+      {
+        "source": 7,
+        "target": 2
+      },
+      {
+        "source": 7,
+        "target": 3
+      },
+      {
+        "source": 7,
+        "target": 4
+      },
+      {
+        "source": 7,
+        "target": 5
+      },
+      {
+        "source": 7,
+        "target": 6
+      }
+    ],
+    "nodes": [
+      {
+        "growing": false,
+        "id": 0,
+        "label": "C=C"
+      },
+      {
+        "growing": false,
+        "id": 1,
+        "label": "C#C.[H][H]"
+      },
+      {
+        "growing": false,
+        "id": 2,
+        "label": "[C]#C.[H].[H][H]"
+      },
+      {
+        "growing": false,
+        "id": 3,
+        "label": "C#C.[H].[H]"
+      },
+      {
+        "growing": false,
+        "id": 4,
+        "label": "[C]=C.[H][H]"
+      },
+      {
+        "growing": false,
+        "id": 5,
+        "label": "[CH2].[CH2]"
+      },
+      {
+        "growing": false,
+        "id": 6,
+        "label": "[CH]C"
+      },
+      {
+        "growing": false,
+        "id": 7,
+        "label": "[CH]=C.[H]"
+      }
+    ]
+  },
+  "note": "Autonomous loop finished because no new minima were found at dr=1.0, 2.0, or 3.0.",
+  "phase": "finished",
+  "stage": "finished",
+  "title": "Hawaii autonomous exploration"
+}

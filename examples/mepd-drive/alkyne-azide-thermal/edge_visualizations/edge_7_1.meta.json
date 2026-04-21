@@ -1,0 +1,44 @@
+{
+  "barrier": "7.633",
+  "cache_key": {
+    "barrier": 7.633354337258975,
+    "chains": 1,
+    "reaction": "Hessian sample edge 0->1 2(step 1)",
+    "source_molecule_key": "[C]1=N[N]NC1",
+    "source_node": 7,
+    "target_molecule_key": "c1c[nH]nn1",
+    "target_node": 1
+  },
+  "chains": "1",
+  "edge": "7 -> 1",
+  "end": "c1c[nH]nn1",
+  "href": "edge_7_1.html",
+  "reaction": "Hessian sample edge 0->1 2(step 1)",
+  "source_structure": {
+    "symbols": [
+      "C",
+      "C",
+      "N",
+      "N",
+      "N",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "OApxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgLTEuMDE4OTQ4ODIxNjcwOTA3MDYgLTAuOTAyNDAyNzQ3NzcwOTc2MTggLTAuNTE3Mzk5ODI5MjEzNjcyNDUKQyAgMC4zNTE1MTEyMjc5NzcwNzE4NSAtMC42NjM3NDQ5NDg0NjMyMjc0MCAwLjA0MjAxMzYwNDUyMTQwMjczCk4gIDAuMzQ0Nzg0MTE2OTY2MjUyMDAgMC43NzY3MzA1NjQzNDM0MjkyNCAwLjI0MDkzNTE4NjcwODY1NjQzCk4gIC0wLjc5NzU2MzM2MTMwNzI5MDQ0IDEuMjU2NTc4OTEyNzcxNTk5NjEgLTAuMTMwMjg3NjYxODU4MzA2NjcKTiAgLTEuNTc5MjIzMzk3MzUzMTkxMDYgMC4zNDI2NjkzODMyNDgxOTQ3NCAtMC41NTgxODE5ODQ3ODMyMDY1OApIICAwLjQ5NjkxMjU3MTUwNTQ5Mzg0IC0xLjIwMzcwNDU3MjgwNDE3NDY0IDAuOTc4NzMxNzM5ODUwODUzODIKSCAgMS4xMjYwMDc1NDMyMzA1NTM2MyAtMC45NzQyMTIwMDM5OTUwMDYwNyAtMC42NjA3NzY4ODM0NDQ5NTQyMgpIICAxLjA3NjUyMDEyMDY1MjAxNjk3IDEuMzY4MDg1NDEyNjcwMTYwMjYgMC42MDQ5NjU4MjgyMjAyMjcwNAo="
+  },
+  "start": "[C]1=N[N]NC1",
+  "target_structure": {
+    "symbols": [
+      "C",
+      "C",
+      "N",
+      "N",
+      "N",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "OApxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgLTAuNjA3MTU5MTcxODc3MjExODAgLTAuOTAzMzU0MjQzMTMwMTAxOTMgMC4wMDA1OTUzMzA4NTk0NTMwOApDICAwLjY2MDkwNzk3MTE4MzgzMzcxIC0wLjM3MjQ5ODk4MzM1NTc5MDc0IC0wLjAwNTc0NDIyNjk1ODcyMjg2Ck4gIDAuNDQ5ODExOTE4MzM4NzY0NTUgMC45NjM3MTg4MjIxMzQ2NDU5OSAwLjAwMDY2NTc4ODg0ODM4ODM1Ck4gIC0wLjg1NDA2MzkyMzc5MzM4NDI1IDEuMjIyODUyMTc3OTM3NTg0MDUgMC4wMTAyMTAwNjEwMzQ2MjAxNwpOICAtMS40ODY5MDQwNzAwMDcwMDMzMSAwLjExNzQ4NDQwOTY2MTA2ODg0IDAuMDEwMjE0ODc2ODI2NjE1NzUKSCAgLTAuOTI4MTkxMzM2MDk0Mjg0MzkgLTEuOTIzNzQ3NDQ5NjAzNjgxOTQgLTAuMDAxMTI5OTE5ODUyOTYxOTYKSCAgMS42MzUzMTIwMzEzNzE2NjMzNyAtMC44MTIyODU1OTIzODg3NjU0MSAtMC4wMTM4MDE5NzEzNTIzMjAzNApIICAxLjEzMDI4NjU4MDg3ODYyMjY2IDEuNzA3ODMwODU4NzQ2MDQxNTcgLTAuMDAxMDA5OTM5NDA1MDcyMTgK"
+  }
+}

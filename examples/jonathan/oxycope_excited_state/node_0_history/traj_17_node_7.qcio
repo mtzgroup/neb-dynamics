@@ -1,0 +1,251 @@
+{
+    "extras": {},
+    "input_data": {
+        "keywords": {
+            "cis": "yes",
+            "cisnumstates": 1
+        },
+        "structure": {
+            "extras": {},
+            "symbols": [
+                "C",
+                "C",
+                "C",
+                "O",
+                "C",
+                "C",
+                "C",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H"
+            ],
+            "geometry": [
+                [
+                    1.3714968074013547,
+                    1.9364991635811322,
+                    1.7164214644245466
+                ],
+                [
+                    1.3630393574910817,
+                    2.133392462398298,
+                    -1.2336947045132305
+                ],
+                [
+                    -1.2019583599504902,
+                    1.4839539325356943,
+                    -2.486945871584052
+                ],
+                [
+                    -1.2522244070642263,
+                    1.3672438498000457,
+                    -4.8455404068450605
+                ],
+                [
+                    -1.5108387916185377,
+                    -3.2834817996063803,
+                    -0.9835417113943903
+                ],
+                [
+                    -1.433786385617007,
+                    -2.088300102496548,
+                    1.2512627421837503
+                ],
+                [
+                    1.0234274223998505,
+                    -1.1160099858119195,
+                    2.4683322493456594
+                ],
+                [
+                    1.3746276612840929,
+                    3.9701924393365027,
+                    -2.250567718413026
+                ],
+                [
+                    -3.285382026018857,
+                    -3.910205236730337,
+                    -1.8438569095104493
+                ],
+                [
+                    2.5615285846289733,
+                    -2.3522469226703944,
+                    1.7259466690947185
+                ],
+                [
+                    -0.18501700518342323,
+                    3.152703457021151,
+                    2.447025254574605
+                ],
+                [
+                    3.1273288420292586,
+                    2.831348977331185,
+                    2.4511791859125642
+                ],
+                [
+                    2.971300883680225,
+                    1.0748774378075625,
+                    -2.0210853969587674
+                ],
+                [
+                    -2.872889960893742,
+                    2.0112263204016836,
+                    -1.2600775115344443
+                ],
+                [
+                    0.1972614109059832,
+                    -4.01117314326641,
+                    -1.8971088308669866
+                ],
+                [
+                    -3.201390341396194,
+                    -1.6070242729626392,
+                    2.237671841690446
+                ],
+                [
+                    0.953476307921658,
+                    -1.5929965766686278,
+                    4.524579654394118
+                ]
+            ],
+            "charge": 0,
+            "multiplicity": 1,
+            "identifiers": {
+                "extras": {}
+            },
+            "connectivity": []
+        },
+        "extras": {},
+        "files": {},
+        "cmdline_args": [],
+        "model": {
+            "extras": {},
+            "method": "b3lyp",
+            "basis": "sto-3g"
+        },
+        "calctype": "gradient"
+    },
+    "success": true,
+    "data": {
+        "calcinfo_natoms": 17,
+        "calcinfo_nmo": 45,
+        "extras": {
+            "program_version": "v1.9-2024.09-dev [f1fcff06c2602a03b0ee732a5d56e04ed7892b90]",
+            "excited_states": [
+                {
+                    "energy": -305.76805613,
+                    "exc_energy": 0.1420501721249464,
+                    "osc_strength": 0.0012,
+                    "s_squared": 0.0,
+                    "max_ci_coeff": 0.918903,
+                    "excitation": "27 -> 28 : D -> V"
+                }
+            ]
+        },
+        "files": {},
+        "energy": -305.9101063326,
+        "gradient": [
+            [
+                -0.0002009718,
+                0.0121084472,
+                6.87294e-05
+            ],
+            [
+                -0.0003038225,
+                0.0033286615,
+                0.0013383626
+            ],
+            [
+                0.0012320724,
+                -0.0126097598,
+                0.0107823013
+            ],
+            [
+                0.0181339443,
+                0.0153758094,
+                0.009649557
+            ],
+            [
+                0.0015759981,
+                0.0159406384,
+                -0.0093368217
+            ],
+            [
+                4.09343e-05,
+                -0.0015702352,
+                -0.0005599273
+            ],
+            [
+                -0.0001860507,
+                -0.0123247102,
+                0.0046620969
+            ],
+            [
+                -0.0239524392,
+                -0.0164749988,
+                -0.0311028477
+            ],
+            [
+                0.0026606496,
+                -0.0012268049,
+                -0.0002639065
+            ],
+            [
+                -0.0018210534,
+                -0.0175019305,
+                0.0029904503
+            ],
+            [
+                0.0006232234,
+                0.0139632826,
+                -0.0026084375
+            ],
+            [
+                0.000612474,
+                0.0138250925,
+                -0.0021892351
+            ],
+            [
+                0.003440584,
+                0.0061600862,
+                0.0032015872
+            ],
+            [
+                0.0012023414,
+                0.0083951547,
+                0.0038076406
+            ],
+            [
+                -0.0032116463,
+                -0.0064936406,
+                0.0035265154
+            ],
+            [
+                0.0003413873,
+                -0.0021223405,
+                0.0017209689
+            ],
+            [
+                -0.0001876278,
+                -0.0187727507,
+                0.0043129599
+            ]
+        ],
+        "freqs_wavenumber": []
+    },
+    "logs": "| Startfile from command line: tc.in\n\n\n|       ***********************************************************\n|       *                 TeraChem v1.9-2024.09-dev               *\n|       *                   Development Version                   *\n|       *           Chemistry at the Speed of Graphics!           *\n|       ***********************************************************\n|       * This program may only be used in connection with        *\n|       * a valid license from PetaChem, LLC. Use of this program *\n|       * or results thereof indicates acceptance of all terms    *\n|       * and conditions stated in the license and that a valid   *\n|       * license agreement between the user and PetaChem, LLC    *\n|       * exists. PetaChem, LLC does not warrant the correctness  *\n|       * of results or their suitability for any purpose.        *\n|       * Please email bugs, suggestions, and comments to         *\n|       *                  help@petachem.com                      *\n|       *                                                         *\n|       ***********************************************************\n\n\n|       ***********************************************************\n|       *  Compiled by root         Fri Sep 13 13:08:23 UTC 2024  *\n|       *  Supported architecture SMs: 52 61 70 86 89             *\n|       *  Build cuda_11.8.r11.8/compiler.31833905_0              *\n|       *  Git Version: f1fcff06c2602a03b0ee732a5d56e04ed7892b90  *\n|       ***********************************************************\n\n\n| Job started   Wed Apr  1 22:00:31 2026\n| On fire-13-00 (available memory: 764096 MB)\n\n| ######################################### RUNTIME INFO ##########################################\n| terachem  tc.in \n\n|  NVRM version: NVIDIA UNIX x86_64 Kernel Module  525.89.02  Wed Feb  1 23:23:25 UTC 2023\n|  GCC version:  gcc version 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04) \n\n|  \tlinux-vdso.so.1 (0x00007ffd1d358000)\n|  \tlibcurl.so.4 => /usr/lib/x86_64-linux-gnu/libcurl.so.4 (0x00007f1b5e3df000)\n|  \tlibz.so.1 => /usr/lib/x86_64-linux-gnu/libz.so.1 (0x00007f1b5e3c3000)\n|  \tlibimf.so => /opt/terachem/lib/libimf.so (0x00007f1b5dc00000)\n|  \tlibm.so.6 => /usr/lib/x86_64-linux-gnu/libm.so.6 (0x00007f1b5e2dc000)\n|  \tlibmpi.so.12 => /opt/terachem/lib/libmpi.so.12 (0x00007f1b5c200000)\n|  \tlibdftbplus.so => /opt/terachem/lib/libdftbplus.so (0x00007f1b5bec8000)\n|  \tlibfsockets.so => /opt/terachem/lib/libfsockets.so (0x00007f1b5e2d3000)\n|  \tlibxmlf90.so => /opt/terachem/lib/libxmlf90.so (0x00007f1b5e2ac000)\n|  \tlibthcbox.so.1 => /opt/terachem/lib/libthcbox.so.1 (0x00007f1b5a0f0000)\n|  \tlibOpenMM.so => /opt/terachem/lib/libOpenMM.so (0x00007f1b59c96000)\n|  \tlibnvToolsExt.so.1 => /opt/terachem/lib/libnvToolsExt.so.1 (0x00007f1b59a00000)\n|  \tlibgpubox.so.1 => /opt/terachem/lib/libgpubox.so.1 (0x00007f1b5e29f000)\n|  \tlibcpubox.so.1 => /opt/terachem/lib/libcpubox.so.1 (0x00007f1b5e299000)\n|  \tlibtensorbox.so.1 => /opt/terachem/lib/libtensorbox.so.1 (0x00007f1b5dbe4000)\n|  \tlibiobox.so.1 => /opt/terachem/lib/libiobox.so.1 (0x00007f1b5e293000)\n|  \tlibintbox.so.1 => /opt/terachem/lib/libintbox.so.1 (0x00007f1b02141000)\n|  \tlibatmx2cbox.so.1 => /opt/terachem/lib/libatmx2cbox.so.1 (0x00007f1b5db23000)\n|  \tlibperiodicbox.so.1 => /opt/terachem/lib/libperiodicbox.so.1 (0x00007f1ae7fb1000)\n|  \tlibsqmbox.so.1 => /opt/terachem/lib/libsqmbox.so.1 (0x00007f1ae7c05000)\n|  \tlibgridbox.so.1 => /opt/terachem/lib/libgridbox.so.1 (0x00007f1ae58a1000)\n|  \tlibdftbox.so.1 => /opt/terachem/lib/libdftbox.so.1 (0x00007f1ae57a1000)\n|  \tlibcibox.so.1 => /opt/terachem/lib/libcibox.so.1 (0x00007f1ae515a000)\n|  \tlibccbox.so.1 => /opt/terachem/lib/libccbox.so.1 (0x00007f1ae4cce000)\n|  \tlibsimbox.so.1 => /opt/terachem/lib/libsimbox.so.1 (0x00007f1b5dafb000)\n|  \tliboptbox.so.1 => /opt/terachem/lib/liboptbox.so.1 (0x00007f1b5dac6000)\n|  \tlibprotobuf.so.25 => /opt/terachem/lib/libprotobuf.so.25 (0x00007f1ae4865000)\n|  \tlibcommbox.so.1 => /opt/terachem/lib/libcommbox.so.1 (0x00007f1b5da66000)\n|  \tlibssl.so.3 => /usr/lib/x86_64-linux-gnu/libssl.so.3 (0x00007f1ae47c1000)\n|  \tlibcrypto.so.3 => /usr/lib/x86_64-linux-gnu/libcrypto.so.3 (0x00007f1ae437f000)\n|  \tlibcuda.so.1 => /usr/lib/x86_64-linux-gnu/libcuda.so.1 (0x00007f1ae269f000)\n|  \tlibcudart.so.11.0 => /opt/terachem/lib/libcudart.so.11.0 (0x00007f1ae2200000)\n|  \tlibcublas.so.11 => /opt/terachem/lib/libcublas.so.11 (0x00007f1adc400000)\n|  \tlibcufft.so.10 => /opt/terachem/lib/libcufft.so.10 (0x00007f1acb400000)\n|  \tlibcusparse.so.11 => /opt/terachem/lib/libcusparse.so.11 (0x00007f1aba600000)\n|  \tlibcusolver.so.11 => /opt/terachem/lib/libcusolver.so.11 (0x00007f1aa8200000)\n|  \tlibcublasLt.so.11 => /opt/terachem/lib/libcublasLt.so.11 (0x00007f1a83c00000)\n|  \tlibsvml.so => /opt/terachem/lib/libsvml.so (0x00007f1a81c00000)\n|  \tlibirng.so => /opt/terachem/lib/libirng.so (0x00007f1a81800000)\n|  \tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f1a815d4000)\n|  \tlibiomp5.so => /opt/terachem/lib/libiomp5.so (0x00007f1a81000000)\n|  \tlibcilkrts.so.5 => /opt/terachem/lib/libcilkrts.so.5 (0x00007f1a80c00000)\n|  \tlibgcc_s.so.1 => /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 (0x00007f1b5da42000)\n|  \tlibintlc.so.5 => /opt/terachem/lib/libintlc.so.5 (0x00007f1a80800000)\n|  \tlibc.so.6 => /usr/lib/x86_64-linux-gnu/libc.so.6 (0x00007f1a805d7000)\n|  \t/lib64/ld-linux-x86-64.so.2 (0x00007f1b5e48b000)\n|  \tlibnghttp2.so.14 => /usr/lib/x86_64-linux-gnu/libnghttp2.so.14 (0x00007f1b59c6c000)\n|  \tlibidn2.so.0 => /usr/lib/x86_64-linux-gnu/libidn2.so.0 (0x00007f1b59c4b000)\n|  \tlibrtmp.so.1 => /usr/lib/x86_64-linux-gnu/librtmp.so.1 (0x00007f1b59c2c000)\n|  \tlibssh.so.4 => /usr/lib/x86_64-linux-gnu/libssh.so.4 (0x00007f1ae258e000)\n|  \tlibpsl.so.5 => /usr/lib/x86_64-linux-gnu/libpsl.so.5 (0x00007f1b59c18000)\n|  \tlibgssapi_krb5.so.2 => /usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2 (0x00007f1ae253a000)\n|  \tlibldap-2.5.so.0 => /usr/lib/x86_64-linux-gnu/libldap-2.5.so.0 (0x00007f1ae24db000)\n|  \tliblber-2.5.so.0 => /usr/lib/x86_64-linux-gnu/liblber-2.5.so.0 (0x00007f1ae24ca000)\n|  \tlibzstd.so.1 => /usr/lib/x86_64-linux-gnu/libzstd.so.1 (0x00007f1ae2131000)\n|  \tlibbrotlidec.so.1 => /usr/lib/x86_64-linux-gnu/libbrotlidec.so.1 (0x00007f1b59c0a000)\n|  \tlibrt.so.1 => /usr/lib/x86_64-linux-gnu/librt.so.1 (0x00007f1b5da3d000)\n|  \tlibdl.so.2 => /usr/lib/x86_64-linux-gnu/libdl.so.2 (0x00007f1b5da38000)\n|  \tlibifport.so.5 => /opt/terachem/lib/libifport.so.5 (0x00007f1a80200000)\n|  \tlibifcoremt.so.5 => /opt/terachem/lib/libifcoremt.so.5 (0x00007f1a8143e000)\n|  \tlibpthread.so.0 => /usr/lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f1ae24c5000)\n|  \tlibunistring.so.2 => /usr/lib/x86_64-linux-gnu/libunistring.so.2 (0x00007f1a80e56000)\n|  \tlibgnutls.so.30 => /usr/lib/x86_64-linux-gnu/libgnutls.so.30 (0x00007f1a80015000)\n|  \tlibhogweed.so.6 => /usr/lib/x86_64-linux-gnu/libhogweed.so.6 (0x00007f1ae20e9000)\n|  \tlibnettle.so.8 => /usr/lib/x86_64-linux-gnu/libnettle.so.8 (0x00007f1ae20a3000)\n|  \tlibgmp.so.10 => /usr/lib/x86_64-linux-gnu/libgmp.so.10 (0x00007f1adc37e000)\n|  \tlibkrb5.so.3 => /usr/lib/x86_64-linux-gnu/libkrb5.so.3 (0x00007f1acb335000)\n|  \tlibk5crypto.so.3 => /usr/lib/x86_64-linux-gnu/libk5crypto.so.3 (0x00007f1ae2074000)\n|  \tlibcom_err.so.2 => /usr/lib/x86_64-linux-gnu/libcom_err.so.2 (0x00007f1ae24bf000)\n|  \tlibkrb5support.so.0 => /usr/lib/x86_64-linux-gnu/libkrb5support.so.0 (0x00007f1ae24b1000)\n|  \tlibsasl2.so.2 => /usr/lib/x86_64-linux-gnu/libsasl2.so.2 (0x00007f1adc363000)\n|  \tlibbrotlicommon.so.1 => /usr/lib/x86_64-linux-gnu/libbrotlicommon.so.1 (0x00007f1adc340000)\n|  \tlibp11-kit.so.0 => /usr/lib/x86_64-linux-gnu/libp11-kit.so.0 (0x00007f1aba4c5000)\n|  \tlibtasn1.so.6 => /usr/lib/x86_64-linux-gnu/libtasn1.so.6 (0x00007f1adc328000)\n|  \tlibkeyutils.so.1 => /usr/lib/x86_64-linux-gnu/libkeyutils.so.1 (0x00007f1ae24aa000)\n|  \tlibresolv.so.2 => /usr/lib/x86_64-linux-gnu/libresolv.so.2 (0x00007f1ae2060000)\n|  \tlibffi.so.8 => /usr/lib/x86_64-linux-gnu/libffi.so.8 (0x00007f1adc31b000)\n| #################################################################################################\n\n| Checking Amazon Cloud instance ID...   Not found\n| Cannot find license.dat file /opt/terachem/license.dat\n\n\n| TRYING THE NETWORK LICENSE...\n| Connecting to license server '54.208.252.40' port '8877'...\n| Connected!\n| Checking your license...\n\n| **************************************************************\n|  Greetings, Martinez Group! You have 1000 licenses in total\n|  IN USE: 21\n|  AVAILABLE: 979\n| **************************************************************\n\n-----------------------------------\nProcessed Input file:\n                      run gradient\n              coordinates geometry.xyz\n                   charge 0\n                 spinmult 1\n                   method b3lyp\n                    basis sto-3g\n                      cis yes\n             cisnumstates 1\n-----------------------------------\nJobname: geometry\nScratch data will be generated\nScratch directory: ./scr.geometry\n| Random number seed: 99849227\n\nXYZ coordinates geometry.xyz\nMolden File Output: ./scr.geometry/geometry.molden\nUsing basis set: sto-3g\ndmrgstart not found\nSpin multiplicity: 1\nDIIS will use up to 10 vectors.\nCondition number limit for the DIIS overlap matrix is            0\nWF convergence threshold: 3.00e-05\nUsing DIIS algorithm to converge WF\nMaximum number of SCF iterations: 100\nIncremental fock with rebuild every 8 iterations\nWill switch to conventional Fock if diffuse functions are detected\nX-matrix tolerance: 1.00e-04\nPRECISION: DYNAMIC\nTeraChem will select linear algebra engine\nDFT Functional requested: b3lyp\nMethod: B3LYP \n  Hartree-Fock exact exchange:          0.20 \n  Slater exchange functional:           0.80 \n  Becke 1988 exchange functional:       0.72 \n  Lee-Yang-Parr correlation functional: 0.81 \n  VWN(I) correlation functional:        0.19 \nWavefunction: RESTRICTED\nDFT grid type: 1\nUsing dynamic DFT grids.\nInitial guess generated by maximum overlap\n\n********************************************\n**** SINGLE POINT GRADIENT CALCULATIONS ****\n********************************************\nSCF:   Initial guess is taken from previous step\nCIS:   Initial guess is taken from previous step\nZ-vec: Initial guess is taken from previous step\nStarting TensorBox...\n| TeraChem will select linear algebra engine\n| Using cuSolver for matrix diagonalization\n\n| using 1 out of 1 CUDA devices\n|   Device 0: NVIDIA GeForce GTX 1080 Ti, 11172MB, CC 6.1 -- CPU THREAD 0\n| -------------------------------------------------------------------\n| CPU Memory Available: 96739.50 MegaWords \n| GPU Memory Available: 1140.52 MegaWords \n| Maximum recommended basis set size: 12200 basis functions\n|  (limited by GPU memory)\n| -------------------------------------------------------------------\n| Initialize GPUBox with 128 MW of memory\n\n\nBasis set:       sto-3g\nTotal atoms:     17\nTotal charge:    0\nTotal electrons: 54 (27-alpha, 27-beta)\nNumber electrons modeled by ECPs: 0\nTotal orbitals:  45\nTotal AO shells: 31 (24 S-shells; 7 P-shells; 0 D-shells; 0 F-shells; 0 G-shells)\nSpin multiplicity: 1\nNuclear repulsion energy (QM atoms): 292.874462247571 a.u.\n\nSetting up the DFT grid...\n| time to set the grid = 0.00 s\nDFT grid points: 16670 (980 points/atom)\nSetting up the DFT grid...\n| time to set the grid = 0.01 s\nDFT grid points: 46276 (2722 points/atom)\n\n                      *** Start SCF Iterations ***\n\n Iter     DIIS Error       Energy change      Electrons        XC Energy           Energy        Time(s)\n----------------------------------------------------------------------------------------------------------\n| Purifying guess...\n| Trace of guess  54.00000000, trace of guess*guess  54.00000000,  electron number  54.00000000 \n| Guess is well-conditioned: purify...\n| Purification run on CPU (double precision)  using TC2 purification.\n| Density matrix purification finished after a total of 0 matrix multiplies\n| THRESPDP set to 1.00e+00\n|                 >>> SWITCHING TO GRID 1 <<<\n|    1     0.2604588252    -305.4404927826    54.0000329296   -36.1817387042    -305.4404927826     0.05  \n|                 >>> SWITCHING TO GRID 0 <<<\n|    2     0.2669032409      -0.3812821062    54.0012719617   -36.1591939698    -305.8217748888     0.03  \n|    3     0.3087888575      +0.0738043975    54.0013178721   -36.3154294366    -305.7479704913     0.04  \n|    4     0.0200077192      -0.1619244919    54.0012828852   -36.2079548935    -305.9098949832     0.04  \n|                 >>> SWITCHING TO GRID 1 <<<\n|    5     0.0037162519      -0.0001841289    54.0000308065   -36.2134430275    -305.9100791122     0.06  \n| THRESPDP set to 1.16e-02\n|    6     0.0018111216      -0.0000165924    54.0000318971   -36.2144071268    -305.9100957045     0.07  \n|    7     0.0001414627      -0.0000103887    54.0000320836   -36.2139140727    -305.9101060933     0.06  \n|    8     0.0000522906      -0.0000001112    54.0000320078   -36.2137687896    -305.9101062045     0.07  \n|    9     0.0000222768      -0.0000001281    54.0000319968   -36.2137954260    -305.9101063326     0.09  \n----------------------------------------------------------------------------------------------------------\nFINAL ENERGY: -305.9101063326 a.u.\nHOMO-LUMO GAP: 5.859 eV\nCENTER OF MASS: {-0.124312, 0.055171, -0.348436} ANGS\nDIPOLE MOMENT: {0.368968, 0.041023, 1.970719} (|D| = 2.005382) DEBYE\n\nRunning Mulliken population analysis...\n\n\n  Restricted CIS Parameters\n--------------------------------------------\nNumber of occupied orbitals:            27\nNumber of virtual orbitals:             18\nNumber of molecular orbitals:           45\nNumber of basis functions:              45\nMultiplicity of target state:      singlet\n\n Generating 2nd functional diffs\n      Davidson Diagonalization Parameters\n-----------------------------------------------\nNumber of roots to find:                    1\nNumber of guess vectors:                    1\nMaximum subspace size:                     10\nNumber of vectors to save:                  1\nCollapse vectors per root:                  2\nNumber of CSFs:                           486\nMaximum Davidson iterations:               20\nResidual convergence:                 1.0e-04\nOrthogonality tolerance:              1.0e-12\nUse incremental sigma vectors:             No\n\n  Nonsymmetric Davidson Dynamic Precision Parameters\n------------------------------------------------------\nSP Residual convergence:              1.0e-04\nSigma vector THRESPDP:                5.2e-04\n\nDavidson memory usage:  85.01 kB\n\nGuess Vectors:\n  27 -> 28 : D -> V :     0.215306\n\n  Root           Eigenvalue       Energy Change        Residual\n-------------------------------------------------------------------\nIteration:    0   Subspace Size:    1\nRoot: 1:         0.15210556         0.15210556         0.03106750  \n\nIteration:    1   Subspace Size:    2\nRoot: 1:         0.14326425        -0.00884131         0.02856766  \n\nIteration:    2   Subspace Size:    3\nRoot: 1:         0.14215336        -0.00111089         0.00858706  \n\nIteration:    3   Subspace Size:    4\nRoot: 1:         0.14205572        -0.00009764         0.00199421  \n\nIteration:    4   Subspace Size:    5\nRoot: 1:         0.14205111        -0.00000462         0.00076033  \n\nIteration:    5   Subspace Size:    6\nRoot: 1:         0.14205024        -0.00000087         0.00014379  \n\nIteration:    6   Subspace Size:    7\nRoot: 1:         0.14205020        -0.00000003         0.00002529  Converged\n\nDavidson has converged in single precision\nCollapsing subspace to 1 vectors\nRebuilding sigma vectors in mixed precision\n\nIteration:    7   Subspace Size:    1\nRoot: 1:         0.14205020         0.00000000         0.00002530  Converged\n\nDavidson converged in 7 iterations\n8 sigma vectors were formed\n7 sigma vectors were formed in single precision\n1 sigma vectors were formed in mixed precision\n\n  Root   Total Energy (a.u.)   Ex. Energy (a.u.)     Ex. Energy (eV)     Ex. Energy (nm)\n-----------------------------------------------------------------------------------------\n     1       -305.76805613          0.14205020          3.86538210        320.75540646\n\nUnrelaxed excited state dipole moments:\n\n  Root       Dx         Dy         Dz         |D|  (Debye)\n------------------------------------------------------------\n     1     0.3664     0.8271    -0.5440     1.0556\n\nTransition dipole moments:\n\n  Root       Tx         Ty         Tz         |T| (a.u.)\n----------------------------------------------------------\n     1     0.1092     0.0139     0.0204     0.1120\n\nVelocity transition dipole moments:\n\n  Root       Tx         Ty         Tz         |T| (a.u.)\n----------------------------------------------------------\n     1     0.0000     0.0077    -0.0029     0.0082\n\nMagnetic transition dipole moments and rotational strengths:\n\n  Root       Lx         Ly         Lz       R(len)     R(vel) (a.u.)\n--------------------------------------------------------------------\n     1     0.0596    -0.1049    -1.0035     0.0154     0.0145\n\n\nElectric transition quadrupole moments (Cartesian):\n\n   Root       Qxy        Qxz        Qyz        Qxx        Qyy        Qzz       norm (a.u.)\n--------------------------------------------------------------------------------------------\n     1     0.5485    -0.0824     0.0154    -0.0351     0.0389    -0.0224     0.5578\n\nRoot 1: Largest CI coefficients:\n  27 -> 28 : D -> V :   0.918903\n  27 -> 29 : D -> V :  -0.389040\n\n  Final Excited State Results:\n\n  Root   Total Energy (a.u.)   Ex. Energy (eV)   Osc. (a.u.)   < S^2 >   Max CI Coeff.      Excitation\n------------------------------------------------------------------------------------------------------------\n     1        -305.76805613        3.86538210       0.0012      0.0000      0.918903     27 -> 28 : D -> V\n\n|FINAL Target State Energy: -305.910106332603 a.u.\n\nGradient units are Hartree/Bohr\n---------------------------------------------------\n        dE/dX            dE/dY            dE/dZ\n   -0.0002009718     0.0121084472     0.0000687294\n   -0.0003038225     0.0033286615     0.0013383626\n    0.0012320724    -0.0126097598     0.0107823013\n    0.0181339443     0.0153758094     0.0096495570\n    0.0015759981     0.0159406384    -0.0093368217\n    0.0000409343    -0.0015702352    -0.0005599273\n   -0.0001860507    -0.0123247102     0.0046620969\n   -0.0239524392    -0.0164749988    -0.0311028477\n    0.0026606496    -0.0012268049    -0.0002639065\n   -0.0018210534    -0.0175019305     0.0029904503\n    0.0006232234     0.0139632826    -0.0026084375\n    0.0006124740     0.0138250925    -0.0021892351\n    0.0034405840     0.0061600862     0.0032015872\n    0.0012023414     0.0083951547     0.0038076406\n   -0.0032116463    -0.0064936406     0.0035265154\n    0.0003413873    -0.0021223405     0.0017209689\n   -0.0001876278    -0.0187727507     0.0043129599\n---------------------------------------------------\nNet gradient: -2.816116e-09  1.218345e-09 -6.295035e-09\nNet torque:   -4.479379e-05 -2.746399e-04 -1.604049e-04\n\nWriting out molden info\n| Total processing time: 1.16 sec \n\n| Job finished: Wed Apr  1 22:00:42 2026\n\n",
+    "provenance": {
+        "extras": {},
+        "program": "terachem",
+        "program_version": "v1.9-2024.09-dev [f1fcff06c2602a03b0ee732a5d56e04ed7892b90]",
+        "scratch_dir": "/tmp/tmp_t8wkn9m",
+        "wall_time": 11.254814,
+        "hostname": "fire-13-00",
+        "hostcpus": 12
+    }
+}

@@ -1,0 +1,9 @@
+{
+  "discovery_tools": [
+    "retropaths"
+  ],
+  "mode": "go",
+  "note": "Hawaii started.",
+  "source": "server",
+  "updated_at": 1775672510
+}

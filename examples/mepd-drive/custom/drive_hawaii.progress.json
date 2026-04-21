@@ -1,0 +1,34 @@
+{
+  "control_mode": "go",
+  "dr": 1.0,
+  "neb": {
+    "chain_fp": "/Users/janestrada/mepd/neb-dynamics/examples/mepd-drive/custom/drive_hawaii_neb_0_1.chain.json",
+    "progress_fp": "/Users/janestrada/mepd/neb-dynamics/examples/mepd-drive/custom/drive_hawaii_neb_0_1.progress.json",
+    "source_node": 0,
+    "target_node": 1
+  },
+  "network": {
+    "edges": [
+      {
+        "source": 0,
+        "target": 1
+      }
+    ],
+    "nodes": [
+      {
+        "growing": true,
+        "id": 0,
+        "label": "C=CCC(O)C=C"
+      },
+      {
+        "growing": true,
+        "id": 1,
+        "label": "C=CCCCC=O"
+      }
+    ]
+  },
+  "note": "Step 2/3: running autosplitting NEB for edge 0 -> 1 (1/1).",
+  "phase": "growing",
+  "stage": "neb",
+  "title": "Hawaii autonomous exploration"
+}

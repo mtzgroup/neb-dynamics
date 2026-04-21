@@ -1,0 +1,67 @@
+engine_name = "chemcloud"
+program = "terachem"
+path_min_method = "neb"
+chemcloud_queue = 'celery'
+
+[path_min_inputs]
+climb = false
+en_thre = 0.0001
+rms_grad_thre = 0.001
+max_rms_grad_thre = 0.01
+skip_identical_graphs = true
+ts_grad_thre = 0.01
+ts_spring_thre = 0.01
+barrier_thre = 0.1
+early_stop_force_thre = 0.005
+
+negative_steps_thre = 2
+positive_steps_thre = 2
+
+
+use_geodesic_tangent = false
+do_elem_step_checks = true
+max_steps = 500
+v = 0
+
+[chain_inputs]
+k = 0.1
+delta_k = 0.0
+do_parallel = true
+use_geodesic_interpolation = true
+friction_optimal_gi = true
+node_freezing = true
+node_rms_thre = 5.0
+node_ene_thre = 5.0
+frozen_atom_indices = ""
+
+[gi_inputs]
+nimages = 10
+friction = 0.001
+nudge = 0.01
+align = true
+
+[gi_inputs.extra_kwds]
+[program_kwds]
+cmdline_args = []
+
+[program_kwds.keywords]
+threads = 1
+
+[program_kwds.extras]
+
+[program_kwds.files]
+
+[program_kwds.model]
+method = "wb97xd3"
+basis = "def2-svp"
+
+[program_kwds.model.extras]
+
+[optimizer_kwds]
+name = "cg"
+timestep = 0.55
+step_up = 1.5
+step_down = 0.5
+min_timestep = 0.0006
+max_timestep = 3.0
+max_step_norm = 0.4

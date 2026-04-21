@@ -1,0 +1,12 @@
+{
+  "environment_smiles": "",
+  "inputs_fp": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/_drive_inputs/mepd-drive-1775689837.toml",
+  "max_depth": 4,
+  "max_nodes": 40,
+  "max_parallel_nebs": 1,
+  "reactions_fp": "",
+  "root_smiles": "C=O.O.O.O",
+  "run_name": "mepd-drive-1775689837",
+  "timeout_seconds": 30,
+  "workdir": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/mepd-drive-1775689837"
+}

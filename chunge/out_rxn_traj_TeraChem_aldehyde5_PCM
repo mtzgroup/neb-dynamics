@@ -1,0 +1,3311 @@
+
+╔═══════════════════════════════════════════════════════════════╗
+║                                                               ║
+║                        NEB - Dynamics                         ║
+║        Reaction Path Optimization & Network Generation        ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
+
+ Command:         run       
+ Method:          recursive 
+ SMILES mode:     False     
+ Network splits:  False     
+
+╭────────────────────────────── Input Parameters ──────────────────────────────╮
+│                                                                              │
+│  Section          Key                          Value                         │
+│  ──────────────────────────────────────────────────────────────────────────  │
+│  General          engine_name                  qcop                          │
+│                   path_min_method              NEB                           │
+│                   program                      terachem                      │
+│  Path Minimizer   barrier_thre                 0.1                           │
+│                   climb                        True                          │
+│                   do_elem_step_checks          True                          │
+│                   early_stop_force_thre        0.0                           │
+│                   en_thre                      0.0001                        │
+│                   max_rms_grad_thre            0.01                          │
+│                   max_steps                    100                           │
+│                   negative_steps_thre          5                             │
+│                   positive_steps_thre          10                            │
+│                   rms_grad_thre                0.02                          │
+│                   skip_identical_graphs        True                          │
+│                   ts_grad_thre                 0.05                          │
+│                   ts_spring_thre               0.02                          │
+│                   use_geodesic_tangent         False                         │
+│                   v                            True                          │
+│  Chain            delta_k                      0.09                          │
+│                   do_parallel                  True                          │
+│                   friction_optimal_gi          True                          │
+│                   frozen_atom_indices                                        │
+│                   k                            0.1                           │
+│                   node_ene_thre                5.0                           │
+│                   node_freezing                True                          │
+│                   node_rms_thre                5.0                           │
+│                   use_geodesic_interpolation   True                          │
+│  GI               align                        True                          │
+│                   friction                     0.001                         │
+│                   nimages                      20                            │
+│                   nudge                        0.1                           │
+│  Program Args     cmdline_args                 []                            │
+│                   keywords.epsilon             78.39                         │
+│                   keywords.gpus                1                             │
+│                   keywords.pcm                 cosmo                         │
+│                   keywords.pcm_radii           klamt                         │
+│                   keywords.sphericalbasis      False                         │
+│                   model                        method='b3lyp'                │
+│                                                basis='6-31g**'               │
+│  Optimizer        name                         cg                            │
+│                   timestep                     0.5                           │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+⟳ Minimizing input endpoints...
+Submitting batched endpoint geometry optimizations...
+✓ Done!
+Loading 32 nodes...
+▶ RUNNING AUTOSPLITTING NEB
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✗ No   │
+└─────────────────────────────────┴────────┘
+                               SMILES Comparison                                
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Structure 1                          ┃ Structure 2                           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ C=O.O.O                              │ O.OCO                                 │
+└──────────────────────────────────────┴───────────────────────────────────────┘
+Running path minimization...
+Using in-house NEB optimizer
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+A local minimum has been present for 5 steps, forcing early stop check.
+
+----->Setting 1 nodes to climb
+
+╭────────────────────────────────────────────╮
+│ 🔍 Checking if chain is elementary step... │
+╰────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────╮
+│ 🔍 Checking if chain has intermediate minima... │
+╰─────────────────────────────────────────────────╯
+╭───────────────────────────╮
+│ ✓ Found 1 minima on chain │
+╰───────────────────────────╯
+╭─────────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 13 converges to endpoint reactant... │
+╰─────────────────────────────────────────────────────────╯
+                                                                         
+  start SMILES: C=O.O.O                                                  
+  end SMILES:   O.OCO                                                    
+    28.36 |                            *-                                
+    24.90 |                          --  -*                              
+    21.44 |                         *      -                             
+    17.98 |                        -                                     
+    14.52 |                       -         -                            
+    11.06 |                  -*--*           *                           
+     7.59 |           -*---*-                 -                          
+     4.13 |     -*--*-                         -                         
+     0.67 |*--*-                                *--*--*-                 
+    -2.79 |                                             --*--*-          
+    -6.25 |                                                    -*-       
+    -9.72 |                                                       -*--*  
+           ------------------------------------------------------------  
+           0     2     4      6     8    10    12    14     16    18 19  
+           node index                                                    
+                                                                         
+step 35 | TS gperp: 0.0132 | max rms: 0.0167 | tspring: 0.0027 | frozen: 
+                    10 | dt: 0.800 | grad corr: 1.000                    
+┌────────────────────────────────────────────────────────┐
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│O----                                              ----O│
+│     ---------                           ----------     │
+│              ---------         ---------               │
+│                       ----C----                        │
+└────────────────────────────────────────────────────────┘
+new product conformer found!
+                       Elementary Step Comparison Results                       
+┏━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃          ┃ Graph ┃ SMIL… ┃                         ┃                         ┃
+┃ Compari… ┃ Isom… ┃ Match ┃ Structure 1 (ASCII)     ┃ Structure 2 (ASCII)     ┃
+┡━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ #1       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │           O           │
+│          │       │       │ ------O│                │ │                       │
+│          │       │       │ │      -----C-----      │ │C====================… │
+│          │       │       │ │                       │ └─────────────────────… │
+│          │       │       │ └─────────────────────… │                         │
+│ #2       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+└──────────┴───────┴───────┴─────────────────────────┴─────────────────────────┘
+
+Stopped early because chain is not an elementary step.
+Split chain based on: minima
+Splitting chains based on: minima
+On chain 1 of 2...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✗ No   │
+└─────────────────────────────────┴────────┘
+                               SMILES Comparison                                
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Structure 1                          ┃ Structure 2                           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ C=O.O.O                              │ O.OCO                                 │
+└──────────────────────────────────────┴───────────────────────────────────────┘
+Running path minimization...
+Using in-house NEB optimizer
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✓    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+
+Chain converged!
+╭────────────────────────────────────────────╮
+│ 🔍 Checking if chain is elementary step... │
+╰────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────╮
+│ 🔍 Checking if chain has intermediate minima... │
+╰─────────────────────────────────────────────────╯
+╭───────────────────────────╮
+│ ✓ Found 0 minima on chain │
+╰───────────────────────────╯
+╭─────────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 10 converges to endpoint reactant... │
+╰─────────────────────────────────────────────────────────╯
+╭────────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 12 converges to endpoint product... │
+╰────────────────────────────────────────────────────────╯
+╭─────────────────────────────╮
+│ Converged to product: ✓ Yes │
+╰─────────────────────────────╯
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+╭────────────────────╮
+│ CrudeIRC: ✗ Failed │
+╰────────────────────╯
+                                                                         
+  start SMILES: C=O.O.O                                                  
+  end SMILES:   O.OCO                                                    
+    18.31 |                                 -*-                          
+    15.77 |                              -*-   -*                        
+    13.23 |                           -*-        -                       
+    10.69 |                        -*-            -                      
+     8.16 |                     -*-                *                     
+     5.62 |     -*--*--*---*--*-                    --                   
+     3.08 |  -*-                                      *                  
+     0.54 |*-                                          ---               
+    -1.99 |                                               *--*-          
+    -4.53 |                                                    -*        
+    -7.07 |                                                      --      
+    -9.61 |                                                        *--*  
+           ------------------------------------------------------------  
+           0     2     4      6     8    10    12    14     16    18 19  
+           node index                                                    
+                                                                         
+step 63 | TS gperp: 0.0045 | max rms: 0.0154 | tspring: 0.0060 | frozen: 
+                    17 | dt: 1.100 | grad corr: 0.998                    
+┌────────────────────────────────────────────────────────┐
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│C======================================================O│
+└────────────────────────────────────────────────────────┘
+new reactant conformer found!
+
+┌────────────────────────────────────────────────────────┐
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│O----                                              ----O│
+│     ---------                           ----------     │
+│              ---------         ---------               │
+│                       ----C----                        │
+└────────────────────────────────────────────────────────┘
+new product conformer found!
+                       Elementary Step Comparison Results                       
+┏━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃          ┃ Graph ┃ SMIL… ┃                         ┃                         ┃
+┃ Compari… ┃ Isom… ┃ Match ┃ Structure 1 (ASCII)     ┃ Structure 2 (ASCII)     ┃
+┡━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ #1       │   ✗   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #2       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │C====================… │ │C====================… │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #3       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #4       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │           O           │
+│          │       │       │ ------O│                │ │                       │
+│          │       │       │ │      -----C-----      │ │C====================… │
+│          │       │       │ │                       │ └─────────────────────… │
+│          │       │       │ └─────────────────────… │                         │
+│ #5       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │O-----                 │
+│          │       │       │ │                       │ ------O│                │
+│          │       │       │ │C====================… │ │      -----C-----      │
+│          │       │       │ └─────────────────────… │ │                       │
+│          │       │       │                         │ └─────────────────────… │
+└──────────┴───────┴───────┴─────────────────────────┴─────────────────────────┘
+Splitting chains based on: maxima
+On chain 1 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+Endpoints are identical. Returning nothing
+On chain 2 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✗ No   │
+└─────────────────────────────────┴────────┘
+                               SMILES Comparison                                
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Structure 1                          ┃ Structure 2                           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ C=O.O.O                              │ O.OCO                                 │
+└──────────────────────────────────────┴───────────────────────────────────────┘
+Running path minimization...
+Using in-house NEB optimizer
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✓    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+
+Chain converged!
+╭────────────────────────────────────────────╮
+│ 🔍 Checking if chain is elementary step... │
+╰────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────╮
+│ 🔍 Checking if chain has intermediate minima... │
+╰─────────────────────────────────────────────────╯
+╭───────────────────────────╮
+│ ✓ Found 0 minima on chain │
+╰───────────────────────────╯
+╭────────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 6 converges to endpoint reactant... │
+╰────────────────────────────────────────────────────────╯
+╭──────────────────────────────╮
+│ Converged to reactant: ✓ Yes │
+╰──────────────────────────────╯
+╭───────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 8 converges to endpoint product... │
+╰───────────────────────────────────────────────────────╯
+╭─────────────────────────────╮
+│ Converged to product: ✓ Yes │
+╰─────────────────────────────╯
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+╭────────────────────╮
+│ CrudeIRC: ✗ Failed │
+╰────────────────────╯
+                                                                         
+  start SMILES: C=O.O.O                                                  
+  end SMILES:   O.OCO                                                    
+    19.05 |                     -*--*-                                   
+    16.34 |                  -*-      -*-                                
+    13.63 |               -*-            -*                              
+    10.92 |           -*--                 --                            
+     8.21 |        -*-                       *-                          
+     5.50 |     -*-                            -*-                       
+     2.79 |  -*-                                  -*-                    
+     0.08 |*-                                        -*--                
+    -2.63 |                                              -*-             
+    -5.34 |                                                 -*--*        
+    -8.05 |                                                      --      
+   -10.76 |                                                        *--*  
+           ------------------------------------------------------------  
+           0     2     4      6     8    10    12    14     16    18 19  
+           node index                                                    
+                                                                         
+step 24 | TS gperp: 0.0085 | max rms: 0.0173 | tspring: 0.0006 | frozen: 
+                    14 | dt: 0.600 | grad corr: 0.994                    
+┌────────────────────────────────────────────────────────┐
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│C======================================================O│
+└────────────────────────────────────────────────────────┘
+new reactant conformer found!
+
+┌────────────────────────────────────────────────────────┐
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│O----                                              ----O│
+│     ---------                           ----------     │
+│              ---------         ---------               │
+│                       ----C----                        │
+└────────────────────────────────────────────────────────┘
+new product conformer found!
+                       Elementary Step Comparison Results                       
+┏━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃          ┃ Graph ┃ SMIL… ┃                         ┃                         ┃
+┃ Compari… ┃ Isom… ┃ Match ┃ Structure 1 (ASCII)     ┃ Structure 2 (ASCII)     ┃
+┡━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ #1       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │C====================… │ │C====================… │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #2       │   ✗   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #3       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │C====================… │ │C====================… │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #4       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #5       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │           O           │
+│          │       │       │ ------O│                │ │                       │
+│          │       │       │ │      -----C-----      │ │C====================… │
+│          │       │       │ │                       │ └─────────────────────… │
+│          │       │       │ └─────────────────────… │                         │
+│ #6       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │O-----                 │
+│          │       │       │ │                       │ ------O│                │
+│          │       │       │ │C====================… │ │      -----C-----      │
+│          │       │       │ └─────────────────────… │ │                       │
+│          │       │       │                         │ └─────────────────────… │
+└──────────┴───────┴───────┴─────────────────────────┴─────────────────────────┘
+Splitting chains based on: maxima
+On chain 1 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+Endpoints are identical. Returning nothing
+On chain 2 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✗ No   │
+└─────────────────────────────────┴────────┘
+                               SMILES Comparison                                
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Structure 1                          ┃ Structure 2                           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ C=O.O.O                              │ O.OCO                                 │
+└──────────────────────────────────────┴───────────────────────────────────────┘
+Running path minimization...
+Using in-house NEB optimizer
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✓    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+
+Chain converged!
+╭────────────────────────────────────────────╮
+│ 🔍 Checking if chain is elementary step... │
+╰────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────╮
+│ 🔍 Checking if chain has intermediate minima... │
+╰─────────────────────────────────────────────────╯
+╭───────────────────────────╮
+│ ✓ Found 1 minima on chain │
+╰───────────────────────────╯
+╭────────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 5 converges to endpoint reactant... │
+╰────────────────────────────────────────────────────────╯
+                                                                         
+  start SMILES: C=O.O.O                                                  
+  end SMILES:   O.OCO                                                    
+    16.44 |                           -*--*--*                           
+    13.97 |                         *-        --                         
+    11.49 |                       --            *                        
+     9.02 |                     -*               -                       
+     6.54 |                  -*-                  -                      
+     4.06 |           -*---*-                      *                     
+     1.59 |  -*--*--*-                              --                   
+    -0.89 |*-                                         *--                
+    -3.36 |                                              -*-             
+    -5.84 |                                                 -*-          
+    -8.31 |                                                    -*-       
+   -10.79 |                                                       -*--*  
+           ------------------------------------------------------------  
+           0     2     4      6     8    10    12    14     16    18 19  
+           node index                                                    
+                                                                         
+step 36 | TS gperp: 0.0028 | max rms: 0.0173 | tspring: 0.0043 | frozen: 
+                    16 | dt: 0.800 | grad corr: 0.992                    
+┌────────────────────────────────────────────────────────┐
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│C======================================================O│
+└────────────────────────────────────────────────────────┘
+new reactant conformer found!
+                       Elementary Step Comparison Results                       
+┏━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃          ┃ Graph ┃ SMIL… ┃                         ┃                         ┃
+┃ Compari… ┃ Isom… ┃ Match ┃ Structure 1 (ASCII)     ┃ Structure 2 (ASCII)     ┃
+┡━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ #1       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │C====================… │ │C====================… │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #2       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │O-----                 │
+│          │       │       │ │                       │ ------O│                │
+│          │       │       │ │C====================… │ │      -----C-----      │
+│          │       │       │ └─────────────────────… │ │                       │
+│          │       │       │                         │ └─────────────────────… │
+└──────────┴───────┴───────┴─────────────────────────┴─────────────────────────┘
+Splitting chains based on: minima
+On chain 1 of 2...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+Endpoints are identical. Returning nothing
+On chain 2 of 2...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✗ No   │
+└─────────────────────────────────┴────────┘
+                               SMILES Comparison                                
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Structure 1                          ┃ Structure 2                           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ C=O.O.O                              │ O.OCO                                 │
+└──────────────────────────────────────┴───────────────────────────────────────┘
+Running path minimization...
+Using in-house NEB optimizer
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✓    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+
+Chain converged!
+╭────────────────────────────────────────────╮
+│ 🔍 Checking if chain is elementary step... │
+╰────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────╮
+│ 🔍 Checking if chain has intermediate minima... │
+╰─────────────────────────────────────────────────╯
+╭───────────────────────────╮
+│ ✓ Found 0 minima on chain │
+╰───────────────────────────╯
+╭────────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 9 converges to endpoint reactant... │
+╰────────────────────────────────────────────────────────╯
+╭─────────────────────────────╮
+│ Converged to reactant: ✗ No │
+╰─────────────────────────────╯
+╭────────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 11 converges to endpoint product... │
+╰────────────────────────────────────────────────────────╯
+╭─────────────────────────────╮
+│ Converged to product: ✓ Yes │
+╰─────────────────────────────╯
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+╭────────────────────╮
+│ CrudeIRC: ✗ Failed │
+╰────────────────────╯
+                                                                         
+  start SMILES: C=O.O.O                                                  
+  end SMILES:   O.OCO                                                    
+    17.12 |                        -*--*--*                              
+    14.58 |                      *-        --                            
+    12.04 |                    --            *                           
+     9.51 |                  -*               --                         
+     6.97 |               -*-                   *                        
+     4.43 |        -*--*--                       --                      
+     1.90 |  -*--*-                                *                     
+    -0.64 |*-                                       --                   
+    -3.18 |                                           *-                 
+    -5.71 |                                             --*-             
+    -8.25 |                                                 -*--*-       
+   -10.79 |                                                       -*--*  
+           ------------------------------------------------------------  
+           0     2     4      6     8    10    12    14     16    18 19  
+           node index                                                    
+                                                                         
+step 29 | TS gperp: 0.0056 | max rms: 0.0172 | tspring: 0.0020 | frozen: 
+                    16 | dt: 0.700 | grad corr: 0.999                    
+┌────────────────────────────────────────────────────────┐
+│                           O                            │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│                                                        │
+│O----                                              ----O│
+│     ---------                           ----------     │
+│              ---------         ---------               │
+│                       ----C----                        │
+└────────────────────────────────────────────────────────┘
+new product conformer found!
+                       Elementary Step Comparison Results                       
+┏━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃          ┃ Graph ┃ SMIL… ┃                         ┃                         ┃
+┃ Compari… ┃ Isom… ┃ Match ┃ Structure 1 (ASCII)     ┃ Structure 2 (ASCII)     ┃
+┡━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ #1       │   ✗   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #2       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │           O           │
+│          │       │       │ ------O│                │ │                       │
+│          │       │       │ │      -----C-----      │ │C====================… │
+│          │       │       │ │                       │ └─────────────────────… │
+│          │       │       │ └─────────────────────… │                         │
+│ #3       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #4       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │           O           │
+│          │       │       │ ------O│                │ │                       │
+│          │       │       │ │      -----C-----      │ │C====================… │
+│          │       │       │ │                       │ └─────────────────────… │
+│          │       │       │ └─────────────────────… │                         │
+│ #5       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #6       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+└──────────┴───────┴───────┴─────────────────────────┴─────────────────────────┘
+Splitting chains based on: maxima
+On chain 1 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✗ No   │
+└─────────────────────────────────┴────────┘
+                               SMILES Comparison                                
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Structure 1                          ┃ Structure 2                           ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ C=O.O.O                              │ O.OCO                                 │
+└──────────────────────────────────────┴───────────────────────────────────────┘
+Running path minimization...
+Using in-house NEB optimizer
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✗    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+╭───── Step Size Adjustment ──────╮
+│ ✓ Step size stable for 10 steps │
+│ Increasing by 20%               │
+╰─────────────────────────────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✗    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✗    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✓    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+          Convergence Criteria          
+╭─────────────────┬────────┬───────────╮
+│ Criterion       │ Status │ Threshold │
+├─────────────────┼────────┼───────────┤
+│ MAX(RMS_GPERP)  │   ✓    │ 0.01      │
+│ MEAN(RMS_GPERP) │   ✓    │ 0.02      │
+│ TS_GRAD         │   ✓    │ 0.05      │
+│ TS_SPRING       │   ✓    │ 0.02      │
+│ INFNORM_SPRING  │   ✓    │ 0.02      │
+│ BARRIER_HEIGHT  │   ✓    │ 0.1       │
+╰─────────────────┴────────┴───────────╯
+
+Chain converged!
+╭────────────────────────────────────────────╮
+│ 🔍 Checking if chain is elementary step... │
+╰────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────╮
+│ 🔍 Checking if chain has intermediate minima... │
+╰─────────────────────────────────────────────────╯
+╭───────────────────────────╮
+│ ✓ Found 0 minima on chain │
+╰───────────────────────────╯
+╭────────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 7 converges to endpoint reactant... │
+╰────────────────────────────────────────────────────────╯
+╭──────────────────────────────╮
+│ Converged to reactant: ✓ Yes │
+╰──────────────────────────────╯
+╭───────────────────────────────────────────────────────╮
+│ ⚙ Checking if node 9 converges to endpoint product... │
+╰───────────────────────────────────────────────────────╯
+╭─────────────────────────────╮
+│ Converged to product: ✓ Yes │
+╰─────────────────────────────╯
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✗ No   │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+╭────────────────────╮
+│ CrudeIRC: ✗ Failed │
+╰────────────────────╯
+Traceback (most recent call last):
+  File "/home/lichunge/neb-dynamics/neb_dynamics/elementarystep.py", line 751, in pseudo_irc
+    r_traj = _run_geom_opt(candidate_r, engine=engine)
+  File "/home/lichunge/neb-dynamics/neb_dynamics/elementarystep.py", line 584, in _run_geom_opt
+    opt_traj = engine.compute_geometry_optimization(node, keywords=kwds)
+  File "/home/lichunge/neb-dynamics/neb_dynamics/engines/qcop.py", line 653, in compute_geometry_optimization
+    output = self._compute_geom_opt_result(node=node, keywords=keywords)
+  File "/home/lichunge/neb-dynamics/neb_dynamics/engines/qcop.py", line 473, in _compute_geom_opt_result
+    output = self.compute_func(
+        "terachem", prog_input, collect_files=self.collect_files)
+  File "/home/lichunge/neb-dynamics/neb_dynamics/engines/qcop.py", line 312, in compute_func
+    return qcop.compute(*args, **kwargs)
+           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/lichunge/neb-dynamics/.venv/lib/python3.13/site-packages/qcop/main.py", line 78, in compute
+    return adapter.compute(
+           ~~~~~~~~~~~~~~~^
+        input_data,
+        ^^^^^^^^^^^
+    ...<10 lines>...
+        **adapter_kwargs,
+        ^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lichunge/neb-dynamics/.venv/lib/python3.13/site-packages/qcop/adapters/base.py", line 229, in compute
+    raise exc
+  File "/home/lichunge/neb-dynamics/.venv/lib/python3.13/site-packages/qcop/adapters/base.py", line 161, in compute
+    data, logs = self.compute_data(
+                 ~~~~~~~~~~~~~~~~~^
+        input_data,
+        ^^^^^^^^^^^
+    ...<3 lines>...
+        **adapter_kwargs,
+        ^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/lichunge/neb-dynamics/.venv/lib/python3.13/site-packages/qcop/adapters/terachem.py", line 82, in compute_data
+    stdout = execute_subprocess(
+        self.program, [input_filename], update_func, update_interval
+    )
+  File "/home/lichunge/neb-dynamics/.venv/lib/python3.13/site-packages/qcop/adapters/utils.py", line 108, in execute_subprocess
+    raise ExternalProgramError(
+    ...<3 lines>...
+    )
+qcop.exceptions.ExternalProgramError: External program failed with return code 1. Command: '['terachem', 'tc.in']'
+
+Error in geometry optimization: External program failed with return code 1. Command: '['terachem', 'tc.in']'. Pretending this is an elem step.
+                       Elementary Step Comparison Results                       
+┏━━━━━━━━━━┳━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃          ┃ Graph ┃ SMIL… ┃                         ┃                         ┃
+┃ Compari… ┃ Isom… ┃ Match ┃ Structure 1 (ASCII)     ┃ Structure 2 (ASCII)     ┃
+┡━━━━━━━━━━╇━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ #1       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │C====================… │ │C====================… │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #2       │   ✗   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #3       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │C====================… │ │C====================… │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #4       │   ✓   │   ✓   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │O-----                 │
+│          │       │       │ ------O│                │ ------O│                │
+│          │       │       │ │      -----C-----      │ │      -----C-----      │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ └─────────────────────… │ └─────────────────────… │
+│ #5       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │O-----                 │ │           O           │
+│          │       │       │ ------O│                │ │                       │
+│          │       │       │ │      -----C-----      │ │C====================… │
+│          │       │       │ │                       │ └─────────────────────… │
+│          │       │       │ └─────────────────────… │                         │
+│ #6       │   ✗   │   ✗   │ ┌─────────────────────… │ ┌─────────────────────… │
+│          │       │       │ │           O           │ │           O           │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │                       │ │                       │
+│          │       │       │ │           O           │ │O-----                 │
+│          │       │       │ │                       │ ------O│                │
+│          │       │       │ │C====================… │ │      -----C-----      │
+│          │       │       │ └─────────────────────… │ │                       │
+│          │       │       │                         │ └─────────────────────… │
+└──────────┴───────┴───────┴─────────────────────────┴─────────────────────────┘
+On chain 2 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+Endpoints are identical. Returning nothing
+On chain 3 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+Endpoints are identical. Returning nothing
+On chain 3 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+Endpoints are identical. Returning nothing
+On chain 3 of 3...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+Endpoints are identical. Returning nothing
+On chain 2 of 2...
+         Molecular Graph Comparison         
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓
+┃ Property                        ┃ Status ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━┩
+│ Graphs isomorphic               │ ✓ Yes  │
+│ Stereochemical SMILES identical │ ✓ Yes  │
+└─────────────────────────────────┴────────┘
+Endpoints are identical. Returning nothing
+✓ Made 2609 gradient calls total.
+✓ Made 481 gradient for geometry optimizations.
+╭──────────────────────────────── ✓ Complete! ─────────────────────────────────╮
+│ ╭─────────────┬────────────────────────────────────────────────────────────╮ │
+│ │ ⏱ Walltime: │ 344.3 min                                                  │ │
+│ │ 📁 Output:  │ /home/lichunge/Test_4_10/NEB/2water_TC_aldehyde5_PCM/mep_… │ │
+│ ╰─────────────┴────────────────────────────────────────────────────────────╯ │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+ASCII Reaction Profile (Energy vs Node)
+  17.56 |                     -*--*-                                 
+  14.98 |                  -*-      -*-                              
+  12.41 |               -*-            -*                            
+   9.83 |           -*--                 --                          
+   7.26 |        -*-                       *-                        
+   4.68 |     -*-                            -*                      
+   2.10 |  -*-                                 --                    
+  -0.47 |*-                                      *-                  
+  -3.05 |                                          -*-               
+  -5.62 |                                             --*--*--*      
+  -8.20 |                                                      --    
+ -10.78 |                                                        *--*
+         ------------------------------------------------------------
+         0  1  2  3  4   5  6  7  8  9 10 11 12 13 14  15 16 17 18 19

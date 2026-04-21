@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-04-08T15:04:23.981788",
+  "base_name": "dakin_baseline",
+  "run_state": "completed",
+  "phase": "complete",
+  "recursive": false,
+  "network_splits": false,
+  "path_min_method": "neb",
+  "output_chain_path": "/Users/janestrada/mepd/publication-data/sweep_results/neb_convergence_20260408_150330/set_01_baseline/dakin/dakin_baseline.xyz"
+}

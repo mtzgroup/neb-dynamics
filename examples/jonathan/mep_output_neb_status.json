@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-04-01T14:53:27.057383",
+  "base_name": "mep_output_neb",
+  "run_state": "completed",
+  "phase": "complete",
+  "recursive": false,
+  "network_splits": false,
+  "path_min_method": "neb",
+  "output_chain_path": "/Users/janestrada/mepd/neb-dynamics/examples/jonathan/mep_output_neb.xyz"
+}

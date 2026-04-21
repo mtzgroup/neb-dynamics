@@ -1,0 +1,10 @@
+{
+  "generated_at": "2026-04-17T14:18:36.790839",
+  "base_name": "teradft-pcm",
+  "run_state": "running",
+  "phase": "initial_recursive_request",
+  "recursive": true,
+  "parallel": false,
+  "network_splits": false,
+  "path_min_method": "neb"
+}

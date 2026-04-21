@@ -1,0 +1,14 @@
+{
+  "environment_smiles": "",
+  "inputs_fp": "/Users/janestrada/mepd/neb-dynamics/publication-data/expensive.toml",
+  "max_depth": 4,
+  "max_nodes": 40,
+  "max_parallel_nebs": 1,
+  "parallel_autosplit_nebs": false,
+  "parallel_autosplit_workers": 4,
+  "reactions_fp": "",
+  "root_smiles": "CC(C)=O.[CH2][P](c1ccccc1)(c1ccccc1)c1ccccc1",
+  "run_name": "wittig_ph_refine_source_workspace-refined",
+  "timeout_seconds": 30,
+  "workdir": "/Users/janestrada/mepd/neb-dynamics/publication-data/wittig/wittig_ph_refine_source_workspace-refined"
+}

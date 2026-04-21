@@ -1,0 +1,15 @@
+{
+  "network": {
+    "edges": [],
+    "nodes": [
+      {
+        "growing": true,
+        "id": 0,
+        "label": "0"
+      }
+    ]
+  },
+  "note": "Optimizing 100 displaced structure(s) into minima.",
+  "phase": "optimizing",
+  "title": "Running Hessian sample from node 0"
+}

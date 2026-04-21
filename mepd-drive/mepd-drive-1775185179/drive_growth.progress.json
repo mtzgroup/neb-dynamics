@@ -1,0 +1,43 @@
+{
+  "network": {
+    "edges": [
+      {
+        "source": 1,
+        "target": 0
+      },
+      {
+        "source": 2,
+        "target": 1
+      },
+      {
+        "source": 3,
+        "target": 2
+      }
+    ],
+    "nodes": [
+      {
+        "growing": false,
+        "id": 0,
+        "label": "0"
+      },
+      {
+        "growing": false,
+        "id": 1,
+        "label": "1"
+      },
+      {
+        "growing": false,
+        "id": 2,
+        "label": "2"
+      },
+      {
+        "growing": false,
+        "id": 3,
+        "label": "3"
+      }
+    ]
+  },
+  "note": "Growth finished.",
+  "phase": "finished",
+  "title": "Growing Retropaths network"
+}

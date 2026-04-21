@@ -1,0 +1,41 @@
+{
+  "barrier": 176.2633970458946,
+  "finished_at": "2026-04-20T23:29:34.736455+00:00",
+  "is_elementary_result": true,
+  "output_chain_xyz": "/Users/janestrada/mepd/neb-dynamics/publication-data/ethene/mepd-drive/ethene-gi-hs/queue_runs/pair_1_2.xyz",
+  "result_dir": "/Users/janestrada/mepd/neb-dynamics/publication-data/ethene/mepd-drive/ethene-gi-hs/queue_runs/pair_1_2_msmep",
+  "source_node": 1,
+  "source_structure": {
+    "molecule_viz": {
+      "render_error": "",
+      "smiles": "C#C.[H][H]",
+      "svg": "<?xml version='1.0' encoding='iso-8859-1'?>\n<svg version='1.1' baseProfile='full'\n              xmlns='http://www.w3.org/2000/svg'\n                      xmlns:rdkit='http://www.rdkit.org/xml'\n                      xmlns:xlink='http://www.w3.org/1999/xlink'\n                  xml:space='preserve'\nwidth='340px' height='220px' viewBox='0 0 340 220'>\n<!-- END OF HEADER -->\n<rect style='opacity:1.0;fill:#FFFFFF;stroke:none' width='340.0' height='220.0' x='0.0' y='0.0'> </rect>\n<path class='bond-0 atom-0 atom-1' d='M 194.0,125.8 L 146.0,125.8' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />\n<path class='bond-0 atom-0 atom-1' d='M 194.0,133.0 L 146.0,133.0' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />\n<path class='bond-0 atom-0 atom-1' d='M 194.0,118.6 L 146.0,118.6' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />\n<path class='bond-1 atom-2 atom-3' d='M 187.1,93.8 L 152.9,93.8' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />\n<path class='atom-2' d='M 188.7 87.0\nL 190.5 87.0\nL 190.5 92.8\nL 197.5 92.8\nL 197.5 87.0\nL 199.3 87.0\nL 199.3 100.6\nL 197.5 100.6\nL 197.5 94.3\nL 190.5 94.3\nL 190.5 100.6\nL 188.7 100.6\nL 188.7 87.0\n' fill='#000000'/>\n<path class='atom-3' d='M 140.7 87.0\nL 142.5 87.0\nL 142.5 92.8\nL 149.5 92.8\nL 149.5 87.0\nL 151.3 87.0\nL 151.3 100.6\nL 149.5 100.6\nL 149.5 94.3\nL 142.5 94.3\nL 142.5 100.6\nL 140.7 100.6\nL 140.7 87.0\n' fill='#000000'/>\n</svg>\n"
+    },
+    "symbols": [
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "NgpxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgMS40Mzc3MDk0MzA5NzcxOTc4MyAwLjEzODI5NjM4MTA1MDk0OTE5IC0wLjA2MzE2MDgxNDYyODk3NTEwCkMgIDAuODQwMTgwOTE4MTg4MTM4NDUgMS4xMDA5NTc0NTQzNTM1NjY3MyAtMC40MzkyNzYwMTkzNDY0NDM3MgpIICAtMi4xMjQxMDU3NjMyNTU2MTU3MyAtMS41NjY0OTI4NzYxNzM4ODY1NSAwLjY0NDMxMDk0MTMyNzA4MTIyCkggIDEuOTYzNzYzOTg1MTg1OTE5NjYgLTAuNzA3NjYwMTA4NTU4ODgzMjggMC4yNjc3Njc5NDIzMDAwMDU2MQpIICAtMi40MzIwNTE0NTg2NDg3MTA5NyAtMC45MTI2MjExMzUyNDM1ODg2OCAwLjM1OTY0Njc5NDE0NDU5NzgzCkggIDAuMzE0NTAyODg3NTU0MDcwOTYgMS45NDc1MjAyODQ1NzE4NDIyMyAtMC43NjkyODg4NDM3OTUyNjU3NAo="
+  },
+  "target_node": 2,
+  "target_structure": {
+    "molecule_viz": {
+      "render_error": "",
+      "smiles": "[C]#C.[H].[H][H]",
+      "svg": "<?xml version='1.0' encoding='iso-8859-1'?>\n<svg version='1.1' baseProfile='full'\n              xmlns='http://www.w3.org/2000/svg'\n                      xmlns:rdkit='http://www.rdkit.org/xml'\n                      xmlns:xlink='http://www.w3.org/1999/xlink'\n                  xml:space='preserve'\nwidth='340px' height='220px' viewBox='0 0 340 220'>\n<!-- END OF HEADER -->\n<rect style='opacity:1.0;fill:#FFFFFF;stroke:none' width='340.0' height='220.0' x='0.0' y='0.0'> </rect>\n<path class='bond-0 atom-0 atom-1' d='M 193.4,141.8 L 145.4,141.8' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />\n<path class='bond-0 atom-0 atom-1' d='M 193.4,149.0 L 145.4,149.0' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />\n<path class='bond-0 atom-0 atom-1' d='M 193.4,134.6 L 145.4,134.6' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />\n<path class='bond-1 atom-3 atom-4' d='M 186.5,77.8 L 152.3,77.8' style='fill:none;fill-rule:evenodd;stroke:#000000;stroke-width:2.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1' />\n<path class='atom-2' d='M 164.1 103.0\nL 165.9 103.0\nL 165.9 108.8\nL 172.9 108.8\nL 172.9 103.0\nL 174.7 103.0\nL 174.7 116.6\nL 172.9 116.6\nL 172.9 110.3\nL 165.9 110.3\nL 165.9 116.6\nL 164.1 116.6\nL 164.1 103.0\n' fill='#000000'/>\n<path class='atom-3' d='M 188.1 71.0\nL 189.9 71.0\nL 189.9 76.8\nL 196.9 76.8\nL 196.9 71.0\nL 198.7 71.0\nL 198.7 84.6\nL 196.9 84.6\nL 196.9 78.3\nL 189.9 78.3\nL 189.9 84.6\nL 188.1 84.6\nL 188.1 71.0\n' fill='#000000'/>\n<path class='atom-4' d='M 140.1 71.0\nL 141.9 71.0\nL 141.9 76.8\nL 148.9 76.8\nL 148.9 71.0\nL 150.7 71.0\nL 150.7 84.6\nL 148.9 84.6\nL 148.9 78.3\nL 141.9 78.3\nL 141.9 84.6\nL 140.1 84.6\nL 140.1 71.0\n' fill='#000000'/>\n<path class='atom-0' d='M 200.1,141.8 L 200.1,141.9 L 200.1,142.0 L 200.1,142.0 L 200.1,142.1 L 200.1,142.2 L 200.0,142.3 L 200.0,142.3 L 199.9,142.4 L 199.9,142.5 L 199.8,142.5 L 199.7,142.6 L 199.7,142.6 L 199.6,142.7 L 199.5,142.7 L 199.4,142.7 L 199.4,142.7 L 199.3,142.8 L 199.2,142.8 L 199.1,142.8 L 199.0,142.7 L 199.0,142.7 L 198.9,142.7 L 198.8,142.7 L 198.7,142.6 L 198.7,142.6 L 198.6,142.6 L 198.5,142.5 L 198.5,142.4 L 198.4,142.4 L 198.4,142.3 L 198.3,142.2 L 198.3,142.2 L 198.3,142.1 L 198.2,142.0 L 198.2,141.9 L 198.2,141.8 L 198.2,141.8 L 198.2,141.7 L 198.2,141.6 L 198.3,141.5 L 198.3,141.4 L 198.3,141.4 L 198.4,141.3 L 198.4,141.2 L 198.5,141.2 L 198.5,141.1 L 198.6,141.0 L 198.7,141.0 L 198.7,141.0 L 198.8,140.9 L 198.9,140.9 L 199.0,140.9 L 199.0,140.8 L 199.1,140.8 L 199.2,140.8 L 199.3,140.8 L 199.4,140.9 L 199.4,140.9 L 199.5,140.9 L 199.6,140.9 L 199.7,141.0 L 199.7,141.0 L 199.8,141.1 L 199.9,141.1 L 199.9,141.2 L 200.0,141.3 L 200.0,141.3 L 200.1,141.4 L 200.1,141.5 L 200.1,141.6 L 200.1,141.6 L 200.1,141.7 L 200.1,141.8 L 199.2,141.8 Z' style='fill:#000000;fill-rule:evenodd;fill-opacity:1;stroke:#000000;stroke-width:0.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-opacity:1;' />\n<path class='atom-2' d='M 178.6,109.8 L 178.6,109.9 L 178.6,110.0 L 178.5,110.0 L 178.5,110.1 L 178.5,110.2 L 178.5,110.3 L 178.4,110.3 L 178.4,110.4 L 178.3,110.5 L 178.2,110.5 L 178.2,110.6 L 178.1,110.6 L 178.0,110.7 L 178.0,110.7 L 177.9,110.7 L 177.8,110.7 L 177.7,110.8 L 177.6,110.8 L 177.6,110.8 L 177.5,110.7 L 177.4,110.7 L 177.3,110.7 L 177.2,110.7 L 177.2,110.6 L 177.1,110.6 L 177.0,110.6 L 177.0,110.5 L 176.9,110.4 L 176.9,110.4 L 176.8,110.3 L 176.8,110.2 L 176.7,110.2 L 176.7,110.1 L 176.7,110.0 L 176.7,109.9 L 176.7,109.8 L 176.7,109.8 L 176.7,109.7 L 176.7,109.6 L 176.7,109.5 L 176.7,109.4 L 176.8,109.4 L 176.8,109.3 L 176.9,109.2 L 176.9,109.2 L 177.0,109.1 L 177.0,109.0 L 177.1,109.0 L 177.2,109.0 L 177.2,108.9 L 177.3,108.9 L 177.4,108.9 L 177.5,108.8 L 177.6,108.8 L 177.6,108.8 L 177.7,108.8 L 177.8,108.9 L 177.9,108.9 L 178.0,108.9 L 178.0,108.9 L 178.1,109.0 L 178.2,109.0 L 178.2,109.1 L 178.3,109.1 L 178.4,109.2 L 178.4,109.3 L 178.5,109.3 L 178.5,109.4 L 178.5,109.5 L 178.5,109.6 L 178.6,109.6 L 178.6,109.7 L 178.6,109.8 L 177.6,109.8 Z' style='fill:#000000;fill-rule:evenodd;fill-opacity:1;stroke:#000000;stroke-width:0.0px;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:10;stroke-opacity:1;' />\n</svg>\n"
+    },
+    "symbols": [
+      "C",
+      "C",
+      "H",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "NgpxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgMS4wMDI2MzIzNjcxNDM4OTY1OSAwLjEwMzI1ODYzMzQ5NjEzNzg0IDAuMzg5MjIxNzIwNTIxNDI3NzgKQyAgMS4xNzA3MTQ0MTY1NDI0ODIwOSAxLjI2NjIzMjQxMzA4MDczMTIwIDAuMzQ1Mjc5MjI5NTY2Nzk3MTMKSCAgMC44MjY4MTA2MzM4NTE0MjEzOSAtMS4xNTQ4ODkxNTUzOTQwMjAzNyAwLjQzNzc3NDk0MDAyMDgyMjczCkggIDAuNjk5MzEwMzE0Njc2NTU0MTMgLTIuMDY0NjIwMTA4MTAwMjY0NDIgMC40NjU2MTIwOTIwNTQyNDkxNApIICAtMS40ODcxODA2MTM1ODQ3NDk0MCAwLjkzNzA2NDM0NDIyNjEzMjk0IC0wLjY3NzEwNTY3OTk5MTk1MzE1CkggIC0yLjIxMjI4NzExODYyODYwNTA1IDAuOTEyOTUzODcyNjkxMjgyOTIgLTAuOTYwNzgyMzAyMTcyMzQzNzMK"
+  }
+}

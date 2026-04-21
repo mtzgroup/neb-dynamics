@@ -1,0 +1,84 @@
+engine_name = "chemcloud"
+program = "crest"
+write_qcio = false
+print_stdout = false
+path_min_method = "mlpgi"
+
+[qmmm_inputs]
+
+[nanoreactor_inputs]
+
+[path_min_inputs]
+skip_identical_graphs = true
+do_elem_step_checks = true
+v = false
+backend = "fairchem"
+model_path = "esen_sm_conserving_all.pt"
+auto_download_model = false
+model_repo = "facebook/OMol25"
+dtype = "float32"
+fire_stage1_iter = 50
+fire_stage2_iter = 50
+fire_grad_tol = 0.01
+variance_penalty_weight = 0.0433641
+fire_conv_window = 20
+fire_conv_geolen_tol = 0.010841
+fire_conv_erelpeak_tol = 0.010841
+refinement_step_interval = 10
+refinement_dynamic_threshold_fraction = 0.1
+tangent_project = true
+climb = true
+alpha_climb = 0.5
+
+[chain_inputs]
+k = 0.1
+delta_k = 0.09
+do_parallel = true
+use_geodesic_interpolation = true
+friction_optimal_gi = true
+node_freezing = true
+node_rms_thre = 5.0
+node_ene_thre = 5.0
+frozen_atom_indices = ""
+
+[gi_inputs]
+nimages = 10
+friction = 0.001
+nudge = 0.1
+align = true
+
+[gi_inputs.extra_kwds]
+
+[network_inputs]
+n_max_conformers = 10
+subsample_confs = true
+conf_rmsd_cutoff = 0.5
+network_nodes_are_conformers = false
+maximum_barrier_height = 1000
+use_slurm = false
+verbose = true
+tolerate_kinks = true
+CREST_temp = 298.15
+CREST_ewin = 6.0
+collapse_node_rms_thre = 5.0
+collapse_node_ene_thre = 5.0
+
+[program_kwds]
+cmdline_args = []
+
+[program_kwds.keywords]
+threads = 1
+
+[program_kwds.extras]
+
+[program_kwds.files]
+
+[program_kwds.model]
+method = "gfn2"
+basis = "gfn2"
+
+[program_kwds.model.extras]
+
+[optimizer_kwds]
+name = "cg"
+timestep = 0.5

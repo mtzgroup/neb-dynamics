@@ -1,0 +1,142 @@
+{
+  "attempted_pairs": {
+    "1ae25550a8b2a0a5327f0d47771d7f4154fcefb31f2c52ce879f5acc66500861": {
+      "finished_at": "2026-04-02T19:47:25",
+      "job_id": "0->2",
+      "output_chain_xyz": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/mepd-drive-1775184254/queue_runs/pair_0_2.xyz",
+      "result_dir": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/mepd-drive-1775184254/queue_runs/pair_0_2_msmep",
+      "source_node": 0,
+      "started_at": "2026-04-02T19:45:23",
+      "status": "completed",
+      "target_node": 2
+    },
+    "441c61badb1d85237efa05b17572889bdf35bb8d5277557870f0429c49d55644": {
+      "job_id": "0->2",
+      "source_node": 0,
+      "started_at": "2026-04-02T19:58:22",
+      "status": "running",
+      "target_node": 2
+    },
+    "487f341669fe341cc51b1f256aca019f83b057b3e66ff660f1cafe5ec8b47c89": {
+      "finished_at": "2026-04-02T19:54:40",
+      "job_id": "1->0",
+      "output_chain_xyz": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/mepd-drive-1775184254/queue_runs/pair_1_0.xyz",
+      "result_dir": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/mepd-drive-1775184254/queue_runs/pair_1_0_msmep",
+      "source_node": 1,
+      "started_at": "2026-04-02T19:47:26",
+      "status": "completed",
+      "target_node": 0
+    },
+    "cb7fa030f1a2ccc44a5aa1baa622e7f447c3cbf8044d3080decd246dcff271f1": {
+      "finished_at": "2026-04-02T19:58:21",
+      "job_id": "2->1",
+      "output_chain_xyz": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/mepd-drive-1775184254/queue_runs/pair_2_1.xyz",
+      "result_dir": "/Users/janestrada/mepd/neb-dynamics/mepd-drive/mepd-drive-1775184254/queue_runs/pair_2_1_msmep",
+      "source_node": 2,
+      "started_at": "2026-04-02T19:54:44",
+      "status": "completed",
+      "target_node": 1
+    }
+  },
+  "items": [
+    {
+      "attempt_key": "48f15b7084af1270863f59c30b6533b60c5af173919a3e56a857d9a0baae7b16",
+      "created_at": "2026-04-03T02:58:22.675889+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "1->0",
+      "output_chain_xyz": null,
+      "reaction": "Claisen-Rearrangement",
+      "result_dir": null,
+      "source_node": 1,
+      "started_at": null,
+      "status": "pending",
+      "target_node": 0
+    },
+    {
+      "attempt_key": "cb7fa030f1a2ccc44a5aa1baa622e7f447c3cbf8044d3080decd246dcff271f1",
+      "created_at": "2026-04-03T02:58:22.677464+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "2->1",
+      "output_chain_xyz": null,
+      "reaction": "Prins-Reaction-2",
+      "result_dir": null,
+      "source_node": 2,
+      "started_at": null,
+      "status": "skipped_attempted",
+      "target_node": 1
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T02:58:22.767362+00:00",
+      "error": "Atom count mismatch: 11 != 14",
+      "finished_at": null,
+      "job_id": "3->2",
+      "output_chain_xyz": null,
+      "reaction": "Elimination-Lg-Hydroxyl",
+      "result_dir": null,
+      "source_node": 3,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 2
+    },
+    {
+      "attempt_key": "441c61badb1d85237efa05b17572889bdf35bb8d5277557870f0429c49d55644",
+      "created_at": "2026-04-03T02:58:22.674138+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "0->2",
+      "output_chain_xyz": null,
+      "reaction": "Hawaii auto edge 0->2",
+      "result_dir": null,
+      "source_node": 0,
+      "started_at": "2026-04-02T19:58:22",
+      "status": "running",
+      "target_node": 2
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T02:58:22.764555+00:00",
+      "error": "Atom count mismatch: 14 != 11",
+      "finished_at": null,
+      "job_id": "0->3",
+      "output_chain_xyz": null,
+      "reaction": "Hawaii auto edge 0->3",
+      "result_dir": null,
+      "source_node": 0,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 3
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T02:58:22.765984+00:00",
+      "error": "Atom count mismatch: 14 != 11",
+      "finished_at": null,
+      "job_id": "1->3",
+      "output_chain_xyz": null,
+      "reaction": "Hawaii auto edge 1->3",
+      "result_dir": null,
+      "source_node": 1,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 3
+    },
+    {
+      "attempt_key": "a6c91b518087e1615309227e493e6b602412c2d118d6f0712632ac9955a62552",
+      "created_at": "2026-04-03T02:58:22.655290+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "1->2",
+      "output_chain_xyz": null,
+      "reaction": "Prins-Reaction-2",
+      "result_dir": null,
+      "source_node": 1,
+      "started_at": null,
+      "status": "pending",
+      "target_node": 2
+    }
+  ],
+  "version": 1
+}

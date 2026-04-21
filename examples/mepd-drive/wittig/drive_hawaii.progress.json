@@ -1,0 +1,79 @@
+{
+  "control_mode": "go",
+  "dr": 1.0,
+  "neb": {},
+  "network": {
+    "edges": [
+      {
+        "source": 0,
+        "target": 1
+      },
+      {
+        "source": 0,
+        "target": 2
+      },
+      {
+        "source": 0,
+        "target": 3
+      },
+      {
+        "source": 1,
+        "target": 2
+      },
+      {
+        "source": 1,
+        "target": 3
+      },
+      {
+        "source": 2,
+        "target": 0
+      },
+      {
+        "source": 2,
+        "target": 1
+      },
+      {
+        "source": 2,
+        "target": 3
+      },
+      {
+        "source": 3,
+        "target": 0
+      },
+      {
+        "source": 3,
+        "target": 1
+      },
+      {
+        "source": 3,
+        "target": 2
+      }
+    ],
+    "nodes": [
+      {
+        "growing": false,
+        "id": 0,
+        "label": "CC(C)=O.[CH2][P](c1ccccc1)(c1ccccc1)c1ccccc1"
+      },
+      {
+        "growing": false,
+        "id": 1,
+        "label": "C=C(C)C.O=P(c1ccccc1)(c1ccccc1)c1ccccc1"
+      },
+      {
+        "growing": false,
+        "id": 2,
+        "label": "CC1(C)CP(c2ccccc2)(c2ccccc2)(c2ccccc2)O1"
+      },
+      {
+        "growing": false,
+        "id": 3,
+        "label": "CC1(C)CO1.c1ccc(P(c2ccccc2)c2ccccc2)cc1"
+      }
+    ]
+  },
+  "note": "Autonomous loop finished after connect/refinement reached a steady state with discovery tools disabled.",
+  "phase": "finished",
+  "stage": "finished",
+  "title": "Hawaii autonomous exploration"
+}

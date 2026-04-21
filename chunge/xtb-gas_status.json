@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-04-17T10:55:09.322492",
+  "base_name": "xtb-gas",
+  "run_state": "completed",
+  "phase": "complete",
+  "recursive": true,
+  "parallel": false,
+  "network_splits": false,
+  "path_min_method": "neb",
+  "output_chain_path": "/Users/janestrada/mepd/neb-dynamics/chunge/xtb-gas.xyz",
+  "tree_path": "/Users/janestrada/mepd/neb-dynamics/chunge/xtb-gas"
+}

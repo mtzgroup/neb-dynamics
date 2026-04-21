@@ -1,0 +1,48 @@
+{
+  "attempted_pairs": {},
+  "items": [
+    {
+      "attempt_key": "51fffb6beb5bab4b88252fa55599dd328553cfb66c86156888dc87d76ec99d72",
+      "created_at": "2026-04-03T02:57:57.214966+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "1->0",
+      "output_chain_xyz": null,
+      "reaction": "Claisen-Rearrangement",
+      "result_dir": null,
+      "source_node": 1,
+      "started_at": null,
+      "status": "pending",
+      "target_node": 0
+    },
+    {
+      "attempt_key": "ccac784f5490b3a9d8373c6243703fb581c1aac3ca1ea7de694270edb8d65b69",
+      "created_at": "2026-04-03T02:57:57.215087+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "2->1",
+      "output_chain_xyz": null,
+      "reaction": "Prins-Reaction-2",
+      "result_dir": null,
+      "source_node": 2,
+      "started_at": null,
+      "status": "pending",
+      "target_node": 1
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T02:57:57.216776+00:00",
+      "error": "Atom count mismatch: 11 != 14",
+      "finished_at": null,
+      "job_id": "3->2",
+      "output_chain_xyz": null,
+      "reaction": "Elimination-Lg-Hydroxyl",
+      "result_dir": null,
+      "source_node": 3,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 2
+    }
+  ],
+  "version": 1
+}

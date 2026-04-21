@@ -1,0 +1,420 @@
+Checking endpoint connectivity
+Minimizing path...
+Using in-house NEB optimizer
+Checking convergence criteria
+Optimizing path... Step 2
+Checking if elementary step
+Checking convergence criteria
+Optimizing path... Step 3
+Checking convergence criteria
+Optimizing path... Step 4
+Checking convergence criteria
+Optimizing path... Step 5
+Checking convergence criteria
+Optimizing path... Step 6
+Checking convergence criteria
+Optimizing path... Step 7
+Checking convergence criteria
+Optimizing path... Step 8
+Checking convergence criteria
+Optimizing path... Step 9
+Checking convergence criteria
+Optimizing path... Step 10
+Checking convergence criteria
+Optimizing path... Step 11
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 12
+Checking convergence criteria
+Optimizing path... Step 13
+Checking convergence criteria
+Optimizing path... Step 14
+Checking convergence criteria
+Optimizing path... Step 15
+Checking convergence criteria
+Optimizing path... Step 16
+Checking convergence criteria
+Optimizing path... Step 17
+Checking convergence criteria
+Optimizing path... Step 18
+Checking convergence criteria
+Optimizing path... Step 19
+Checking convergence criteria
+Optimizing path... Step 20
+Checking convergence criteria
+Optimizing path... Step 21
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 22
+Checking convergence criteria
+Optimizing path... Step 23
+Checking convergence criteria
+Optimizing path... Step 24
+Checking convergence criteria
+Optimizing path... Step 25
+Checking convergence criteria
+Optimizing path... Step 26
+Checking convergence criteria
+Optimizing path... Step 27
+Checking convergence criteria
+Optimizing path... Step 28
+Checking convergence criteria
+Optimizing path... Step 29
+A local minimum has been present for 5 steps, forcing early stop check.
+Checking if elementary step
+Checking convergence criteria
+Optimizing path... Step 30
+Checking convergence criteria
+Optimizing path... Step 31
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 32
+Checking convergence criteria
+Optimizing path... Step 33
+Checking convergence criteria
+Optimizing path... Step 34
+Checking convergence criteria
+Optimizing path... Step 35
+Checking convergence criteria
+Optimizing path... Step 36
+Checking convergence criteria
+Optimizing path... Step 37
+Checking convergence criteria
+Optimizing path... Step 38
+Checking convergence criteria
+Optimizing path... Step 39
+Checking convergence criteria
+Optimizing path... Step 40
+Checking convergence criteria
+Optimizing path... Step 41
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 42
+Checking convergence criteria
+Optimizing path... Step 43
+Checking convergence criteria
+Optimizing path... Step 44
+Checking convergence criteria
+Optimizing path... Step 45
+Checking convergence criteria
+Optimizing path... Step 46
+Checking convergence criteria
+Optimizing path... Step 47
+Checking convergence criteria
+Optimizing path... Step 48
+Checking convergence criteria
+Optimizing path... Step 49
+Checking convergence criteria
+Optimizing path... Step 50
+Checking convergence criteria
+Optimizing path... Step 51
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 52
+Checking convergence criteria
+Optimizing path... Step 53
+Checking convergence criteria
+Optimizing path... Step 54
+Checking convergence criteria
+Optimizing path... Step 55
+Checking convergence criteria
+Optimizing path... Step 56
+Checking convergence criteria
+Optimizing path... Step 57
+Checking convergence criteria
+Optimizing path... Step 58
+Checking convergence criteria
+Optimizing path... Step 59
+Checking convergence criteria
+Optimizing path... Step 60
+Checking convergence criteria
+Optimizing path... Step 61
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 62
+Checking convergence criteria
+Optimizing path... Step 63
+Checking convergence criteria
+Optimizing path... Step 64
+Checking convergence criteria
+Optimizing path... Step 65
+Checking convergence criteria
+Optimizing path... Step 66
+Checking convergence criteria
+Optimizing path... Step 67
+Checking convergence criteria
+Optimizing path... Step 68
+Checking convergence criteria
+Optimizing path... Step 69
+Checking convergence criteria
+Optimizing path... Step 70
+Checking convergence criteria
+Optimizing path... Step 71
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Chain converged.
+Checking if elementary step
+new molecule found!
+┌────────────────────────────────────────────────────────┐
+│                           Na                            │
+│                                                        │
+│                           Na                            │
+│                           O                            │
+│                           O                            │
+│        O                                               │
+│      --         C----C        C       -C----C-         │
+│O----C-        --      --       -  --C-        --C-----O│
+│       --O----C--        -C-----C--    --      --       │
+│                 -C----C-       C        C----C         │
+└────────────────────────────────────────────────────────┘
+Checking if elementary step
+On chain 1 of 3...
+Checking endpoint connectivity
+Minimizing path...
+Using in-house NEB optimizer
+Checking convergence criteria
+Optimizing path... Step 2
+Checking if elementary step
+Checking convergence criteria
+Optimizing path... Step 3
+Checking convergence criteria
+Optimizing path... Step 4
+Checking convergence criteria
+Optimizing path... Step 5
+Checking convergence criteria
+Optimizing path... Step 6
+A local minimum has been present for 5 steps, forcing early stop check.
+Checking if elementary step
+Checking convergence criteria
+Optimizing path... Step 7
+Checking convergence criteria
+Optimizing path... Step 8
+Checking convergence criteria
+Optimizing path... Step 9
+Checking convergence criteria
+Optimizing path... Step 10
+Checking convergence criteria
+Optimizing path... Step 11
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 12
+Checking convergence criteria
+Optimizing path... Step 13
+Checking convergence criteria
+Optimizing path... Step 14
+Checking convergence criteria
+Optimizing path... Step 15
+Checking convergence criteria
+Optimizing path... Step 16
+Checking convergence criteria
+Optimizing path... Step 17
+Checking convergence criteria
+Optimizing path... Step 18
+Checking convergence criteria
+Optimizing path... Step 19
+Checking convergence criteria
+Optimizing path... Step 20
+Checking convergence criteria
+Optimizing path... Step 21
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 22
+Checking convergence criteria
+Optimizing path... Step 23
+Checking convergence criteria
+Optimizing path... Step 24
+Checking convergence criteria
+Optimizing path... Step 25
+Checking convergence criteria
+Optimizing path... Step 26
+Checking convergence criteria
+Optimizing path... Step 27
+Checking convergence criteria
+Optimizing path... Step 28
+Checking convergence criteria
+Optimizing path... Step 29
+Checking convergence criteria
+Optimizing path... Step 30
+Checking convergence criteria
+Optimizing path... Step 31
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 32
+Checking convergence criteria
+Optimizing path... Step 33
+Checking convergence criteria
+Optimizing path... Step 34
+Checking convergence criteria
+Optimizing path... Step 35
+Checking convergence criteria
+Optimizing path... Step 36
+Checking convergence criteria
+Optimizing path... Step 37
+Checking convergence criteria
+Optimizing path... Step 38
+Checking convergence criteria
+Optimizing path... Step 39
+Checking convergence criteria
+Optimizing path... Step 40
+Checking convergence criteria
+Optimizing path... Step 41
+Checking convergence criteria
+Optimizing path... Step 42
+Checking convergence criteria
+Optimizing path... Step 43
+Checking convergence criteria
+Optimizing path... Step 44
+Checking convergence criteria
+Chain converged.
+Checking if elementary step
+On chain 2 of 3...
+Checking endpoint connectivity
+Minimizing path...
+Using in-house NEB optimizer
+Checking convergence criteria
+Optimizing path... Step 2
+Checking if elementary step
+Checking convergence criteria
+Optimizing path... Step 3
+Checking convergence criteria
+Optimizing path... Step 4
+Checking convergence criteria
+Optimizing path... Step 5
+Checking convergence criteria
+Optimizing path... Step 6
+Checking convergence criteria
+Optimizing path... Step 7
+Checking convergence criteria
+Optimizing path... Step 8
+Checking convergence criteria
+Optimizing path... Step 9
+Checking convergence criteria
+Optimizing path... Step 10
+Checking convergence criteria
+Optimizing path... Step 11
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 12
+Checking convergence criteria
+Optimizing path... Step 13
+Checking convergence criteria
+Optimizing path... Step 14
+Checking convergence criteria
+Optimizing path... Step 15
+Checking convergence criteria
+Optimizing path... Step 16
+Checking convergence criteria
+Optimizing path... Step 17
+Checking convergence criteria
+Optimizing path... Step 18
+Checking convergence criteria
+Optimizing path... Step 19
+Checking convergence criteria
+Optimizing path... Step 20
+Checking convergence criteria
+Optimizing path... Step 21
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 22
+Checking convergence criteria
+Optimizing path... Step 23
+Checking convergence criteria
+Optimizing path... Step 24
+Checking convergence criteria
+Optimizing path... Step 25
+Checking convergence criteria
+Optimizing path... Step 26
+Checking convergence criteria
+Optimizing path... Step 27
+Checking convergence criteria
+Optimizing path... Step 28
+Checking convergence criteria
+Optimizing path... Step 29
+Checking convergence criteria
+Optimizing path... Step 30
+Checking convergence criteria
+Optimizing path... Step 31
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 32
+Checking convergence criteria
+Optimizing path... Step 33
+Checking convergence criteria
+Optimizing path... Step 34
+Checking convergence criteria
+Optimizing path... Step 35
+Checking convergence criteria
+Optimizing path... Step 36
+Checking convergence criteria
+Optimizing path... Step 37
+Checking convergence criteria
+Optimizing path... Step 38
+Checking convergence criteria
+Optimizing path... Step 39
+Checking convergence criteria
+Optimizing path... Step 40
+Checking convergence criteria
+Optimizing path... Step 41
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 42
+Checking convergence criteria
+Optimizing path... Step 43
+Checking convergence criteria
+Optimizing path... Step 44
+Checking convergence criteria
+Optimizing path... Step 45
+Checking convergence criteria
+Optimizing path... Step 46
+Checking convergence criteria
+Optimizing path... Step 47
+Checking convergence criteria
+Optimizing path... Step 48
+Checking convergence criteria
+Optimizing path... Step 49
+Checking convergence criteria
+Optimizing path... Step 50
+Checking convergence criteria
+Optimizing path... Step 51
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 52
+Checking convergence criteria
+Optimizing path... Step 53
+Checking convergence criteria
+Optimizing path... Step 54
+Checking convergence criteria
+Optimizing path... Step 55
+Checking convergence criteria
+Optimizing path... Step 56
+Checking convergence criteria
+Optimizing path... Step 57
+Checking convergence criteria
+Optimizing path... Step 58
+Checking convergence criteria
+Optimizing path... Step 59
+Checking convergence criteria
+Optimizing path... Step 60
+Checking convergence criteria
+Optimizing path... Step 61
+Checking convergence criteria
+Step size stable for 10 steps. Increasing by 20%.
+Optimizing path... Step 62
+Checking convergence criteria
+Optimizing path... Step 63
+Checking convergence criteria
+Optimizing path... Step 64
+Checking convergence criteria
+Optimizing path... Step 65
+Checking convergence criteria
+Optimizing path... Step 66
+Checking convergence criteria
+Optimizing path... Step 67
+Checking convergence criteria
+Optimizing path... Step 68
+Checking convergence criteria
+Chain converged.
+Checking if elementary step
+On chain 3 of 3...
+Checking endpoint connectivity
+Endpoints are identical. Returning nothing

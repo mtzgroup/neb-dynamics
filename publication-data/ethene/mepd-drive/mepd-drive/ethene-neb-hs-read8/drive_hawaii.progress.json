@@ -1,0 +1,15 @@
+{
+  "network": {
+    "edges": [],
+    "nodes": [
+      {
+        "growing": true,
+        "id": 0,
+        "label": "C=C"
+      }
+    ]
+  },
+  "note": "Computing Hessian normal modes with dr=4.0000.",
+  "phase": "growing",
+  "title": "Running Hessian sample from node 0"
+}

@@ -1,0 +1,65 @@
+{
+  "attempted_pairs": {
+    "060714d33ba4b79c128c3a3b0abe7f77127ac858005c3ee4715f3050a92ac057": {
+      "error": "Skipped NEB because optimized endpoints have identical molecular graphs.",
+      "finished_at": "2026-04-03T09:59:55",
+      "job_id": "0->2",
+      "source_node": 0,
+      "started_at": "2026-04-03T09:59:52",
+      "status": "skipped_identical",
+      "target_node": 2
+    },
+    "8b3ddd1a13dafafe2df186a55fa377bc9179d37a2a02ee1c4b91dac9489e4e30": {
+      "job_id": "1->0",
+      "source_node": 1,
+      "started_at": "2026-04-03T09:59:55",
+      "status": "running",
+      "target_node": 0
+    }
+  },
+  "items": [
+    {
+      "attempt_key": "8b3ddd1a13dafafe2df186a55fa377bc9179d37a2a02ee1c4b91dac9489e4e30",
+      "created_at": "2026-04-03T16:59:52.070448+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "1->0",
+      "output_chain_xyz": null,
+      "reaction": "Alkene-Addition-In-H2O",
+      "result_dir": null,
+      "source_node": 1,
+      "started_at": "2026-04-03T09:59:55",
+      "status": "running",
+      "target_node": 0
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T16:59:55.954457+00:00",
+      "error": "Atom count mismatch: 6 != 9",
+      "finished_at": null,
+      "job_id": "2->1",
+      "output_chain_xyz": null,
+      "reaction": "Elimination-Lg-Hydroxyl",
+      "result_dir": null,
+      "source_node": 2,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 1
+    },
+    {
+      "attempt_key": "060714d33ba4b79c128c3a3b0abe7f77127ac858005c3ee4715f3050a92ac057",
+      "created_at": "2026-04-03T16:59:52.102830+00:00",
+      "error": "Skipped NEB because optimized endpoints have identical molecular graphs.",
+      "finished_at": "2026-04-03T09:59:55",
+      "job_id": "0->2",
+      "output_chain_xyz": null,
+      "reaction": "Hawaii auto edge 0->2",
+      "result_dir": null,
+      "source_node": 0,
+      "started_at": "2026-04-03T09:59:52",
+      "status": "skipped_identical",
+      "target_node": 2
+    }
+  ],
+  "version": 1
+}

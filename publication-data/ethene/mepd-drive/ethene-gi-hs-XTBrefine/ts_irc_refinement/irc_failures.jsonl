@@ -1,0 +1,4 @@
+{"source_node": 0, "target_node": 7, "chain_index": 0, "error": "IRCError: No imaginary mode detected. Please optimize the structure and try again.\n"}
+{"source_node": 2, "target_node": 7, "chain_index": 0, "error": "IRCError: There are more than one imaginary vibrational mode. Please optimize the structure and try again.\n"}
+{"source_node": 0, "target_node": 2, "chain_index": 0, "error": "IRCError: There are more than one imaginary vibrational mode. Please optimize the structure and try again.\n"}
+{"source_node": 5, "target_node": 6, "chain_index": 0, "error": "IRCError: There are more than one imaginary vibrational mode. Please optimize the structure and try again.\n"}

@@ -25,6 +25,7 @@ from neb_dynamics.mepd_drive import (
     _normalize_hawaii_discovery_tools,
     _optimize_selected_nodes,
     _parse_xyz_text_to_structure,
+    _parse_xyz_text_to_structures,
     _run_discovery_cycle,
     _run_hawaii_autonomy,
     _run_hessian_on_completed_edges,
@@ -58,6 +59,25 @@ H 0.0 0.0 0.74
 
     assert list(structure.symbols) == ["H", "H"]
     assert len(structure.geometry) == 2
+
+
+def test_parse_xyz_text_to_structures_reads_multiple_frames():
+    structures = _parse_xyz_text_to_structures(
+        """2
+frame-1
+H 0.0 0.0 0.0
+H 0.0 0.0 0.74
+
+2
+frame-2
+H 0.0 0.0 0.0
+H 0.0 0.0 1.10
+"""
+    )
+
+    assert len(structures) == 2
+    assert list(structures[0].symbols) == ["H", "H"]
+    assert list(structures[1].symbols) == ["H", "H"]
 
 
 def test_deployment_program_defaults_are_program_consistent():
@@ -405,6 +425,38 @@ def test_drive_command_passes_hawaii_discovery_tools(monkeypatch, tmp_path):
 
     assert calls["hawaii"] is True
     assert calls["hawaii_discovery_tools"] == "hessian-sample,retropaths"
+    assert calls["served"] is True
+
+
+def test_drive_command_passes_hessian_sample_dr(monkeypatch, tmp_path):
+    calls = {}
+
+    class _FakeServer:
+        server_address = ("127.0.0.1", 48123)
+
+        def serve_forever(self):
+            calls["served"] = True
+
+        def shutdown(self):
+            calls["shutdown"] = True
+
+        def server_close(self):
+            calls["closed"] = True
+
+    monkeypatch.setattr(
+        main_cli,
+        "launch_mepd_drive",
+        lambda **kwargs: calls.update(kwargs) or _FakeServer(),
+    )
+
+    main_cli.drive(
+        inputs=str(tmp_path / "inputs.toml"),
+        directory=str(tmp_path / "drive"),
+        hessian_sample_dr=0.35,
+        no_open=True,
+    )
+
+    assert calls["hessian_sample_dr"] == 0.35
     assert calls["served"] is True
 
 
@@ -2684,6 +2736,7 @@ def test_launch_mepd_drive_loads_existing_workspace_on_startup(monkeypatch, tmp_
     assert captured["network_splits"] is True
     assert captured["parallel_autosplit_nebs"] is False
     assert captured["parallel_autosplit_workers"] == 4
+    assert captured["hessian_sample_dr"] == 1.0
 
 
 def test_launch_mepd_drive_emits_startup_progress_for_existing_workspace(monkeypatch, tmp_path):
@@ -2972,6 +3025,61 @@ def test_launch_mepd_drive_bootstraps_xyz_workspace_on_startup(monkeypatch, tmp_
     assert init_kwargs is not None
     assert bool(init_kwargs["reactant"]["xyz_b64"])
     assert bool(init_kwargs["product"]["xyz_b64"])
+    assert init_kwargs["seed_only"] is True
+
+
+def test_launch_mepd_drive_bootstraps_multiframe_xyz_with_additional_reactants(monkeypatch, tmp_path):
+    captured = {"initialize_kwargs": None}
+    initialized = {
+        "workspace": {
+            "workdir": str(tmp_path / "drive" / "xyz-run"),
+            "run_name": "xyz-run",
+            "root_smiles": "C=C",
+            "environment_smiles": "",
+            "inputs_fp": str(tmp_path / "inputs.toml"),
+            "reactions_fp": "",
+            "timeout_seconds": 30,
+            "max_nodes": 40,
+            "max_depth": 4,
+            "max_parallel_nebs": 1,
+        },
+        "reactant": {"smiles": "C=C", "charge": 0, "multiplicity": 1},
+        "product": None,
+        "message": "Initialized workspace xyz-run.",
+    }
+
+    class _FakeServer:
+        def __init__(self, _server_address, **kwargs):
+            captured.update(kwargs)
+            self.server_address = ("127.0.0.1", 48123)
+
+    def _capture_initialize(**kwargs):
+        captured["initialize_kwargs"] = kwargs
+        return initialized
+
+    start_xyz = tmp_path / "start_multi.xyz"
+    start_xyz.write_text(
+        "2\nframe-1\nH 0.0 0.0 0.0\nH 0.0 0.0 0.74\n\n2\nframe-2\nH 0.0 0.0 0.0\nH 0.0 0.0 1.10\n"
+    )
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._initialize_workspace_job", _capture_initialize)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.MepdDriveServer", _FakeServer)
+    monkeypatch.setattr("neb_dynamics.mepd_drive.webbrowser.open", lambda _url: True)
+
+    server = main_cli.launch_mepd_drive(
+        directory=str(tmp_path / "drive" / "xyz-run"),
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        start_xyz_fp=str(start_xyz),
+        run_name="xyz-run",
+        open_browser=False,
+    )
+
+    assert server.server_address == ("127.0.0.1", 48123)
+    init_kwargs = captured["initialize_kwargs"]
+    assert init_kwargs is not None
+    additional = list(init_kwargs["additional_reactants"])
+    assert len(additional) == 1
+    assert bool(additional[0]["xyz_b64"])
     assert init_kwargs["seed_only"] is True
 
 
@@ -4992,6 +5100,56 @@ def test_hawaii_autonomy_with_no_discovery_tools_runs_connect_refinement_until_s
     assert "steady state" in result["message"]
 
 
+def test_hawaii_autonomy_scales_hessian_dr_schedule_from_launch_default(monkeypatch, tmp_path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    workspace = RetropathsWorkspace(
+        workdir=str(workspace_dir),
+        run_name="drive-run",
+        root_smiles="C",
+        environment_smiles="",
+        inputs_fp=str(tmp_path / "inputs.toml"),
+        reactions_fp="",
+    )
+    pot = SimpleNamespace(graph=nx.DiGraph())
+    pot.graph.add_node(0)
+    sampled_drs: list[float] = []
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._merge_drive_pot_compat", lambda *_args, **_kwargs: pot)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._connect_all_unconnected_nodes", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._run_unattempted_nebs", lambda *_args, **_kwargs: (0, 0))
+
+    def _fake_discovery_cycle(*_args, **kwargs):
+        sampled_drs.append(float(kwargs.get("dr")))
+        return {
+            "attempts": 0,
+            "failures": 0,
+            "added_nodes": 0,
+            "hessian_attempts": 0,
+            "hessian_failures": 0,
+            "retropaths_attempts": 0,
+            "retropaths_failures": 0,
+            "nanoreactor_attempts": 0,
+            "nanoreactor_failures": 0,
+        }
+
+    monkeypatch.setattr("neb_dynamics.mepd_drive._run_discovery_cycle", _fake_discovery_cycle)
+    monkeypatch.setattr("neb_dynamics.mepd_drive._write_hawaii_progress", lambda *args, **kwargs: None)
+
+    result = _run_hawaii_autonomy(
+        dict(workspace.__dict__),
+        network_splits=True,
+        progress_fp=None,
+        control_fp=None,
+        discovery_tools=["hessian-sample"],
+        hessian_sample_dr=0.4,
+    )
+
+    assert [round(value, 1) for value in sampled_drs] == [0.4, 0.8, 1.2]
+    assert result["cycles"] == 3
+    assert "dr=0.4, 0.8, or 1.2" in result["message"]
+
+
 def test_hawaii_neb_stage_writes_progress_after_each_completed_neb(monkeypatch, tmp_path):
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
@@ -5177,7 +5335,11 @@ def test_hawaii_neb_stage_forwards_edge_and_autosplit_parallel_limits(monkeypatc
         "neb_dynamics.mepd_drive.run_retropaths_neb_queue",
         _fake_run_queue,
     )
-    monkeypatch.setattr("neb_dynamics.mepd_drive._write_hawaii_progress", lambda *args, **kwargs: None)
+    progress_payloads: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        "neb_dynamics.mepd_drive._write_hawaii_progress",
+        lambda *args, **kwargs: progress_payloads.append(dict(kwargs)),
+    )
 
     attempts, failures = _run_unattempted_nebs(
         workspace,
@@ -5192,6 +5354,19 @@ def test_hawaii_neb_stage_forwards_edge_and_autosplit_parallel_limits(monkeypatc
     assert captured["max_parallel_nebs"] == 5
     assert captured["parallel_recursive"] is True
     assert captured["parallel_workers"] == 7
+    neb_payloads = [
+        payload
+        for payload in progress_payloads
+        if str(payload.get("stage") or "") == "neb"
+    ]
+    assert any(
+        str(payload.get("neb_progress_fp") or "").endswith("drive_hawaii_neb.progress.log")
+        for payload in neb_payloads
+    )
+    assert any(
+        str(payload.get("neb_chain_fp") or "").endswith("drive_hawaii_neb.chain.json")
+        for payload in neb_payloads
+    )
 
 
 def test_write_hawaii_progress_uses_passed_pot_without_remerge(monkeypatch, tmp_path):
@@ -5292,6 +5467,36 @@ def test_progress_printer_writes_parallel_monitor_payload(monkeypatch, tmp_path)
     assert "monitors" in payload
     assert payload["monitors"]["branch-1"]["ascii_plot"] == "branch-1 ascii"
     assert payload["monitors"]["branch-2"]["ascii_plot"] == "branch-2 ascii"
+
+
+def test_progress_printer_silent_terminal_still_writes_payload(monkeypatch, tmp_path, capsys):
+    chain_fp = tmp_path / "drive_neb_silent.chain.json"
+    monkeypatch.setenv("MEPD_DRIVE_CHAIN_JSON", str(chain_fp))
+    monkeypatch.setenv("NEB_DISCOVERY_SILENT_TERMINAL", "1")
+    printer = ProgressPrinter(use_rich=False)
+
+    chain = SimpleNamespace(
+        integrated_path_length=[0.0, 1.0],
+        energies_kcalmol=[0.0, 2.0],
+    )
+    monkeypatch.setattr(
+        "neb_dynamics.scripts.progress._endpoint_smiles_for_chain",
+        lambda _chain: ("C=C", "CCO"),
+    )
+
+    printer.start("Starting NEB")
+    printer.start_status("Running")
+    printer.record_chain_plot(chain, "silent step")
+    printer.print_chain_ascii("silent ascii", "silent step", force_update=True)
+    printer.print_warning("hidden warning")
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+    payload = __import__("json").loads(chain_fp.read_text())
+    assert payload["caption"] == "silent step"
+    assert payload["ascii_plot"] == "silent ascii"
 
 
 def test_run_single_item_worker_creates_queue_output_parent(monkeypatch, tmp_path):

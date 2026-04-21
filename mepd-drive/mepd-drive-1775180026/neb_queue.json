@@ -1,0 +1,118 @@
+{
+  "attempted_pairs": {
+    "255f08bdab0096cdd2500160a37598306484ff745b94f533946942a6a75bf5be": {
+      "error": "ElectronicStructureError: ",
+      "finished_at": "2026-04-02T18:34:40",
+      "job_id": "1->0",
+      "source_node": 1,
+      "started_at": "2026-04-02T18:34:24",
+      "status": "failed",
+      "target_node": 0
+    },
+    "68fc9c0f25e45014a619991f0a22a99d8165ff0f9ac5e6c88caf6b645a4a4d15": {
+      "error": "ElectronicStructureError: ",
+      "finished_at": "2026-04-02T18:34:56",
+      "job_id": "2->1",
+      "source_node": 2,
+      "started_at": "2026-04-02T18:34:40",
+      "status": "failed",
+      "target_node": 1
+    },
+    "a6d2283405125821719a91e8e777271304ec6952e83e6a902146f58cb19ba368": {
+      "error": "ElectronicStructureError: ",
+      "finished_at": "2026-04-02T18:34:24",
+      "job_id": "0->2",
+      "source_node": 0,
+      "started_at": "2026-04-02T18:34:06",
+      "status": "failed",
+      "target_node": 2
+    }
+  },
+  "items": [
+    {
+      "attempt_key": "255f08bdab0096cdd2500160a37598306484ff745b94f533946942a6a75bf5be",
+      "created_at": "2026-04-03T01:34:06.211677+00:00",
+      "error": "ElectronicStructureError: ",
+      "finished_at": "2026-04-02T18:34:40",
+      "job_id": "1->0",
+      "output_chain_xyz": null,
+      "reaction": "Claisen-Rearrangement",
+      "result_dir": null,
+      "source_node": 1,
+      "started_at": "2026-04-02T18:34:24",
+      "status": "failed",
+      "target_node": 0
+    },
+    {
+      "attempt_key": "68fc9c0f25e45014a619991f0a22a99d8165ff0f9ac5e6c88caf6b645a4a4d15",
+      "created_at": "2026-04-03T01:33:50.701030+00:00",
+      "error": "ElectronicStructureError: ",
+      "finished_at": "2026-04-02T18:34:56",
+      "job_id": "2->1",
+      "output_chain_xyz": null,
+      "reaction": "Prins-Reaction-2",
+      "result_dir": null,
+      "source_node": 2,
+      "started_at": "2026-04-02T18:34:40",
+      "status": "failed",
+      "target_node": 1
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T01:34:56.966247+00:00",
+      "error": "Atom count mismatch: 11 != 14",
+      "finished_at": null,
+      "job_id": "3->2",
+      "output_chain_xyz": null,
+      "reaction": "Elimination-Lg-Hydroxyl",
+      "result_dir": null,
+      "source_node": 3,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 2
+    },
+    {
+      "attempt_key": "a6d2283405125821719a91e8e777271304ec6952e83e6a902146f58cb19ba368",
+      "created_at": "2026-04-03T01:34:06.228169+00:00",
+      "error": "ElectronicStructureError: ",
+      "finished_at": "2026-04-02T18:34:24",
+      "job_id": "0->2",
+      "output_chain_xyz": null,
+      "reaction": "Hawaii auto edge 0->2",
+      "result_dir": null,
+      "source_node": 0,
+      "started_at": "2026-04-02T18:34:06",
+      "status": "failed",
+      "target_node": 2
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T01:34:56.963044+00:00",
+      "error": "Atom count mismatch: 14 != 11",
+      "finished_at": null,
+      "job_id": "0->3",
+      "output_chain_xyz": null,
+      "reaction": "Hawaii auto edge 0->3",
+      "result_dir": null,
+      "source_node": 0,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 3
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T01:34:56.964760+00:00",
+      "error": "Atom count mismatch: 14 != 11",
+      "finished_at": null,
+      "job_id": "1->3",
+      "output_chain_xyz": null,
+      "reaction": "Hawaii auto edge 1->3",
+      "result_dir": null,
+      "source_node": 1,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 3
+    }
+  ],
+  "version": 1
+}

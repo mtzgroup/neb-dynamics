@@ -1,0 +1,48 @@
+{
+  "attempted_pairs": {},
+  "items": [
+    {
+      "attempt_key": "9f806b4ba1baf3debca6ba5b8660b2c1e437220c070cad80d050fc742b4a5438",
+      "created_at": "2026-04-18T09:33:39.663185+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "0->1",
+      "output_chain_xyz": null,
+      "reaction": "TS IRC 0->1",
+      "result_dir": null,
+      "source_node": 0,
+      "started_at": null,
+      "status": "pending",
+      "target_node": 1
+    },
+    {
+      "attempt_key": "de637f3735e128ac269ef0e6d07d7410cbcb30bc023ba48b5e73fbc199d34614",
+      "created_at": "2026-04-18T09:33:39.663894+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "0->3",
+      "output_chain_xyz": null,
+      "reaction": "TS IRC 1->2",
+      "result_dir": null,
+      "source_node": 0,
+      "started_at": null,
+      "status": "pending",
+      "target_node": 3
+    },
+    {
+      "attempt_key": "c81968c654ba0c73ee0cc993ae78f7618803a9a45d3b0e368b93d9a99c0e293f",
+      "created_at": "2026-04-18T09:33:39.664176+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "2->3",
+      "output_chain_xyz": null,
+      "reaction": "TS IRC 2->3",
+      "result_dir": null,
+      "source_node": 2,
+      "started_at": null,
+      "status": "pending",
+      "target_node": 3
+    }
+  ],
+  "version": 1
+}

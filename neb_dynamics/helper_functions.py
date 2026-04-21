@@ -693,7 +693,6 @@ def parse_symbols_from_prmtop(data):
     begin = False
     skipped1line = 0
     for line in data.split("\n"):
-        print(line.strip())
         if line.strip() == '%FLAG ATOMIC_NUMBER':
             begin = True
             continue

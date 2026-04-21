@@ -1291,10 +1291,29 @@ def _clone_workspace_for_refinement(
     if target_dir == source_dir:
         raise ValueError("Refined workspace directory must be different from the source workspace directory.")
 
+    # Resume existing refinement runs when a partial workspace is present.
     if target_dir.exists() and any(target_dir.iterdir()):
-        raise ValueError(
-            f"Refined workspace directory `{target_dir}` already exists and is not empty."
-        )
+        workspace_fp = target_dir / "workspace.json"
+        if not workspace_fp.exists():
+            raise ValueError(
+                f"Refined workspace directory `{target_dir}` exists but does not contain workspace.json."
+            )
+        try:
+            refined_workspace = RetropathsWorkspace.read(target_dir)
+        except Exception as exc:
+            raise ValueError(
+                f"Refined workspace directory `{target_dir}` exists but could not be loaded."
+            ) from exc
+        refined_workspace.inputs_fp = str(refinement_inputs_fp.resolve())
+        if str(refined_run_name or "").strip():
+            refined_workspace.run_name = str(refined_run_name).strip()
+        refined_workspace.write()
+        if not refined_workspace.retropaths_pot_fp.exists():
+            if source_workspace.retropaths_pot_fp.exists():
+                refined_workspace.retropaths_pot_fp.write_bytes(source_workspace.retropaths_pot_fp.read_bytes())
+            else:
+                refined_workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+        return refined_workspace
 
     run_name = (
         str(refined_run_name).strip()
@@ -1556,8 +1575,57 @@ def refine_drive_workspace_network(
             total=total_edges,
         )
 
+    def _load_cached_ts_node(job: dict[str, Any]) -> StructureNode | None:
+        ts_xyz_fp = artifacts_dir / f"{job['stem']}.ts.xyz"
+        if not ts_xyz_fp.exists():
+            return None
+        with contextlib.suppress(Exception):
+            ts_chain = Chain.from_xyz(ts_xyz_fp, parameters=chain_inputs)
+            ts_nodes = list(getattr(ts_chain, "nodes", []) or [])
+            if ts_nodes:
+                return _ensure_node_graph(ts_nodes[0].copy(), fallback=job["ts_guess"])
+        return None
+
+    def _load_cached_irc_chain(job: dict[str, Any]) -> Chain | None:
+        irc_xyz_fp = artifacts_dir / f"{job['stem']}.irc.xyz"
+        if not irc_xyz_fp.exists():
+            return None
+        with contextlib.suppress(Exception):
+            irc_chain = Chain.from_xyz(irc_xyz_fp, parameters=chain_inputs)
+            if len(getattr(irc_chain, "nodes", []) or []) >= 2:
+                return irc_chain
+        return None
+
+    cached_ts_results: list[dict[str, Any]] = []
+    cached_irc_results: list[dict[str, Any]] = []
+    pending_ts_jobs: list[dict[str, Any]] = []
+    for job in ts_jobs:
+        cached_irc_chain = _load_cached_irc_chain(job)
+        if cached_irc_chain is not None:
+            ts_node: StructureNode | None = None
+            with contextlib.suppress(Exception):
+                ts_node = _peak_node_from_chain(cached_irc_chain)
+            if ts_node is None:
+                ts_node = job["ts_guess"].copy()
+            cached_irc_results.append(
+                {
+                    **job,
+                    "ts_node": _ensure_node_graph(ts_node, fallback=job["ts_guess"]),
+                    "irc_chain": cached_irc_chain,
+                    "cached_artifact": True,
+                }
+            )
+            continue
+        cached_ts_node = _load_cached_ts_node(job)
+        if cached_ts_node is not None:
+            cached_ts_results.append({**job, "ts_node": cached_ts_node, "cached_artifact": True})
+            continue
+        pending_ts_jobs.append(job)
+
     ts_guesses_attempted = len(ts_jobs)
-    ts_jobs_submitted = len(ts_jobs)
+    ts_jobs_submitted = len(pending_ts_jobs)
+    ts_jobs_reused = int(len(cached_ts_results) + len(cached_irc_results))
+    irc_jobs_reused = int(len(cached_irc_results))
 
     def _run_ts_jobs_chemcloud_batch(jobs: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
         engine = run_inputs.engine
@@ -1639,16 +1707,24 @@ def refine_drive_workspace_network(
         except Exception as exc:
             return {**job, "ts_node": None, "error": f"{type(exc).__name__}: {exc}"}
 
+    if ts_jobs_reused > 0:
+        _emit_progress(
+            f"Reusing {ts_jobs_reused} cached TS/IRC artifacts from {artifacts_dir}.",
+            phase="ts",
+            current=0,
+            total=max(1, ts_jobs_submitted),
+        )
     _emit_progress(
         "Running TS optimizations...",
         phase="ts",
         current=0,
         total=ts_jobs_submitted,
     )
-    ts_results: list[dict[str, Any]] | None = None
+    ts_results: list[dict[str, Any]] = list(cached_ts_results)
+    run_ts_results: list[dict[str, Any]] = []
     batch_capable = (
         bool(chemcloud_mode)
-        and len(ts_jobs) > 1
+        and len(pending_ts_jobs) > 1
         and not bool(resolved_use_bigchem)
         and hasattr(run_inputs.engine, "compute_func")
         and hasattr(run_inputs.engine, "program")
@@ -1662,7 +1738,8 @@ def refine_drive_workspace_network(
             total=ts_jobs_submitted,
         )
         try:
-            ts_results = _run_ts_jobs_chemcloud_batch(ts_jobs)
+            run_ts_results = _run_ts_jobs_chemcloud_batch(pending_ts_jobs)
+            ts_results.extend(run_ts_results)
         except Exception as exc:
             _emit_progress(
                 f"ChemCloud TS batch submission failed ({type(exc).__name__}); falling back to threaded TS submissions.",
@@ -1670,14 +1747,14 @@ def refine_drive_workspace_network(
                 current=0,
                 total=ts_jobs_submitted,
             )
-    if chemcloud_mode and len(ts_jobs) > 1:
-        if ts_results is None:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(ts_jobs)) as executor:
-                ts_futures = [executor.submit(_run_ts_job, job) for job in ts_jobs]
-                ts_results = []
+    if chemcloud_mode and len(pending_ts_jobs) > 1:
+        if not run_ts_results:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=len(pending_ts_jobs)) as executor:
+                ts_futures = [executor.submit(_run_ts_job, job) for job in pending_ts_jobs]
                 ts_success_count = 0
                 for completed, future in enumerate(_iter_completed_futures(ts_futures), start=1):
                     result = future.result()
+                    run_ts_results.append(result)
                     ts_results.append(result)
                     if result.get("ts_node") is not None:
                         ts_success_count += 1
@@ -1690,7 +1767,7 @@ def refine_drive_workspace_network(
                     )
         else:
             ts_success_count = 0
-            for completed, result in enumerate(ts_results, start=1):
+            for completed, result in enumerate(run_ts_results, start=1):
                 if result.get("ts_node") is not None:
                     ts_success_count += 1
                 ts_failure_count = completed - ts_success_count
@@ -1701,10 +1778,10 @@ def refine_drive_workspace_network(
                     total=ts_jobs_submitted,
                 )
     else:
-        ts_results = ts_results or []
         ts_success_count = 0
-        for idx, job in enumerate(ts_jobs, start=1):
+        for idx, job in enumerate(pending_ts_jobs, start=1):
             result = _run_ts_job(job)
+            run_ts_results.append(result)
             ts_results.append(result)
             if result.get("ts_node") is not None:
                 ts_success_count += 1
@@ -1717,10 +1794,10 @@ def refine_drive_workspace_network(
             )
 
     successful_ts_results = [result for result in ts_results if result.get("ts_node") is not None]
-    ts_failed = int(ts_jobs_submitted - len(successful_ts_results))
+    ts_failed = int(sum(1 for result in run_ts_results if result.get("ts_node") is None))
     ts_error_counts = Counter(
         str(result.get("error") or "").strip()
-        for result in ts_results
+        for result in run_ts_results
         if result.get("ts_node") is None
     )
     ts_error_counts.pop("", None)
@@ -1733,7 +1810,7 @@ def refine_drive_workspace_network(
         ts_failure_log_fp = artifacts_dir / "ts_failures.jsonl"
         with contextlib.suppress(Exception):
             with ts_failure_log_fp.open("w", encoding="utf-8") as handle:
-                for result in ts_results:
+                for result in run_ts_results:
                     if result.get("ts_node") is not None:
                         continue
                     payload = {
@@ -1751,6 +1828,8 @@ def refine_drive_workspace_network(
             current=ts_jobs_submitted,
             total=ts_jobs_submitted,
         )
+
+    ts_converged_total = int(len(successful_ts_results) + len(cached_irc_results))
     irc_jobs_submitted = len(successful_ts_results)
 
     def _run_irc_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -1774,22 +1853,31 @@ def refine_drive_workspace_network(
             irc_chain.write_to_disk(artifacts_dir / f"{job['stem']}.irc.xyz")
         return {**job, "irc_chain": irc_chain}
 
+    if irc_jobs_reused > 0:
+        _emit_progress(
+            f"Reusing {irc_jobs_reused} cached IRC chains from {artifacts_dir}.",
+            phase="irc",
+            current=0,
+            total=max(1, irc_jobs_submitted),
+        )
     _emit_progress(
         "Running IRC calculations...",
         phase="irc",
         current=0,
         total=irc_jobs_submitted,
     )
+    irc_results = list(cached_irc_results)
+    run_irc_results: list[dict[str, Any]] = []
     if chemcloud_mode and len(successful_ts_results) > 1:
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(successful_ts_results)) as executor:
             irc_futures = [
                 executor.submit(_run_irc_job, job)
                 for job in successful_ts_results
             ]
-            irc_results = []
             irc_success_count = 0
             for completed, future in enumerate(_iter_completed_futures(irc_futures), start=1):
                 result = future.result()
+                run_irc_results.append(result)
                 irc_results.append(result)
                 if result.get("irc_chain") is not None:
                     irc_success_count += 1
@@ -1801,10 +1889,10 @@ def refine_drive_workspace_network(
                     total=irc_jobs_submitted,
                 )
     else:
-        irc_results = []
         irc_success_count = 0
         for idx, job in enumerate(successful_ts_results, start=1):
             result = _run_irc_job(job)
+            run_irc_results.append(result)
             irc_results.append(result)
             if result.get("irc_chain") is not None:
                 irc_success_count += 1
@@ -1818,7 +1906,7 @@ def refine_drive_workspace_network(
 
     irc_error_counts = Counter(
         str(result.get("error") or "").strip()
-        for result in irc_results
+        for result in run_irc_results
         if result.get("irc_chain") is None
     )
     irc_error_counts.pop("", None)
@@ -1962,11 +2050,13 @@ def refine_drive_workspace_network(
         "edges_without_chains": int(skipped_edges),
         "ts_guesses_attempted": int(ts_guesses_attempted),
         "ts_jobs_submitted": int(ts_jobs_submitted),
-        "ts_converged": int(len(successful_ts_results)),
+        "ts_converged": int(ts_converged_total),
+        "ts_jobs_reused": int(ts_jobs_reused),
         "ts_failed": int(ts_failed),
         "ts_failure_log": str(ts_failure_log_fp) if ts_failure_log_fp is not None else "",
         "ts_top_errors": list(ts_top_errors),
         "irc_jobs_submitted": int(irc_jobs_submitted),
+        "irc_jobs_reused": int(irc_jobs_reused),
         "irc_converged": int(irc_converged),
         "irc_failed": int(max(0, irc_failed)),
         "irc_failure_log": str(irc_failure_log_fp) if irc_failure_log_fp is not None else "",

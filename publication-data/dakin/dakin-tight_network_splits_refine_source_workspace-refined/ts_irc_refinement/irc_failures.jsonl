@@ -1,0 +1,4 @@
+{"source_node": 1, "target_node": 2, "chain_index": 0, "error": "IRCError: No imaginary mode detected. Please optimize the structure and try again.\n"}
+{"source_node": 1, "target_node": 0, "chain_index": 0, "error": "IRCError: There are more than one imaginary vibrational mode. Please optimize the structure and try again.\n"}
+{"source_node": 3, "target_node": 0, "chain_index": 0, "error": "GeomOptNotConvergedError: Optimizer.optimizeGeometry() failed to converge."}
+{"source_node": 3, "target_node": 2, "chain_index": 0, "error": "GeomOptNotConvergedError: Optimizer.optimizeGeometry() failed to converge."}

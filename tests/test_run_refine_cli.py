@@ -320,6 +320,183 @@ def test_run_refine_chemcloud_uses_batched_minima_optimization(monkeypatch, tmp_
     assert expensive_inputs.engine.batch_call_sizes == [3]
 
 
+def test_run_refine_ts_irc_uses_discovered_path_source(monkeypatch, tmp_path):
+    cheap_inputs = _make_fake_runinputs("cheap", shift=0.0, nimages=3)
+    expensive_inputs = _make_fake_runinputs("expensive", shift=1.0, nimages=3)
+
+    def _fake_open(path: str):
+        return cheap_inputs if "cheap" in path else expensive_inputs
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(_fake_open))
+    monkeypatch.setattr(main_cli, "MSMEP", _FakeMSMEP)
+    monkeypatch.setattr(
+        main_cli,
+        "read_multiple_structure_from_file",
+        lambda *args, **kwargs: [_structure_at_x(1.0), _structure_at_x(40.0)],
+    )
+    monkeypatch.setattr(main_cli, "_ascii_profile_for_chain", lambda chain: None)
+    _FakeMSMEP.expensive_pair_inputs = []
+    _FakeMSMEP.expensive_parallel_pair_inputs = []
+    _FakeMSMEP.parallel_workers_seen = []
+
+    observed: dict[str, object] = {}
+
+    def _fake_refine_drive_workspace_network(
+        workspace,
+        *,
+        refinement_inputs_fp,
+        refined_workspace_dir=None,
+        refined_run_name=None,
+        use_bigchem=None,
+        write_status_html_output=False,
+        progress=None,
+    ):
+        observed["workspace"] = workspace
+        observed["refinement_inputs_fp"] = Path(refinement_inputs_fp)
+        observed["refined_workspace_dir"] = refined_workspace_dir
+        observed["refined_run_name"] = refined_run_name
+        observed["use_bigchem"] = use_bigchem
+        observed["write_status_html_output"] = write_status_html_output
+
+        pot = main_cli.Pot.read_from_disk(workspace.neb_pot_fp)
+        edge = next(iter(pot.graph.edges))
+        chains = pot.graph.edges[edge]["list_of_nebs"]
+        observed["nchains"] = len(chains)
+        observed["chain_nodes"] = len(chains[0].nodes)
+
+        return _fake_ts_irc_summary(
+            source_workspace=str(workspace.directory),
+            refined_workspace=str(tmp_path / "refined_workspace"),
+            inputs_fp=str(refinement_inputs_fp),
+        )
+
+    monkeypatch.setattr(
+        main_cli,
+        "refine_drive_workspace_network",
+        _fake_refine_drive_workspace_network,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    main_cli.run_refine(
+        geometries="dummy.xyz",
+        inputs="expensive.toml",
+        cheap_inputs="cheap.toml",
+        mode="ts-irc",
+        output_directory=str(tmp_path / "refined_workspace"),
+        use_bigchem=True,
+        write_status_html_output=True,
+        name="refine_ts_irc_case",
+    )
+
+    assert observed["refinement_inputs_fp"] == (tmp_path / "expensive.toml").resolve()
+    assert observed["refined_workspace_dir"] == (tmp_path / "refined_workspace").resolve()
+    assert observed["refined_run_name"] == "refine_ts_irc_case"
+    assert observed["use_bigchem"] is True
+    assert observed["write_status_html_output"] is True
+    assert observed["nchains"] == 1
+    assert observed["chain_nodes"] == 5
+    assert len(_FakeMSMEP.expensive_pair_inputs) == 0
+
+
+def test_run_refine_ts_irc_all_source_edges_uses_network_splits_graph(monkeypatch, tmp_path):
+    cheap_inputs = _make_fake_runinputs("cheap", shift=0.0, nimages=3)
+    expensive_inputs = _make_fake_runinputs("expensive", shift=1.0, nimages=3)
+
+    def _fake_open(path: str):
+        return cheap_inputs if "cheap" in path else expensive_inputs
+
+    monkeypatch.setattr(main_cli.RunInputs, "open", staticmethod(_fake_open))
+    monkeypatch.setattr(main_cli, "MSMEP", _FakeMSMEP)
+    monkeypatch.setattr(
+        main_cli,
+        "read_multiple_structure_from_file",
+        lambda *args, **kwargs: [_structure_at_x(1.0), _structure_at_x(40.0)],
+    )
+    monkeypatch.setattr(main_cli, "_ascii_profile_for_chain", lambda chain: None)
+    _FakeMSMEP.expensive_pair_inputs = []
+    _FakeMSMEP.expensive_parallel_pair_inputs = []
+    _FakeMSMEP.parallel_workers_seen = []
+
+    strict_inputs = ChainInputs(node_rms_thre=0.01, node_ene_thre=0.001)
+    chain_a = _chain_from_xs([1.0, 2.0], strict_inputs, energies=[0.0, 1.0])
+    chain_b = _chain_from_xs([2.0, 3.0], strict_inputs, energies=[0.0, 1.0])
+    network_pot = main_cli._chains_to_refinement_pot(
+        [chain_a, chain_b],
+        source_label="network_source",
+    )
+
+    def _fake_run_recursive_network_splits(**kwargs):
+        output_dir = Path(kwargs["output_dir"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        base_name = str(kwargs["base_name"])
+        network_fp = output_dir / f"{base_name}_network.json"
+        manifest_fp = output_dir / f"{base_name}_manifest.json"
+        network_pot.write_to_disk(network_fp)
+        manifest_fp.write_text("{}", encoding="utf-8")
+        return [], network_fp, manifest_fp
+
+    monkeypatch.setattr(
+        main_cli,
+        "_run_recursive_network_splits",
+        _fake_run_recursive_network_splits,
+    )
+    monkeypatch.setattr(
+        main_cli,
+        "_load_best_path_chain_from_network_splits",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("best-path extraction should not run for all-source-edges scope")
+        ),
+    )
+
+    observed: dict[str, object] = {}
+
+    def _fake_refine_drive_workspace_network(
+        workspace,
+        *,
+        refinement_inputs_fp,
+        refined_workspace_dir=None,
+        refined_run_name=None,
+        use_bigchem=None,
+        write_status_html_output=False,
+        progress=None,
+    ):
+        observed["edge_count"] = int(main_cli.Pot.read_from_disk(workspace.neb_pot_fp).graph.number_of_edges())
+        return _fake_ts_irc_summary(
+            source_workspace=str(workspace.directory),
+            refined_workspace=str(tmp_path / "refined_workspace"),
+            inputs_fp=str(refinement_inputs_fp),
+        )
+
+    monkeypatch.setattr(
+        main_cli,
+        "refine_drive_workspace_network",
+        _fake_refine_drive_workspace_network,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    main_cli.run_refine(
+        geometries="dummy.xyz",
+        inputs="expensive.toml",
+        cheap_inputs="cheap.toml",
+        mode="ts-irc",
+        recursive=True,
+        network_splits=True,
+        ts_irc_edge_scope="all-source-edges",
+        name="refine_ts_irc_network_scope_case",
+    )
+
+    assert observed["edge_count"] == 2
+
+
+def test_run_refine_rejects_invalid_mode():
+    with pytest.raises(main_cli.typer.BadParameter):
+        main_cli.run_refine(
+            geometries="dummy.xyz",
+            inputs="expensive.toml",
+            mode="invalid-mode",
+        )
+
+
 def test_refine_uses_precomputed_treenode_source(monkeypatch, tmp_path):
     expensive_inputs = _make_fake_runinputs("expensive", shift=1.0, nimages=3)
 

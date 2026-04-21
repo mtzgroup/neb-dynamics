@@ -1,0 +1,900 @@
+{
+  "control_mode": "go",
+  "dr": 1.0,
+  "neb": {},
+  "network": {
+    "edges": [
+      {
+        "source": 0,
+        "target": 1
+      },
+      {
+        "source": 0,
+        "target": 2
+      },
+      {
+        "source": 0,
+        "target": 3
+      },
+      {
+        "source": 0,
+        "target": 4
+      },
+      {
+        "source": 0,
+        "target": 5
+      },
+      {
+        "source": 0,
+        "target": 6
+      },
+      {
+        "source": 0,
+        "target": 7
+      },
+      {
+        "source": 0,
+        "target": 8
+      },
+      {
+        "source": 0,
+        "target": 9
+      },
+      {
+        "source": 0,
+        "target": 10
+      },
+      {
+        "source": 0,
+        "target": 11
+      },
+      {
+        "source": 0,
+        "target": 12
+      },
+      {
+        "source": 0,
+        "target": 13
+      },
+      {
+        "source": 0,
+        "target": 14
+      },
+      {
+        "source": 0,
+        "target": 15
+      },
+      {
+        "source": 0,
+        "target": 16
+      },
+      {
+        "source": 0,
+        "target": 17
+      },
+      {
+        "source": 0,
+        "target": 18
+      },
+      {
+        "source": 0,
+        "target": 19
+      },
+      {
+        "source": 0,
+        "target": 20
+      },
+      {
+        "source": 0,
+        "target": 21
+      },
+      {
+        "source": 0,
+        "target": 22
+      },
+      {
+        "source": 0,
+        "target": 23
+      },
+      {
+        "source": 0,
+        "target": 24
+      },
+      {
+        "source": 0,
+        "target": 25
+      },
+      {
+        "source": 0,
+        "target": 26
+      },
+      {
+        "source": 0,
+        "target": 27
+      },
+      {
+        "source": 0,
+        "target": 28
+      },
+      {
+        "source": 1,
+        "target": 0
+      },
+      {
+        "source": 1,
+        "target": 2
+      },
+      {
+        "source": 1,
+        "target": 3
+      },
+      {
+        "source": 1,
+        "target": 4
+      },
+      {
+        "source": 1,
+        "target": 5
+      },
+      {
+        "source": 1,
+        "target": 6
+      },
+      {
+        "source": 1,
+        "target": 7
+      },
+      {
+        "source": 1,
+        "target": 8
+      },
+      {
+        "source": 1,
+        "target": 9
+      },
+      {
+        "source": 1,
+        "target": 10
+      },
+      {
+        "source": 1,
+        "target": 11
+      },
+      {
+        "source": 1,
+        "target": 12
+      },
+      {
+        "source": 1,
+        "target": 13
+      },
+      {
+        "source": 1,
+        "target": 14
+      },
+      {
+        "source": 1,
+        "target": 15
+      },
+      {
+        "source": 1,
+        "target": 16
+      },
+      {
+        "source": 1,
+        "target": 17
+      },
+      {
+        "source": 1,
+        "target": 18
+      },
+      {
+        "source": 1,
+        "target": 19
+      },
+      {
+        "source": 1,
+        "target": 20
+      },
+      {
+        "source": 1,
+        "target": 21
+      },
+      {
+        "source": 1,
+        "target": 22
+      },
+      {
+        "source": 1,
+        "target": 23
+      },
+      {
+        "source": 1,
+        "target": 24
+      },
+      {
+        "source": 1,
+        "target": 25
+      },
+      {
+        "source": 1,
+        "target": 26
+      },
+      {
+        "source": 1,
+        "target": 27
+      },
+      {
+        "source": 1,
+        "target": 28
+      },
+      {
+        "source": 2,
+        "target": 1
+      },
+      {
+        "source": 2,
+        "target": 3
+      },
+      {
+        "source": 2,
+        "target": 4
+      },
+      {
+        "source": 2,
+        "target": 5
+      },
+      {
+        "source": 2,
+        "target": 6
+      },
+      {
+        "source": 2,
+        "target": 7
+      },
+      {
+        "source": 2,
+        "target": 8
+      },
+      {
+        "source": 2,
+        "target": 9
+      },
+      {
+        "source": 2,
+        "target": 10
+      },
+      {
+        "source": 2,
+        "target": 11
+      },
+      {
+        "source": 2,
+        "target": 12
+      },
+      {
+        "source": 2,
+        "target": 13
+      },
+      {
+        "source": 2,
+        "target": 14
+      },
+      {
+        "source": 2,
+        "target": 15
+      },
+      {
+        "source": 2,
+        "target": 16
+      },
+      {
+        "source": 2,
+        "target": 17
+      },
+      {
+        "source": 2,
+        "target": 18
+      },
+      {
+        "source": 2,
+        "target": 19
+      },
+      {
+        "source": 2,
+        "target": 20
+      },
+      {
+        "source": 2,
+        "target": 21
+      },
+      {
+        "source": 2,
+        "target": 22
+      },
+      {
+        "source": 2,
+        "target": 23
+      },
+      {
+        "source": 2,
+        "target": 24
+      },
+      {
+        "source": 2,
+        "target": 25
+      },
+      {
+        "source": 2,
+        "target": 26
+      },
+      {
+        "source": 2,
+        "target": 27
+      },
+      {
+        "source": 2,
+        "target": 28
+      },
+      {
+        "source": 3,
+        "target": 1
+      },
+      {
+        "source": 3,
+        "target": 4
+      },
+      {
+        "source": 3,
+        "target": 5
+      },
+      {
+        "source": 3,
+        "target": 6
+      },
+      {
+        "source": 3,
+        "target": 7
+      },
+      {
+        "source": 3,
+        "target": 8
+      },
+      {
+        "source": 3,
+        "target": 9
+      },
+      {
+        "source": 3,
+        "target": 10
+      },
+      {
+        "source": 3,
+        "target": 11
+      },
+      {
+        "source": 3,
+        "target": 12
+      },
+      {
+        "source": 3,
+        "target": 13
+      },
+      {
+        "source": 3,
+        "target": 14
+      },
+      {
+        "source": 3,
+        "target": 15
+      },
+      {
+        "source": 3,
+        "target": 16
+      },
+      {
+        "source": 3,
+        "target": 17
+      },
+      {
+        "source": 3,
+        "target": 18
+      },
+      {
+        "source": 3,
+        "target": 19
+      },
+      {
+        "source": 3,
+        "target": 20
+      },
+      {
+        "source": 3,
+        "target": 21
+      },
+      {
+        "source": 3,
+        "target": 22
+      },
+      {
+        "source": 3,
+        "target": 23
+      },
+      {
+        "source": 4,
+        "target": 1
+      },
+      {
+        "source": 4,
+        "target": 2
+      },
+      {
+        "source": 4,
+        "target": 3
+      },
+      {
+        "source": 4,
+        "target": 5
+      },
+      {
+        "source": 4,
+        "target": 6
+      },
+      {
+        "source": 4,
+        "target": 7
+      },
+      {
+        "source": 4,
+        "target": 8
+      },
+      {
+        "source": 4,
+        "target": 21
+      },
+      {
+        "source": 4,
+        "target": 25
+      },
+      {
+        "source": 5,
+        "target": 0
+      },
+      {
+        "source": 5,
+        "target": 2
+      },
+      {
+        "source": 5,
+        "target": 3
+      },
+      {
+        "source": 5,
+        "target": 4
+      },
+      {
+        "source": 5,
+        "target": 6
+      },
+      {
+        "source": 5,
+        "target": 7
+      },
+      {
+        "source": 5,
+        "target": 8
+      },
+      {
+        "source": 6,
+        "target": 0
+      },
+      {
+        "source": 6,
+        "target": 2
+      },
+      {
+        "source": 6,
+        "target": 4
+      },
+      {
+        "source": 6,
+        "target": 5
+      },
+      {
+        "source": 6,
+        "target": 7
+      },
+      {
+        "source": 6,
+        "target": 8
+      },
+      {
+        "source": 6,
+        "target": 16
+      },
+      {
+        "source": 6,
+        "target": 27
+      },
+      {
+        "source": 7,
+        "target": 5
+      },
+      {
+        "source": 7,
+        "target": 8
+      },
+      {
+        "source": 7,
+        "target": 9
+      },
+      {
+        "source": 7,
+        "target": 10
+      },
+      {
+        "source": 7,
+        "target": 21
+      },
+      {
+        "source": 8,
+        "target": 2
+      },
+      {
+        "source": 8,
+        "target": 26
+      },
+      {
+        "source": 8,
+        "target": 28
+      },
+      {
+        "source": 9,
+        "target": 0
+      },
+      {
+        "source": 9,
+        "target": 7
+      },
+      {
+        "source": 9,
+        "target": 10
+      },
+      {
+        "source": 10,
+        "target": 0
+      },
+      {
+        "source": 10,
+        "target": 2
+      },
+      {
+        "source": 10,
+        "target": 7
+      },
+      {
+        "source": 10,
+        "target": 9
+      },
+      {
+        "source": 10,
+        "target": 28
+      },
+      {
+        "source": 11,
+        "target": 0
+      },
+      {
+        "source": 12,
+        "target": 1
+      },
+      {
+        "source": 12,
+        "target": 13
+      },
+      {
+        "source": 12,
+        "target": 14
+      },
+      {
+        "source": 13,
+        "target": 12
+      },
+      {
+        "source": 14,
+        "target": 12
+      },
+      {
+        "source": 14,
+        "target": 15
+      },
+      {
+        "source": 15,
+        "target": 2
+      },
+      {
+        "source": 15,
+        "target": 3
+      },
+      {
+        "source": 15,
+        "target": 14
+      },
+      {
+        "source": 16,
+        "target": 1
+      },
+      {
+        "source": 16,
+        "target": 3
+      },
+      {
+        "source": 16,
+        "target": 6
+      },
+      {
+        "source": 16,
+        "target": 24
+      },
+      {
+        "source": 17,
+        "target": 1
+      },
+      {
+        "source": 17,
+        "target": 18
+      },
+      {
+        "source": 18,
+        "target": 17
+      },
+      {
+        "source": 18,
+        "target": 19
+      },
+      {
+        "source": 19,
+        "target": 18
+      },
+      {
+        "source": 19,
+        "target": 20
+      },
+      {
+        "source": 20,
+        "target": 19
+      },
+      {
+        "source": 20,
+        "target": 21
+      },
+      {
+        "source": 21,
+        "target": 4
+      },
+      {
+        "source": 21,
+        "target": 7
+      },
+      {
+        "source": 21,
+        "target": 20
+      },
+      {
+        "source": 21,
+        "target": 24
+      },
+      {
+        "source": 21,
+        "target": 27
+      },
+      {
+        "source": 22,
+        "target": 1
+      },
+      {
+        "source": 22,
+        "target": 23
+      },
+      {
+        "source": 23,
+        "target": 2
+      },
+      {
+        "source": 23,
+        "target": 22
+      },
+      {
+        "source": 24,
+        "target": 16
+      },
+      {
+        "source": 24,
+        "target": 21
+      },
+      {
+        "source": 25,
+        "target": 4
+      },
+      {
+        "source": 25,
+        "target": 26
+      },
+      {
+        "source": 26,
+        "target": 8
+      },
+      {
+        "source": 26,
+        "target": 25
+      },
+      {
+        "source": 27,
+        "target": 6
+      },
+      {
+        "source": 27,
+        "target": 21
+      },
+      {
+        "source": 28,
+        "target": 8
+      },
+      {
+        "source": 28,
+        "target": 10
+      }
+    ],
+    "nodes": [
+      {
+        "growing": false,
+        "id": 0,
+        "label": "[CH][CH][Cu][N][N][NH]"
+      },
+      {
+        "growing": false,
+        "id": 1,
+        "label": "[Cu][N]1C=CN[N]1"
+      },
+      {
+        "growing": false,
+        "id": 2,
+        "label": "[CH][CH][Cu][N]N=N"
+      },
+      {
+        "growing": true,
+        "id": 3,
+        "label": "[NH]N=NC=[CH][Cu]"
+      },
+      {
+        "growing": false,
+        "id": 4,
+        "label": "[Cu][CH]1[CH]N=NN1"
+      },
+      {
+        "growing": false,
+        "id": 5,
+        "label": "N=N[N][Cu].[CH][CH]"
+      },
+      {
+        "growing": false,
+        "id": 6,
+        "label": "[CH][CH]=[Cu]1[N]N[N]1"
+      },
+      {
+        "growing": false,
+        "id": 7,
+        "label": "[NH][N]1N=C[CH]=[Cu]1"
+      },
+      {
+        "growing": false,
+        "id": 8,
+        "label": "[CH2][C]#[Cu][N]N=N"
+      },
+      {
+        "growing": false,
+        "id": 9,
+        "label": "[NH][N]N=C[CH][Cu]"
+      },
+      {
+        "growing": false,
+        "id": 10,
+        "label": "[CH][CH][Cu][N]1[N]N1"
+      },
+      {
+        "growing": false,
+        "id": 11,
+        "label": "[CH2][C]#[Cu][N][N][NH]"
+      },
+      {
+        "growing": false,
+        "id": 12,
+        "label": "c1c[n]2n1[NH][Cu]2"
+      },
+      {
+        "growing": false,
+        "id": 13,
+        "label": "[NH]n1cc[n]1[Cu]"
+      },
+      {
+        "growing": false,
+        "id": 14,
+        "label": "[NH]1[Cu][CH]2C3N1N23"
+      },
+      {
+        "growing": false,
+        "id": 15,
+        "label": "N=N[N]1C=[CH][Cu]1"
+      },
+      {
+        "growing": false,
+        "id": 16,
+        "label": "C1=N[N][NH][Cu]=[CH]1"
+      },
+      {
+        "growing": false,
+        "id": 17,
+        "label": "[CH]1C=N[N][Cu][NH]1"
+      },
+      {
+        "growing": false,
+        "id": 18,
+        "label": "C1=C[N]=[Cu][NH][N]1"
+      },
+      {
+        "growing": false,
+        "id": 19,
+        "label": "[Cu][N]1[CH]C=NN1"
+      },
+      {
+        "growing": false,
+        "id": 20,
+        "label": "C1=NN[N][Cu]=[CH]1"
+      },
+      {
+        "growing": false,
+        "id": 21,
+        "label": "[CH]1[CH]=[Cu][n]2[nH]n21"
+      },
+      {
+        "growing": false,
+        "id": 22,
+        "label": "[CH]1[CH]=[Cu][N]=NN1"
+      },
+      {
+        "growing": false,
+        "id": 23,
+        "label": "N=N[N]C=[CH][Cu]"
+      },
+      {
+        "growing": true,
+        "id": 24,
+        "label": "[CH]1[CH]=[Cu]<-[NH]2[N]N12"
+      },
+      {
+        "growing": false,
+        "id": 25,
+        "label": "[CH2][C]1=[Cu][NH]N=N1"
+      },
+      {
+        "growing": false,
+        "id": 26,
+        "label": "[CH2][C]#[Cu][NH][N][N]"
+      },
+      {
+        "growing": false,
+        "id": 27,
+        "label": "C#C.[Cu][N]1[N]N1"
+      },
+      {
+        "growing": false,
+        "id": 28,
+        "label": "[CH][CH][Cu][N]=N[NH]"
+      }
+    ]
+  },
+  "note": "Step 1/3: connecting missing edge 3 -> 24 (64/335).",
+  "phase": "growing",
+  "stage": "connect",
+  "title": "Hawaii autonomous exploration"
+}

@@ -1,0 +1,46 @@
+{
+  "barrier": "",
+  "cache_key": {
+    "barrier": null,
+    "chains": 0,
+    "reaction": "Hawaii auto edge 0->23",
+    "source_molecule_key": "[CH][CH][Cu][N][N][NH]",
+    "source_node": 0,
+    "target_molecule_key": "N=N[N]C=[CH][Cu]",
+    "target_node": 23
+  },
+  "chains": "0",
+  "edge": "0 -> 23",
+  "end": "N=N[N]C=[CH][Cu]",
+  "href": "edge_0_23.html",
+  "reaction": "Hawaii auto edge 0->23",
+  "source_structure": {
+    "symbols": [
+      "C",
+      "C",
+      "N",
+      "N",
+      "N",
+      "Cu",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "OQpxY2lvX2NoYXJnZT0xIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgMC4xOTE3NzA3MzIzMDE4MjMwOSAxLjU2NDI2NDA3NzIzNTkzMzk3IDIuMjQ4MTIzMjM0MTYxNjgyNTgKQyAgLTAuODkxMTM2NzQ1ODQ2MzI1OTYgMS44MjMyNzg4MTQ4OTQ5ODEwMCAxLjc1MzgyMjY0MTExODc4OTYwCk4gIDAuMzU2NzEwMzIzODE5Mjk1NTcgLTIuNDkyNDQwMTkzMjY1MjMyNDcgLTIuNTAxMjA4NDQ3MzM0MTc3MzUKTiAgMC4zMzYxNDEyMzA3ODIxOTIxMCAtMS41NjI4MTY1MDAwMjMyNjM4OSAtMS44MTA4MTM5OTUyNzE0MzIxNgpOICAwLjE4NjY2NTU1MzY3NjUxMzE0IC0wLjc3MDQ2MzE2NzA4MzE4Njk2IC0xLjAxNjk5OTg0NjA5NzY5NzQ1CkN1IC0wLjI3MDYwNzUzNjMzMzM5NjkwIDAuNDYwMzcyMjgxMTczMDYyODkgMC4zMzQ5NTQ0OTA2MzEyODIzMApIICAxLjEwMTAwNjg2NzcxNzUyMTU0IDEuNDIyNzgwNzcyMzA1OTEyNDkgMi43NzE1MzY4NzQ0ODc4MzA4MQpIICAtMS44NTQxMDQwMjAyNTk2NjIzNyAyLjI0MzAwNzU3NTYwNzM4MjYyIDEuNTc3NjEzNDczMTQ3NjcwMDkKSCAgMC44NDM1NTM1OTQxNDAwMzk5NCAtMi42ODc5ODM2NjA4NDQ1ODk3MyAtMy4zNTcwMjg0MjQ4NDI5NDg1MAo="
+  },
+  "start": "[CH][CH][Cu][N][N][NH]",
+  "target_structure": {
+    "symbols": [
+      "C",
+      "C",
+      "N",
+      "N",
+      "N",
+      "Cu",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "OQpxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgLTAuNjMzNDMwMTg5OTk2MDc3MTQgLTEuNTk3MDIzMTcyMTQ4ODM4ODIgLTAuNzc4MDAzMTU5MDM2MjYwMTYKQyAgLTAuMDg5NTQ0OTkwMzU5NzM2MzYgLTAuNjU4MTIzOTgxNDcxMzkxMzkgMC4wMDA2MjU1MTE1NDM0MjUzNQpOICAxLjExNTEzNzM0NjYxODU0MDE0IDEuODE3Mjk3MjU5NTM3NDc2MTIgMS4xODA4NDY0Mzk3ODgxNzQxNgpOICAwLjI1NDc5NDc1MDE1NTkyMzg0IDEuNjI1MDg5NDIxNTA3MDU0NjAgMC4zMDIxMDU5MTQ1MjU0NTk3NgpOICAtMC4yMDM5OTcxOTAzNzI1OTA4NCAwLjY4NzI0ODE3NDM0NzYzNTQxIC0wLjMxNjkzOTYwMTc2NzgzMjM3CkN1IC0xLjYxNTc5MjQzNDMzODU5NTY1IC0xLjIwNjM1MTE2Mjc5Nzc0MzI0IC0yLjM4NDY1NTI0MzE4NTI1Mjc5CkggIC0wLjQ1NjkwNzI2MTEyNzI0NjE3IC0yLjYwNTU0MTQ2NjI3NDMyODE0IC0wLjQxMjQ3OTA0NTE4MzA2MTY3CkggIDAuNDU0MDU3MjkzNDgzODY0MzcgLTAuODQ5NTc4NTEwMjg0NTA0OTMgMC45MjcxNTQxNzQzMzMyMzcyMQpIICAxLjE3NTY4MjY3NTkzNDkxNzkzIDIuNzg2OTgzNDM3NTg0NjM5ODQgMS40ODEzNDUwMDg5ODMxMTA2MQo="
+  }
+}

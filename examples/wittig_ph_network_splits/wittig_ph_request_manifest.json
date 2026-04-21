@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-04-06T16:10:09.498103",
+  "base_name": "wittig_ph",
+  "run_state": "completed",
+  "current_request_id": null,
+  "total_requests": 1,
+  "counts": {
+    "completed": 1
+  },
+  "requests": [
+    {
+      "request_id": 0,
+      "parent_request_id": null,
+      "start_index": 0,
+      "end_index": 1,
+      "status": "completed",
+      "updated_at": "2026-04-06T16:10:07.761526",
+      "n_path_nodes": 3,
+      "completed_at": "2026-04-06T16:10:07.761515"
+    }
+  ],
+  "network_path": "/Users/janestrada/mepd/neb-dynamics/examples/wittig_ph_network_splits/wittig_ph_network.json",
+  "network_summary": {
+    "status": "available",
+    "node_count": 3,
+    "edge_count": 4,
+    "nodes": [
+      "0",
+      "1",
+      "2"
+    ],
+    "edges": [
+      [
+        "0",
+        "1"
+      ],
+      [
+        "1",
+        "0"
+      ],
+      [
+        "1",
+        "2"
+      ],
+      [
+        "2",
+        "1"
+      ]
+    ]
+  }
+}

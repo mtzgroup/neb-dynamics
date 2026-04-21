@@ -1,0 +1,169 @@
+{
+    "extras": {},
+    "input_data": {
+        "keywords": {
+            "maxiter": 500,
+            "transition": true
+        },
+        "structure": {
+            "extras": {},
+            "symbols": [
+                "O",
+                "C",
+                "C",
+                "C",
+                "C",
+                "C",
+                "C",
+                "C",
+                "O",
+                "O",
+                "H",
+                "O",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H"
+            ],
+            "geometry": [
+                [
+                    1.4669735034031441,
+                    0.10719369365429535,
+                    -4.93960234796106
+                ],
+                [
+                    0.6906276586449213,
+                    1.2442557190874366,
+                    -3.110383289888556
+                ],
+                [
+                    0.5500361595567992,
+                    -0.042352504306394236,
+                    -0.4008716873219902
+                ],
+                [
+                    0.38329203865214223,
+                    1.4421528745453158,
+                    1.8099284621847325
+                ],
+                [
+                    1.2188367502928155,
+                    0.4081941557280971,
+                    4.084399381826113
+                ],
+                [
+                    1.9941136589513544,
+                    -2.078583409390879,
+                    4.189106790255769
+                ],
+                [
+                    1.978934163354099,
+                    -3.5920612263303027,
+                    2.0328364339516423
+                ],
+                [
+                    1.2440386509340737,
+                    -2.5909092138567003,
+                    -0.24851073116886
+                ],
+                [
+                    -2.2376194980768775,
+                    0.8230618711964658,
+                    -2.2965214075795988
+                ],
+                [
+                    -5.419423999189601,
+                    1.4968218039549608,
+                    -3.787409548390058
+                ],
+                [
+                    0.9692128865896701,
+                    3.303208503446717,
+                    -2.888672071067162
+                ],
+                [
+                    -0.5707422343378157,
+                    3.7817294929505025,
+                    1.7828597664710315
+                ],
+                [
+                    1.1481196021636453,
+                    1.5760563981060898,
+                    5.752222224344023
+                ],
+                [
+                    2.57274357040753,
+                    -2.8726175266916374,
+                    5.975892052868172
+                ],
+                [
+                    2.553764063483095,
+                    -5.543500175618634,
+                    2.1469640157317262
+                ],
+                [
+                    1.2843310574976385,
+                    -3.6878539550408216,
+                    -1.9679361421512012
+                ],
+                [
+                    -3.293863711919558,
+                    -0.4066604452166031,
+                    -3.265598074703469
+                ],
+                [
+                    -4.954634385751414,
+                    2.6044608081818605,
+                    -5.140073015801206
+                ],
+                [
+                    -1.5787399346537723,
+                    4.027403135598341,
+                    0.2713691883999498
+                ]
+            ],
+            "charge": 0,
+            "multiplicity": 1,
+            "identifiers": {
+                "extras": {}
+            },
+            "connectivity": []
+        },
+        "extras": {},
+        "files": {},
+        "cmdline_args": [],
+        "calctype": "transition_state",
+        "subprogram": "terachem",
+        "subprogram_args": {
+            "keywords": {
+                "threads": 1
+            },
+            "extras": {},
+            "files": {},
+            "cmdline_args": [],
+            "model": {
+                "extras": {},
+                "method": "wb97xd3",
+                "basis": "def2-svp"
+            }
+        }
+    },
+    "success": false,
+    "data": {
+        "extras": {},
+        "files": {}
+    },
+    "traceback": "Traceback (most recent call last):\n  File \"/opt/conda/lib/python3.12/site-packages/qcop/adapters/geometric.py\", line 110, in compute_results\n    optimizer.optimizeGeometry()\n  File \"/opt/conda/lib/python3.12/site-packages/geometric/optimize.py\", line 1042, in optimizeGeometry\n    raise GeomOptNotConvergedError(\"Optimizer.optimizeGeometry() failed to converge.\")\ngeometric.errors.GeomOptNotConvergedError: Optimizer.optimizeGeometry() failed to converge.\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/opt/conda/lib/python3.12/site-packages/qcop/adapters/base.py\", line 160, in compute\n    results, stdout = self.compute_results(\n                      ^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/conda/lib/python3.12/site-packages/qcop/adapters/geometric.py\", line 112, in compute_results\n    raise ExternalProgramError(\nqcop.exceptions.ExternalProgramError: geomeTRIC optimization failed. See the traceback above for details.\n",
+    "provenance": {
+        "extras": {},
+        "program": "geometric",
+        "program_version": "1.1",
+        "scratch_dir": "/tmp/tmp0kw764du",
+        "wall_time": 10097.085366,
+        "hostname": "fire-09-02",
+        "hostcpus": 12
+    }
+}

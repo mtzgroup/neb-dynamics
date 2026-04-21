@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a single QMMMEngine geometry optimization on prod.xyz via QCOP.
+"""Run a single QMMMEngine geometry optimization via QCOP.
 
 This script is designed for failure diagnosis. It uses the for_nancy inputs by
 default, forces `compute_program=qcop`, and writes detailed artifacts so the
@@ -17,6 +17,7 @@ from typing import Any
 from qcio import Structure
 
 from neb_dynamics.engines.qmmm import QMMMEngine
+from neb_dynamics.engines.qmmm import rst7prmtop_to_structure
 from neb_dynamics.errors import ElectronicStructureError
 from neb_dynamics.inputs import RunInputs
 from neb_dynamics.nodes.node import StructureNode
@@ -101,7 +102,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--geometry",
         default="prod.xyz",
-        help="Geometry file for optimization start (default: prod.xyz).",
+        help="Geometry file for optimization start (.xyz or .rst7; default: prod.xyz).",
     )
     parser.add_argument(
         "--compute-program",
@@ -179,7 +180,13 @@ def main() -> int:
         print(f"qm index count: {len([x for x in engine.qmindices.splitlines() if x.strip()])}")
         print(f"artifacts: {run_dir}")
 
-        structure = Structure.open(geometry_fp)
+        if geometry_fp.suffix.lower() == ".rst7":
+            structure = rst7prmtop_to_structure(
+                rst7_str=geometry_fp.read_text(),
+                prmtopdata_str=engine.prmtop,
+            )
+        else:
+            structure = Structure.open(geometry_fp)
         raw_charge = qmmm_cfg.get("charge", structure.charge if structure.charge is not None else 0)
         raw_mult = qmmm_cfg.get(
             "spinmult", structure.multiplicity if structure.multiplicity is not None else 1

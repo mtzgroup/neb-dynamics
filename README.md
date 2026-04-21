@@ -85,6 +85,7 @@ mepd run --start start.xyz --end end.xyz --inputs inputs.toml
 mepd run-refine examples/oxycope.xyz \
   -i expensive.toml \
   -ci cheap.toml \
+  --mode neb \
   --recursive \
   --recycle-nodes \
   --name oxycope_refine

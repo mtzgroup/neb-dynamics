@@ -2234,3 +2234,106 @@ def test_refine_drive_workspace_network_deduplicates_reverse_edge_ts_jobs(monkey
     assert summary["ts_jobs_submitted"] == 1
     assert summary["irc_jobs_submitted"] == 1
     assert len(ts_calls) == 1
+
+
+
+def test_refine_drive_workspace_network_reuses_cached_artifacts_on_resume(monkeypatch, tmp_path):
+    source_inputs_fp = tmp_path / "source_inputs.toml"
+    source_inputs_fp.write_text("", encoding="utf-8")
+    refinement_inputs_fp = tmp_path / "refine_inputs.toml"
+    refinement_inputs_fp.write_text("", encoding="utf-8")
+
+    workspace = RetropathsWorkspace(
+        workdir=str(tmp_path / "source_workspace"),
+        run_name="demo",
+        root_smiles="CC",
+        environment_smiles="",
+        inputs_fp=str(source_inputs_fp),
+    )
+    workspace.write()
+    workspace.retropaths_pot_fp.write_text("{}", encoding="utf-8")
+
+    node0 = _node(0.0)
+    node1 = _node(0.8)
+    ts_guess = _node(0.4)
+    node0.graph = Molecule.from_smiles("CC")
+    node1.graph = Molecule.from_smiles("CN")
+    ts_guess.graph = Molecule.from_smiles("CO")
+    node0.has_molecular_graph = True
+    node1.has_molecular_graph = True
+    ts_guess.has_molecular_graph = True
+    ts_guess._cached_energy = 1.2
+
+    edge_chain = Chain.model_validate(
+        {"nodes": [node0.copy(), ts_guess.copy(), node1.copy()], "parameters": ChainInputs()}
+    )
+
+    pot = Pot(root=Molecule.from_smiles("CC"), target=Molecule())
+    pot.graph = nx.DiGraph()
+    pot.graph.add_node(0, td=node0.copy(), molecule=node0.graph.copy())
+    pot.graph.add_node(1, td=node1.copy(), molecule=node1.graph.copy())
+    pot.graph.add_edge(0, 1, reaction="0->1", list_of_nebs=[edge_chain])
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow.materialize_drive_graph", lambda _workspace: pot)
+
+    class _Engine:
+        def _compute_ts_result(self, node, keywords=None, use_bigchem=False):
+            return SimpleNamespace(success=True, return_result=node.structure)
+
+        def compute_energies(self, nodes):
+            return np.array([0.0 for _ in nodes], dtype=float)
+
+        def compute_gradients(self, nodes):
+            return np.array([np.zeros_like(node.coords) for node in nodes], dtype=float)
+
+    fake_inputs = SimpleNamespace(
+        engine=_Engine(),
+        engine_name="qcop",
+        chain_inputs=ChainInputs(),
+        network_inputs=SimpleNamespace(
+            collapse_node_rms_thre=5.0,
+            collapse_node_ene_thre=5.0,
+        ),
+    )
+    monkeypatch.setattr(workflow.RunInputs, "open", staticmethod(lambda _fp: fake_inputs))
+
+    calls = {"ts": 0, "irc": 0}
+
+    def _fake_ts(engine, ts_guess, **kwargs):
+        del engine, kwargs
+        calls["ts"] += 1
+        return ts_guess.copy(), None
+
+    def _fake_irc_chain(**kwargs):
+        del kwargs
+        calls["irc"] += 1
+        a = _node(0.1)
+        b = _node(0.7)
+        a.graph = Molecule.from_smiles("CC")
+        b.graph = Molecule.from_smiles("CS")
+        a.has_molecular_graph = True
+        b.has_molecular_graph = True
+        return Chain.model_validate({"nodes": [a, b], "parameters": ChainInputs()})
+
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow._compute_ts_node_with_geometric", _fake_ts)
+    monkeypatch.setattr("neb_dynamics.retropaths_workflow._compute_irc_chain_with_geometric", _fake_irc_chain)
+
+    refined_workspace_dir = tmp_path / "refined_workspace_resume"
+
+    first_summary = refine_drive_workspace_network(
+        workspace,
+        refinement_inputs_fp=refinement_inputs_fp,
+        refined_workspace_dir=refined_workspace_dir,
+    )
+    second_summary = refine_drive_workspace_network(
+        workspace,
+        refinement_inputs_fp=refinement_inputs_fp,
+        refined_workspace_dir=refined_workspace_dir,
+    )
+
+    assert first_summary["ts_jobs_submitted"] == 1
+    assert first_summary["irc_jobs_submitted"] == 1
+    assert second_summary["ts_jobs_submitted"] == 0
+    assert second_summary["irc_jobs_submitted"] == 0
+    assert second_summary["ts_jobs_reused"] >= 1
+    assert second_summary["irc_jobs_reused"] >= 1
+    assert calls == {"ts": 1, "irc": 1}

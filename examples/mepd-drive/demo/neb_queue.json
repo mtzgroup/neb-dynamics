@@ -1,0 +1,34 @@
+{
+  "attempted_pairs": {},
+  "items": [
+    {
+      "attempt_key": "fb09d2d693d8158d4d900d6f0213f718176706aef1222b667075a9eaa956d355",
+      "created_at": "2026-04-03T20:26:26.617065+00:00",
+      "error": null,
+      "finished_at": null,
+      "job_id": "1->0",
+      "output_chain_xyz": null,
+      "reaction": "Alkene-Addition-In-H2O",
+      "result_dir": null,
+      "source_node": 1,
+      "started_at": null,
+      "status": "pending",
+      "target_node": 0
+    },
+    {
+      "attempt_key": "",
+      "created_at": "2026-04-03T20:26:26.618153+00:00",
+      "error": "Atom count mismatch: 6 != 9",
+      "finished_at": null,
+      "job_id": "2->1",
+      "output_chain_xyz": null,
+      "reaction": "Elimination-Lg-Hydroxyl",
+      "result_dir": null,
+      "source_node": 2,
+      "started_at": null,
+      "status": "incompatible",
+      "target_node": 1
+    }
+  ],
+  "version": 1
+}

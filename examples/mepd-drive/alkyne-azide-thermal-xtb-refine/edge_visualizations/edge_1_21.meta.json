@@ -1,0 +1,44 @@
+{
+  "barrier": "86.122",
+  "cache_key": {
+    "barrier": 86.12234891131408,
+    "chains": 2,
+    "reaction": "TS IRC 0->1",
+    "source_molecule_key": "c1c[nH]nn1",
+    "source_node": 1,
+    "target_molecule_key": "graph:e67e13af1dc94ef83056d62ce7f1254a",
+    "target_node": 21
+  },
+  "chains": "2",
+  "edge": "1 -> 21",
+  "end": "21",
+  "href": "edge_1_21.html",
+  "reaction": "TS IRC 0->1",
+  "source_structure": {
+    "symbols": [
+      "C",
+      "C",
+      "N",
+      "N",
+      "N",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "OApxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgLTAuNTgwOTA0MzgzNzIzODI3OTEgLTAuOTY1ODk0ODI2MjAxNDcyODIgMC4wMTUzMzk2Nzc1MTY2MDk2NgpDICAwLjY4NzU2MDQ4Mjk4MTAzNjY3IC0wLjQ2ODE3NTI4NzgxMzQ2MDAyIDAuMTk2MTYxMTk1MDM4OTQzNzIKTiAgMC41NDQwOTU2MTg3NzgzOTY2MyAwLjg2MTI3NzUxMTg5NTg2NzQzIC0wLjAwODA2MTg2NTMyNDExMzQ5Ck4gIC0wLjcyMjQxNTk2NzYxNTg5NjIyIDEuMTQ3OTI0ODQyMDczODg4NTYgLTAuMjkyNTI4Mjc4MjM2MjQ2NjEKTiAgLTEuMzk1NjY1Njg1Nzg4Mzk1NTYgMC4wNjY1MzI0NDk2NjA4NzgyMSAtMC4yODAxMTcwMzA2NTQ0ODk1NgpIICAtMC45NDM2NDAwMTc1NDc0MTMxMSAtMS45NzAwNTI5NjY3MjM3MTI5OSAwLjA3NzkyMzgyODUxODgxMTg3CkggIDEuNjIyMjY4OTg4MTA3NjkzMjcgLTAuOTI2MTQwOTQzMzYwOTUzOTggMC40Mzg3ODIxMzkyNzc5MDIyMgpIICAxLjI0NjUyMTE0Njc1MTcxODEwIDEuNTgzNDI4OTY0OTA0NTMzNjYgMC4wMzI4MTg3NzkyNjYzMjIzMAo="
+  },
+  "start": "c1c[nH]nn1",
+  "target_structure": {
+    "symbols": [
+      "C",
+      "C",
+      "N",
+      "N",
+      "N",
+      "H",
+      "H",
+      "H"
+    ],
+    "xyz_b64": "OApxY2lvX2NoYXJnZT0wIHFjaW9fbXVsdGlwbGljaXR5PTEKQyAgMC43OTMxOTM0Nzc3NjYzODEyNyAtMS42NzAzMzM3NTQ4NzIwMTY3NCAtMC4xNjM4Nzg3MDUxMjgyMjA3MApDICAxLjYyODEyMzIzMjY4MjA2NzE2IC0wLjk4NDQyOTM3MDc0NzU4OTUyIDAuMzQ3Nzg2Mjg0MTEwNjk4MTcKTiAgLTAuNTE5NzgwNDYwNjcwNzEzMDQgMS40MzIzNjg1OTUwODY3NjEwNyAwLjEyNzMxNDIzOTY5Nzk2NDg4Ck4gIC0xLjY1OTQ2OTYwNTM4MzU3MDkxIDEuMzI2ODE2MTM1NzI0ODk0ODcgLTAuMTgxMTQyOTg3NTY3NTMyMzYKTiAgLTIuNzQ1OTM2MTU2Njk3MzE1OTQgMS40MjM1MTE1Mjg2NDY1MDI5OSAtMC40Mzk1MzY0NzY3ODkzMzU0NApIICAwLjA1NTM3OTYwOTE4ODc1NTY1IC0yLjI2NzYxMDc0MDAzNTAxNTM5IC0wLjYxMzgxMjgxNDQ3MTk2OTExCkggIDIuMzcyNDcxMDA2MzE0MzExMjkgLTAuMzk1MzMwMTc1NjUxNzEwMzAgMC43OTg0NTQ2MTEyOTA3MDQ1MApIICAwLjEwNTgwMTU0MDA2ODkzNjk0IDAuNjM5NjY3MDI3NDM3MjQ5MDEgMC4xNDE1MDYyNjU2NTQwMzExMwo="
+  }
+}

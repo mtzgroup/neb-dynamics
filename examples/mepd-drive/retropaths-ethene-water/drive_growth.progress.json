@@ -1,0 +1,25 @@
+{
+  "network": {
+    "edges": [
+      {
+        "source": 1,
+        "target": 0
+      }
+    ],
+    "nodes": [
+      {
+        "growing": false,
+        "id": 0,
+        "label": "C=C"
+      },
+      {
+        "growing": false,
+        "id": 1,
+        "label": "CCO"
+      }
+    ]
+  },
+  "note": "Growth finished.",
+  "phase": "finished",
+  "title": "Growing Retropaths network"
+}

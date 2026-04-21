@@ -1,0 +1,150 @@
+{
+    "extras": {},
+    "input_data": {
+        "keywords": {
+            "threads": 1
+        },
+        "structure": {
+            "extras": {},
+            "symbols": [
+                "C",
+                "C",
+                "O",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H",
+                "H"
+            ],
+            "geometry": [
+                [
+                    0.23934919297236687,
+                    -0.7416981664315299,
+                    2.138018188282868
+                ],
+                [
+                    0.1393773179645391,
+                    1.7396999876832726,
+                    1.9411865741892769
+                ],
+                [
+                    4.328289984382119,
+                    1.400691604425936,
+                    -2.6200056876632987
+                ],
+                [
+                    -0.9359911767063873,
+                    -1.9614893859808213,
+                    1.0071479049220202
+                ],
+                [
+                    1.4933325880776016,
+                    -1.6728875256279059,
+                    3.4466362107532666
+                ],
+                [
+                    -1.1257572394647093,
+                    2.6696309327318017,
+                    0.6436153886337767
+                ],
+                [
+                    1.3055146289988255,
+                    2.9614136861519036,
+                    3.080755456223321
+                ],
+                [
+                    3.062127528380812,
+                    1.18563345715151,
+                    -1.3310402568216824
+                ],
+                [
+                    5.7744553839043125,
+                    0.43382426239519795,
+                    -2.112570096170048
+                ]
+            ],
+            "charge": 0,
+            "multiplicity": 1,
+            "identifiers": {
+                "extras": {}
+            },
+            "connectivity": []
+        },
+        "extras": {},
+        "files": {},
+        "cmdline_args": [],
+        "model": {
+            "extras": {},
+            "method": "gfn2",
+            "basis": "gfn2"
+        },
+        "calctype": "gradient"
+    },
+    "success": true,
+    "data": {
+        "extras": {
+            "program_version": "3.0.2"
+        },
+        "files": {},
+        "energy": -11.34430929930928,
+        "gradient": [
+            [
+                6.398980785e-06,
+                3.6670476621e-05,
+                -2.0877453533e-05
+            ],
+            [
+                -3.8707404781e-05,
+                -4.857771496e-05,
+                1.8400322941e-05
+            ],
+            [
+                1.3381819964e-05,
+                3.618334737e-06,
+                2.4487930445e-05
+            ],
+            [
+                -1.159865729e-06,
+                3.9524404069e-05,
+                7.4344093273e-05
+            ],
+            [
+                -3.8043091133e-05,
+                -5.680768495e-06,
+                -1.035954213e-06
+            ],
+            [
+                -8.976984543e-06,
+                2.0028958857e-05,
+                1.041320916e-05
+            ],
+            [
+                -1.074918134e-05,
+                -4.6373545325e-05,
+                -3.1533602532e-05
+            ],
+            [
+                7.1311358896e-05,
+                -5.547900443e-05,
+                -2.6739034436e-05
+            ],
+            [
+                6.544367881e-06,
+                5.6268858927e-05,
+                -4.7459511104e-05
+            ]
+        ],
+        "freqs_wavenumber": []
+    },
+    "logs": "\n       \u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557\n       \u2551            ___ ___ ___ ___ _____           \u2551\n       \u2551           / __| _ \\ __/ __|_   _|          \u2551\n       \u2551          | (__|   / _|\\__ \\ | |            \u2551\n       \u2551           \\___|_|_\\___|___/ |_|            \u2551\n       \u2551                                            \u2551\n       \u2551  Conformer-Rotamer Ensemble Sampling Tool  \u2551\n       \u2551          based on the xTB methods          \u2551\n       \u2551                                            \u2551\n       \u255a\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255d\n       Version 3.0.2, Thu, 29 August 14:20:46, 08/29/2024\n       commit (65685a7) compiled by 'usr@d37571da525e'\n\n   Cite work conducted with this code as\n\n   \u2022 P.Pracht, F.Bohle, S.Grimme, PCCP, 2020, 22, 7169-7192.\n   \u2022 S.Grimme, JCTC, 2019, 15, 2847-2862.\n   \u2022 P.Pracht, S.Grimme, C.Bannwarth, F.Bohle, S.Ehlert,\n     G.Feldmann, J.Gorges, M.M\u00fcller, T.Neudecker, C.Plett,\n     S.Spicher, P.Steinbach, P.Weso\u0142owski, F.Zeller,\n     J. Chem. Phys., 2024, 160, 114110.\n\n   for works involving QCG cite\n\n   \u2022 S.Spicher, C.Plett, P.Pracht, A.Hansen, S.Grimme,\n     JCTC, 2022, 18 (5), 3174-3189.\n   \u2022 C.Plett, S. Grimme,\n     Angew. Chem. Int. Ed. 2023, 62, e202214477.\n\n   for works involving MECP screening cite\n\n   \u2022 P.Pracht, C.Bannwarth, JCTC, 2022, 18 (10), 6370-6385.\n\n   Original code\n     P.Pracht, S.Grimme, Universit\u00e4t Bonn, MCTC\n   with help from (alphabetical order):\n     C.Bannwarth, F.Bohle, S.Ehlert, G.Feldmann, J.Gorges,\n     S.Grimme, C.Plett, P.Pracht, S.Spicher, P.Steinbach,\n     P.Wesolowski, F.Zeller\n\n   Online documentation is available at\n   https://crest-lab.github.io/crest-docs/\n\n   This program is distributed in the hope that it will be useful,\n   but WITHOUT ANY WARRANTY; without even the implied warranty of\n   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the\n   GNU Lesser General Public License (LGPL) for more details.\n\n Command line input:\n $ crest input.toml\n\n reading input.toml\n********************************************************************************\n* INPUT FILE input.toml content (without comments):\n********************************************************************************\n* threads = 1\n* input = \"structure.xyz\"\n* runtype = \"singlepoint\"\n* [calculation]\n* [[calculation.level]]\n* method = \"gfn2\"\n* charge = 0\n* uhf = 0\n********************************************************************************\n\n      _             _                  _       _   \n  ___(_)_ __   __ _| | ___ _ __   ___ (_)_ __ | |_ \n / __| | '_ \\ / _` | |/ _ \\ '_ \\ / _ \\| | '_ \\| __|\n \\__ \\ | | | | (_| | |  __/ |_) | (_) | | | | | |_ \n |___/_|_| |_|\\__, |_|\\___| .__/ \\___/|_|_| |_|\\__|\n              |___/       |_|                      \n\n =============================\n  # threads =           1\n =============================\n\n Input structure:\n  9\n\n C         -0.8318938372       -0.8294662019        0.9952971959\n C         -0.8847966752        0.4836331516        0.8911383914\n O          1.3318804449        0.3042376410       -1.5225406065\n H         -1.4538571755       -1.4749519169        0.3968664138\n H         -0.1683144021       -1.3222303894        1.6877880307\n H         -1.5542770512        0.9757314151        0.2044932909\n H         -0.2677033858        1.1301361986        1.4941722736\n H          0.6618561283        0.1904337705       -0.8404494753\n H          2.0971582170       -0.2074065220       -1.2540172557\n\n--------------------------------------------------------------------------------\n\n ----------------\n Calculation info\n ----------------\n> User-defined calculation level:\n : xTB calculation via tblite lib\n : GFN2-xTB level\n :   Molecular charge    : 0\n :   Fermi temperature   : 300.00000\n :   Accuracy            : 1.00000\n :   max SCC cycles      : 500\n\n--------------------------------------------------------------------------------\n> Performing singlepoint calculations ... \n> done.\n> Total wall time for calculations\n * wall-time:     0 d,  0 h,  0 min,  0.050 sec\n *  cpu-time:     0 d,  0 h,  0 min,  0.028 sec\n * ratio c/w:     0.552 speedup\n--------------------------------------------------------------------------------\n SUCCESS!\n\n SINGLEPOINT SUMMARY\n ===================\n\n> Final molecular gradient ( Eh/a0 ):\n             \u2202E/\u2202x             \u2202E/\u2202y             \u2202E/\u2202z\n        0.00000640        0.00003667       -0.00002088\n       -0.00003871       -0.00004858        0.00001840\n        0.00001338        0.00000362        0.00002449\n       -0.00000116        0.00003952        0.00007434\n       -0.00003804       -0.00000568       -0.00000104\n       -0.00000898        0.00002003        0.00001041\n       -0.00001075       -0.00004637       -0.00003153\n        0.00007131       -0.00005548       -0.00002674\n        0.00000654        0.00005627       -0.00004746\n> Gradient norm:        0.00018323 Eh/a0\n\n> Writing crest.engrad ... done.\n\n==========================================\n TOTAL ENERGY         -11.3443092993 Eh\n GRADIENT NORM          0.0001832250 Eh/a0\n==========================================\n\n -----------------\n Wall Time Summary\n -----------------\n CREST runtime (total)               0 d,  0 h,  0 min,  0.136 sec\n ------------------------------------------------------------------\n Singlepoint calculation    ...        0 min,  0.050 sec ( 36.897%)\n I/O and setup              ...        0 min,  0.086 sec ( 63.103%)\n ------------------------------------------------------------------\n * wall-time:     0 d,  0 h,  0 min,  0.136 sec\n *  cpu-time:     0 d,  0 h,  0 min,  0.046 sec\n * ratio c/w:     0.337 speedup\n ------------------------------------------------------------------\n * Total number of energy+grad calls: 1\n\n CREST terminated normally.\n",
+    "provenance": {
+        "extras": {},
+        "program": "crest",
+        "program_version": "3.0.2",
+        "scratch_dir": "/tmp/tmp8mn6b3z0",
+        "wall_time": 0.146619,
+        "hostname": "fire-21-02",
+        "hostcpus": 256
+    }
+}

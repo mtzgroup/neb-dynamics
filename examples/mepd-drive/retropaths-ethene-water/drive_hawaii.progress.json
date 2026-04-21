@@ -1,0 +1,50 @@
+{
+  "control_mode": "go",
+  "dr": 1.0,
+  "neb": {},
+  "network": {
+    "edges": [
+      {
+        "source": 0,
+        "target": 1
+      },
+      {
+        "source": 0,
+        "target": 2
+      },
+      {
+        "source": 1,
+        "target": 0
+      },
+      {
+        "source": 1,
+        "target": 2
+      },
+      {
+        "source": 2,
+        "target": 1
+      }
+    ],
+    "nodes": [
+      {
+        "growing": false,
+        "id": 0,
+        "label": "C=C"
+      },
+      {
+        "growing": false,
+        "id": 1,
+        "label": "CCO"
+      },
+      {
+        "growing": false,
+        "id": 2,
+        "label": "C=C.O"
+      }
+    ]
+  },
+  "note": "Autonomous loop finished because discovery tools without Hessian sampling found no new minima this cycle.",
+  "phase": "finished",
+  "stage": "finished",
+  "title": "Hawaii autonomous exploration"
+}
