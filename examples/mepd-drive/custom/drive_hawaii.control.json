@@ -1,9 +1,0 @@
-{
-  "discovery_tools": [
-    "hessian-sample"
-  ],
-  "mode": "red",
-  "note": "Stoplight set to red.",
-  "source": "server",
-  "updated_at": 1775600543
-}

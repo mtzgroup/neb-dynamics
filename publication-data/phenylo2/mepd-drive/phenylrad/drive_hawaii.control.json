@@ -1,9 +1,0 @@
-{
-  "discovery_tools": [
-    "hessian-sample"
-  ],
-  "mode": "go",
-  "note": "Hawaii started.",
-  "source": "server",
-  "updated_at": 1776807575
-}
