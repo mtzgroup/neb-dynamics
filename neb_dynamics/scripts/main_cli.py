@@ -543,6 +543,72 @@ def _compute_ts_node(engine, ts_guess: StructureNode, bigchem: bool = False):
 def _extract_normal_modes_from_hessian_result(
     hessres,
 ) -> tuple[list[np.ndarray], list[float]]:
+    def _is_geometry_linear(geometry: np.ndarray, tol: float = 1e-7) -> bool:
+        coords = np.asarray(geometry, dtype=float)
+        if coords.ndim != 2 or coords.shape[1] != 3:
+            return False
+        natoms = int(coords.shape[0])
+        if natoms <= 1:
+            return False
+        if natoms == 2:
+            return True
+        centered = coords - np.mean(coords, axis=0, keepdims=True)
+        return int(np.linalg.matrix_rank(centered, tol=tol)) <= 1
+
+    def _expected_vibrational_mode_count(natoms: int, is_linear: bool) -> int:
+        if natoms <= 1:
+            return 0
+        if natoms == 2:
+            return 1
+        return max(0, (3 * natoms) - (5 if is_linear else 6))
+
+    def _infer_natoms_from_mode(mode: np.ndarray) -> int | None:
+        arr = np.asarray(mode, dtype=float)
+        if arr.ndim == 2 and arr.shape[1] == 3:
+            return int(arr.shape[0])
+        if arr.ndim == 1 and arr.size % 3 == 0:
+            return int(arr.size // 3)
+        return None
+
+    def _trim_rigid_body_modes_if_present(
+        normal_modes: list[np.ndarray],
+        frequencies: list[float],
+    ) -> tuple[list[np.ndarray], list[float]]:
+        if len(normal_modes) == 0 or len(normal_modes) != len(frequencies):
+            return normal_modes, frequencies
+
+        natoms: int | None = None
+        is_linear = False
+        structure = getattr(getattr(hessres, "input_data", None), "structure", None)
+        geometry = getattr(structure, "geometry", None)
+        if geometry is not None:
+            geom = np.asarray(geometry, dtype=float)
+            if geom.ndim == 2 and geom.shape[1] == 3:
+                natoms = int(geom.shape[0])
+                is_linear = _is_geometry_linear(geom)
+        if natoms is None:
+            natoms = _infer_natoms_from_mode(normal_modes[0])
+            if natoms is None:
+                return normal_modes, frequencies
+            if natoms == 2:
+                is_linear = True
+
+        ncart = 3 * natoms
+        if len(normal_modes) != ncart:
+            return normal_modes, frequencies
+
+        n_vib = _expected_vibrational_mode_count(natoms=natoms, is_linear=is_linear)
+        if n_vib >= len(normal_modes):
+            return normal_modes, frequencies
+        n_drop = len(normal_modes) - n_vib
+        if n_drop <= 0:
+            return normal_modes, frequencies
+
+        order = np.argsort(np.abs(np.asarray(frequencies, dtype=float)))
+        drop_inds = {int(idx) for idx in order[:n_drop].tolist()}
+        keep_inds = [idx for idx in range(len(normal_modes)) if idx not in drop_inds]
+        return [normal_modes[idx] for idx in keep_inds], [frequencies[idx] for idx in keep_inds]
+
     results = getattr(hessres, "results", None)
     if results is None:
         raise ValueError("Hessian result is missing `results`.")
@@ -552,12 +618,14 @@ def _extract_normal_modes_from_hessian_result(
     if modes is not None and len(modes) > 0:
         normal_modes = [np.array(mode) for mode in modes]
         frequencies = [float(freq) for freq in (freqs or [])]
-        return normal_modes, frequencies
+        return _trim_rigid_body_modes_if_present(normal_modes, frequencies)
 
     normal_modes, frequencies = parse_nma_freq_data(hessres)
     if len(normal_modes) == 0:
         raise ValueError("No normal modes found in Hessian result.")
-    return [np.array(mode) for mode in normal_modes], [float(freq) for freq in frequencies]
+    parsed_modes = [np.array(mode) for mode in normal_modes]
+    parsed_freqs = [float(freq) for freq in frequencies]
+    return _trim_rigid_body_modes_if_present(parsed_modes, parsed_freqs)
 
 
 def _compute_hessian_result_for_sampling(engine, node: StructureNode):

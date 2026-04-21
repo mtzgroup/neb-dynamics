@@ -284,5 +284,6 @@ def test_hessian_sample_supports_ase_omol25_with_compute_hessian_fallback(monkey
     )
 
     payload = json.loads((tmp_path / "ase_omol25_hessian_sample_summary.json").read_text())
+    assert payload["normal_modes_total"] == 1
     assert payload["displaced_candidates"] == 2
     assert payload["optimized_candidates"] == 2
