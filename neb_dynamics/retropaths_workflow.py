@@ -2072,6 +2072,16 @@ def refine_drive_workspace_network(
     }
 
 
+def _hessian_sample_effective_dr(seed_node: StructureNode, dr: float) -> float:
+    """Resolve the effective displacement magnitude used for Hessian sampling."""
+    if float(dr) <= 0:
+        raise ValueError("The Hessian-sample displacement (`dr`) must be positive.")
+    natoms = int(np.asarray(seed_node.coords, dtype=float).shape[0])
+    if natoms <= 0:
+        raise ValueError("Cannot resolve Hessian-sample displacement for an empty structure.")
+    return float(dr) * float(natoms)
+
+
 def _run_hessian_sample(
     workspace: RetropathsWorkspace,
     pot: Pot,
@@ -2129,8 +2139,7 @@ def _run_hessian_sample(
 
     max_candidates = int(max_candidates)
     maxiter = 500
-    natoms = int(np.asarray(seed_node.coords, dtype=float).shape[0])
-    scaled_dr = float(dr) * float(natoms)
+    scaled_dr = _hessian_sample_effective_dr(seed_node=seed_node, dr=float(dr))
     displaced_nodes: list[StructureNode] = []
     clipped = False
     for mode in normal_modes:
