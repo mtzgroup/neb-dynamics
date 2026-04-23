@@ -4073,7 +4073,7 @@ def hessian_sample(
     multiplicity: Annotated[int, typer.Option(
         "--multiplicity", help="Spin multiplicity for input geometry.")] = 1,
     dr: Annotated[float, typer.Option(
-        "--dr", help="Displacement magnitude along each normal mode.")] = 0.1,
+        "--dr", help="Per-atom displacement factor; effective mode displacement is dr * N_atoms.")] = 0.1,
     max_candidates: Annotated[int, typer.Option(
         "--max-candidates", help="Maximum number of displaced structures to optimize.")] = 100,
     maxiter: Annotated[int, typer.Option(
@@ -4147,20 +4147,22 @@ def hessian_sample(
 
     displaced_nodes: list[StructureNode] = []
     displaced_metadata: list[dict] = []
+    natoms = int(np.asarray(node.coords, dtype=float).shape[0])
+    scaled_dr = float(dr) * float(natoms)
     clipped = False
     for mode_index, mode in enumerate(normal_modes):
         freq = float(frequencies[mode_index]) if mode_index < len(
             frequencies) else None
-        for direction, signed_dr in (("+", dr), ("-", -dr)):
-            displaced = displace_by_dr(
-                node=node, displacement=np.array(mode), dr=signed_dr)
+        for direction, signed_dr in (("+", scaled_dr), ("-", -scaled_dr)):
+            displaced = displace_by_dr(node=node, displacement=np.array(mode), dr=signed_dr)
             displaced_nodes.append(displaced)
             displaced_metadata.append(
                 {
                     "mode_index": int(mode_index),
                     "direction": direction,
                     "frequency_wavenumber": freq,
-                    "dr": float(abs(signed_dr)),
+                    "dr": float(abs(dr)),
+                    "effective_dr": float(abs(signed_dr)),
                 }
             )
             if len(displaced_nodes) >= max_candidates:

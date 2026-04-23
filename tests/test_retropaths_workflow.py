@@ -1287,11 +1287,21 @@ def test_run_hessian_sample_for_node_accepts_compute_hessian_only_engine(monkeyp
         ),
     )
     monkeypatch.setattr(workflow.RunInputs, "open", staticmethod(lambda _fp: fake_inputs))
+    dr_calls: list[float] = []
+    real_displace = workflow.displace_by_dr
+
+    def _capture_displace_by_dr(*, node, displacement, dr):
+        dr_calls.append(float(dr))
+        return real_displace(node=node, displacement=displacement, dr=dr)
+
+    monkeypatch.setattr(workflow, "displace_by_dr", _capture_displace_by_dr)
 
     out = run_hessian_sample_for_node(workspace, 0, dr=0.1, max_candidates=2)
 
     assert isinstance(out, dict)
     assert out["added_nodes"] >= 1
+    assert dr_calls
+    assert all(abs(value) == pytest.approx(0.2) for value in dr_calls)
 
 
 def test_compute_hessian_result_for_sampling_sets_use_bigchem_true_for_chemcloud():

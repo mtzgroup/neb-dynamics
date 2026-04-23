@@ -2129,10 +2129,12 @@ def _run_hessian_sample(
 
     max_candidates = int(max_candidates)
     maxiter = 500
+    natoms = int(np.asarray(seed_node.coords, dtype=float).shape[0])
+    scaled_dr = float(dr) * float(natoms)
     displaced_nodes: list[StructureNode] = []
     clipped = False
     for mode in normal_modes:
-        for signed_dr in (float(dr), -float(dr)):
+        for signed_dr in (scaled_dr, -scaled_dr):
             displaced = displace_by_dr(node=seed_node, displacement=np.array(mode), dr=signed_dr)
             displaced = _ensure_node_graph(displaced, fallback=seed_node)
             displaced_nodes.append(displaced)

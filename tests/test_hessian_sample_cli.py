@@ -96,6 +96,8 @@ def test_hessian_sample_clips_and_dedupes(monkeypatch, tmp_path):
     assert payload["optimized_candidates"] == 4
     assert payload["failed_candidates"] == 0
     assert payload["unique_minima"] == 2
+    assert all(float(item["dr"]) == 0.2 for item in payload["displaced_metadata"])
+    assert all(float(item["effective_dr"]) == 0.4 for item in payload["displaced_metadata"])
     assert fake_engine.opt_calls == 4
 
     unique_structures = main_cli.read_multiple_structure_from_file(
