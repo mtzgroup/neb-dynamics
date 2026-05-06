@@ -563,20 +563,160 @@ def get_maxene_node(arr, engine):
 
 
 def parse_nma_freq_data(hessres):
+    def _coerce_files_mapping(files_obj):
+        if files_obj is None:
+            return {}
+        if isinstance(files_obj, dict):
+            return files_obj
+        model_dump = getattr(files_obj, "model_dump", None)
+        if callable(model_dump):
+            dumped = model_dump()
+            if isinstance(dumped, dict):
+                return dumped
+        return {}
+
+    def _as_text(file_payload):
+        if isinstance(file_payload, bytes):
+            return file_payload.decode("utf-8", errors="replace")
+        return str(file_payload)
+
+    def _resolve_mass_weighted_modes_text():
+        results = getattr(hessres, "results", None)
+        candidate_file_maps = [
+            _coerce_files_mapping(getattr(results, "files", None)),
+        ]
+
+        trajectory = getattr(results, "trajectory", None)
+        if isinstance(trajectory, list):
+            for traj_entry in trajectory:
+                traj_results = getattr(traj_entry, "results", None)
+                candidate_file_maps.append(
+                    _coerce_files_mapping(getattr(traj_results, "files", None))
+                )
+
+        preferred_keys = (
+            "scr.geometry/Mass.weighted.modes.dat",
+            "./scr.geometry/Mass.weighted.modes.dat",
+            "Mass.weighted.modes.dat",
+        )
+
+        available_keys = []
+        for files_map in candidate_file_maps:
+            if not files_map:
+                continue
+            available_keys.extend([str(k) for k in files_map.keys()])
+
+            for key in preferred_keys:
+                if key in files_map:
+                    return _as_text(files_map[key])
+
+            for key, payload in files_map.items():
+                normalized_key = str(key).replace("\\", "/").lower()
+                if normalized_key == "mass.weighted.modes.dat" or normalized_key.endswith(
+                    "/mass.weighted.modes.dat"
+                ):
+                    return _as_text(payload)
+
+        available_desc = ", ".join(sorted(set(available_keys))) or "<none>"
+        raise KeyError(
+            "Could not locate Mass.weighted.modes.dat in Hessian result files. "
+            f"Available file keys: {available_desc}"
+        )
+
+    def _extract_cartesian_hessian_matrix(natoms: int) -> np.ndarray | None:
+        ncart = 3 * int(natoms)
+        candidates = [
+            getattr(hessres, "return_result", None),
+        ]
+        results = getattr(hessres, "results", None)
+        if results is not None:
+            candidates.append(getattr(results, "hessian", None))
+            candidates.append(getattr(results, "return_result", None))
+        if isinstance(hessres, dict):
+            candidates.append(hessres.get("hessian"))
+            candidates.append(hessres.get("return_result"))
+            nested_results = hessres.get("results")
+            if isinstance(nested_results, dict):
+                candidates.append(nested_results.get("hessian"))
+                candidates.append(nested_results.get("return_result"))
+
+        for candidate in candidates:
+            if candidate is None:
+                continue
+            try:
+                arr = np.asarray(candidate, dtype=float)
+            except Exception:
+                continue
+            if arr.ndim == 1 and arr.size == ncart * ncart:
+                arr = arr.reshape((ncart, ncart))
+            if arr.ndim != 2 or arr.shape != (ncart, ncart):
+                continue
+            return arr
+        return None
+
+    def _fallback_modes_from_hessian_matrix() -> tuple[list[np.ndarray], list[float]] | None:
+        structure = getattr(getattr(hessres, "input_data", None), "structure", None)
+        geometry = getattr(structure, "geometry", None)
+        if geometry is None:
+            return None
+        geom = np.asarray(geometry, dtype=float)
+        if geom.ndim != 2 or geom.shape[1] != 3:
+            return None
+
+        natoms = int(geom.shape[0])
+        hessian = _extract_cartesian_hessian_matrix(natoms=natoms)
+        if hessian is None:
+            return None
+
+        hessian = 0.5 * (hessian + hessian.T)
+        eigvals, eigvecs = np.linalg.eigh(hessian)
+        order = np.argsort(eigvals)
+        eigvals = eigvals[order]
+        eigvecs = eigvecs[:, order]
+        modes = [eigvecs[:, i].reshape(geom.shape) for i in range(eigvecs.shape[1])]
+        freqs = [float(np.sign(v) * np.sqrt(abs(v))) for v in eigvals]
+        return modes, freqs
+
     modes = []
     freqs = []
 
     coords = []
-    for i, line in enumerate(hessres.results.files['scr.geometry/Mass.weighted.modes.dat'].split("\n")):
+    try:
+        mode_file_text = _resolve_mass_weighted_modes_text()
+    except KeyError:
+        fallback = _fallback_modes_from_hessian_matrix()
+        if fallback is not None:
+            return fallback
+        raise
+
+    for line in mode_file_text.split("\n"):
+        line = line.strip()
         if len(line) == 0:
             continue
         if line[0] == '=':
-            freqs.append(float(line.split()[3]))
-            if i > 0:
+            if len(coords) > 0:
                 modes.append(coords)
                 coords = []
+            split_line = line.split()
+            try:
+                freqs.append(float(split_line[3]))
+            except (IndexError, ValueError):
+                freq_matches = re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", line)
+                if len(freq_matches) > 0:
+                    freqs.append(float(freq_matches[-1]))
         else:
-            coords.append(float(line))
+            try:
+                coords.append(float(line))
+            except ValueError:
+                continue
+
+    if len(coords) > 0:
+        modes.append(coords)
+
+    if len(modes) == 0:
+        fallback = _fallback_modes_from_hessian_matrix()
+        if fallback is not None:
+            return fallback
 
     refshape = hessres.input_data.structure.geometry.shape
     reshaped_normal_modes = []

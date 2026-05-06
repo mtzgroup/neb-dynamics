@@ -485,12 +485,86 @@ class QCOPEngine(Engine):
         return output
 
     def _compute_hessian_result(self, node: StructureNode, use_bigchem=True):
+        def _coerce_files_mapping(files_obj: Any) -> dict[str, Any]:
+            if files_obj is None:
+                return {}
+            if isinstance(files_obj, dict):
+                return files_obj
+            model_dump = getattr(files_obj, "model_dump", None)
+            if callable(model_dump):
+                dumped = model_dump()
+                if isinstance(dumped, dict):
+                    return dumped
+            return {}
+
+        def _has_square_hessian(candidate: Any) -> bool:
+            if candidate is None:
+                return False
+            with contextlib.suppress(Exception):
+                arr = np.asarray(candidate, dtype=float)
+                return arr.ndim == 2 and arr.shape[0] == arr.shape[1] and arr.size > 0
+            return False
+
+        def _has_modes_file(files_map: dict[str, Any]) -> bool:
+            for key in files_map:
+                normalized_key = str(key).replace("\\", "/").lower()
+                if normalized_key == "mass.weighted.modes.dat" or normalized_key.endswith(
+                    "/mass.weighted.modes.dat"
+                ):
+                    return True
+            return False
+
+        def _hessian_payload_is_usable(output_obj: Any) -> bool:
+            results = getattr(output_obj, "results", None)
+            if results is None:
+                # Non-ProgramOutput-like objects are used in tests and some legacy
+                # integrations; do not force a fallback for unknown objects.
+                return True
+
+            modes = getattr(results, "normal_modes_cartesian", None)
+            if modes is not None:
+                with contextlib.suppress(Exception):
+                    if len(modes) > 0:
+                        return True
+
+            if _has_square_hessian(getattr(results, "hessian", None)):
+                return True
+            if _has_square_hessian(getattr(output_obj, "return_result", None)):
+                return True
+
+            files_map = _coerce_files_mapping(getattr(results, "files", None))
+            if _has_modes_file(files_map):
+                return True
+
+            trajectory = getattr(results, "trajectory", None)
+            if isinstance(trajectory, list):
+                for entry in trajectory:
+                    entry_results = getattr(entry, "results", None)
+                    entry_modes = getattr(entry_results, "normal_modes_cartesian", None)
+                    if entry_modes is not None:
+                        with contextlib.suppress(Exception):
+                            if len(entry_modes) > 0:
+                                return True
+                    if _has_square_hessian(getattr(entry_results, "hessian", None)):
+                        return True
+                    entry_files = _coerce_files_mapping(getattr(entry_results, "files", None))
+                    if _has_modes_file(entry_files):
+                        return True
+
+            return False
 
         prog = self.program
         collect_files = self.collect_files
         if "terachem" in self.program:
             prog = "terachem"
             collect_files = True
+
+        def _run_standard_hessian_call():
+            proginp = ProgramInput(
+                structure=node.structure,
+                calctype='hessian', **self.program_args.__dict__)
+            return self.compute_func(
+                self.program, proginp, collect_files=collect_files)
 
         if use_bigchem:
             dpi = DualProgramInput(
@@ -503,55 +577,76 @@ class QCOPEngine(Engine):
                 },
                 keywords={},
             )
-            fres = self._chemcloud_compute_with_retries("bigchem", dpi)
-            # ChemCloud client return type can be future-like (with .get()) or a
-            # direct ProgramOutput, depending on installed client/version.
-            if hasattr(fres, "get"):
-                timeout_seconds = _env_float(
-                    "MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS", 1800.0)
-                if timeout_seconds > 0:
-                    get_method = fres.get
-                    supports_timeout = False
-                    with contextlib.suppress(Exception):
-                        supports_timeout = "timeout" in inspect.signature(
-                            get_method).parameters
-                    if supports_timeout:
-                        output = get_method(timeout=timeout_seconds)
-                    else:
-                        captured: dict[str, object] = {}
+            try:
+                fres = self._chemcloud_compute_with_retries("bigchem", dpi)
+                # ChemCloud client return type can be future-like (with .get()) or a
+                # direct ProgramOutput, depending on installed client/version.
+                if hasattr(fres, "get"):
+                    timeout_seconds = _env_float(
+                        "MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS", 1800.0)
+                    if timeout_seconds > 0:
+                        get_method = fres.get
+                        supports_timeout = False
+                        with contextlib.suppress(Exception):
+                            supports_timeout = "timeout" in inspect.signature(
+                                get_method).parameters
+                        if supports_timeout:
+                            output = get_method(timeout=timeout_seconds)
+                        else:
+                            captured: dict[str, object] = {}
 
-                        def _get_result_without_timeout() -> None:
-                            try:
-                                captured["result"] = get_method()
-                            except Exception as exc:
-                                captured["error"] = exc
+                            def _get_result_without_timeout() -> None:
+                                try:
+                                    captured["result"] = get_method()
+                                except Exception as exc:
+                                    captured["error"] = exc
 
-                        waiter = threading.Thread(
-                            target=_get_result_without_timeout,
-                            name="qcop-bigchem-hessian-get",
-                            daemon=True,
-                        )
-                        waiter.start()
-                        waiter.join(timeout_seconds)
-                        if waiter.is_alive():
-                            raise TimeoutError(
-                                "Timed out waiting for BigChem Hessian result "
-                                f"after {timeout_seconds:.1f}s. Increase "
-                                "MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS if needed."
+                            waiter = threading.Thread(
+                                target=_get_result_without_timeout,
+                                name="qcop-bigchem-hessian-get",
+                                daemon=True,
                             )
-                        if "error" in captured:
-                            raise captured["error"]  # type: ignore[misc]
-                        output = captured.get("result")
+                            waiter.start()
+                            waiter.join(timeout_seconds)
+                            if waiter.is_alive():
+                                raise TimeoutError(
+                                    "Timed out waiting for BigChem Hessian result "
+                                    f"after {timeout_seconds:.1f}s. Increase "
+                                    "MEPD_BIGCHEM_HESSIAN_TIMEOUT_SECONDS if needed."
+                                )
+                            if "error" in captured:
+                                raise captured["error"]  # type: ignore[misc]
+                            output = captured.get("result")
+                    else:
+                        output = fres.get()
                 else:
-                    output = fres.get()
-            else:
-                output = fres
+                    output = fres
+            except Exception as exc:
+                if "terachem" in str(prog).lower():
+                    logging.warning(
+                        "BigChem Hessian call for TeraChem failed (%s); retrying via "
+                        "standard ChemCloud Hessian call.",
+                        exc,
+                    )
+                    return _run_standard_hessian_call()
+                raise
+
+            # Some BigChem TeraChem Hessian payloads can come back with only input
+            # files (`geometry.xyz`, `tc.in`) and no usable Hessian/mode data.
+            # In that case, transparently retry through the standard ChemCloud
+            # Hessian pathway, which reliably returns parseable Hessian results.
+            if (
+                use_bigchem
+                and "terachem" in str(prog).lower()
+                and not _hessian_payload_is_usable(output)
+            ):
+                logging.warning(
+                    "BigChem Hessian output for TeraChem was missing normal-mode/Hessian "
+                    "data; retrying via standard ChemCloud Hessian call."
+                )
+                output = _run_standard_hessian_call()
         else:
-            proginp = ProgramInput(
-                structure=node.structure,
-                calctype='hessian', **self.program_args.__dict__)
-            output = self.compute_func(
-                self.program, proginp, collect_files=collect_files)
+            output = _run_standard_hessian_call()
         return output
 
     def _compute_conf_result(self, node: StructureNode):

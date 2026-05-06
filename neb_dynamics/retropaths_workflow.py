@@ -986,6 +986,28 @@ def _peak_node_from_chain(chain: Any) -> StructureNode:
     return peak_node.copy()
 
 
+def _local_maxima_nodes_from_chain(chain: Chain) -> list[StructureNode]:
+    nodes = list(getattr(chain, "nodes", []) or [])
+    if len(nodes) < 3:
+        return []
+    energies = np.asarray([], dtype=float)
+    with contextlib.suppress(Exception):
+        energies = np.asarray(chain.energies, dtype=float)
+    if energies.shape[0] != len(nodes):
+        return []
+    maxima: list[StructureNode] = []
+    for i in range(1, len(nodes) - 1):
+        if (
+            np.isfinite(energies[i - 1])
+            and np.isfinite(energies[i])
+            and np.isfinite(energies[i + 1])
+            and energies[i] > energies[i - 1]
+            and energies[i] > energies[i + 1]
+        ):
+            maxima.append(nodes[i].copy())
+    return maxima
+
+
 def _ensure_node_graph(node: StructureNode, *, fallback: StructureNode | None = None) -> StructureNode:
     graph_like = getattr(node, "graph", None)
     if graph_like is None and getattr(node, "structure", None) is not None:
@@ -1490,7 +1512,7 @@ def refine_drive_workspace_network(
     ts_failed = 0
     irc_failed = 0
 
-    edge_records: list[tuple[int, int, int, Chain]] = []
+    edge_records: list[dict[str, Any]] = []
     total_edges = int(source_pot.graph.number_of_edges())
     _emit_progress(
         "Collecting TS guesses from existing edge chains...",
@@ -1501,6 +1523,11 @@ def refine_drive_workspace_network(
     for edge_counter, (source_node, target_node) in enumerate(sorted(source_pot.graph.edges), start=1):
         edge_attrs = dict(source_pot.graph.edges[(source_node, target_node)])
         chains = list(edge_attrs.get("list_of_nebs") or [])
+        ts_guess_mode = str(edge_attrs.get("ts_guess_mode") or "").strip().lower()
+        explicit_ts_guess_nodes: list[StructureNode] = []
+        for candidate_node in list(edge_attrs.get("ts_guess_nodes") or []):
+            if isinstance(candidate_node, StructureNode):
+                explicit_ts_guess_nodes.append(candidate_node.copy())
         if include_queue_chain_fallback and not chains:
             candidate_chain = _find_completed_chain_for_edge(
                 workspace,
@@ -1517,7 +1544,18 @@ def refine_drive_workspace_network(
             candidate = _coerce_chain_candidate(chain)
             if candidate is None:
                 continue
-            edge_records.append((int(source_node), int(target_node), int(chain_index), candidate))
+            explicit_ts_guess_nodes_for_chain = [node.copy() for node in explicit_ts_guess_nodes]
+            if ts_guess_mode == "all_local_maxima":
+                explicit_ts_guess_nodes_for_chain = _local_maxima_nodes_from_chain(candidate)
+            edge_records.append(
+                {
+                    "source_node": int(source_node),
+                    "target_node": int(target_node),
+                    "chain_index": int(chain_index),
+                    "chain": candidate,
+                    "explicit_ts_guess_nodes": explicit_ts_guess_nodes_for_chain,
+                }
+            )
         _emit_progress(
             f"Collected edge chains from {edge_counter}/{total_edges} edges.",
             phase="collect",
@@ -1530,7 +1568,39 @@ def refine_drive_workspace_network(
     chemcloud_mode = engine_name == "chemcloud" or compute_program == "chemcloud"
 
     ts_jobs_by_connection: dict[tuple[int, int], dict[str, Any]] = {}
-    for source_node, target_node, chain_index, chain in edge_records:
+    explicit_ts_jobs: list[dict[str, Any]] = []
+    total_candidate_jobs = 0
+    for record in edge_records:
+        source_node = int(record["source_node"])
+        target_node = int(record["target_node"])
+        chain_index = int(record["chain_index"])
+        chain = record["chain"]
+        explicit_ts_guesses = list(record.get("explicit_ts_guess_nodes") or [])
+        if explicit_ts_guesses:
+            for guess_index, raw_guess in enumerate(explicit_ts_guesses):
+                if not isinstance(raw_guess, StructureNode):
+                    continue
+                ts_guess = _ensure_node_graph(raw_guess.copy())
+                total_candidate_jobs += 1
+                connection_key = tuple(sorted((source_node, target_node)))
+                stem = f"edge_{source_node}_{target_node}_chain_{chain_index}_localmax_{guess_index}"
+                ts_guess_barrier = _safe_node_energy(ts_guess)
+                explicit_ts_jobs.append(
+                    {
+                        "source_node": source_node,
+                        "target_node": target_node,
+                        "chain_index": chain_index,
+                        "ts_guess": ts_guess,
+                        "stem": stem,
+                        "connection_nodes": [int(connection_key[0]), int(connection_key[1])],
+                        "ts_guess_barrier": float(
+                            ts_guess_barrier if ts_guess_barrier is not None else float("inf")
+                        ),
+                        "guess_index": int(guess_index),
+                    }
+                )
+            continue
+
         try:
             ts_guess = chain.get_ts_node().copy()
         except Exception:
@@ -1539,36 +1609,39 @@ def refine_drive_workspace_network(
         ts_guess_barrier = float("inf")
         with contextlib.suppress(Exception):
             ts_guess_barrier = float(chain.get_eA_chain())
-        connection_key = tuple(sorted((int(source_node), int(target_node))))
+        connection_key = tuple(sorted((source_node, target_node)))
         stem = f"edge_{source_node}_{target_node}_chain_{chain_index}"
         candidate_job = {
-            "source_node": int(source_node),
-            "target_node": int(target_node),
-            "chain_index": int(chain_index),
+            "source_node": source_node,
+            "target_node": target_node,
+            "chain_index": chain_index,
             "ts_guess": ts_guess,
             "stem": stem,
             "connection_nodes": [int(connection_key[0]), int(connection_key[1])],
             "ts_guess_barrier": float(ts_guess_barrier),
+            "guess_index": -1,
         }
+        total_candidate_jobs += 1
         incumbent = ts_jobs_by_connection.get(connection_key)
         if incumbent is None or float(candidate_job["ts_guess_barrier"]) < float(incumbent.get("ts_guess_barrier", float("inf"))):
             ts_jobs_by_connection[connection_key] = candidate_job
 
     ts_jobs: list[dict[str, Any]] = sorted(
-        ts_jobs_by_connection.values(),
+        [*explicit_ts_jobs, *ts_jobs_by_connection.values()],
         key=lambda job: (
             int(job["connection_nodes"][0]),
             int(job["connection_nodes"][1]),
             int(job["source_node"]),
             int(job["target_node"]),
             int(job["chain_index"]),
+            int(job.get("guess_index", -1)),
         ),
     )
-    if len(ts_jobs) < len(edge_records):
+    if len(ts_jobs) < total_candidate_jobs:
         _emit_progress(
             (
                 "Deduplicated TS guesses by undirected connection: "
-                f"{len(edge_records)} candidates -> {len(ts_jobs)} optimization jobs."
+                f"{total_candidate_jobs} candidates -> {len(ts_jobs)} optimization jobs."
             ),
             phase="collect",
             current=total_edges,

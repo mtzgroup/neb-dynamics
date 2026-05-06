@@ -47,4 +47,3 @@ basis = "gfn2"
 
 [optimizer_kwds]
 name = "cg"
-timestep = 0.5

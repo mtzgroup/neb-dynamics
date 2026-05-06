@@ -219,7 +219,9 @@ class NEBInputs:
     `early_stop_force_thre`: infinity norm of TS node early stop check threshold \
         (default: 0.0 | i.e. no early stop check)
 
-    `negative_steps_thre`: number of steps chain can oscillate until the step size is halved (default: 10)
+    `negative_steps_thre`: number of steps chain can oscillate until the step size is halved (default: 2)
+
+    `positive_steps_thre`: number of stable steps before increasing the step size (default: 2)
 
     `max_steps`: maximum number of NEB steps allowed (default: 1000)
 
@@ -240,8 +242,8 @@ class NEBInputs:
 
     early_stop_force_thre: float = 0.0
 
-    negative_steps_thre: int = 5
-    positive_steps_thre: int = 10
+    negative_steps_thre: int = 2
+    positive_steps_thre: int = 2
     use_geodesic_tangent: bool = False
     do_elem_step_checks: bool = False
 
@@ -432,6 +434,8 @@ class RunInputs:
                 "new_minimizer": "no",
                 "skip_identical_graphs": True,
                 "do_elem_step_checks": True,
+                "early_stop_stage": False,
+                "early_stop_loose_overrides": {},
                 "collect_files": True,
                 "dlfind_keywords": {},
                 "v": False,
@@ -510,7 +514,7 @@ class RunInputs:
             self.chain_inputs = ChainInputs(**self.chain_inputs)
 
         if self.optimizer_kwds is None:
-            self.optimizer_kwds = {"name": "cg", "timestep": 0.5}
+            self.optimizer_kwds = {"name": "cg"}
         elif "name" not in self.optimizer_kwds:
             self.optimizer_kwds["name"] = "cg"
 

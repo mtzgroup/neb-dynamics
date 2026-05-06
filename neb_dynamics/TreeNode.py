@@ -8,6 +8,7 @@ import shutil
 from neb_dynamics.chain import Chain
 from neb_dynamics.inputs import ChainInputs, NEBInputs, GIInputs
 from neb_dynamics.optimizers.vpo import VelocityProjectedOptimizer
+from neb_dynamics.nodes.nodehelpers import is_identical
 
 
 @dataclass
@@ -249,6 +250,87 @@ class TreeNode:
                 inds.append(i)
         return inds
 
+    @staticmethod
+    def _nodes_match(a, b, parameters: ChainInputs) -> bool:
+        if a is None or b is None:
+            return False
+        try:
+            if (
+                list(a.structure.symbols) == list(b.structure.symbols)
+                and np.allclose(a.coords, b.coords)
+            ):
+                return True
+        except Exception:
+            pass
+        try:
+            a_cmp = a.copy() if hasattr(a, "copy") else a
+            b_cmp = b.copy() if hasattr(b, "copy") else b
+            setattr(a_cmp, "disable_smiles", True)
+            setattr(b_cmp, "disable_smiles", True)
+            return bool(
+                is_identical(
+                    a_cmp,
+                    b_cmp,
+                    fragment_rmsd_cutoff=parameters.node_rms_thre,
+                    kcal_mol_cutoff=parameters.node_ene_thre,
+                    verbose=False,
+                )
+            )
+        except Exception:
+            return bool(
+                list(a.structure.symbols) == list(b.structure.symbols)
+                and np.allclose(a.coords, b.coords)
+            )
+
+    @classmethod
+    def _prune_leaf_chain_loops(
+        cls, chains: list[Chain], parameters: ChainInputs
+    ) -> list[Chain]:
+        if len(chains) <= 1:
+            return chains
+
+        nodes_seq = [chains[0][0].copy()]
+        edge_chain_indices: list[int | None] = []
+        for chain_index, chain in enumerate(chains):
+            if len(chain.nodes) == 0:
+                continue
+            start_node = chain[0]
+            end_node = chain[-1]
+            if not cls._nodes_match(nodes_seq[-1], start_node, parameters):
+                nodes_seq.append(start_node.copy())
+                edge_chain_indices.append(None)
+            nodes_seq.append(end_node.copy())
+            edge_chain_indices.append(chain_index)
+
+        pruned_nodes = [nodes_seq[0]]
+        pruned_edges: list[int | None] = []
+        for step_index in range(1, len(nodes_seq)):
+            node = nodes_seq[step_index]
+            edge_index = edge_chain_indices[step_index - 1]
+            match_index = None
+            for i, existing in enumerate(pruned_nodes):
+                if cls._nodes_match(existing, node, parameters):
+                    match_index = i
+                    break
+            if match_index is None:
+                pruned_nodes.append(node)
+                pruned_edges.append(edge_index)
+                continue
+            pruned_nodes = pruned_nodes[: match_index + 1]
+            pruned_edges = pruned_edges[:match_index]
+
+        used_chain_indices: list[int] = []
+        for edge_idx in pruned_edges:
+            if edge_idx is None:
+                continue
+            if used_chain_indices and used_chain_indices[-1] == edge_idx:
+                continue
+            used_chain_indices.append(edge_idx)
+
+        if not used_chain_indices:
+            return [chains[0]]
+        return [chains[i] for i in used_chain_indices]
+
     @property
     def output_chain(self):
         inds = self.get_adj_mat_leaves_indices()
@@ -257,6 +339,13 @@ class TreeNode:
             for node in self.depth_first_ordered_nodes
             if node.index in inds
         ]
+        if len(chains) == 0:
+            if self.data and getattr(self.data, "chain_trajectory", None):
+                return self.data.chain_trajectory[-1]
+            if self.data and getattr(self.data, "optimized", None) is not None:
+                return self.data.optimized
+            raise ValueError("TreeNode has no leaf chains and no root output chain.")
+        chains = self._prune_leaf_chain_loops(chains, parameters=chains[0].parameters)
         out = Chain.from_list_of_chains(
             chains, parameters=chains[0].parameters)
         return out

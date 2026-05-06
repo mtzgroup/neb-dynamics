@@ -26,6 +26,10 @@ class ElectronicStructureError(Exception):
     msg: str
     obj: Any = None
 
+    def __post_init__(self) -> None:
+        # Keep Exception args in sync so CLI/error handlers show the message text.
+        super().__init__(self.msg)
+
 
 @dataclass
 class CriticalNEBError(Exception):

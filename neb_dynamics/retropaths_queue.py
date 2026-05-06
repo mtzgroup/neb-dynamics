@@ -4,6 +4,7 @@ import contextlib
 import copy
 import concurrent.futures
 import multiprocessing
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import hashlib
@@ -39,6 +40,26 @@ except ModuleNotFoundError:
 
 def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _edge_live_paths_for_output_chain(output_chain_xyz: str) -> dict[str, str] | None:
+    chain_path = Path(str(output_chain_xyz))
+    stem = str(chain_path.stem or "").strip()
+    if not stem.startswith("pair_"):
+        return None
+    parts = stem.split("_")
+    if len(parts) < 3:
+        return None
+    with contextlib.suppress(Exception):
+        source_node = int(parts[1])
+        target_node = int(parts[2])
+        live_dir = chain_path.parent
+        return {
+            "progress_fp": str((live_dir / f"drive_neb_{source_node}_{target_node}.progress.log").resolve()),
+            "chain_fp": str((live_dir / f"drive_neb_{source_node}_{target_node}.chain.json").resolve()),
+            "log_fp": str((live_dir / f"drive_neb_{source_node}_{target_node}.log").resolve()),
+        }
+    return None
 
 
 def _node_payload(node: StructureNode) -> dict[str, Any]:
@@ -668,29 +689,74 @@ def _run_single_item_worker(
     parallel_recursive: bool = False,
     parallel_workers: int | None = None,
 ) -> dict[str, str]:
-    msmep = MSMEP(inputs=run_inputs)
-    if parallel_recursive:
-        resolved_workers = None if parallel_workers is None else max(1, int(parallel_workers))
-        history = msmep.run_parallel_recursive_minimize(
-            pair,
-            max_workers=resolved_workers,
-        )
-    else:
-        history = msmep.run_recursive_minimize(pair)
-    output_chain = getattr(history, "output_chain", None)
-    if output_chain is None:
-        raise RuntimeError("Recursive MSMEP returned no output_chain.")
+    existing_progress = str(os.environ.get("MEPD_DRIVE_PROGRESS_LOG") or "").strip()
+    existing_chain = str(os.environ.get("MEPD_DRIVE_CHAIN_JSON") or "").strip()
+    derived_live_paths = _edge_live_paths_for_output_chain(output_chain_xyz)
+    managed_progress = bool(derived_live_paths) and not existing_progress
+    managed_chain = bool(derived_live_paths) and not existing_chain
+    managed_log_fp = str((derived_live_paths or {}).get("log_fp") or "").strip()
 
-    result_dir_path = Path(result_dir)
-    output_chain_fp = Path(output_chain_xyz)
-    result_dir_path.parent.mkdir(parents=True, exist_ok=True)
-    output_chain_fp.parent.mkdir(parents=True, exist_ok=True)
-    history.write_to_disk(result_dir_path)
-    output_chain.write_to_disk(output_chain_fp)
-    return {
-        "result_dir": str(result_dir_path),
-        "output_chain_xyz": str(output_chain_fp),
-    }
+    old_progress = os.environ.get("MEPD_DRIVE_PROGRESS_LOG")
+    old_chain = os.environ.get("MEPD_DRIVE_CHAIN_JSON")
+    if managed_progress and derived_live_paths is not None:
+        os.environ["MEPD_DRIVE_PROGRESS_LOG"] = str(derived_live_paths["progress_fp"])
+    if managed_chain and derived_live_paths is not None:
+        os.environ["MEPD_DRIVE_CHAIN_JSON"] = str(derived_live_paths["chain_fp"])
+
+    msmep = MSMEP(inputs=run_inputs)
+    log_handle = None
+    try:
+        if managed_log_fp:
+            log_path = Path(managed_log_fp)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_handle = open(log_path, "a", encoding="utf-8")
+            with contextlib.redirect_stdout(log_handle), contextlib.redirect_stderr(log_handle):
+                if parallel_recursive:
+                    resolved_workers = None if parallel_workers is None else max(1, int(parallel_workers))
+                    history = msmep.run_parallel_recursive_minimize(
+                        pair,
+                        max_workers=resolved_workers,
+                    )
+                else:
+                    history = msmep.run_recursive_minimize(pair)
+        else:
+            if parallel_recursive:
+                resolved_workers = None if parallel_workers is None else max(1, int(parallel_workers))
+                history = msmep.run_parallel_recursive_minimize(
+                    pair,
+                    max_workers=resolved_workers,
+                )
+            else:
+                history = msmep.run_recursive_minimize(pair)
+
+        output_chain = getattr(history, "output_chain", None)
+        if output_chain is None:
+            raise RuntimeError("Recursive MSMEP returned no output_chain.")
+
+        result_dir_path = Path(result_dir)
+        output_chain_fp = Path(output_chain_xyz)
+        result_dir_path.parent.mkdir(parents=True, exist_ok=True)
+        output_chain_fp.parent.mkdir(parents=True, exist_ok=True)
+        history.write_to_disk(result_dir_path)
+        output_chain.write_to_disk(output_chain_fp)
+        return {
+            "result_dir": str(result_dir_path),
+            "output_chain_xyz": str(output_chain_fp),
+        }
+    finally:
+        if log_handle is not None:
+            with contextlib.suppress(Exception):
+                log_handle.close()
+        if managed_progress:
+            if old_progress is None:
+                os.environ.pop("MEPD_DRIVE_PROGRESS_LOG", None)
+            else:
+                os.environ["MEPD_DRIVE_PROGRESS_LOG"] = old_progress
+        if managed_chain:
+            if old_chain is None:
+                os.environ.pop("MEPD_DRIVE_CHAIN_JSON", None)
+            else:
+                os.environ["MEPD_DRIVE_CHAIN_JSON"] = old_chain
 
 
 def _run_single_item_worker_from_payload(
@@ -985,12 +1051,18 @@ def run_retropaths_neb_queue(
 
         item.status = "running"
         item.started_at = _utcnow_iso()
+        live_paths = _edge_live_paths_for_output_chain(
+            str(output_dir / f"pair_{item.source_node}_{item.target_node}.xyz")
+        ) or {}
         queue.attempted_pairs[item.attempt_key] = {
             "job_id": item.job_id,
             "source_node": item.source_node,
             "target_node": item.target_node,
             "status": "running",
             "started_at": item.started_at,
+            "progress_fp": str(live_paths.get("progress_fp") or ""),
+            "chain_fp": str(live_paths.get("chain_fp") or ""),
+            "log_fp": str(live_paths.get("log_fp") or ""),
         }
         queue.write_to_disk(queue_fp)
         _ensure_pair_endpoints_optimized(pot=pot, item=item, run_inputs=run_inputs)

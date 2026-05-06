@@ -178,6 +178,57 @@ def _parse_last_neb_energies(nebinfo_text: str, nimages: int) -> list[float] | N
     return None
 
 
+def _parse_neb_energy_history(nebinfo_text: str, nimages: int) -> list[list[float]]:
+    float_pattern = re.compile(r"[-+]?(?:\d+\.\d*|\d+|\.\d+)(?:[eE][-+]?\d+)?")
+    rows: list[list[float]] = []
+    for raw_line in nebinfo_text.splitlines():
+        matches = float_pattern.findall(raw_line)
+        if len(matches) < 3:
+            continue
+        with contextlib.suppress(Exception):
+            rows.append([float(token) for token in matches])
+
+    if not rows:
+        return []
+
+    best_history: list[list[float]] = []
+    best_row_count = -1
+    for idx_col, step_col in ((1, 0), (0, 1)):
+        for base in (0, 1):
+            step_to_energies: dict[int, dict[int, float]] = {}
+            usable_rows = 0
+            for row in rows:
+                if idx_col >= len(row) or step_col >= len(row):
+                    continue
+                idx_raw = row[idx_col]
+                step_raw = row[step_col]
+                idx_round = int(round(idx_raw))
+                step_round = int(round(step_raw))
+                if not np.isclose(idx_raw, float(idx_round), atol=1e-8):
+                    continue
+                if not np.isclose(step_raw, float(step_round), atol=1e-8):
+                    continue
+                image_ind = idx_round - base
+                if image_ind < 0 or image_ind >= nimages:
+                    continue
+                step_payload = step_to_energies.setdefault(step_round, {})
+                step_payload[image_ind] = float(row[-1])
+                usable_rows += 1
+
+            history: list[list[float]] = []
+            for step_idx in sorted(step_to_energies):
+                payload = step_to_energies[step_idx]
+                if len(payload) != nimages:
+                    continue
+                history.append([payload[i] for i in range(nimages)])
+
+            if history and usable_rows > best_row_count:
+                best_history = history
+                best_row_count = usable_rows
+
+    return best_history
+
+
 def _extract_dlf_image_trajectory(
     files: dict[str, Any],
     *,
@@ -185,6 +236,8 @@ def _extract_dlf_image_trajectory(
     charge: int,
     multiplicity: int,
     chain_parameters,
+    start_structure: Structure | None = None,
+    end_structure: Structure | None = None,
 ) -> list[Chain]:
     image_frames: dict[int, list[Structure]] = {}
     image_pattern = re.compile(r"(?:^|/|\\)neb_(\d+)\.xyz$", re.IGNORECASE)
@@ -205,6 +258,14 @@ def _extract_dlf_image_trajectory(
         return []
 
     sorted_indices = sorted(image_frames)
+    if len(sorted_indices) == nimages - 2 and start_structure is not None and end_structure is not None:
+        with contextlib.suppress(Exception):
+            image_frames = {
+                sorted_indices[0] - 1: [start_structure] * len(image_frames[sorted_indices[0]]),
+                **image_frames,
+                sorted_indices[-1] + 1: [end_structure] * len(image_frames[sorted_indices[-1]]),
+            }
+            sorted_indices = sorted(image_frames)
     if len(sorted_indices) != nimages:
         return []
     frame_count = min(len(image_frames[idx]) for idx in sorted_indices)
@@ -350,6 +411,11 @@ class DLFindNEB(PathMinimizer):
             )
         self._params = _as_dict(self.parameters)
         self._verbose = bool(self._params.get("v", False))
+        self._staged_early_stop_enabled = bool(
+            self._params.get("early_stop_stage", False)
+            or self._params.get("early_stop_two_stage", False)
+            or self._params.get("staged_elem_check", False)
+        )
 
     def _status(self, message: str, *, persistent: bool = False) -> None:
         if self._verbose:
@@ -360,31 +426,37 @@ class DLFindNEB(PathMinimizer):
         else:
             update_status(message)
 
-    def _build_terachem_input(self, chain: Chain) -> tuple[str, dict[str, str]]:
+    def _build_terachem_input(
+        self,
+        chain: Chain,
+        *,
+        params: dict[str, Any] | None = None,
+    ) -> tuple[str, dict[str, str]]:
         if len(chain) < 2:
             raise ValueError("DLFindNEB requires at least two images.")
 
+        active_params = dict(self._params if params is None else params)
         model = dict(getattr(self.engine.program_args, "model", {}) or {})
         user_keywords = dict(getattr(self.engine.program_args, "keywords", {}) or {})
         dlf_keywords = dict(
-            self._params.get("dlfind_keywords")
-            or self._params.get("dlf_keywords")
+            active_params.get("dlfind_keywords")
+            or active_params.get("dlf_keywords")
             or {}
         )
 
         nstep = _coerce_int(
-            self._params.get("nstep", self._params.get("max_steps", 200)),
+            active_params.get("nstep", active_params.get("max_steps", 200)),
             default=200,
             field_name="nstep",
         )
         min_image = _coerce_int(
-            self._params.get("min_image", len(chain)),
+            active_params.get("min_image", len(chain)),
             default=len(chain),
             field_name="min_image",
         )
-        min_nebk = self._params.get("min_nebk", 0.01)
-        max_nebk = self._params.get("max_nebk", None)
-        new_minimizer = self._params.get("new_minimizer", "no")
+        min_nebk = active_params.get("min_nebk", 0.01)
+        max_nebk = active_params.get("max_nebk", None)
+        new_minimizer = active_params.get("new_minimizer", "no")
 
         merged_keywords: dict[str, Any] = {}
         merged_keywords.update(user_keywords)
@@ -399,7 +471,7 @@ class DLFindNEB(PathMinimizer):
         )
         merged_keywords.setdefault(
             "ts_method",
-            self._params.get("ts_method", "neb_frozen"),
+            active_params.get("ts_method", "neb_frozen"),
         )
         if max_nebk is not None:
             merged_keywords["max_nebk"] = max_nebk
@@ -431,20 +503,21 @@ class DLFindNEB(PathMinimizer):
             lines.append(f"{key:<20} {_format_tc_value(value)}")
         lines.append("end")
 
-        constraints_text = self._params.get("constraints_text")
+        constraints_text = active_params.get("constraints_text")
         if constraints_text:
             lines.extend(["", str(constraints_text).strip(), ""])
 
         files = {"tc.in": "\n".join(lines) + "\n", "path.xyz": _iter_xyz_frames(chain)}
-        input_files = dict(self._params.get("input_files") or {})
+        input_files = dict(active_params.get("input_files") or {})
         for file_name, contents in input_files.items():
             files[str(file_name)] = str(contents)
 
         return files["tc.in"], files
 
-    def _run_dlfind(self, chain: Chain):
-        _tcin_text, files = self._build_terachem_input(chain)
-        collect_files = bool(self._params.get("collect_files", True))
+    def _run_dlfind(self, chain: Chain, *, params: dict[str, Any] | None = None):
+        active_params = dict(self._params if params is None else params)
+        _tcin_text, files = self._build_terachem_input(chain, params=active_params)
+        collect_files = bool(active_params.get("collect_files", True))
         file_input = FileInput(
             files=files,
             cmdline_args=["tc.in"],
@@ -539,17 +612,110 @@ class DLFindNEB(PathMinimizer):
             charge=int(chain[0].structure.charge),
             multiplicity=int(chain[0].structure.multiplicity),
             chain_parameters=chain.parameters.copy(),
+            start_structure=chain[0].structure,
+            end_structure=chain[-1].structure,
         )
+        energy_history = []
+        if nebinfo_text:
+            energy_history = _parse_neb_energy_history(nebinfo_text, len(final_chain))
+        if energy_history and chain_trajectory:
+            # Assign parsed per-step energies to the tail of the parsed chain history.
+            start_ind = max(0, len(chain_trajectory) - len(energy_history))
+            for chain_ind, step_energies in zip(
+                range(start_ind, len(chain_trajectory)),
+                energy_history[-(len(chain_trajectory) - start_ind):],
+            ):
+                if len(step_energies) != len(chain_trajectory[chain_ind]):
+                    continue
+                for node, ene in zip(chain_trajectory[chain_ind], step_energies):
+                    node._cached_energy = float(ene)
         return final_chain, chain_trajectory
+
+    def _ensure_chain_energies(self, chain: Chain, *, reason: str) -> None:
+        if chain._energies_already_computed:
+            return
+        self._status(f"DL-Find NEB: computing missing energies for {reason}.")
+        try:
+            self.engine.compute_energies(chain)
+            self.grad_calls_made += len(chain)
+        except Exception as exc:
+            self._status(
+                f"DL-Find NEB: could not compute energies for {reason} ({type(exc).__name__}); proceeding without cached energies.",
+                persistent=True,
+            )
+
+    def _append_history(self, parsed_history: list[Chain], final_chain: Chain) -> None:
+        for chain in parsed_history:
+            self.chain_trajectory.append(chain)
+        self.chain_trajectory.append(final_chain)
+
+    def _build_loose_params(self) -> dict[str, Any]:
+        loose_overrides = (
+            self._params.get("early_stop_loose_overrides")
+            or self._params.get("early_stop_loose_path_min_inputs")
+            or self._params.get("loose_path_min_inputs")
+            or {}
+        )
+        if not isinstance(loose_overrides, dict):
+            raise ValueError("`early_stop_loose_overrides` must be a dictionary.")
+
+        loose_params = dict(self._params)
+        for key, value in loose_overrides.items():
+            if key in {"dlfind_keywords", "dlf_keywords"} and isinstance(value, dict):
+                merged_kw = dict(loose_params.get(key) or {})
+                merged_kw.update(value)
+                loose_params[key] = merged_kw
+            else:
+                loose_params[key] = value
+
+        loose_params["early_stop_stage"] = False
+        loose_params["early_stop_two_stage"] = False
+        loose_params["staged_elem_check"] = False
+        return loose_params
+
+    def _run_single_pass(
+        self,
+        work_chain: Chain,
+        *,
+        stage_label: str,
+        params: dict[str, Any],
+    ) -> tuple[Chain, list[Chain]]:
+        self._status(f"DL-Find NEB: submitting {stage_label} pass.")
+        output = self._run_dlfind(work_chain, params=params)
+        return self._chain_from_output(output, work_chain)
 
     def optimize_chain(self) -> ElemStepResults:
         work_chain = self.initial_chain.copy()
         self.chain_trajectory = [work_chain.copy()]
-        self._status("DL-Find NEB: submitting TeraChem `run ts` through QCOP.")
+        self._ensure_chain_energies(self.chain_trajectory[0], reason="initial chain")
 
         try:
-            output = self._run_dlfind(work_chain)
-            final_chain, parsed_history = self._chain_from_output(output, work_chain)
+            do_elem_checks = bool(self._params.get("do_elem_step_checks", True))
+
+            if self._staged_early_stop_enabled and do_elem_checks:
+                loose_params = self._build_loose_params()
+                loose_chain, loose_history = self._run_single_pass(
+                    work_chain, stage_label="loose", params=loose_params
+                )
+                self._append_history(loose_history, loose_chain)
+                self.optimized = loose_chain
+
+                self._status("DL-Find NEB: running elementary-step checks on loose pass.")
+                elem_step_results = check_if_elem_step(inp_chain=loose_chain, engine=self.engine)
+                self.geom_grad_calls_made += int(elem_step_results.number_grad_calls)
+                if not elem_step_results.is_elem_step:
+                    return elem_step_results
+
+                tight_chain, tight_history = self._run_single_pass(
+                    loose_chain, stage_label="tight", params=self._params
+                )
+                self._append_history(tight_history, tight_chain)
+                self.optimized = tight_chain
+                return elem_step_results
+
+            final_chain, parsed_history = self._run_single_pass(
+                work_chain, stage_label="single", params=self._params
+            )
         except ElectronicStructureError:
             raise
         except Exception as exc:
@@ -563,10 +729,7 @@ class DLFindNEB(PathMinimizer):
                 obj=None,
             ) from exc
 
-        if parsed_history:
-            self.chain_trajectory.extend(parsed_history)
-        if not self.chain_trajectory or self.chain_trajectory[-1] is not final_chain:
-            self.chain_trajectory.append(final_chain)
+        self._append_history(parsed_history, final_chain)
         self.optimized = final_chain
 
         if bool(self._params.get("do_elem_step_checks", True)):

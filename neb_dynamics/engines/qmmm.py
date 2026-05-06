@@ -35,6 +35,8 @@ import tempfile
 import logging
 import time
 
+logger = logging.getLogger(__name__)
+
 
 def _resolve_chemcloud_queue(explicit_queue: str | None) -> str:
     if explicit_queue:
@@ -392,9 +394,15 @@ class QMMMEngine(Engine):
                 collect_files=True,
             )
         except Exception as exc:
+            context = self._build_submission_error_context(
+                operation="minimize",
+                collect_files=True,
+                exception=exc,
+            )
+            logger.exception(context)
             raise ElectronicStructureError(
-                msg=f"QMMM minimize submission failed ({self.compute_program}): {exc}",
-                obj=None,
+                msg=context,
+                obj={"operation": "minimize", "compute_program": self.compute_program},
             ) from exc
         finally:
             self._next_debug_dump_counter()
@@ -426,8 +434,14 @@ class QMMMEngine(Engine):
                     if len(inputs) == 1 and not isinstance(outputs, list):
                         outputs = [outputs]
             except Exception as exc:
+                context = self._build_submission_error_context(
+                    operation="compute_enegrad",
+                    collect_files=False,
+                    exception=exc,
+                )
+                logger.exception(context)
                 raise ElectronicStructureError(
-                    msg=f"QMMM compute submission failed ({self.compute_program}): {exc}",
+                    msg=context,
                     obj=None,
                 ) from exc
 
@@ -493,6 +507,74 @@ class QMMMEngine(Engine):
         )
         return any(token in msg for token in retry_markers)
 
+    @staticmethod
+    def _root_exception(exc: Exception) -> Exception:
+        root = exc
+        seen: set[int] = set()
+        while True:
+            nxt = root.__cause__ or root.__context__
+            if nxt is None:
+                return root
+            nxt_id = id(nxt)
+            if nxt_id in seen:
+                return root
+            seen.add(nxt_id)
+            root = nxt
+
+    @staticmethod
+    def _inline_exception(exc: Exception) -> str:
+        text = str(exc).strip() or repr(exc)
+        return " ".join(text.split())
+
+    @staticmethod
+    def _is_program_output_schema_error(exc: Exception) -> bool:
+        text = str(exc)
+        return (
+            "validation errors for programoutput" in text.lower()
+            and "data" in text.lower()
+            and "results" in text.lower()
+        )
+
+    def _active_debug_dump_dir(self) -> Path | None:
+        if not self.debug_dump_inputs:
+            return None
+        dump_dir = Path(self.debug_dump_dir) if self.debug_dump_dir else Path.cwd() / "qmmm_debug_inputs"
+        return dump_dir / f"call_{self._debug_dump_counter:04d}"
+
+    def _build_submission_error_context(
+        self,
+        *,
+        operation: str,
+        collect_files: bool,
+        exception: Exception,
+    ) -> str:
+        root_exc = self._root_exception(exception)
+        root_line = f"{type(root_exc).__name__}: {self._inline_exception(root_exc)}"
+        attempt_note = ""
+        if self.compute_program.lower() == "chemcloud":
+            attempt_note = " after up to 3 attempts"
+
+        msg_lines = [
+            f"QMMM {operation} submission failed",
+            f"backend={self.compute_program}",
+            f"collect_files={collect_files}",
+            f"print_stdout={self.print_stdout}",
+        ]
+        if self.compute_program.lower() == "chemcloud":
+            msg_lines.append(f"chemcloud_queue={self.chemcloud_queue}")
+        debug_dir = self._active_debug_dump_dir()
+        if debug_dir is not None:
+            msg_lines.append(f"debug_dump_dir={debug_dir}")
+        msg_lines.append(f"root_cause={root_line}{attempt_note}")
+
+        if self._is_program_output_schema_error(root_exc):
+            msg_lines.append(
+                "hint=ChemCloud returned a ProgramOutput payload that does not match the installed qcio schema "
+                "(expected `data`, found legacy `results`). This is usually a chemcloud/qcio version mismatch."
+            )
+
+        return "; ".join(msg_lines)
+
     def _chemcloud_compute_with_retries(self, inp, collect_files: bool):
         max_attempts = 3
         delay_sec = 2.0
@@ -511,7 +593,7 @@ class QMMMEngine(Engine):
                 retryable = self._is_retryable_chemcloud_error(exc)
                 if attempt >= max_attempts or not retryable:
                     raise
-                logging.warning(
+                logger.warning(
                     "QMMM ChemCloud call failed on attempt %d/%d (%s). Retrying in %.1fs...",
                     attempt,
                     max_attempts,

@@ -240,6 +240,26 @@ def _load_partial_annotated_pot_compat(
         return load_partial_annotated_pot(workspace)
 
 
+def _annotated_overlay_requires_rebuild(workspace: RetropathsWorkspace) -> tuple[bool, str]:
+    annotated_fp = workspace.annotated_neb_pot_fp
+    if not annotated_fp.exists():
+        return True, "Annotated network overlay missing."
+    try:
+        annotated_stat = annotated_fp.stat()
+    except OSError:
+        return True, "Annotated network overlay metadata unreadable."
+    if int(annotated_stat.st_size) <= 0:
+        return True, "Annotated network overlay is empty."
+    annotated_mtime_ns = int(annotated_stat.st_mtime_ns)
+    for source_fp in (workspace.neb_pot_fp, workspace.queue_fp):
+        try:
+            if source_fp.exists() and int(source_fp.stat().st_mtime_ns) > annotated_mtime_ns:
+                return True, f"{source_fp.name} is newer than annotated network overlay."
+        except OSError:
+            return True, f"Could not compare {source_fp.name} against annotated network overlay."
+    return False, "Annotated network overlay cache is current."
+
+
 def _call_drive_payload_builder(
     builder: Callable[..., dict[str, Any]],
     workspace: RetropathsWorkspace,
@@ -478,7 +498,7 @@ def _node_hessian_sample_status(
         return False, "The inputs file could not be loaded, so Hessian-sample availability is unknown."
     if not bool(inputs_summary.get("can_hessian_sample", False)):
         return False, str(inputs_summary.get("hessian_sample_note") or "This inputs configuration does not support Hessian sampling.")
-    return True, "Compute Hessian normal modes, displace by ±dr, optimize each displacement, and merge unique minima."
+    return True, "Compute Hessian normal modes, displace by ±(dr × atom_count), optimize each displacement, and merge unique minima."
 
 
 def _edge_hessian_sample_status(edge: dict[str, Any]) -> tuple[bool, str]:
@@ -648,6 +668,200 @@ def _read_growth_progress(progress_fp: Any) -> dict[str, Any] | None:
         return json.loads(Path(str(progress_fp)).read_text())
     except Exception:
         return None
+
+
+def _workspace_root_path(workspace: RetropathsWorkspace) -> Path:
+    with contextlib.suppress(Exception):
+        directory = getattr(workspace, "directory", None)
+        if directory is not None:
+            return Path(directory).resolve()
+    return Path(str(getattr(workspace, "workdir", "."))).resolve()
+
+
+def _safe_workspace_path(workspace: RetropathsWorkspace, value: Any) -> Path | None:
+    if not value:
+        return None
+    try:
+        candidate = Path(str(value)).expanduser().resolve()
+    except Exception:
+        return None
+    root = _workspace_root_path(workspace)
+    if not _is_within_directory(candidate, root):
+        return None
+    return candidate
+
+
+def _edge_live_paths_by_pair(queue: RetropathsNEBQueue) -> dict[tuple[int, int], dict[str, Any]]:
+    attempted_pairs = dict(getattr(queue, "attempted_pairs", {}) or {})
+    candidates_by_pair: dict[tuple[int, int], list[dict[str, Any]]] = {}
+
+    def _append_candidate(pair_key: tuple[int, int], payload: dict[str, Any]) -> None:
+        if pair_key not in candidates_by_pair:
+            candidates_by_pair[pair_key] = []
+        candidates_by_pair[pair_key].append(payload)
+
+    def _pair_key(source_value: Any, target_value: Any) -> tuple[int, int] | None:
+        with contextlib.suppress(Exception):
+            return tuple(sorted((int(source_value), int(target_value))))
+        return None
+
+    for item in list(getattr(queue, "items", []) or []):
+        pair_key = _pair_key(getattr(item, "source_node", None), getattr(item, "target_node", None))
+        if pair_key is None:
+            continue
+        attempt_key = str(getattr(item, "attempt_key", "") or "").strip()
+        attempt = dict(attempted_pairs.get(attempt_key) or {}) if attempt_key else {}
+        status = str(attempt.get("status") or getattr(item, "status", "") or "").strip().lower()
+        if not status:
+            continue
+        _append_candidate(
+            pair_key,
+            {
+                "status": status,
+                "started_at": str(attempt.get("started_at") or getattr(item, "started_at", "") or ""),
+                "finished_at": str(attempt.get("finished_at") or getattr(item, "finished_at", "") or ""),
+                "source_node": int(attempt.get("source_node", getattr(item, "source_node", pair_key[0]))),
+                "target_node": int(attempt.get("target_node", getattr(item, "target_node", pair_key[1]))),
+                "progress_fp": str(attempt.get("progress_fp") or ""),
+                "chain_fp": str(attempt.get("chain_fp") or ""),
+                "log_fp": str(attempt.get("log_fp") or ""),
+            },
+        )
+
+    for attempt in attempted_pairs.values():
+        if not isinstance(attempt, dict):
+            continue
+        pair_key = _pair_key(attempt.get("source_node"), attempt.get("target_node"))
+        if pair_key is None:
+            continue
+        status = str(attempt.get("status") or "").strip().lower()
+        if not status:
+            continue
+        _append_candidate(
+            pair_key,
+            {
+                "status": status,
+                "started_at": str(attempt.get("started_at") or ""),
+                "finished_at": str(attempt.get("finished_at") or ""),
+                "source_node": int(attempt.get("source_node", pair_key[0])),
+                "target_node": int(attempt.get("target_node", pair_key[1])),
+                "progress_fp": str(attempt.get("progress_fp") or ""),
+                "chain_fp": str(attempt.get("chain_fp") or ""),
+                "log_fp": str(attempt.get("log_fp") or ""),
+            },
+        )
+
+    def _priority(payload: dict[str, Any]) -> tuple[int, str, str]:
+        status = str(payload.get("status") or "")
+        rank = {
+            "running": 0,
+            "completed": 1,
+            "failed": 2,
+            "skipped_identical": 3,
+            "skipped_attempted": 4,
+            "pending": 5,
+        }.get(status, 9)
+        started_at = str(payload.get("started_at") or "")
+        finished_at = str(payload.get("finished_at") or "")
+        return (rank, started_at, finished_at)
+
+    selected_by_pair: dict[tuple[int, int], dict[str, Any]] = {}
+    for pair_key, candidates in candidates_by_pair.items():
+        if candidates:
+            selected_by_pair[pair_key] = sorted(candidates, key=_priority)[0]
+    return selected_by_pair
+
+
+def _edge_live_paths_for_pair(
+    queue: RetropathsNEBQueue,
+    *,
+    source_node: int,
+    target_node: int,
+) -> dict[str, Any]:
+    pair_key = tuple(sorted((int(source_node), int(target_node))))
+    return dict(_edge_live_paths_by_pair(queue).get(pair_key) or {})
+
+
+def _build_edge_live_payload(
+    workspace: RetropathsWorkspace,
+    *,
+    source_node: int,
+    target_node: int,
+) -> dict[str, Any]:
+    queue = RetropathsNEBQueue()
+    with contextlib.suppress(Exception):
+        queue = RetropathsNEBQueue.read_from_disk(workspace.queue_fp)
+    live = _edge_live_paths_for_pair(
+        queue,
+        source_node=int(source_node),
+        target_node=int(target_node),
+    )
+    status = str(live.get("status") or "").strip().lower()
+    running = status == "running"
+
+    progress_candidates = [
+        _safe_workspace_path(workspace, live.get("progress_fp")),
+        _safe_workspace_path(
+            workspace,
+            Path(workspace.queue_output_dir)
+            / f"drive_neb_{int(source_node)}_{int(target_node)}.progress.log",
+        ),
+        _safe_workspace_path(
+            workspace,
+            Path(workspace.directory) / f"drive_neb_{int(source_node)}_{int(target_node)}.progress.log",
+        ),
+    ]
+    chain_candidates = [
+        _safe_workspace_path(workspace, live.get("chain_fp")),
+        _safe_workspace_path(
+            workspace,
+            Path(workspace.queue_output_dir)
+            / f"drive_neb_{int(source_node)}_{int(target_node)}.chain.json",
+        ),
+        _safe_workspace_path(
+            workspace,
+            Path(workspace.directory) / f"drive_neb_{int(source_node)}_{int(target_node)}.chain.json",
+        ),
+    ]
+    log_candidates = [
+        _safe_workspace_path(workspace, live.get("log_fp")),
+        _safe_workspace_path(
+            workspace,
+            Path(workspace.queue_output_dir)
+            / f"drive_neb_{int(source_node)}_{int(target_node)}.log",
+        ),
+        _safe_workspace_path(
+            workspace,
+            Path(workspace.directory) / f"drive_neb_{int(source_node)}_{int(target_node)}.log",
+        ),
+    ]
+
+    progress_fp = next((path for path in progress_candidates if path is not None), None)
+    chain_fp = next((path for path in chain_candidates if path is not None), None)
+    log_fp = next((path for path in log_candidates if path is not None), None)
+
+    chain_payload = _read_chain_payload(chain_fp)
+    history = list((chain_payload or {}).get("history") or [])
+    if len(history) > 24:
+        history = history[-24:]
+
+    return {
+        "source_node": int(source_node),
+        "target_node": int(target_node),
+        "status": status or "unknown",
+        "running": bool(running),
+        "available": bool(chain_payload or log_fp or progress_fp),
+        "plot": (chain_payload or {}).get("plot"),
+        "history": history,
+        "ascii_plot": str((chain_payload or {}).get("ascii_plot") or ""),
+        "monitors": dict((chain_payload or {}).get("monitors") or {}),
+        "console_text": _read_log_tail(log_fp or progress_fp, max_chars=9000),
+        "progress_fp": str(progress_fp) if progress_fp is not None else "",
+        "chain_fp": str(chain_fp) if chain_fp is not None else "",
+        "log_fp": str(log_fp) if log_fp is not None else "",
+        "started_at": str(live.get("started_at") or ""),
+        "finished_at": str(live.get("finished_at") or ""),
+    }
 
 
 def _drive_network_version(workspace: RetropathsWorkspace) -> str:
@@ -1366,6 +1580,17 @@ def _completed_queue_entries(queue: Any) -> list[_CompletedQueueEntry]:
     return [by_edge[key] for key in sorted(by_edge)]
 
 
+def _should_regenerate_completed_queue_visualizations(
+    queue: RetropathsNEBQueue,
+    *,
+    max_queue_items: int = 200,
+    max_attempted_pairs: int = 500,
+) -> bool:
+    queue_items = list(getattr(queue, "items", []) or [])
+    attempted_pairs = dict(getattr(queue, "attempted_pairs", {}) or {})
+    return len(queue_items) <= int(max_queue_items) and len(attempted_pairs) <= int(max_attempted_pairs)
+
+
 def _completed_queue_result_payload(item: Any) -> dict[str, Any] | None:
     leaf_count = 0
     result_dir = str(getattr(item, "result_dir", "") or "").strip()
@@ -1413,12 +1638,29 @@ def _merge_drive_pot(workspace: RetropathsWorkspace, *, network_splits: bool = T
     base_pot = Pot.read_from_disk(workspace.neb_pot_fp)
     if not network_splits:
         return base_pot
+    annotated: Pot | None = None
+    annotated_fp = getattr(workspace, "annotated_neb_pot_fp", None)
+    queue_fp = getattr(workspace, "queue_fp", None)
+    if annotated_fp is not None and queue_fp is not None:
+        should_rebuild_overlay, _reason = _annotated_overlay_requires_rebuild(workspace)
+        if not should_rebuild_overlay:
+            with contextlib.suppress(Exception):
+                annotated = Pot.read_from_disk(annotated_fp)
     try:
-        annotated = load_partial_annotated_pot(workspace)
+        if annotated is None:
+            annotated = load_partial_annotated_pot(workspace)
     except Exception:
         return base_pot
 
-    merged = Pot.read_from_disk(workspace.neb_pot_fp)
+    with contextlib.suppress(Exception):
+        base_nodes = set(base_pot.graph.nodes)
+        base_edges = set(base_pot.graph.edges)
+        annotated_nodes = set(annotated.graph.nodes)
+        annotated_edges = set(annotated.graph.edges)
+        if base_nodes.issubset(annotated_nodes) and base_edges.issubset(annotated_edges):
+            return annotated
+
+    merged = base_pot
     for node_index in annotated.graph.nodes:
         attrs = dict(annotated.graph.nodes[node_index])
         if node_index in merged.graph.nodes:
@@ -1666,6 +1908,46 @@ def _lookup_edge_payload_with_reverse(
     first_key = reverse_key if prefer_reverse else forward_key
     second_key = forward_key if prefer_reverse else reverse_key
     return payload_by_edge.get(first_key) or payload_by_edge.get(second_key)
+
+
+def _build_network_explorer_payload_lightweight(graph: Any) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    for node_index in sorted(graph.nodes):
+        attrs = graph.nodes[node_index]
+        molecule = attrs.get("molecule")
+        label = str(node_index)
+        if isinstance(molecule, str):
+            label = molecule
+        elif molecule is not None:
+            with contextlib.suppress(Exception):
+                smiles = str(getattr(molecule, "smiles") or "").strip()
+                if smiles:
+                    label = smiles
+        nodes.append(
+            {
+                "id": int(node_index),
+                "label": label,
+                "data": {},
+                "energy": _energy_value(attrs.get("td")),
+            }
+        )
+
+    edges: list[dict[str, Any]] = []
+    for source, target in sorted(graph.edges):
+        attrs = graph.edges[(source, target)]
+        edges.append(
+            {
+                "source": int(source),
+                "target": int(target),
+                "reaction": str(attrs.get("reaction") or ""),
+                "barrier": float(attrs["barrier"]) if attrs.get("barrier") is not None else None,
+                "chains": len(attrs.get("list_of_nebs") or []),
+                "viewer_href": None,
+                "data": {},
+                "template": {},
+            }
+        )
+    return {"nodes": nodes, "edges": edges}
 
 
 def _parse_kmc_initial_conditions(raw: str | None) -> dict[int, float] | None:
@@ -2008,12 +2290,16 @@ def _build_drive_payload(
         for item in queue.items
     }
     backed_nodes = _neb_backed_nodes(pot.graph)
+    node_structure_by_index: dict[int, dict[str, Any] | None] = {}
     normalized_product = product_smiles.strip()
 
     for node in explorer["nodes"]:
         node_index = int(node["id"])
         attrs = pot.graph.nodes[node_index]
-        node["structure"] = _node_structure_payload(attrs)
+        node_structure = _node_structure_payload(attrs)
+        node["structure"] = node_structure
+        node["energy"] = _energy_value(attrs.get("td"))
+        node_structure_by_index[node_index] = node_structure
         node["endpoint_optimized"] = bool(attrs.get("endpoint_optimized"))
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
@@ -2061,10 +2347,27 @@ def _build_drive_payload(
             edge["result_from_completed_queue"] = True
         edge["queue_status"] = queue_item.status if queue_item is not None else ""
         edge["queue_error"] = queue_item.error if queue_item is not None else ""
+        live_meta = _edge_live_paths_for_pair(
+            queue,
+            source_node=source,
+            target_node=target,
+        )
+        live_status = str(live_meta.get("status") or "").strip().lower()
+        if (
+            not live_status
+            and active_action is not None
+            and str(active_action.get("type") or "") == "neb"
+            and str(active_action.get("status") or "") == "running"
+            and int(active_action.get("source_node", -1)) == source
+            and int(active_action.get("target_node", -1)) == target
+        ):
+            live_status = "running"
+        edge["live_status"] = live_status
+        edge["live_monitor_available"] = bool(live_status == "running")
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
         edge["can_hessian_sample"], edge["hessian_sample_note"] = _edge_hessian_sample_status(edge)
-        edge["source_structure"] = _node_structure_payload(pot.graph.nodes[source])
-        edge["target_structure"] = _node_structure_payload(pot.graph.nodes[target])
+        edge["source_structure"] = node_structure_by_index.get(source)
+        edge["target_structure"] = node_structure_by_index.get(target)
         viewer_source_structure = viewer_row.get("source_structure") if isinstance(viewer_row, dict) else None
         viewer_target_structure = viewer_row.get("target_structure") if isinstance(viewer_row, dict) else None
         if viewer_source_structure is not None:
@@ -2153,12 +2456,25 @@ def _build_drive_payload_fast(
     pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
     inputs_summary = _inputs_summary_payload(workspace)
     normalized_product = product_smiles.strip()
-    explorer = _build_network_explorer_payload(pot.graph)
+    if int(pot.graph.number_of_edges()) > 600:
+        explorer = _build_network_explorer_payload_lightweight(pot.graph)
+    else:
+        explorer = _build_network_explorer_payload(pot.graph)
     edge_visualizations = _read_edge_visualization_metadata(workspace=workspace, pot=pot)
-    # Fast snapshots should still surface newly completed queue results while an action
-    # (notably Hawaii) is running, otherwise barriers can appear without a viewer link
-    # until an eventual full rebuild occurs.
-    completed_queue_visualizations = _write_completed_queue_visualizations(workspace=workspace, queue=queue)
+    completed_queue_visualizations = _read_completed_queue_visualization_metadata(
+        workspace=workspace,
+        queue=queue,
+    )
+    if (
+        _should_regenerate_completed_queue_visualizations(queue)
+        and not completed_queue_visualizations
+    ):
+        # Keep fast snapshots lightweight on large workspaces while still preserving
+        # small-run behavior where completed queue rows may not be pre-rendered yet.
+        completed_queue_visualizations = _write_completed_queue_visualizations(
+            workspace=workspace,
+            queue=queue,
+        )
     viewer_by_edge = {
         str(item.get("edge") or ""): f"edge_visualizations/{item['href']}"
         for item in edge_visualizations
@@ -2175,10 +2491,16 @@ def _build_drive_payload_fast(
         for item in queue.items
     }
     backed_nodes = _neb_backed_nodes(pot.graph)
+    live_by_pair = _edge_live_paths_by_pair(queue)
+    node_structure_by_index: dict[int, dict[str, Any] | None] = {}
+    include_edge_structures = int(pot.graph.number_of_edges()) <= 600
     for node in explorer["nodes"]:
         node_index = int(node["id"])
         attrs = pot.graph.nodes[node_index]
-        node["structure"] = _node_structure_payload_fast(attrs)
+        node_structure = _node_structure_payload_fast(attrs)
+        node["structure"] = node_structure
+        node["energy"] = _energy_value(attrs.get("td"))
+        node_structure_by_index[node_index] = node_structure
         node["endpoint_optimized"] = bool(attrs.get("endpoint_optimized"))
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
@@ -2218,10 +2540,13 @@ def _build_drive_payload_fast(
             edge["result_from_completed_queue"] = True
         edge["queue_status"] = queue_item.status if queue_item is not None else ""
         edge["queue_error"] = queue_item.error if queue_item is not None else ""
+        live_meta = dict(live_by_pair.get(tuple(sorted((source, target)))) or {})
+        edge["live_status"] = str(live_meta.get("status") or "").strip().lower()
+        edge["live_monitor_available"] = bool(edge["live_status"] == "running")
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
         edge["can_hessian_sample"], edge["hessian_sample_note"] = _edge_hessian_sample_status(edge)
-        edge["source_structure"] = _node_structure_payload_fast(pot.graph.nodes[source])
-        edge["target_structure"] = _node_structure_payload_fast(pot.graph.nodes[target])
+        edge["source_structure"] = node_structure_by_index.get(source) if include_edge_structures else None
+        edge["target_structure"] = node_structure_by_index.get(target) if include_edge_structures else None
         if queue_result is not None:
             queue_source = int(queue_result.get("source_node", source))
             queue_target = int(queue_result.get("target_node", target))
@@ -2297,9 +2622,23 @@ def _build_drive_payload_fast_neb(
     pot = _merge_drive_pot_compat(workspace, network_splits=network_splits)
     inputs_summary = _inputs_summary_payload(workspace)
     normalized_product = product_smiles.strip()
-    explorer = _build_network_explorer_payload(pot.graph)
-    edge_visualizations = _write_edge_visualizations(workspace=workspace, pot=pot)
-    completed_queue_visualizations = _write_completed_queue_visualizations(workspace=workspace, queue=queue)
+    if int(pot.graph.number_of_edges()) > 600:
+        explorer = _build_network_explorer_payload_lightweight(pot.graph)
+    else:
+        explorer = _build_network_explorer_payload(pot.graph)
+    edge_visualizations = _read_edge_visualization_metadata(workspace=workspace, pot=pot)
+    completed_queue_visualizations = _read_completed_queue_visualization_metadata(
+        workspace=workspace,
+        queue=queue,
+    )
+    if (
+        _should_regenerate_completed_queue_visualizations(queue)
+        and not completed_queue_visualizations
+    ):
+        completed_queue_visualizations = _write_completed_queue_visualizations(
+            workspace=workspace,
+            queue=queue,
+        )
     viewer_by_edge = {
         str(item.get("edge") or ""): f"edge_visualizations/{item['href']}"
         for item in edge_visualizations
@@ -2315,6 +2654,10 @@ def _build_drive_payload_fast_neb(
         (int(item.source_node), int(item.target_node)): item
         for item in queue.items
     }
+    backed_nodes = _neb_backed_nodes(pot.graph)
+    live_by_pair = _edge_live_paths_by_pair(queue)
+    node_structure_by_index: dict[int, dict[str, Any] | None] = {}
+    include_edge_structures = int(pot.graph.number_of_edges()) <= 600
     active_edge = None
     if active_action is not None and active_action.get("type") == "neb":
         active_edge = (
@@ -2325,14 +2668,17 @@ def _build_drive_payload_fast_neb(
     for node in explorer["nodes"]:
         node_index = int(node["id"])
         attrs = pot.graph.nodes[node_index]
-        node["structure"] = _node_structure_payload_fast(attrs)
+        node_structure = _node_structure_payload_fast(attrs)
+        node["structure"] = node_structure
+        node["energy"] = _energy_value(attrs.get("td"))
+        node_structure_by_index[node_index] = node_structure
         node["endpoint_optimized"] = bool(attrs.get("endpoint_optimized"))
         node["endpoint_optimization_error"] = str(attrs.get("endpoint_optimization_error") or "")
         node["minimizable"], node["minimize_note"] = _node_minimize_status(node_index, attrs)
         node["can_apply_reactions"], node["apply_reactions_note"] = _node_apply_reaction_status(node_index, attrs)
         node["can_nanoreactor"], node["nanoreactor_note"] = _node_nanoreactor_status(node_index, attrs, inputs_summary)
         node["can_hessian_sample"], node["hessian_sample_note"] = _node_hessian_sample_status(node_index, attrs, inputs_summary)
-        node["neb_backed"] = node_index in _neb_backed_nodes(pot.graph)
+        node["neb_backed"] = node_index in backed_nodes
         node["is_target"] = bool(normalized_product and str(node["label"]) == normalized_product)
 
     for edge in explorer["edges"]:
@@ -2364,10 +2710,16 @@ def _build_drive_payload_fast_neb(
             edge["result_from_completed_queue"] = True
         edge["queue_status"] = queue_item.status if queue_item is not None else ""
         edge["queue_error"] = queue_item.error if queue_item is not None else ""
+        live_meta = dict(live_by_pair.get(tuple(sorted((source, target)))) or {})
+        live_status = str(live_meta.get("status") or "").strip().lower()
+        if active_edge is not None and tuple(sorted((source, target))) == tuple(sorted(active_edge)):
+            live_status = live_status or "running"
+        edge["live_status"] = live_status
+        edge["live_monitor_available"] = bool(live_status == "running")
         edge["can_queue_neb"], edge["queue_note"] = _edge_neb_status(edge)
         edge["can_hessian_sample"], edge["hessian_sample_note"] = _edge_hessian_sample_status(edge)
-        edge["source_structure"] = _node_structure_payload_fast(pot.graph.nodes[source])
-        edge["target_structure"] = _node_structure_payload_fast(pot.graph.nodes[target])
+        edge["source_structure"] = node_structure_by_index.get(source) if include_edge_structures else None
+        edge["target_structure"] = node_structure_by_index.get(target) if include_edge_structures else None
         if queue_result is not None:
             queue_source = int(queue_result.get("source_node", source))
             queue_target = int(queue_result.get("target_node", target))
@@ -2820,12 +3172,29 @@ def _run_selected_edge_neb(
 
     item.status = "running"
     item.started_at = time.strftime("%Y-%m-%dT%H:%M:%S")
+    live_progress_fp = str(os.environ.get("MEPD_DRIVE_PROGRESS_LOG") or "").strip()
+    live_chain_fp = str(os.environ.get("MEPD_DRIVE_CHAIN_JSON") or "").strip()
+    live_log_fp = ""
+    with contextlib.suppress(Exception):
+        source_int = int(item.source_node)
+        target_int = int(item.target_node)
+        default_log_fp = workspace.directory / f"drive_neb_{source_int}_{target_int}.log"
+        default_progress_fp = workspace.directory / f"drive_neb_{source_int}_{target_int}.progress.log"
+        default_chain_fp = workspace.directory / f"drive_neb_{source_int}_{target_int}.chain.json"
+        if not live_progress_fp:
+            live_progress_fp = str(default_progress_fp.resolve())
+        if not live_chain_fp:
+            live_chain_fp = str(default_chain_fp.resolve())
+        live_log_fp = str(default_log_fp.resolve())
     queue.attempted_pairs[item.attempt_key] = {
         "job_id": item.job_id,
         "source_node": item.source_node,
         "target_node": item.target_node,
         "status": "running",
         "started_at": item.started_at,
+        "progress_fp": str(live_progress_fp or ""),
+        "chain_fp": str(live_chain_fp or ""),
+        "log_fp": str(live_log_fp or ""),
     }
     queue.write_to_disk(workspace.queue_fp)
 
@@ -3233,11 +3602,7 @@ def _run_unattempted_nebs(
     with contextlib.suppress(Exception):
         neb_chain_path.write_text("{}", encoding="utf-8")
 
-    old_log = os.environ.get("MEPD_DRIVE_PROGRESS_LOG")
-    old_chain = os.environ.get("MEPD_DRIVE_CHAIN_JSON")
     old_silent = os.environ.get("NEB_DISCOVERY_SILENT_TERMINAL")
-    os.environ["MEPD_DRIVE_PROGRESS_LOG"] = str(neb_log_path)
-    os.environ["MEPD_DRIVE_CHAIN_JSON"] = str(neb_chain_path)
     os.environ["NEB_DISCOVERY_SILENT_TERMINAL"] = "1"
 
     try:
@@ -3275,14 +3640,6 @@ def _run_unattempted_nebs(
         )
         return len(pending_items), len(pending_items)
     finally:
-        if old_log is None:
-            os.environ.pop("MEPD_DRIVE_PROGRESS_LOG", None)
-        else:
-            os.environ["MEPD_DRIVE_PROGRESS_LOG"] = old_log
-        if old_chain is None:
-            os.environ.pop("MEPD_DRIVE_CHAIN_JSON", None)
-        else:
-            os.environ["MEPD_DRIVE_CHAIN_JSON"] = old_chain
         if old_silent is None:
             os.environ.pop("NEB_DISCOVERY_SILENT_TERMINAL", None)
         else:
@@ -4319,23 +4676,28 @@ def _load_existing_workspace_job(
     # Rebuild the annotated overlay immediately so completed NEB results
     # are visible as soon as the workspace is opened in drive.
     if network_splits:
-        _emit_progress("Rebuilding annotated network overlay...", 4)
+        _emit_progress("Checking annotated network overlay cache...", 4)
+        should_rebuild_overlay, rebuild_reason = _annotated_overlay_requires_rebuild(workspace)
+        if should_rebuild_overlay:
+            _emit_progress(f"Rebuilding annotated network overlay ({rebuild_reason})...", 4)
 
-        def _overlay_progress(payload: dict[str, Any]) -> None:
-            if progress is None:
-                return
-            total_items = int(payload.get("total_items", 0) or 0)
-            current_item = int(payload.get("current_item", 0) or 0)
-            message = str(payload.get("message") or "Rebuilding annotated network overlay...")
-            if total_items > 0:
-                fraction = max(0.0, min(1.0, float(current_item) / float(total_items)))
-                completed = 4.0 + fraction
-            else:
-                completed = 4.0
-            _emit_progress(message, completed)
+            def _overlay_progress(payload: dict[str, Any]) -> None:
+                if progress is None:
+                    return
+                total_items = int(payload.get("total_items", 0) or 0)
+                current_item = int(payload.get("current_item", 0) or 0)
+                message = str(payload.get("message") or "Rebuilding annotated network overlay...")
+                if total_items > 0:
+                    fraction = max(0.0, min(1.0, float(current_item) / float(total_items)))
+                    completed = 4.0 + fraction
+                else:
+                    completed = 4.0
+                _emit_progress(message, completed)
 
-        _load_partial_annotated_pot_compat(workspace, progress=_overlay_progress)
-        _emit_progress("Annotated network overlay rebuilt.", 5)
+            _load_partial_annotated_pot_compat(workspace, progress=_overlay_progress)
+            _emit_progress("Annotated network overlay rebuilt.", 5)
+        else:
+            _emit_progress("Using cached annotated network overlay.", 5)
     _emit_progress("Finalizing workspace snapshot...", total_steps - 1)
     result = _workspace_snapshot_payload(
         workspace,
@@ -4549,6 +4911,32 @@ def _drive_html() -> str:
     }
     .network-toolbar-title { font-weight: 600; margin-bottom: 6px; }
     .network-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+    .network-filter-panel {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      display: grid;
+      gap: 8px;
+    }
+    .network-filter-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .network-filter-row {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+    }
+    .network-filter-row input[type="number"],
+    .network-filter-row input[type="text"] {
+      min-height: 30px;
+      padding: 4px 8px;
+      font-size: 12px;
+    }
+    .network-filter-note { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .network-filter-actions { display: flex; justify-content: flex-end; }
     .network-tool-button {
       min-width: 44px;
       min-height: 44px;
@@ -4679,6 +5067,76 @@ def _drive_html() -> str:
       50% { opacity: 1; transform: translateY(-2px); }
     }
     .viewer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .energy-structures-shell {
+      display: grid;
+      grid-template-columns: minmax(300px, 430px) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .energy-structures-controls {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      padding: 10px;
+      margin-bottom: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .energy-structures-controls .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(108px, 120px) minmax(84px, 96px);
+      gap: 8px;
+      align-items: end;
+    }
+    .energy-structures-list {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      max-height: 540px;
+      overflow: auto;
+      padding: 6px;
+    }
+    .energy-structures-row {
+      width: 100%;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 8px 9px;
+      margin: 4px 0;
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--ink-soft);
+      cursor: pointer;
+      text-align: left;
+    }
+    .energy-structures-row:hover {
+      border-color: rgba(99, 213, 255, 0.34);
+      background: rgba(99, 213, 255, 0.09);
+      color: var(--ink);
+    }
+    .energy-structures-row.active {
+      border-color: rgba(126, 240, 199, 0.4);
+      background: rgba(126, 240, 199, 0.12);
+      color: var(--ink);
+    }
+    .energy-structures-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    .energy-structures-meta {
+      font-size: 11px;
+      color: var(--muted);
+      word-break: break-word;
+    }
+    .energy-structures-viewer {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: linear-gradient(180deg, rgba(16, 30, 50, 0.92), rgba(10, 20, 34, 0.84));
+      padding: 10px;
+      min-height: 370px;
+    }
     iframe.structure {
       width: 100%;
       height: 320px;
@@ -5052,6 +5510,7 @@ def _drive_html() -> str:
               </div>
               <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button id="clear-product-path" class="secondary" type="button">Clear Highlight</button>
+                <button id="open-energy-structures-window" class="secondary" type="button">Open Energy Structures Window</button>
               </div>
             </div>
             <div id="product-path-summary" class="muted">Initialize or load a workspace to browse created products.</div>
@@ -5069,11 +5528,13 @@ def _drive_html() -> str:
             <button class="detail-tab active" data-tab="targeted">Queue & Actions</button>
             <button class="detail-tab" data-tab="template-data">Template Data</button>
             <button class="detail-tab" data-tab="structures">Structures</button>
+            <button class="detail-tab" data-tab="all-structures">All Structures</button>
             <button class="detail-tab" data-tab="manual-edge">Manual Edge</button>
           </div>
           <div id="panel-targeted" class="detail-panel active"></div>
           <div id="panel-template-data" class="detail-panel"></div>
           <div id="panel-structures" class="detail-panel"></div>
+          <div id="panel-all-structures" class="detail-panel"></div>
           <div id="panel-manual-edge" class="detail-panel">
             <div class="form-grid">
               <div>
@@ -5198,6 +5659,7 @@ def _drive_html() -> str:
       return DRIVE_URL_TOKEN ? { "X-MEPD-Token": DRIVE_URL_TOKEN } : {};
     }
     const HAWAII_DISCOVERY_TOOL_ORDER = ["hessian-sample", "retropaths", "nanoreactor"];
+    const HARTREE_TO_KCAL_MOL = 627.509474;
     const HAWAII_DISCOVERY_TOOL_INPUTS = {
       "hessian-sample": "hawaii-discovery-hessian",
       "retropaths": "hawaii-discovery-retropaths",
@@ -5222,6 +5684,23 @@ def _drive_html() -> str:
       pendingEdgeAddition: null,
       networkLayoutVersion: "",
       networkNodePositions: {},
+      networkFilterStats: { rawNodes: 0, rawEdges: 0, shownNodes: 0, shownEdges: 0, energyUnavailable: false },
+      networkFilters: {
+        nebBackedOnlyEnabled: false,
+        edgeBarrierEnabled: false,
+        edgeBarrierMax: 25.0,
+        energyWindowEnabled: false,
+        energyAnchorNodeId: 0,
+        energyWindow: 25.0,
+      },
+      energyStructureQuery: "",
+      energyStructureMaxDeltaKcal: "",
+      energyStructureLimit: 250,
+      energyStructureSelectedNodeId: null,
+      energyStructurePanelRenderKey: "",
+      energyStructureListScrollTop: 0,
+      energyStructureCacheVersion: "",
+      energyStructureCacheRecords: [],
       refreshTimer: null,
       kmcResult: null,
       hessianSampleDr: 1.0,
@@ -5233,7 +5712,115 @@ def _drive_html() -> str:
       nextActivityToken: 1,
       activityTicker: null,
       backendBusySince: 0,
+      edgeMonitorWindows: new Map(),
+      energyStructuresWindow: null,
     };
+
+    function edgeMonitorWindowKey(sourceNode, targetNode) {
+      const source = Number(sourceNode);
+      const target = Number(targetNode);
+      if (Number.isFinite(source) && Number.isFinite(target)) {
+        const low = Math.min(source, target);
+        const high = Math.max(source, target);
+        return `mepd-edge-monitor-${low}-${high}`;
+      }
+      return `mepd-edge-monitor-${Date.now()}`;
+    }
+
+    function edgeMonitorUrl(sourceNode, targetNode) {
+      const url = new URL("/edge-monitor", window.location.origin);
+      url.searchParams.set("source", String(Number(sourceNode)));
+      url.searchParams.set("target", String(Number(targetNode)));
+      if (DRIVE_URL_TOKEN) {
+        url.searchParams.set("token", DRIVE_URL_TOKEN);
+      }
+      return url.toString();
+    }
+
+    function openEdgeLiveWindow(sourceNode, targetNode) {
+      const source = Number(sourceNode);
+      const target = Number(targetNode);
+      if (!Number.isFinite(source) || !Number.isFinite(target)) return;
+      const key = edgeMonitorWindowKey(source, target);
+      const url = edgeMonitorUrl(source, target);
+      const existing = state.edgeMonitorWindows.get(key);
+      if (existing && !existing.closed) {
+        try {
+          existing.location.href = url;
+          existing.focus();
+          return;
+        } catch (_err) {
+          state.edgeMonitorWindows.delete(key);
+        }
+      }
+      const opened = window.open(
+        url,
+        key,
+        "popup=yes,width=1120,height=820,resizable=yes,scrollbars=yes"
+      );
+      if (opened) {
+        state.edgeMonitorWindows.set(key, opened);
+      }
+    }
+
+    function cleanupEdgeLiveWindows() {
+      for (const [key, handle] of state.edgeMonitorWindows.entries()) {
+        if (!handle || handle.closed) {
+          state.edgeMonitorWindows.delete(key);
+        }
+      }
+    }
+
+    function runningEdgeMonitors(snapshot) {
+      const edges = Array.isArray(snapshot?.drive?.network?.edges)
+        ? snapshot.drive.network.edges
+        : [];
+      return edges
+        .filter((edge) => edge && edge.queue_status === "running" && edge.live_monitor_available)
+        .map((edge) => ({
+          source: Number(edge.source),
+          target: Number(edge.target),
+        }))
+        .filter((edge) => Number.isFinite(edge.source) && Number.isFinite(edge.target))
+        .sort((a, b) => (a.source - b.source) || (a.target - b.target));
+    }
+
+    function openRunningEdgeMonitors() {
+      runningEdgeMonitors(state.snapshot).forEach((edge) => {
+        openEdgeLiveWindow(edge.source, edge.target);
+      });
+    }
+
+    function energyStructuresUrl() {
+      const url = new URL("/energy-structures", window.location.origin);
+      if (DRIVE_URL_TOKEN) {
+        url.searchParams.set("token", DRIVE_URL_TOKEN);
+      }
+      return url.toString();
+    }
+
+    function openEnergyStructuresWindow() {
+      const url = energyStructuresUrl();
+      const key = "mepd-energy-structures";
+      const existing = state.energyStructuresWindow;
+      if (existing && !existing.closed) {
+        try {
+          existing.location.href = url;
+          existing.focus();
+          return;
+        } catch (_err) {
+          state.energyStructuresWindow = null;
+        }
+      }
+      const opened = window.open(
+        url,
+        key,
+        "popup=yes,width=1280,height=860,resizable=yes,scrollbars=yes"
+      );
+      if (opened) {
+        state.energyStructuresWindow = opened;
+      }
+    }
 
     function normalizedHawaiiDiscoveryTools(rawTools) {
       const include = new Set();
@@ -6292,6 +6879,197 @@ def _drive_html() -> str:
       return `<div class="code-block">${escapeHtml(text)}</div>`;
     }
 
+    function _energyStructureRecords(snapshot) {
+      const version = String(snapshot?.drive?.version || "");
+      if (state.energyStructureCacheVersion === version && Array.isArray(state.energyStructureCacheRecords)) {
+        return state.energyStructureCacheRecords;
+      }
+      const nodes = Array.isArray(snapshot?.drive?.network?.nodes) ? snapshot.drive.network.nodes : [];
+      const records = [];
+      nodes.forEach((node) => {
+        if (!node || !node.structure?.xyz_b64) return;
+        const nodeId = Number(node.id);
+        const energy = _nodeEnergyValue(node);
+        if (!Number.isFinite(nodeId) || energy == null) return;
+        records.push({
+          nodeId,
+          label: String(node.label || nodeId),
+          energy: Number(energy),
+          structure: node.structure,
+        });
+      });
+      records.sort((left, right) => {
+        if (left.energy !== right.energy) return left.energy - right.energy;
+        return left.nodeId - right.nodeId;
+      });
+      const minEnergy = records.length ? Number(records[0].energy) : null;
+      records.forEach((record, index) => {
+        record.rank = index + 1;
+        record.deltaKcal = minEnergy == null ? 0 : (Number(record.energy) - minEnergy) * HARTREE_TO_KCAL_MOL;
+      });
+      state.energyStructureCacheVersion = version;
+      state.energyStructureCacheRecords = records;
+      return records;
+    }
+
+    function _normalizeEnergyStructuresState() {
+      const limit = Math.max(10, Math.min(2000, Math.trunc(_toFiniteNumber(state.energyStructureLimit, 250) || 250)));
+      state.energyStructureLimit = limit;
+      if (state.energyStructureSelectedNodeId != null) {
+        state.energyStructureSelectedNodeId = Math.max(0, Math.trunc(_toFiniteNumber(state.energyStructureSelectedNodeId, 0)));
+      }
+      state.energyStructureQuery = String(state.energyStructureQuery || "");
+      state.energyStructureMaxDeltaKcal = String(state.energyStructureMaxDeltaKcal || "").trim();
+      return {
+        limit,
+        query: state.energyStructureQuery,
+        maxDeltaKcal: state.energyStructureMaxDeltaKcal,
+      };
+    }
+
+    function setEnergyStructureQuery(value) {
+      state.energyStructureQuery = String(value || "");
+      renderEnergyStructuresPanel(state.snapshot);
+    }
+
+    function setEnergyStructureMaxDelta(value) {
+      state.energyStructureMaxDeltaKcal = String(value || "").trim();
+      renderEnergyStructuresPanel(state.snapshot);
+    }
+
+    function setEnergyStructureLimit(value) {
+      state.energyStructureLimit = Math.max(10, Math.min(2000, Math.trunc(_toFiniteNumber(value, 250) || 250)));
+      renderEnergyStructuresPanel(state.snapshot);
+    }
+
+    function selectEnergyStructureNode(nodeId) {
+      const nextId = Math.max(0, Math.trunc(_toFiniteNumber(nodeId, 0) || 0));
+      state.energyStructureSelectedNodeId = nextId;
+      renderEnergyStructuresPanel(state.snapshot);
+    }
+
+    function renderEnergyStructuresPanel(snapshot) {
+      const panel = document.getElementById("panel-all-structures");
+      if (!panel) return;
+      const previousList = panel.querySelector(".energy-structures-list");
+      if (previousList) {
+        state.energyStructureListScrollTop = Number(previousList.scrollTop || 0);
+      }
+      if (!snapshot?.initialized || !snapshot?.drive?.network) {
+        const renderKey = "uninitialized";
+        if (state.energyStructurePanelRenderKey === renderKey) return;
+        state.energyStructurePanelRenderKey = renderKey;
+        panel.innerHTML = `<div class="muted">Initialize or load a workspace to browse all structures sorted by energy.</div>`;
+        return;
+      }
+
+      const settings = _normalizeEnergyStructuresState();
+      const version = String(snapshot?.drive?.version || "");
+      const allRecords = _energyStructureRecords(snapshot);
+      if (!allRecords.length) {
+        const renderKey = `no-records:${version}`;
+        if (state.energyStructurePanelRenderKey === renderKey) return;
+        state.energyStructurePanelRenderKey = renderKey;
+        panel.innerHTML = `<div class="muted">No nodes currently include both an energy and a structure payload.</div>`;
+        return;
+      }
+
+      const rawQuery = String(settings.query || "").trim().toLowerCase();
+      const maxDeltaText = String(settings.maxDeltaKcal || "").trim();
+      const maxDelta = maxDeltaText === "" ? null : _toFiniteNumber(maxDeltaText, null);
+      const filtered = allRecords.filter((record) => {
+        if (Number.isFinite(maxDelta) && Number(record.deltaKcal) > Number(maxDelta)) return false;
+        if (!rawQuery) return true;
+        return (
+          String(record.nodeId).includes(rawQuery)
+          || String(record.label).toLowerCase().includes(rawQuery)
+        );
+      });
+      const visible = filtered.slice(0, settings.limit);
+      if (!visible.length) {
+        const renderKey = `no-visible:${version}|${settings.query}|${settings.maxDeltaKcal}|${settings.limit}`;
+        if (state.energyStructurePanelRenderKey === renderKey) return;
+        state.energyStructurePanelRenderKey = renderKey;
+        panel.innerHTML = `
+          <div class="energy-structures-controls">
+            <div class="muted">No structures matched the current filters (${allRecords.length} total structures with energies).</div>
+            <div class="row">
+              <div>
+                <label>Search node id or label</label>
+                <input type="text" value="${escapeHtml(settings.query)}" oninput="setEnergyStructureQuery(this.value)" />
+              </div>
+              <div>
+                <label>Max ΔE (kcal/mol)</label>
+                <input type="number" step="0.1" min="0" placeholder="optional" value="${escapeHtml(settings.maxDeltaKcal)}" oninput="setEnergyStructureMaxDelta(this.value)" />
+              </div>
+              <div>
+                <label>Rows</label>
+                <input type="number" step="1" min="10" max="2000" value="${escapeHtml(settings.limit)}" oninput="setEnergyStructureLimit(this.value)" />
+              </div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+
+      const selectedId = _toFiniteNumber(state.energyStructureSelectedNodeId, null);
+      const selected = visible.find((record) => Number(record.nodeId) === Number(selectedId)) || visible[0];
+      state.energyStructureSelectedNodeId = Number(selected.nodeId);
+      const selectedStructure = selected.structure?.xyz_b64 ? selected.structure : null;
+      const summaryText = `Showing ${visible.length}/${filtered.length} filtered (${allRecords.length} total structures with energies).`;
+      const renderKey = `ready:${version}|${settings.query}|${settings.maxDeltaKcal}|${settings.limit}|${Number(selected.nodeId)}`;
+      if (state.energyStructurePanelRenderKey === renderKey) return;
+      state.energyStructurePanelRenderKey = renderKey;
+      panel.innerHTML = `
+        <div class="energy-structures-controls">
+          <div class="muted">${escapeHtml(summaryText)}</div>
+          <div class="row">
+            <div>
+              <label>Search node id or label</label>
+              <input type="text" value="${escapeHtml(settings.query)}" oninput="setEnergyStructureQuery(this.value)" />
+            </div>
+            <div>
+              <label>Max ΔE (kcal/mol)</label>
+              <input type="number" step="0.1" min="0" placeholder="optional" value="${escapeHtml(settings.maxDeltaKcal)}" oninput="setEnergyStructureMaxDelta(this.value)" />
+            </div>
+            <div>
+              <label>Rows</label>
+              <input type="number" step="1" min="10" max="2000" value="${escapeHtml(settings.limit)}" oninput="setEnergyStructureLimit(this.value)" />
+            </div>
+          </div>
+        </div>
+        <div class="energy-structures-shell">
+          <div class="energy-structures-list">
+            ${visible.map((record, index) => `
+              <button
+                type="button"
+                class="energy-structures-row ${Number(record.nodeId) === Number(selected.nodeId) ? "active" : ""}"
+                onclick="selectEnergyStructureNode(${Number(record.nodeId)})"
+              >
+                <div class="energy-structures-title">
+                  <strong>#${escapeHtml(record.rank || (index + 1))} • node ${escapeHtml(record.nodeId)}</strong>
+                  <span>${escapeHtml(Number(record.energy).toFixed(6))} Eh</span>
+                </div>
+                <div class="energy-structures-meta">${escapeHtml(record.label)} • ΔE=${escapeHtml(Number(record.deltaKcal).toFixed(2))} kcal/mol</div>
+              </button>
+            `).join("")}
+          </div>
+          <div class="energy-structures-viewer">
+            <div style="margin-bottom:8px;"><strong>Node ${escapeHtml(selected.nodeId)} • ${escapeHtml(selected.label)}</strong></div>
+            <div class="muted" style="margin-bottom:8px;">Energy ${escapeHtml(Number(selected.energy).toFixed(6))} Eh • ΔE ${escapeHtml(Number(selected.deltaKcal).toFixed(2))} kcal/mol</div>
+            ${selectedStructure?.xyz_b64
+              ? `<iframe class="structure" srcdoc="${escapeHtml(makeStructureSrcdoc(selectedStructure.xyz_b64))}"></iframe>`
+              : `<div class="muted">No structure payload is available for this node.</div>`}
+          </div>
+        </div>
+      `;
+      const nextList = panel.querySelector(".energy-structures-list");
+      if (nextList) {
+        nextList.scrollTop = Number(state.energyStructureListScrollTop || 0);
+        state.energyStructureListScrollTop = Number(nextList.scrollTop || 0);
+      }
+    }
+
     function isMeaningfulTemplateValue(value) {
       if (value == null) return false;
       if (Array.isArray(value)) return value.length > 0;
@@ -6606,10 +7384,250 @@ def _drive_html() -> str:
       `;
     }
 
+    function _toFiniteNumber(value, fallback = null) {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : fallback;
+    }
+
+    function _nodeEnergyValue(node) {
+      const direct = _toFiniteNumber(node?.energy, null);
+      if (direct != null) return direct;
+      const nested = _toFiniteNumber(node?.data?.energy, null);
+      if (nested != null) return nested;
+      return null;
+    }
+
+    function _normalizeNetworkFilterState() {
+      const filters = state.networkFilters || {};
+      filters.nebBackedOnlyEnabled = Boolean(filters.nebBackedOnlyEnabled);
+      filters.edgeBarrierEnabled = Boolean(filters.edgeBarrierEnabled);
+      filters.edgeBarrierMax = Math.max(0, _toFiniteNumber(filters.edgeBarrierMax, 25.0));
+      filters.energyWindowEnabled = Boolean(filters.energyWindowEnabled);
+      filters.energyAnchorNodeId = Math.max(0, Math.trunc(_toFiniteNumber(filters.energyAnchorNodeId, 0)));
+      filters.energyWindow = Math.max(0, _toFiniteNumber(filters.energyWindow, 25.0));
+      state.networkFilters = filters;
+      return filters;
+    }
+
+    function _rerenderNetworkWithCurrentFilters() {
+      if (state.snapshot?.drive?.network) {
+        renderNetwork(state.snapshot);
+      }
+    }
+
+    function setEdgeBarrierFilterEnabled(enabled) {
+      _normalizeNetworkFilterState().edgeBarrierEnabled = Boolean(enabled);
+      _rerenderNetworkWithCurrentFilters();
+    }
+
+    function setNebBackedOnlyFilterEnabled(enabled) {
+      _normalizeNetworkFilterState().nebBackedOnlyEnabled = Boolean(enabled);
+      _rerenderNetworkWithCurrentFilters();
+    }
+
+    function setEdgeBarrierThreshold(value) {
+      _normalizeNetworkFilterState().edgeBarrierMax = Math.max(0, _toFiniteNumber(value, 25.0));
+      _rerenderNetworkWithCurrentFilters();
+    }
+
+    function setEnergyWindowFilterEnabled(enabled) {
+      const filters = _normalizeNetworkFilterState();
+      filters.energyWindowEnabled = Boolean(enabled);
+      if (filters.energyWindowEnabled && !Number.isFinite(_toFiniteNumber(filters.energyAnchorNodeId, null))) {
+        filters.energyAnchorNodeId = 0;
+      }
+      if (
+        filters.energyWindowEnabled
+        && state.selected?.kind === "node"
+        && Number.isFinite(_toFiniteNumber(state.selected.node?.id, null))
+      ) {
+        filters.energyAnchorNodeId = Math.trunc(Number(state.selected.node.id));
+      }
+      _rerenderNetworkWithCurrentFilters();
+    }
+
+    function setEnergyWindowAnchorNodeId(value) {
+      _normalizeNetworkFilterState().energyAnchorNodeId = Math.max(0, Math.trunc(_toFiniteNumber(value, 0)));
+      _rerenderNetworkWithCurrentFilters();
+    }
+
+    function setEnergyWindowThreshold(value) {
+      _normalizeNetworkFilterState().energyWindow = Math.max(0, _toFiniteNumber(value, 25.0));
+      _rerenderNetworkWithCurrentFilters();
+    }
+
+    function resetNetworkFilters() {
+      state.networkFilters = {
+        nebBackedOnlyEnabled: false,
+        edgeBarrierEnabled: false,
+        edgeBarrierMax: 25.0,
+        energyWindowEnabled: false,
+        energyAnchorNodeId: 0,
+        energyWindow: 25.0,
+      };
+      _rerenderNetworkWithCurrentFilters();
+    }
+
+    function _networkFilterControlsHtml() {
+      const filters = _normalizeNetworkFilterState();
+      const stats = state.networkFilterStats || {};
+      const shownNodes = Number(stats.shownNodes || 0);
+      const shownEdges = Number(stats.shownEdges || 0);
+      const rawNodes = Number(stats.rawNodes || shownNodes);
+      const rawEdges = Number(stats.rawEdges || shownEdges);
+      const hasReduction = shownNodes !== rawNodes || shownEdges !== rawEdges;
+      const summaryText = hasReduction
+        ? `Showing ${shownNodes}/${rawNodes} nodes and ${shownEdges}/${rawEdges} edges.`
+        : `Showing ${shownNodes} nodes and ${shownEdges} edges.`;
+      const energyWarning = stats.energyUnavailable
+        ? `<div class="network-filter-note" style="color:var(--warn);">Energy filter is enabled but the anchor node energy is unavailable.</div>`
+        : "";
+      return `
+        <div class="network-filter-panel">
+          <div class="network-toolbar-title" style="margin-bottom:0;">Visibility Filters</div>
+          <div class="network-filter-note">${escapeHtml(summaryText)}</div>
+          ${energyWarning}
+          <div class="network-filter-grid">
+            <div class="network-filter-row">
+              <label><input type="checkbox" ${filters.nebBackedOnlyEnabled ? "checked" : ""} onchange="setNebBackedOnlyFilterEnabled(this.checked)" /> NEB-backed edges only</label>
+              <span class="network-filter-note">Hide edges without completed NEB data.</span>
+            </div>
+            <div class="network-filter-row">
+              <label><input type="checkbox" ${filters.edgeBarrierEnabled ? "checked" : ""} onchange="setEdgeBarrierFilterEnabled(this.checked)" /> Edge barrier ≤ (kcal/mol)</label>
+              <input type="number" step="0.1" min="0" value="${escapeHtml(filters.edgeBarrierMax)}" oninput="setEdgeBarrierThreshold(this.value)" />
+            </div>
+            <div class="network-filter-row">
+              <label><input type="checkbox" ${filters.energyWindowEnabled ? "checked" : ""} onchange="setEnergyWindowFilterEnabled(this.checked)" /> Node energy window (kcal/mol)</label>
+              <input type="number" step="0.1" min="0" value="${escapeHtml(filters.energyWindow)}" oninput="setEnergyWindowThreshold(this.value)" />
+            </div>
+            <div class="network-filter-row">
+              <label>Anchor node id</label>
+              <input type="number" step="1" min="0" value="${escapeHtml(filters.energyAnchorNodeId)}" oninput="setEnergyWindowAnchorNodeId(this.value)" />
+            </div>
+          </div>
+          <div class="network-filter-actions">
+            <button class="secondary" type="button" onclick="resetNetworkFilters()">Reset Filters</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function _applyNetworkVisibilityFilters(nodes, edges) {
+      const rawNodes = Array.isArray(nodes) ? nodes : [];
+      const rawEdges = Array.isArray(edges) ? edges : [];
+      const filters = _normalizeNetworkFilterState();
+      let filteredNodes = rawNodes.slice();
+      let filteredEdges = rawEdges.slice();
+      let keptByEnergy = null;
+      let energyUnavailable = false;
+
+      if (filters.energyWindowEnabled) {
+        const anchorId = Math.max(0, Math.trunc(_toFiniteNumber(filters.energyAnchorNodeId, 0)));
+        const anchorNode = rawNodes.find((node) => Number(node.id) === anchorId) || null;
+        const anchorEnergy = _nodeEnergyValue(anchorNode);
+        if (anchorEnergy == null) {
+          energyUnavailable = true;
+        } else {
+          keptByEnergy = new Set();
+          rawNodes.forEach((node) => {
+            const nodeId = Number(node.id);
+            const nodeEnergy = _nodeEnergyValue(node);
+            if (!Number.isFinite(nodeId) || nodeEnergy == null) return;
+            const energyDeltaKcal = Math.abs(nodeEnergy - anchorEnergy) * HARTREE_TO_KCAL_MOL;
+            if (energyDeltaKcal <= Number(filters.energyWindow || 0)) {
+              keptByEnergy.add(nodeId);
+            }
+          });
+          keptByEnergy.add(anchorId);
+        }
+      }
+
+      if (keptByEnergy) {
+        filteredNodes = filteredNodes.filter((node) => keptByEnergy.has(Number(node.id)));
+        filteredEdges = filteredEdges.filter(
+          (edge) => keptByEnergy.has(Number(edge.source)) && keptByEnergy.has(Number(edge.target))
+        );
+      }
+
+      if (filters.nebBackedOnlyEnabled) {
+        filteredEdges = filteredEdges.filter((edge) => Boolean(edge?.neb_backed));
+        const edgeNodeIds = new Set(
+          filteredEdges.flatMap((edge) => [Number(edge.source), Number(edge.target)])
+        );
+        filteredNodes = filteredNodes.filter((node) => edgeNodeIds.has(Number(node.id)));
+      }
+
+      if (filters.edgeBarrierEnabled) {
+        const threshold = Number(filters.edgeBarrierMax || 0);
+        filteredEdges = filteredEdges.filter((edge) => {
+          const barrier = _toFiniteNumber(edge?.barrier, null);
+          return barrier != null && barrier <= threshold;
+        });
+        const edgeNodeIds = new Set(
+          filteredEdges.flatMap((edge) => [Number(edge.source), Number(edge.target)])
+        );
+        filteredNodes = filteredNodes.filter((node) => edgeNodeIds.has(Number(node.id)));
+      }
+
+      const shouldPruneToAnchorComponent = filters.energyWindowEnabled || filters.edgeBarrierEnabled;
+      if (shouldPruneToAnchorComponent) {
+        const anchorId = Math.max(0, Math.trunc(_toFiniteNumber(filters.energyAnchorNodeId, 0)));
+        const filteredNodeIds = new Set(
+          filteredNodes
+            .map((node) => Number(node.id))
+            .filter((nodeId) => Number.isFinite(nodeId))
+        );
+        if (filteredNodeIds.has(anchorId)) {
+          const adjacency = new Map();
+          filteredNodeIds.forEach((nodeId) => adjacency.set(nodeId, []));
+          filteredEdges.forEach((edge) => {
+            const source = Number(edge.source);
+            const target = Number(edge.target);
+            if (!filteredNodeIds.has(source) || !filteredNodeIds.has(target)) return;
+            const sourceNeighbors = adjacency.get(source) || [];
+            sourceNeighbors.push(target);
+            adjacency.set(source, sourceNeighbors);
+            const targetNeighbors = adjacency.get(target) || [];
+            targetNeighbors.push(source);
+            adjacency.set(target, targetNeighbors);
+          });
+          const reachable = new Set([anchorId]);
+          const queue = [anchorId];
+          while (queue.length) {
+            const current = Number(queue.shift());
+            const neighbors = adjacency.get(current) || [];
+            neighbors.forEach((neighbor) => {
+              const neighborId = Number(neighbor);
+              if (reachable.has(neighborId)) return;
+              reachable.add(neighborId);
+              queue.push(neighborId);
+            });
+          }
+          filteredNodes = filteredNodes.filter((node) => reachable.has(Number(node.id)));
+          filteredEdges = filteredEdges.filter(
+            (edge) => reachable.has(Number(edge.source)) && reachable.has(Number(edge.target))
+          );
+        } else if (filters.energyWindowEnabled && !energyUnavailable) {
+          filteredNodes = [];
+          filteredEdges = [];
+        }
+      }
+
+      state.networkFilterStats = {
+        rawNodes: rawNodes.length,
+        rawEdges: rawEdges.length,
+        shownNodes: filteredNodes.length,
+        shownEdges: filteredEdges.length,
+        energyUnavailable: Boolean(energyUnavailable),
+      };
+      return { nodes: filteredNodes, edges: filteredEdges };
+    }
+
     function renderNetworkToolbar() {
       const toolbar = document.getElementById("network-toolbar");
       if (!toolbar) return;
       const selection = state.selected;
+      const filterControls = _networkFilterControlsHtml();
       if (!selection) {
         toolbar.innerHTML = `
           <div class="network-toolbar-title">Network Actions</div>
@@ -6617,6 +7635,7 @@ def _drive_html() -> str:
           <div class="network-toolbar-actions">
             <button class="network-tool-button ${state.manualNodeInsertMode ? "active" : ""}" data-drive-action="toolbar-insert-node" title="Insert node from XYZ at next click" onclick="toggleManualNodeInsertMode()" ${state.manualNodeRequestInFlight || state.snapshot?.busy ? "disabled" : ""}>◎</button>
           </div>
+          ${filterControls}
         `;
         return;
       }
@@ -6635,6 +7654,7 @@ def _drive_html() -> str:
             <button class="network-tool-button ${connectActive ? "active" : ""}" data-drive-action="toolbar-connect-node" title="Connect to new node" onclick="beginConnectMode(${Number(node.id)})" ${connectDisabled}>→</button>
             <button class="network-tool-button ${state.manualNodeInsertMode ? "active" : ""}" data-drive-action="toolbar-insert-node" title="Insert node from XYZ at next click" onclick="toggleManualNodeInsertMode()" ${state.manualNodeRequestInFlight || state.snapshot?.busy ? "disabled" : ""}>◎</button>
           </div>
+          ${filterControls}
         `;
         return;
       }
@@ -6649,6 +7669,7 @@ def _drive_html() -> str:
           <button class="network-tool-button" data-drive-action="toolbar-neb-edge" title="Queue NEB minimization" onclick="queueEdgeNeb(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_queue_neb ? "" : "disabled"}>#</button>
           <button class="network-tool-button ${state.manualNodeInsertMode ? "active" : ""}" data-drive-action="toolbar-insert-node" title="Insert node from XYZ at next click" onclick="toggleManualNodeInsertMode()" ${state.manualNodeRequestInFlight || state.snapshot?.busy ? "disabled" : ""}>◎</button>
         </div>
+        ${filterControls}
       `;
     }
 
@@ -6989,10 +8010,21 @@ def _drive_html() -> str:
         return;
       }
       const content = renderLiveActivityContent(activity);
+      const monitorEdges = runningEdgeMonitors(snapshot);
+      const monitorControls = monitorEdges.length
+        ? `
+          <div style="margin-top:12px; border-top:1px solid var(--line); padding-top:10px;">
+            <button class="secondary" onclick="openRunningEdgeMonitors()">Open ${monitorEdges.length} Running Edge Monitor ${monitorEdges.length === 1 ? "Window" : "Windows"}</button>
+            <div class="muted" style="margin-top:8px;">
+              ${monitorEdges.map((edge) => `<span class="badge">${escapeHtml(edge.source)} -> ${escapeHtml(edge.target)}</span>`).join(" ")}
+            </div>
+          </div>
+        `
+        : "";
       panel.style.display = "block";
-      panel.innerHTML = content;
+      panel.innerHTML = content + monitorControls;
       inline.style.display = "block";
-      inline.innerHTML = content;
+      inline.innerHTML = content + monitorControls;
     }
 
     function renderDetail(selection) {
@@ -7078,6 +8110,7 @@ def _drive_html() -> str:
       summary.innerHTML = `
         <div><strong>Reaction:</strong> ${escapeHtml(edge.reaction || "Unknown")}</div>
         <div><strong>Queue status:</strong> ${escapeHtml(edge.queue_status || "not queued")}</div>
+        <div><strong>Live monitor:</strong> ${edge.live_monitor_available ? "available" : "not streaming"}</div>
         <div><strong>NEB-backed:</strong> ${edge.neb_backed ? "yes" : "no"}</div>
         <div><strong>Can run Hessian sample:</strong> ${edge.can_hessian_sample ? "yes" : "no"}</div>
         ${edge.result_from_reverse_edge ? `<div><strong>Displayed NEB result:</strong> reverse-directed edge</div>` : ""}
@@ -7089,6 +8122,9 @@ def _drive_html() -> str:
       targeted.innerHTML = `
         <div style="margin-bottom:10px;">
           <button class="primary" data-drive-action="run-neb" onclick="queueEdgeNeb(${Number(edge.source)}, ${Number(edge.target)})" ${edge.can_queue_neb ? "" : "disabled"}>Queue Autosplitting NEB For This Edge</button>
+        </div>
+        <div style="margin-bottom:10px;">
+          <button class="secondary" data-drive-action="open-live-edge-monitor" onclick="openEdgeLiveWindow(${Number(edge.source)}, ${Number(edge.target)})" ${edge.live_monitor_available ? "" : "disabled"}>Open Live Edge Monitor Window</button>
         </div>
         <div style="margin-bottom:10px; display:grid; grid-template-columns:minmax(0, 140px) minmax(0, 180px) minmax(0, 220px) minmax(0, 1fr); gap:8px; align-items:end;">
           <div>
@@ -7112,6 +8148,7 @@ def _drive_html() -> str:
         </div>
         ${edge.result_from_reverse_edge ? `<div style="margin-bottom:10px;" class="muted">Showing completed NEB data reconstructed from the reverse-directed edge because this directed edge does not carry the chain payload directly.</div>` : ""}
         ${edge.result_from_completed_queue ? `<div style="margin-bottom:10px;" class="muted">Showing NEB data from the completed attempted pair because autosplitting did not leave a direct annotated edge for this exact selection.</div>` : ""}
+        ${edge.live_monitor_available ? `<div style="margin-bottom:10px;" class="muted">This edge is currently streaming live optimization updates in its own monitor window.</div>` : ""}
         ${edge.queue_note ? `<div style="margin-bottom:10px; color: ${edge.can_queue_neb ? "var(--muted)" : "var(--warn)"};"><strong>${edge.can_queue_neb ? "Queue note" : "Edge cannot run as-is"}:</strong> ${escapeHtml(edge.queue_note)}</div>` : ""}
         ${edge.hessian_sample_note ? `<div style="margin-bottom:10px; color: ${edge.can_hessian_sample ? "var(--muted)" : "var(--warn)"};"><strong>${edge.can_hessian_sample ? "Hessian note" : "Hessian sampling unavailable"}:</strong> ${escapeHtml(edge.hessian_sample_note)}</div>` : ""}
         ${edge.viewer_href ? `<div style="margin-bottom:10px;"><a href="${escapeHtml(edge.viewer_href)}" target="_blank" rel="noreferrer">Open completed NEB viewer</a></div>` : ""}
@@ -7131,15 +8168,26 @@ def _drive_html() -> str:
           ? renderTemplateHtml(template)
           : `<div class="muted">No reaction-template library data was available for this reaction.</div>`}
       `;
+      const networkNodes = Array.isArray(state.snapshot?.drive?.network?.nodes)
+        ? state.snapshot.drive.network.nodes
+        : [];
+      const sourceNode = networkNodes.find((node) => Number(node.id) === Number(edge.source)) || null;
+      const targetNode = networkNodes.find((node) => Number(node.id) === Number(edge.target)) || null;
+      const sourceStructure = edge.source_structure?.xyz_b64
+        ? edge.source_structure
+        : (sourceNode?.structure?.xyz_b64 ? sourceNode.structure : null);
+      const targetStructure = edge.target_structure?.xyz_b64
+        ? edge.target_structure
+        : (targetNode?.structure?.xyz_b64 ? targetNode.structure : null);
       structures.innerHTML = `
         <div class="viewer-grid">
           <div>
             <div style="margin-bottom:6px;"><strong>Source geometry</strong></div>
-            ${edge.source_structure?.xyz_b64 ? `<iframe class="structure" srcdoc="${escapeHtml(makeStructureSrcdoc(edge.source_structure.xyz_b64))}"></iframe>` : `<div class="muted">No structure available.</div>`}
+            ${sourceStructure?.xyz_b64 ? `<iframe class="structure" srcdoc="${escapeHtml(makeStructureSrcdoc(sourceStructure.xyz_b64))}"></iframe>` : `<div class="muted">No structure available.</div>`}
           </div>
           <div>
             <div style="margin-bottom:6px;"><strong>Target geometry</strong></div>
-            ${edge.target_structure?.xyz_b64 ? `<iframe class="structure" srcdoc="${escapeHtml(makeStructureSrcdoc(edge.target_structure.xyz_b64))}"></iframe>` : `<div class="muted">No structure available.</div>`}
+            ${targetStructure?.xyz_b64 ? `<iframe class="structure" srcdoc="${escapeHtml(makeStructureSrcdoc(targetStructure.xyz_b64))}"></iframe>` : `<div class="muted">No structure available.</div>`}
           </div>
         </div>
       `;
@@ -7499,14 +8547,18 @@ def _drive_html() -> str:
       while (svg.firstChild) svg.removeChild(svg.firstChild);
       hideNetworkContextMenu();
       if (!snapshot || !snapshot.initialized || !snapshot.drive?.network) {
+        state.networkFilterStats = { rawNodes: 0, rawEdges: 0, shownNodes: 0, shownEdges: 0, energyUnavailable: false };
         state.networkCanvas = null;
         renderDetail(null);
         return;
       }
 
       const payload = snapshot.drive.network;
-      const nodes = Array.isArray(payload.nodes) ? payload.nodes : [];
-      const edges = Array.isArray(payload.edges) ? payload.edges : [];
+      const rawNodes = Array.isArray(payload.nodes) ? payload.nodes : [];
+      const rawEdges = Array.isArray(payload.edges) ? payload.edges : [];
+      const filtered = _applyNetworkVisibilityFilters(rawNodes, rawEdges);
+      const nodes = filtered.nodes;
+      const edges = filtered.edges;
       const pendingEdge = state.pendingEdgeAddition;
       if (pendingEdge && edges.some((edge) => Number(edge.source) === Number(pendingEdge.source) && Number(edge.target) === Number(pendingEdge.target))) {
         state.pendingEdgeAddition = null;
@@ -7527,6 +8579,7 @@ def _drive_html() -> str:
           .sort()
           .join(",");
         const layoutVersion = `${nodeIds.slice().sort((a, b) => a - b).join(",")}::${edgeSignature}`;
+        const canReuseSavedPositions = String(state.networkLayoutVersion || "") === layoutVersion;
         const previousPositions = state.networkNodePositions && typeof state.networkNodePositions === "object"
           ? state.networkNodePositions
           : {};
@@ -7618,7 +8671,9 @@ def _drive_html() -> str:
           levelBands.set(depth, { startY, gap, count });
           levelNodes.forEach((node, index) => {
             const nodeId = Number(node.id);
-            const saved = previousPositions[String(nodeId)] || previousPositions[nodeId];
+            const saved = canReuseSavedPositions
+              ? (previousPositions[String(nodeId)] || previousPositions[nodeId])
+              : null;
             const savedX = Number(saved?.x);
             const savedY = Number(saved?.y);
             positions.set(Number(node.id), {
@@ -8138,6 +9193,7 @@ def _drive_html() -> str:
     }
 
     async function refreshState() {
+      cleanupEdgeLiveWindows();
       const refreshToken = state.localActivities.size > 0
         ? null
         : beginLocalActivity(
@@ -8190,6 +9246,7 @@ def _drive_html() -> str:
         renderInputsPanels(snapshot);
         renderStats(snapshot);
         renderProductPathPanel(snapshot);
+        renderEnergyStructuresPanel(snapshot);
         renderLiveActivity(snapshot);
         renderLogging(snapshot);
         renderKmcPanel(snapshot);
@@ -8370,7 +9427,7 @@ def _drive_html() -> str:
       const useBigchem = getHessianSampleUseBigchem();
       try {
         setBanner(`Running Hessian sample from node ${nodeId} (dr=${dr}, max=${maxCandidates})...`);
-        setSubtext("The selected minimum will be displaced along Hessian normal modes by ±dr, then up to the requested number of candidates will be optimized and merged as unique minima.");
+        setSubtext("The selected minimum will be displaced along Hessian normal modes by ±(dr × atom count), then up to the requested number of candidates will be optimized and merged as unique minima.");
         state.pendingLiveActivity = buildOptimisticGrowthActivity(
           Number(nodeId),
           `Running Hessian sample from node ${Number(nodeId)} (dr=${dr}, max=${maxCandidates})...`,
@@ -8399,7 +9456,7 @@ def _drive_html() -> str:
       const useBigchem = getHessianSampleUseBigchem();
       try {
         setBanner(`Running Hessian sample from edge ${sourceNode} -> ${targetNode} peak (dr=${dr}, max=${maxCandidates})...`);
-        setSubtext("The highest-energy geometry on the completed edge chain will be displaced by ±dr, then up to the requested number of candidates will be optimized and merged as minima.");
+        setSubtext("The highest-energy geometry on the completed edge chain will be displaced by ±(dr × atom count), then up to the requested number of candidates will be optimized and merged as minima.");
         state.pendingLiveActivity = buildOptimisticGrowthActivity(
           Number(sourceNode),
           `Running Hessian sample from edge ${Number(sourceNode)} -> ${Number(targetNode)} peak (dr=${dr}, max=${maxCandidates})...`,
@@ -8612,6 +9669,9 @@ def _drive_html() -> str:
     window.beginConnectMode = beginConnectMode;
     window.setPathSourceNode = setPathSourceNode;
     window.setHawaiiStoplight = setHawaiiStoplight;
+    window.openEdgeLiveWindow = openEdgeLiveWindow;
+    window.openRunningEdgeMonitors = openRunningEdgeMonitors;
+    window.openEnergyStructuresWindow = openEnergyStructuresWindow;
 
     document.getElementById("initialize-seed").addEventListener("click", () => initializeDrive(false));
     document.getElementById("initialize-grow").addEventListener("click", () => initializeDrive(true));
@@ -8627,6 +9687,7 @@ def _drive_html() -> str:
     });
     document.getElementById("run-kmc").addEventListener("click", runKmcModel);
     document.getElementById("clear-product-path").addEventListener("click", clearProductPathHighlight);
+    document.getElementById("open-energy-structures-window").addEventListener("click", openEnergyStructuresWindow);
     document.getElementById("hawaii-go").addEventListener("click", () => setHawaiiStoplight("go"));
     document.getElementById("hawaii-yellow").addEventListener("click", () => setHawaiiStoplight("yellow"));
     document.getElementById("hawaii-red").addEventListener("click", () => setHawaiiStoplight("red"));
@@ -8643,6 +9704,985 @@ def _drive_html() -> str:
     d3Script.src = "https://d3js.org/d3.v3.min.js";
     d3Script.onload = refreshState;
     document.head.appendChild(d3Script);
+  </script>
+</body>
+</html>"""
+
+
+def _edge_monitor_html(*, source_node: int, target_node: int) -> str:
+    source = int(source_node)
+    target = int(target_node)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MEPD Edge Monitor {source} -> {target}</title>
+  <style>
+    :root {{
+      --bg: #0b1020;
+      --panel: #141c33;
+      --line: rgba(154, 178, 212, 0.24);
+      --text: #e8f0ff;
+      --muted: #9cb1d0;
+      --accent: #7ef0c7;
+      --warn: #ff8b9c;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: radial-gradient(circle at 16% 18%, #1c2a4f 0%, #11192f 42%, #090f1f 100%);
+      color: var(--text);
+      font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+    }}
+    .shell {{ max-width: 1180px; margin: 0 auto; padding: 18px; }}
+    .panel {{
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 8px 24px rgba(3, 9, 24, 0.32);
+    }}
+    .title {{ font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; }}
+    .muted {{ color: var(--muted); }}
+    .status-badge {{
+      display: inline-block;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      margin-left: 8px;
+    }}
+    .status-badge.running {{ border-color: rgba(126, 240, 199, 0.6); color: #7ef0c7; }}
+    .status-badge.failed {{ border-color: rgba(255, 139, 156, 0.6); color: #ff8b9c; }}
+    .status-badge.completed {{ border-color: rgba(135, 212, 255, 0.6); color: #87d4ff; }}
+    pre {{
+      margin: 10px 0 0 0;
+      background: #0a1020;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      max-height: 320px;
+      overflow: auto;
+      font-family: "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+      font-size: 12px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }}
+    .plot-wrap svg {{ width: 100%; height: auto; display: block; }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 10px;
+    }}
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="panel">
+      <div class="title">Edge {source} -> {target} Live Monitor <span id="status-badge" class="status-badge">loading</span></div>
+      <div id="status-line" class="muted">Waiting for first update...</div>
+    </div>
+    <div class="panel plot-wrap">
+      <div class="title">Optimization History</div>
+      <div id="plot">Waiting for trajectory data...</div>
+    </div>
+    <div class="panel">
+      <div class="title">Branch Monitors</div>
+      <div id="monitors" class="grid"></div>
+    </div>
+    <div class="panel">
+      <div class="title">Console</div>
+      <pre id="console">Waiting for log output...</pre>
+    </div>
+  </div>
+  <script>
+    const SOURCE_NODE = {source};
+    const TARGET_NODE = {target};
+    const DRIVE_URL_TOKEN = (() => {{
+      try {{
+        const params = new URLSearchParams(window.location.search || "");
+        return (params.get("token") || "").trim();
+      }} catch (_err) {{
+        return "";
+      }}
+    }})();
+    let refreshTimer = null;
+
+    function authHeaders() {{
+      return DRIVE_URL_TOKEN ? {{ "X-MEPD-Token": DRIVE_URL_TOKEN }} : {{}};
+    }}
+
+    function escapeHtml(value) {{
+      return String(value == null ? "" : value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }}
+
+    function drawNebHistory(payload) {{
+      const history = Array.isArray(payload?.history) ? payload.history : [];
+      const current = payload?.plot || null;
+      const curves = history.length ? history : (current ? [current] : []);
+      const xVals = curves.flatMap((curve) => Array.isArray(curve?.x) ? curve.x : []);
+      const yVals = curves.flatMap((curve) => Array.isArray(curve?.y) ? curve.y : []);
+      if (!xVals.length || !yVals.length) {{
+        return '<div class="muted">Waiting for the first NEB optimization update...</div>';
+      }}
+      const width = 980;
+      const height = 340;
+      const margin = {{ top: 28, right: 18, bottom: 36, left: 64 }};
+      const innerWidth = width - margin.left - margin.right;
+      const innerHeight = height - margin.top - margin.bottom;
+      const minX = Math.min(...xVals);
+      const maxX0 = Math.max(...xVals);
+      const maxX = maxX0 === minX ? minX + 1 : maxX0;
+      const minY0 = Math.min(...yVals);
+      const maxY0 = Math.max(...yVals);
+      const minY = minY0 === maxY0 ? minY0 - 1 : minY0;
+      const maxY = minY0 === maxY0 ? maxY0 + 1 : maxY0;
+      const sx = (x) => margin.left + ((x - minX) / (maxX - minX)) * innerWidth;
+      const sy = (y) => margin.top + (1 - (y - minY) / (maxY - minY)) * innerHeight;
+      const yTicks = Array.from({{ length: 5 }}, (_, i) => minY + ((maxY - minY) * i / 4));
+      const backgroundCurves = curves.slice(0, -1);
+      const foreground = curves[curves.length - 1];
+      return `
+        <svg viewBox="0 0 ${{width}} ${{height}}" role="img" aria-label="Edge NEB optimization history">
+          ${{yTicks.map((tick) => `
+            <g>
+              <line x1="${{margin.left}}" y1="${{sy(tick)}}" x2="${{width - margin.right}}" y2="${{sy(tick)}}" stroke="rgba(154,178,212,0.22)" stroke-dasharray="3 3" />
+              <text x="${{margin.left - 10}}" y="${{sy(tick) + 4}}" text-anchor="end" font-size="11" fill="#9cb1d0">${{escapeHtml(Number(tick).toFixed(2))}}</text>
+            </g>
+          `).join("")}}
+          <line x1="${{margin.left}}" y1="${{height - margin.bottom}}" x2="${{width - margin.right}}" y2="${{height - margin.bottom}}" stroke="rgba(201,216,240,0.78)" />
+          <line x1="${{margin.left}}" y1="${{margin.top}}" x2="${{margin.left}}" y2="${{height - margin.bottom}}" stroke="rgba(201,216,240,0.78)" />
+          ${{backgroundCurves.map((curve) => {{
+            const pts = (curve.x || []).map((x, i) => `${{sx(x).toFixed(2)}},${{sy(curve.y[i]).toFixed(2)}}`).join(" ");
+            return `<polyline fill="none" stroke="rgba(142,163,194,0.3)" stroke-width="1.3" points="${{pts}}" />`;
+          }}).join("")}}
+          ${{foreground ? `<polyline fill="none" stroke="#7ef0c7" stroke-width="2.6" points="${{(foreground.x || []).map((x, i) => `${{sx(x).toFixed(2)}},${{sy(foreground.y[i]).toFixed(2)}}`).join(" ")}}" />` : ""}}
+          <text x="${{width / 2}}" y="18" text-anchor="middle" font-size="14" fill="#eef4ff">Edge ${{SOURCE_NODE}} -> ${{TARGET_NODE}}</text>
+          <text x="${{width / 2}}" y="${{height - 8}}" text-anchor="middle" font-size="12" fill="#9cb1d0">Integrated path length</text>
+          <text x="16" y="${{height / 2}}" transform="rotate(-90 16 ${{height / 2}})" text-anchor="middle" font-size="12" fill="#9cb1d0">Energy</text>
+        </svg>
+      `;
+    }}
+
+    function renderMonitors(payload) {{
+      const monitors = payload?.monitors && typeof payload.monitors === "object"
+        ? payload.monitors
+        : {{}};
+      const entries = Object.entries(monitors).sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      if (!entries.length) {{
+        return '<div class="muted">No branch monitor payload has been emitted yet.</div>';
+      }}
+      return entries.map(([monitorId, monitorPayload]) => {{
+        const monitor = monitorPayload || {{}};
+        const caption = String(monitor.caption || monitor.status_message || "").trim();
+        const ascii = String(monitor.ascii_plot || "").trim();
+        return `
+          <div class="panel" style="margin:0;">
+            <div><strong>${{escapeHtml(monitorId)}}</strong>${{caption ? ` <span class="status-badge">${{escapeHtml(caption)}}</span>` : ""}}</div>
+            ${{ascii ? `<pre>${{escapeHtml(ascii)}}</pre>` : `<div class="muted" style="margin-top:8px;">Waiting for first branch update...</div>`}}
+          </div>
+        `;
+      }}).join("");
+    }}
+
+    function scheduleRefresh(running) {{
+      if (refreshTimer != null) {{
+        clearTimeout(refreshTimer);
+      }}
+      refreshTimer = setTimeout(refresh, running ? 900 : 2400);
+    }}
+
+    async function refresh() {{
+      try {{
+        const response = await fetch(`/api/edge-live?source=${{SOURCE_NODE}}&target=${{TARGET_NODE}}`, {{
+          headers: authHeaders(),
+        }});
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `Request failed: ${{response.status}}`);
+        const badge = document.getElementById("status-badge");
+        const status = String(payload.status || "unknown");
+        badge.textContent = status;
+        badge.className = `status-badge ${{escapeHtml(status)}}`;
+
+        const started = String(payload.started_at || "").trim();
+        const finished = String(payload.finished_at || "").trim();
+        const timeText = finished
+          ? `Finished: ${{finished}}`
+          : started
+            ? `Started: ${{started}}`
+            : "No queue timestamps available yet.";
+        document.getElementById("status-line").textContent = timeText;
+        document.getElementById("plot").innerHTML = drawNebHistory(payload);
+        document.getElementById("monitors").innerHTML = renderMonitors(payload);
+        const consoleText = String(payload.console_text || "").trim();
+        document.getElementById("console").textContent = consoleText || "No log output yet.";
+        scheduleRefresh(Boolean(payload.running));
+      }} catch (error) {{
+        document.getElementById("status-line").textContent = String(error?.message || error);
+        scheduleRefresh(false);
+      }}
+    }}
+
+    refresh();
+  </script>
+</body>
+</html>"""
+
+
+def _energy_label_from_node_attrs(node_attrs: dict[str, Any], node_index: int) -> str:
+    label = str(node_index)
+    molecule = node_attrs.get("molecule")
+    if isinstance(molecule, str):
+        return molecule
+    if molecule is not None:
+        with contextlib.suppress(Exception):
+            smiles = str(getattr(molecule, "smiles") or "").strip()
+            if smiles:
+                return smiles
+    return label
+
+
+def _energy_snapshot_source_info(workspace: RetropathsWorkspace) -> tuple[Path, int, int]:
+    annotated_fp = Path(getattr(workspace, "annotated_neb_pot_fp", "")).expanduser()
+    if annotated_fp.exists():
+        annotated_stat = annotated_fp.stat()
+        if int(annotated_stat.st_size) > 0:
+            return (
+                annotated_fp.resolve(),
+                int(annotated_stat.st_mtime_ns),
+                int(annotated_stat.st_size),
+            )
+    base_fp = Path(getattr(workspace, "neb_pot_fp", "")).expanduser()
+    if base_fp.exists():
+        base_stat = base_fp.stat()
+        return (
+            base_fp.resolve(),
+            int(base_stat.st_mtime_ns),
+            int(base_stat.st_size),
+        )
+    raise ValueError("No available network JSON was found for the current workspace.")
+
+
+def _energy_snapshot_payload_from_file(source_fp: Path) -> dict[str, Any]:
+    payload = json.loads(source_fp.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Energy snapshot JSON payload is not an object.")
+    return payload
+
+
+def _energy_record_label_from_json_node(node: dict[str, Any], node_id: int) -> str:
+    molecule = node.get("molecule")
+    if isinstance(molecule, str) and molecule.strip():
+        return molecule.strip()
+    for key in ("mapped_smiles", "smiles", "label"):
+        value = node.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return str(node_id)
+
+
+def _energy_from_json_node(node: dict[str, Any]) -> float | None:
+    direct = node.get("node_energy")
+    if isinstance(direct, (int, float)):
+        return float(direct)
+    energies = node.get("node_energies")
+    if isinstance(energies, list):
+        finite = [float(value) for value in energies if isinstance(value, (int, float))]
+        if finite:
+            return min(finite)
+    td = node.get("td")
+    if isinstance(td, dict):
+        cached = td.get("_cached_energy")
+        if isinstance(cached, (int, float)):
+            return float(cached)
+    return None
+
+
+def _structure_from_json_node(node: dict[str, Any]) -> tuple[list[str], list[list[float]]] | None:
+    td = node.get("td")
+    if not isinstance(td, dict):
+        return None
+    structure = td.get("structure")
+    if not isinstance(structure, dict):
+        return None
+    symbols = structure.get("symbols")
+    geometry = structure.get("geometry")
+    if not isinstance(symbols, list) or not isinstance(geometry, list):
+        return None
+    if len(symbols) == 0 or len(symbols) != len(geometry):
+        return None
+    clean_symbols: list[str] = []
+    clean_geometry: list[list[float]] = []
+    for symbol, coords in zip(symbols, geometry):
+        if not isinstance(symbol, str):
+            return None
+        if not isinstance(coords, list) or len(coords) != 3:
+            return None
+        if not all(isinstance(value, (int, float)) for value in coords):
+            return None
+        clean_symbols.append(symbol)
+        clean_geometry.append([float(coords[0]), float(coords[1]), float(coords[2])])
+    return clean_symbols, clean_geometry
+
+
+def _xyz_b64_from_symbols_geometry(symbols: list[str], geometry_bohr: list[list[float]]) -> str:
+    bohr_to_angstrom = 0.529177210903
+    lines = [str(len(symbols)), "MEPD structure"]
+    for symbol, coords in zip(symbols, geometry_bohr):
+        x_ang = float(coords[0]) * bohr_to_angstrom
+        y_ang = float(coords[1]) * bohr_to_angstrom
+        z_ang = float(coords[2]) * bohr_to_angstrom
+        lines.append(f"{symbol} {x_ang:.10f} {y_ang:.10f} {z_ang:.10f}")
+    xyz_text = "\n".join(lines) + "\n"
+    return base64.b64encode(xyz_text.encode("utf-8")).decode("ascii")
+
+
+def _energy_structure_records_from_json_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    graph = payload.get("graph")
+    if not isinstance(graph, dict):
+        raise ValueError("Energy snapshot JSON missing `graph` object.")
+    nodes = graph.get("nodes")
+    if not isinstance(nodes, list):
+        raise ValueError("Energy snapshot JSON missing `graph.nodes` list.")
+
+    records: list[dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id_value = node.get("id")
+        try:
+            node_id = int(node_id_value)
+        except Exception:
+            continue
+        energy = _energy_from_json_node(node)
+        if energy is None:
+            continue
+        if _structure_from_json_node(node) is None:
+            continue
+        records.append(
+            {
+                "node_id": int(node_id),
+                "label": _energy_record_label_from_json_node(node, int(node_id)),
+                "energy": float(energy),
+            }
+        )
+
+    records.sort(key=lambda record: (float(record["energy"]), int(record["node_id"])))
+    if records:
+        reference_energy = float(records[0]["energy"])
+        for rank, record in enumerate(records, start=1):
+            record["rank"] = int(rank)
+            record["delta_kcal_mol"] = (float(record["energy"]) - reference_energy) * 627.509474
+    return records
+
+
+def _energy_structure_node_from_json_payload(payload: dict[str, Any], *, node_id: int) -> dict[str, Any]:
+    graph = payload.get("graph")
+    if not isinstance(graph, dict):
+        raise ValueError("Energy snapshot JSON missing `graph` object.")
+    nodes = graph.get("nodes")
+    if not isinstance(nodes, list):
+        raise ValueError("Energy snapshot JSON missing `graph.nodes` list.")
+
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        try:
+            current_id = int(node.get("id"))
+        except Exception:
+            continue
+        if current_id != int(node_id):
+            continue
+        energy = _energy_from_json_node(node)
+        if energy is None:
+            raise ValueError(f"Node {int(node_id)} has no finite energy cached.")
+        structure = _structure_from_json_node(node)
+        if structure is None:
+            raise ValueError(f"Node {int(node_id)} has no available structure payload.")
+        symbols, geometry = structure
+        return {
+            "node_id": int(node_id),
+            "label": _energy_record_label_from_json_node(node, int(node_id)),
+            "energy": float(energy),
+            "xyz_b64": _xyz_b64_from_symbols_geometry(symbols, geometry),
+        }
+    raise ValueError(f"Node {int(node_id)} is not present in the current network.")
+
+
+def _energy_structure_records_from_pot(pot: Pot) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    for node_index in sorted(int(node_id) for node_id in pot.graph.nodes):
+        attrs = pot.graph.nodes[node_index]
+        td = attrs.get("td")
+        energy = _energy_value(td)
+        if energy is None:
+            continue
+        if getattr(td, "structure", None) is None:
+            continue
+        records.append(
+            {
+                "node_id": int(node_index),
+                "label": _energy_label_from_node_attrs(attrs, int(node_index)),
+                "energy": float(energy),
+            }
+        )
+    records.sort(key=lambda record: (float(record["energy"]), int(record["node_id"])))
+    if records:
+        reference_energy = float(records[0]["energy"])
+        for rank, record in enumerate(records, start=1):
+            record["rank"] = int(rank)
+            record["delta_kcal_mol"] = (float(record["energy"]) - reference_energy) * 627.509474
+    return records
+
+
+def _energy_structure_node_from_pot(pot: Pot, *, node_id: int) -> dict[str, Any]:
+    node_index = int(node_id)
+    if node_index not in pot.graph.nodes:
+        raise ValueError(f"Node {node_index} is not present in the current network.")
+    attrs = pot.graph.nodes[node_index]
+    td = attrs.get("td")
+    energy = _energy_value(td)
+    if energy is None:
+        raise ValueError(f"Node {node_index} has no finite energy cached.")
+    structure = _node_structure_payload_fast(attrs) or _node_structure_payload(attrs)
+    xyz_b64 = str((structure or {}).get("xyz_b64") or "").strip()
+    if not xyz_b64:
+        raise ValueError(f"Node {node_index} has no available structure payload.")
+    return {
+        "node_id": int(node_index),
+        "label": _energy_label_from_node_attrs(attrs, int(node_index)),
+        "energy": float(energy),
+        "xyz_b64": xyz_b64,
+    }
+
+
+def _energy_structures_window_html() -> str:
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MEPD Energy Structures</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #141c33;
+      --line: rgba(154, 178, 212, 0.24);
+      --text: #e8f0ff;
+      --muted: #9cb1d0;
+      --accent: #7ef0c7;
+      --accent2: #63d5ff;
+      --warn: #ff8b9c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at 16% 18%, #1c2a4f 0%, #11192f 42%, #090f1f 100%);
+      color: var(--text);
+      font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+    }
+    .shell { max-width: 1320px; margin: 0 auto; padding: 18px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 8px 24px rgba(3, 9, 24, 0.32);
+    }
+    .title { font-size: 1.15rem; font-weight: 700; margin-bottom: 8px; }
+    .muted { color: var(--muted); }
+    .controls {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: minmax(220px, 1.2fr) minmax(160px, 0.8fr) minmax(130px, 0.6fr) auto;
+      align-items: end;
+    }
+    label {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    input, button {
+      width: 100%;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      background: rgba(7, 13, 26, 0.8);
+      color: var(--text);
+      padding: 9px 10px;
+      font-size: 14px;
+    }
+    button {
+      width: auto;
+      cursor: pointer;
+      border-color: rgba(126, 240, 199, 0.45);
+      background: rgba(126, 240, 199, 0.08);
+      padding-inline: 14px;
+      font-weight: 600;
+    }
+    button:hover {
+      border-color: rgba(126, 240, 199, 0.75);
+      background: rgba(126, 240, 199, 0.18);
+    }
+    .content {
+      display: grid;
+      grid-template-columns: minmax(330px, 450px) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .list {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      max-height: 720px;
+      overflow: auto;
+      padding: 6px;
+      background: rgba(8, 14, 28, 0.68);
+    }
+    .row {
+      width: 100%;
+      text-align: left;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.02);
+      color: var(--text);
+      padding: 8px 9px;
+      margin: 4px 0;
+      cursor: pointer;
+    }
+    .row:hover {
+      border-color: rgba(99, 213, 255, 0.45);
+      background: rgba(99, 213, 255, 0.11);
+    }
+    .row.active {
+      border-color: rgba(126, 240, 199, 0.52);
+      background: rgba(126, 240, 199, 0.16);
+    }
+    .row-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .row-meta {
+      font-size: 12px;
+      color: var(--muted);
+      word-break: break-word;
+    }
+    .viewer {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 420px;
+      background: rgba(8, 14, 28, 0.68);
+    }
+    iframe.structure {
+      width: 100%;
+      height: 640px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: linear-gradient(180deg, #101b2b 0%, #0a1321 100%);
+    }
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      padding: 14px;
+      color: var(--muted);
+      background: rgba(8, 14, 28, 0.42);
+    }
+    @media (max-width: 1020px) {
+      .controls { grid-template-columns: 1fr; }
+      .content { grid-template-columns: 1fr; }
+      iframe.structure { height: 420px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="panel">
+      <div class="title">All Structures Sorted By Energy</div>
+      <div id="status-line" class="muted">Waiting for first update...</div>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <div>
+          <label for="query-input">Search node id or label</label>
+          <input id="query-input" type="text" placeholder="e.g. 48 or product label" />
+        </div>
+        <div>
+          <label for="max-delta-input">Max ΔE (kcal/mol)</label>
+          <input id="max-delta-input" type="number" min="0" step="0.1" placeholder="optional" />
+        </div>
+        <div>
+          <label for="rows-input">Rows</label>
+          <input id="rows-input" type="number" min="10" max="5000" step="1" value="300" />
+        </div>
+        <button id="reset-filters" type="button">Reset Filters</button>
+      </div>
+      <div id="summary-line" class="muted" style="margin-top:10px;">No data loaded yet.</div>
+    </div>
+    <div class="panel">
+      <div class="content">
+        <div id="list" class="list"></div>
+        <div id="viewer" class="viewer"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DRIVE_URL_TOKEN = (() => {
+      try {
+        const params = new URLSearchParams(window.location.search || "");
+        return (params.get("token") || "").trim();
+      } catch (_err) {
+        return "";
+      }
+    })();
+    const state = {
+      indexSnapshot: null,
+      query: "",
+      maxDeltaKcalText: "",
+      limit: 300,
+      selectedNodeId: null,
+      selectedStructure: null,
+      selectedStructureVersion: "",
+      structureRequestKey: "",
+      refreshTimer: null,
+      listRenderKey: "",
+      viewerRenderKey: "",
+      listScrollTop: 0,
+    };
+
+    function authHeaders() {
+      return DRIVE_URL_TOKEN ? { "X-MEPD-Token": DRIVE_URL_TOKEN } : {};
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+
+    function toFiniteNumber(value, fallback = null) {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function makeStructureSrcdoc(xyzB64) {
+      if (!xyzB64) {
+        return "<html><body style='margin:0;padding:16px;background:#0b1423;color:#8ea3c2;font:500 14px/1.5 IBM Plex Sans,Aptos,Segoe UI Variable,sans-serif;'>No 3D structure available.</body></html>";
+      }
+      return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    html, body, #viewer { margin: 0; width: 100%; height: 100%; background: linear-gradient(180deg, #101b2b 0%, #0a1321 100%); overflow: hidden; }
+    #status { padding: 12px; color: #8ea3c2; font: 500 14px/1.5 IBM Plex Sans,Aptos,Segoe UI Variable,sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <div id="status">Loading 3D viewer...</div>
+  <script>
+    const xyz = decodeURIComponent(escape(atob("__XYZ_B64__")));
+    function boot() {
+      const host = document.getElementById("viewer");
+      const status = document.getElementById("status");
+      status.remove();
+      const viewer = $3Dmol.createViewer(host, { backgroundColor: "#0d1728" });
+      viewer.addModel(xyz, "xyz");
+      viewer.setStyle({}, { stick: { radius: 0.18 }, sphere: { scale: 0.28 } });
+      viewer.zoomTo();
+      viewer.render();
+    }
+    if (window.$3Dmol) {
+      boot();
+    } else {
+      const script = document.createElement("script");
+      script.src = "https://cdn.jsdelivr.net/npm/3dmol@2.5.3/build/3Dmol-min.js";
+      script.onload = boot;
+      script.onerror = () => {
+        document.getElementById("status").textContent = "Failed to load 3Dmol.js";
+      };
+      document.head.appendChild(script);
+    }
+  <\\/script>
+</body>
+</html>`.replace("__XYZ_B64__", xyzB64);
+    }
+
+    function normalizedRecords() {
+      const records = Array.isArray(state.indexSnapshot?.records) ? state.indexSnapshot.records : [];
+      const query = String(state.query || "").trim().toLowerCase();
+      const maxDeltaText = String(state.maxDeltaKcalText || "").trim();
+      const maxDelta = maxDeltaText === "" ? null : toFiniteNumber(maxDeltaText, null);
+      const filtered = records.filter((record) => {
+        const nodeId = Number(record?.node_id);
+        const label = String(record?.label || "");
+        const delta = toFiniteNumber(record?.delta_kcal_mol, null);
+        if (!Number.isFinite(nodeId)) return false;
+        if (Number.isFinite(maxDelta) && Number.isFinite(delta) && delta > maxDelta) return false;
+        if (!query) return true;
+        return String(nodeId).includes(query) || label.toLowerCase().includes(query);
+      });
+      return filtered.slice(0, Math.max(10, Math.min(5000, Number(state.limit) || 300)));
+    }
+
+    function scheduleRefresh() {
+      if (state.refreshTimer != null) {
+        clearTimeout(state.refreshTimer);
+      }
+      const busy = Boolean(state.indexSnapshot?.busy);
+      state.refreshTimer = setTimeout(refresh, busy ? 1200 : 3000);
+    }
+
+    async function fetchSelectedStructure(nodeId, version) {
+      const node = Number(nodeId);
+      if (!Number.isFinite(node)) return;
+      const requestKey = `${String(version || "")}:${node}`;
+      if (state.structureRequestKey === requestKey) return;
+      if (
+        state.selectedStructure
+        && Number(state.selectedStructure.node_id) === node
+        && String(state.selectedStructure.version || "") === String(version || "")
+      ) {
+        return;
+      }
+      state.structureRequestKey = requestKey;
+      try {
+        const response = await fetch(`/api/energy-structure-node?node=${encodeURIComponent(String(node))}`, {
+          headers: authHeaders(),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `Request failed: ${response.status}`);
+        state.selectedStructure = payload;
+        state.selectedStructureVersion = String(payload.version || "");
+      } catch (error) {
+        state.selectedStructure = {
+          node_id: node,
+          version: String(version || ""),
+          error: String(error?.message || error),
+        };
+        state.selectedStructureVersion = String(version || "");
+      } finally {
+        if (state.structureRequestKey === requestKey) {
+          state.structureRequestKey = "";
+        }
+        render();
+      }
+    }
+
+    function render() {
+      const statusLine = document.getElementById("status-line");
+      const summaryLine = document.getElementById("summary-line");
+      const listEl = document.getElementById("list");
+      const viewerEl = document.getElementById("viewer");
+      const snapshot = state.indexSnapshot;
+      const snapshotVersion = String(snapshot?.version || "");
+      const previousScrollTop = Number(listEl.scrollTop || state.listScrollTop || 0);
+
+      if (!snapshot?.initialized) {
+        statusLine.textContent = "No active workspace loaded.";
+        summaryLine.textContent = "Initialize or load a workspace in the Drive window.";
+        const listKey = "list:uninitialized";
+        if (state.listRenderKey !== listKey) {
+          listEl.innerHTML = `<div class="empty">No network data available.</div>`;
+          state.listRenderKey = listKey;
+          state.listScrollTop = 0;
+        }
+        const viewerKey = "viewer:none";
+        if (state.viewerRenderKey !== viewerKey) {
+          viewerEl.innerHTML = `<div class="empty">No structure selected.</div>`;
+          state.viewerRenderKey = viewerKey;
+        }
+        return;
+      }
+
+      const records = Array.isArray(snapshot?.records) ? snapshot.records : [];
+      if (!records.length) {
+        statusLine.textContent = "No structures with energies are available in the current network.";
+        summaryLine.textContent = "The popup updates automatically as the network snapshot changes.";
+        const listKey = `list:no-records:${snapshotVersion}`;
+        if (state.listRenderKey !== listKey) {
+          listEl.innerHTML = `<div class="empty">No nodes currently include both energy and structure payloads.</div>`;
+          state.listRenderKey = listKey;
+          state.listScrollTop = 0;
+        }
+        const viewerKey = "viewer:none";
+        if (state.viewerRenderKey !== viewerKey) {
+          viewerEl.innerHTML = `<div class="empty">No structure selected.</div>`;
+          state.viewerRenderKey = viewerKey;
+        }
+        return;
+      }
+
+      const visible = normalizedRecords();
+      const selected = visible.find((record) => Number(record.node_id) === Number(state.selectedNodeId)) || visible[0] || null;
+      state.selectedNodeId = selected ? Number(selected.node_id) : null;
+
+      const workspace = snapshot?.workspace || {};
+      const busyText = snapshot?.busy ? "busy" : "idle";
+      statusLine.textContent = `Workspace: ${String(workspace.run_name || "")} (${busyText})`;
+      summaryLine.textContent = `Showing ${visible.length}/${records.length} structures (sorted by energy).`;
+
+      if (!visible.length) {
+        const listKey = `list:no-visible:${snapshotVersion}|${state.query}|${state.maxDeltaKcalText}|${state.limit}`;
+        if (state.listRenderKey !== listKey) {
+          listEl.innerHTML = `<div class="empty">No structures matched current filters.</div>`;
+          state.listRenderKey = listKey;
+          state.listScrollTop = 0;
+        }
+        const viewerKey = "viewer:none";
+        if (state.viewerRenderKey !== viewerKey) {
+          viewerEl.innerHTML = `<div class="empty">No structure selected.</div>`;
+          state.viewerRenderKey = viewerKey;
+        }
+        return;
+      }
+
+      const listKey = `list:rows:${snapshotVersion}|${state.query}|${state.maxDeltaKcalText}|${state.limit}|${state.selectedNodeId}`;
+      if (state.listRenderKey !== listKey) {
+        listEl.innerHTML = visible.map((record, index) => `
+          <button class="row ${Number(record.node_id) === Number(state.selectedNodeId) ? "active" : ""}" type="button" data-node-id="${escapeHtml(record.node_id)}">
+            <div class="row-title">
+              <strong>#${escapeHtml(record.rank || (index + 1))} • node ${escapeHtml(record.node_id)}</strong>
+              <span>${escapeHtml(Number(record.energy).toFixed(6))} Eh</span>
+            </div>
+            <div class="row-meta">${escapeHtml(record.label || record.node_id)} • ΔE=${escapeHtml(Number(record.delta_kcal_mol || 0).toFixed(2))} kcal/mol</div>
+          </button>
+        `).join("");
+        listEl.querySelectorAll("[data-node-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.selectedNodeId = Number(button.getAttribute("data-node-id"));
+            render();
+          });
+        });
+        listEl.scrollTop = previousScrollTop;
+        state.listScrollTop = Number(listEl.scrollTop || 0);
+        state.listRenderKey = listKey;
+      } else {
+        state.listScrollTop = Number(listEl.scrollTop || 0);
+      }
+
+      if (!selected) {
+        const viewerKey = "viewer:none";
+        if (state.viewerRenderKey !== viewerKey) {
+          viewerEl.innerHTML = `<div class="empty">No structure selected.</div>`;
+          state.viewerRenderKey = viewerKey;
+        }
+        return;
+      }
+
+      const selectedNodeId = Number(selected.node_id);
+      const selectedVersion = snapshotVersion;
+      const structure = (
+        state.selectedStructure
+        && Number(state.selectedStructure.node_id) === selectedNodeId
+        && String(state.selectedStructure.version || "") === selectedVersion
+      ) ? state.selectedStructure : null;
+      if (!structure) {
+        const viewerKey = `viewer:loading:${selectedVersion}:${selectedNodeId}`;
+        if (state.viewerRenderKey !== viewerKey) {
+          viewerEl.innerHTML = `<div class="empty">Loading structure for node ${escapeHtml(selectedNodeId)}...</div>`;
+          state.viewerRenderKey = viewerKey;
+        }
+        void fetchSelectedStructure(selectedNodeId, selectedVersion);
+        return;
+      }
+      if (structure.error) {
+        const viewerKey = `viewer:error:${selectedVersion}:${selectedNodeId}:${String(structure.error)}`;
+        if (state.viewerRenderKey !== viewerKey) {
+          viewerEl.innerHTML = `<div class="empty">${escapeHtml(structure.error)}</div>`;
+          state.viewerRenderKey = viewerKey;
+        }
+        return;
+      }
+      const viewerKey = `viewer:ready:${selectedVersion}:${selectedNodeId}`;
+      if (state.viewerRenderKey !== viewerKey) {
+        viewerEl.innerHTML = `
+          <div style="margin-bottom:8px;"><strong>Node ${escapeHtml(selectedNodeId)} • ${escapeHtml(selected.label || selectedNodeId)}</strong></div>
+          <div class="muted" style="margin-bottom:8px;">Energy ${escapeHtml(Number(selected.energy).toFixed(6))} Eh • ΔE ${escapeHtml(Number(selected.delta_kcal_mol || 0).toFixed(2))} kcal/mol</div>
+          <iframe class="structure" srcdoc="${escapeHtml(makeStructureSrcdoc(structure.xyz_b64 || ""))}"></iframe>
+        `;
+        state.viewerRenderKey = viewerKey;
+      }
+    }
+
+    async function refresh() {
+      try {
+        const response = await fetch("/api/energy-structures", { headers: authHeaders() });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || `Request failed: ${response.status}`);
+        const nextVersion = String(payload.version || "");
+        const prevVersion = String(state.indexSnapshot?.version || "");
+        state.indexSnapshot = payload;
+        if (nextVersion !== prevVersion) {
+          state.selectedStructure = null;
+          state.selectedStructureVersion = "";
+        }
+      } catch (error) {
+        document.getElementById("status-line").textContent = String(error?.message || error);
+      } finally {
+        render();
+        scheduleRefresh();
+      }
+    }
+
+    function bindControls() {
+      const queryInput = document.getElementById("query-input");
+      const maxDeltaInput = document.getElementById("max-delta-input");
+      const rowsInput = document.getElementById("rows-input");
+      const resetButton = document.getElementById("reset-filters");
+      if (queryInput) {
+        queryInput.addEventListener("input", () => {
+          state.query = String(queryInput.value || "");
+          render();
+        });
+      }
+      if (maxDeltaInput) {
+        maxDeltaInput.addEventListener("input", () => {
+          state.maxDeltaKcalText = String(maxDeltaInput.value || "").trim();
+          render();
+        });
+      }
+      if (rowsInput) {
+        rowsInput.addEventListener("input", () => {
+          const parsed = Math.trunc(toFiniteNumber(rowsInput.value, 300) || 300);
+          state.limit = Math.max(10, Math.min(5000, parsed));
+          rowsInput.value = String(state.limit);
+          render();
+        });
+      }
+      if (resetButton) {
+        resetButton.addEventListener("click", () => {
+          state.query = "";
+          state.maxDeltaKcalText = "";
+          state.limit = 300;
+          state.selectedNodeId = null;
+          state.selectedStructure = null;
+          state.selectedStructureVersion = "";
+          if (queryInput) queryInput.value = "";
+          if (maxDeltaInput) maxDeltaInput.value = "";
+          if (rowsInput) rowsInput.value = "300";
+          render();
+        });
+      }
+    }
+
+    bindControls();
+    refresh();
   </script>
 </body>
 </html>"""
@@ -8708,6 +10748,9 @@ class MepdDriveServer(ThreadingHTTPServer):
         self.runtime = _DriveRuntimeState()
         self._drive_payload_cache_key: tuple[Any, ...] | None = None
         self._drive_payload_cache_value: dict[str, Any] | None = None
+        self._energy_structures_cache_key: tuple[Any, ...] | None = None
+        self._energy_structures_cache_value: dict[str, Any] | None = None
+        self._energy_structure_node_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
         self._prefer_fast_payload_once = False
         self._prefer_fast_payload_until = 0.0
         self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mepd-drive")
@@ -8724,22 +10767,11 @@ class MepdDriveServer(ThreadingHTTPServer):
             self.runtime.product = initial_state.get("product")
             self.runtime.last_message = str(initial_state.get("message") or "Workspace loaded.")
             if self.runtime.workspace is not None and self.runtime.workspace.queue_fp.exists():
-                with contextlib.suppress(Exception):
-                    runtime = _DriveRuntimeState(
-                        workspace=self.runtime.workspace,
-                        reactant=self.runtime.reactant,
-                        product=self.runtime.product,
-                        last_message=self.runtime.last_message,
-                        last_error=self.runtime.last_error,
-                        future=None,
-                        busy_label="",
-                        active_action=None,
-                        payload_mode_hint="",
-                    )
-                    self._drive_payload_cache_lookup(
-                        workspace=self.runtime.workspace,
-                        runtime=runtime,
-                    )
+                with self.state_lock:
+                    # Defer expensive payload construction to request time.
+                    # This keeps `mepd drive --workspace ...` responsive even on large prerun workspaces.
+                    self._prefer_fast_payload_once = True
+                    self._prefer_fast_payload_until = time.time() + 30.0
 
     def _reset_process_executor(self) -> None:
         old_executor = getattr(self, "process_executor", None)
@@ -8963,12 +10995,27 @@ class MepdDriveServer(ThreadingHTTPServer):
         )
         if not reactant:
             raise ValueError("A reactant SMILES or reactant XYZ block is required.")
-        additional_reactants = _resolve_additional_species_inputs(
-            smiles=str(payload.get("reactant_smiles") or ""),
-            xyz_text=str(payload.get("reactant_xyz") or ""),
-            charge=charge,
-            multiplicity=multiplicity,
-        )
+        payload_additional_reactants = payload.get("additional_reactants")
+        if payload_additional_reactants is None:
+            additional_reactants = _resolve_additional_species_inputs(
+                smiles=str(payload.get("reactant_smiles") or ""),
+                xyz_text=str(payload.get("reactant_xyz") or ""),
+                charge=charge,
+                multiplicity=multiplicity,
+            )
+        elif isinstance(payload_additional_reactants, list):
+            additional_reactants = [
+                dict(entry)
+                for entry in payload_additional_reactants
+                if isinstance(entry, dict)
+            ]
+        else:
+            additional_reactants = _resolve_additional_species_inputs(
+                smiles=str(payload.get("reactant_smiles") or ""),
+                xyz_text=str(payload.get("reactant_xyz") or ""),
+                charge=charge,
+                multiplicity=multiplicity,
+            )
 
         product = _resolve_species_input(
             smiles=str(payload.get("product_smiles") or ""),
@@ -9606,6 +11653,122 @@ class MepdDriveServer(ThreadingHTTPServer):
             self.runtime.last_message = "Kinetic model updated."
         return result
 
+    def edge_live_snapshot(self, *, source_node: int, target_node: int) -> dict[str, Any]:
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize or load a workspace before requesting edge live monitor data.")
+        payload = _build_edge_live_payload(
+            workspace,
+            source_node=int(source_node),
+            target_node=int(target_node),
+        )
+        payload["edge"] = f"{int(source_node)} -> {int(target_node)}"
+        return payload
+
+    def _energy_structures_cache_lookup(self, *, workspace: RetropathsWorkspace) -> dict[str, Any]:
+        source_fp, source_mtime_ns, source_size = _energy_snapshot_source_info(workspace)
+        cache_key = (
+            str(Path(workspace.directory).resolve()),
+            str(source_fp),
+            int(source_mtime_ns),
+            int(source_size),
+        )
+        with self.state_lock:
+            cached_key = getattr(self, "_energy_structures_cache_key", None)
+            cached_value = getattr(self, "_energy_structures_cache_value", None)
+            if cached_key == cache_key and cached_value is not None:
+                return dict(cached_value)
+
+        version_key = f"{source_fp.name}:{source_mtime_ns}:{source_size}"
+        records: list[dict[str, Any]]
+        try:
+            raw_payload = _energy_snapshot_payload_from_file(source_fp)
+            records = _energy_structure_records_from_json_payload(raw_payload)
+        except Exception:
+            # Fallback for legacy payload layouts that do not include JSON-friendly td fields.
+            pot = _merge_drive_pot(workspace, network_splits=getattr(self, "network_splits", True))
+            records = _energy_structure_records_from_pot(pot)
+        payload = {
+            "version": str(version_key),
+            "records": records,
+        }
+        with self.state_lock:
+            self._energy_structures_cache_key = cache_key
+            self._energy_structures_cache_value = payload
+            # Invalidate any stale node payloads when the network version changes.
+            self._energy_structure_node_cache = {}
+        return dict(payload)
+
+    def energy_structures_snapshot(self) -> dict[str, Any]:
+        with self.state_lock:
+            runtime = _DriveRuntimeState(
+                workspace=self.runtime.workspace,
+                reactant=self.runtime.reactant,
+                product=self.runtime.product,
+                last_message=self.runtime.last_message,
+                last_error=self.runtime.last_error,
+                future=self.runtime.future,
+                busy_label=self.runtime.busy_label,
+                active_action=dict(self.runtime.active_action) if self.runtime.active_action is not None else None,
+            )
+        payload: dict[str, Any] = {
+            "initialized": runtime.workspace is not None,
+            "busy": runtime.future is not None and not runtime.future.done(),
+            "busy_label": runtime.busy_label,
+            "last_message": runtime.last_message,
+            "last_error": runtime.last_error,
+            "workspace": None,
+            "version": "",
+            "records": [],
+        }
+        if runtime.workspace is None:
+            return payload
+        payload["workspace"] = {
+            "run_name": str(getattr(runtime.workspace, "run_name", "") or ""),
+            "directory": str(getattr(runtime.workspace, "directory", "") or ""),
+        }
+        snapshot = self._energy_structures_cache_lookup(workspace=runtime.workspace)
+        payload["version"] = str(snapshot.get("version") or "")
+        payload["records"] = list(snapshot.get("records") or [])
+        return payload
+
+    def energy_structure_node_snapshot(self, *, node_id: int) -> dict[str, Any]:
+        with self.state_lock:
+            workspace = self.runtime.workspace
+        if workspace is None:
+            raise ValueError("Initialize or load a workspace before requesting structure payloads.")
+
+        index_snapshot = self._energy_structures_cache_lookup(workspace=workspace)
+        version = str(index_snapshot.get("version") or "")
+        cache_key = (
+            str(Path(workspace.directory).resolve()),
+            version,
+            int(node_id),
+        )
+        with self.state_lock:
+            cached = self._energy_structure_node_cache.get(cache_key)
+            if cached is not None:
+                return dict(cached)
+
+        try:
+            source_fp, _source_mtime_ns, _source_size = _energy_snapshot_source_info(workspace)
+            raw_payload = _energy_snapshot_payload_from_file(source_fp)
+            payload = _energy_structure_node_from_json_payload(raw_payload, node_id=int(node_id))
+        except Exception:
+            # Fallback for legacy payload layouts that do not include JSON-friendly td fields.
+            pot = _merge_drive_pot(workspace, network_splits=getattr(self, "network_splits", True))
+            payload = _energy_structure_node_from_pot(pot, node_id=int(node_id))
+        payload["version"] = version
+
+        with self.state_lock:
+            self._energy_structure_node_cache[cache_key] = payload
+            if len(self._energy_structure_node_cache) > 128:
+                oldest_key = next(iter(self._energy_structure_node_cache))
+                if oldest_key != cache_key:
+                    self._energy_structure_node_cache.pop(oldest_key, None)
+        return dict(payload)
+
     def snapshot(self) -> dict[str, Any]:
         with self.state_lock:
             runtime = _DriveRuntimeState(
@@ -9766,7 +11929,7 @@ class _DriveHandler(BaseHTTPRequestHandler):
         return json.loads(raw.decode("utf-8") or "{}")
 
     def do_GET(self) -> None:
-        route_path, _query = self._split_request_path()
+        route_path, query = self._split_request_path()
         if route_path == "/":
             if not self._is_authorized():
                 self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
@@ -9783,6 +11946,79 @@ class _DriveHandler(BaseHTTPRequestHandler):
                 self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
                 return
             self._write_json(self.server.snapshot())
+            return
+        if route_path == "/api/energy-structures":
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
+            self._write_json(self.server.energy_structures_snapshot())
+            return
+        if route_path == "/api/energy-structure-node":
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                node_values = query.get("node") or []
+                node_id = int(node_values[0])
+            except Exception:
+                self._write_json(
+                    {"error": "Energy structure node requests require an integer `node` query parameter."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            self._write_json(self.server.energy_structure_node_snapshot(node_id=node_id))
+            return
+        if route_path == "/api/edge-live":
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                source_values = query.get("source") or []
+                target_values = query.get("target") or []
+                source_node = int(source_values[0])
+                target_node = int(target_values[0])
+            except Exception:
+                self._write_json(
+                    {"error": "Edge monitor requests require integer `source` and `target` query parameters."},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            self._write_json(
+                self.server.edge_live_snapshot(
+                    source_node=source_node,
+                    target_node=target_node,
+                )
+            )
+            return
+        if route_path == "/edge-monitor":
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
+            try:
+                source_values = query.get("source") or []
+                target_values = query.get("target") or []
+                source_node = int(source_values[0])
+                target_node = int(target_values[0])
+            except Exception:
+                self.send_error(400)
+                return
+            body = _edge_monitor_html(source_node=source_node, target_node=target_node).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if route_path == "/energy-structures":
+            if not self._is_authorized():
+                self._write_json({"error": "Unauthorized."}, HTTPStatus.UNAUTHORIZED)
+                return
+            body = _energy_structures_window_html().encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         if route_path.startswith("/edge_visualizations/"):
             if not self._is_authorized():
@@ -10045,6 +12281,7 @@ def launch_mepd_drive(
                 "seed_only": bool(seed_only),
                 "auto_start_hawaii": True,
                 "auto_start_hawaii_discovery_tools": list(resolved_hawaii_discovery_tools),
+                "additional_reactants": list(additional_reactant_payloads),
             }
             initial_state = None
         else:

@@ -728,20 +728,25 @@ def _load_precomputed_refine_source(
         )
     if source_path.suffix.lower() == ".xyz":
         try:
-            structures = read_multiple_structure_from_file(
-                str(source_path), charge=charge, spinmult=multiplicity
+            chain = Chain.from_xyz(
+                source_path,
+                parameters=ChainInputs(),
+                charge=charge,
+                spinmult=multiplicity,
             )
         except ValueError:
             structures = read_multiple_structure_from_file(
                 str(source_path), charge=None, spinmult=None
             )
-        if len(structures) >= 2:
-            return Chain.model_validate(
-                {
-                    "nodes": [StructureNode(structure=s) for s in structures],
-                    "parameters": ChainInputs(),
-                }
-            )
+            if len(structures) >= 2:
+                return Chain.model_validate(
+                    {
+                        "nodes": [StructureNode(structure=s) for s in structures],
+                        "parameters": ChainInputs(),
+                    }
+                )
+        if len(chain.nodes) >= 2:
+            return chain
     raise ValueError(
         "File source must be one of: workspace.json, network .json, "
         "NEB .xyz with sibling '<stem>_history/' folder, or multi-structure chain .xyz."
@@ -812,6 +817,28 @@ def _extract_minima_nodes_from_chain(chain: Chain) -> list[StructureNode]:
         if energies[i] < energies[i - 1] and energies[i] < energies[i + 1]:
             minima_inds.add(i)
     return [chain.nodes[i].copy() for i in sorted(minima_inds)]
+
+
+def _extract_local_maxima_nodes_from_chain(chain: Chain) -> list[StructureNode]:
+    """Extract strict interior local maxima from a chain energy profile."""
+    if len(chain.nodes) < 3:
+        return []
+    with contextlib.suppress(Exception):
+        energies = np.asarray(chain.energies, dtype=float)
+        if energies.shape[0] != len(chain.nodes):
+            return []
+        maxima: list[StructureNode] = []
+        for i in range(1, len(chain.nodes) - 1):
+            if (
+                np.isfinite(energies[i - 1])
+                and np.isfinite(energies[i])
+                and np.isfinite(energies[i + 1])
+                and energies[i] > energies[i - 1]
+                and energies[i] > energies[i + 1]
+            ):
+                maxima.append(chain.nodes[i].copy())
+        return maxima
+    return []
 
 
 def _dedupe_minima_nodes(nodes: list[StructureNode], chain_inputs: ChainInputs) -> list[StructureNode]:
@@ -1544,6 +1571,32 @@ def _register_recursive_split_node(
 def _ordered_leaf_path_nodes(
     history: TreeNode, chain_inputs: ChainInputs
 ) -> list[StructureNode]:
+    def _nodes_match_for_path(a: StructureNode, b: StructureNode) -> bool:
+        try:
+            if (
+                list(a.structure.symbols) == list(b.structure.symbols)
+                and np.allclose(a.coords, b.coords)
+            ):
+                return True
+        except Exception:
+            pass
+        try:
+            a_cmp = a.copy()
+            b_cmp = b.copy()
+            setattr(a_cmp, "disable_smiles", True)
+            setattr(b_cmp, "disable_smiles", True)
+            return bool(
+                is_identical(
+                    a_cmp,
+                    b_cmp,
+                    fragment_rmsd_cutoff=chain_inputs.node_rms_thre,
+                    kcal_mol_cutoff=chain_inputs.node_ene_thre,
+                    verbose=False,
+                )
+            )
+        except Exception:
+            return False
+
     path_nodes: list[StructureNode] = []
     for leaf in history.ordered_leaves:
         if not leaf.data or not leaf.data.chain_trajectory:
@@ -1555,16 +1608,24 @@ def _ordered_leaf_path_nodes(
         end_node = final_chain[-1].copy()
         if not path_nodes:
             path_nodes.append(start_node)
-        elif not is_identical(
-            path_nodes[-1],
-            start_node,
-            fragment_rmsd_cutoff=chain_inputs.node_rms_thre,
-            kcal_mol_cutoff=chain_inputs.node_ene_thre,
-            verbose=False,
-        ):
+        elif not _nodes_match_for_path(path_nodes[-1], start_node):
             path_nodes.append(start_node)
         path_nodes.append(end_node)
-    return path_nodes
+    if len(path_nodes) <= 1:
+        return path_nodes
+
+    pruned: list[StructureNode] = []
+    for node in path_nodes:
+        match_index = None
+        for i, existing in enumerate(pruned):
+            if _nodes_match_for_path(existing, node):
+                match_index = i
+                break
+        if match_index is None:
+            pruned.append(node)
+            continue
+        pruned = pruned[: match_index + 1]
+    return pruned
 
 
 def _queue_follow_on_recursive_requests(
@@ -1631,27 +1692,7 @@ def _write_recursive_split_request_artifacts(
     write_qcio: bool = False,
 ):
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_chain: Chain | None = None
-    leaf_chains: list[Chain] = []
-    for leaf in history.ordered_leaves:
-        if not leaf.data:
-            continue
-        if getattr(leaf.data, "chain_trajectory", None):
-            leaf_chains.append(leaf.data.chain_trajectory[-1])
-        elif getattr(leaf.data, "optimized", None) is not None:
-            leaf_chains.append(leaf.data.optimized)
-    if len(leaf_chains) == 1:
-        output_chain = leaf_chains[0]
-    elif len(leaf_chains) > 1:
-        output_chain = _concat_chains(leaf_chains, leaf_chains[0].parameters)
-    elif history.data is not None:
-        if getattr(history.data, "chain_trajectory", None):
-            output_chain = history.data.chain_trajectory[-1]
-        elif getattr(history.data, "optimized", None) is not None:
-            output_chain = history.data.optimized
-
-    if output_chain is None:
-        raise ValueError("Recursive split request history produced no output chain.")
+    output_chain = history.output_chain
 
     output_chain.write_to_disk(
         output_dir / f"request_{request_id}.xyz", write_qcio=write_qcio)
@@ -2650,12 +2691,7 @@ def run(
                     console.print(f"[dim]{parallel_failures[0]}[/dim]")
                 raise typer.Exit(1)
 
-        if len(successful_leaf_chains) == 1:
-            merged_chain = successful_leaf_chains[0]
-        else:
-            merged_chain = _concat_chains(
-                successful_leaf_chains, program_input.chain_inputs
-            )
+        merged_chain = history.output_chain
 
         if parallel_failures:
             console.print(
@@ -3253,6 +3289,13 @@ def refine(
                 ts_irc_source_obj,
                 source_label=base_name,
             )
+            if isinstance(ts_irc_source_obj, Chain):
+                local_maxima = _extract_local_maxima_nodes_from_chain(ts_irc_source_obj)
+                first_edge = next(iter(source_pot.graph.edges), None)
+                if first_edge is not None and local_maxima:
+                    source_pot.graph.edges[first_edge]["ts_guess_source"] = "chain_local_maxima"
+                    source_pot.graph.edges[first_edge]["ts_guess_mode"] = "all_local_maxima"
+                    source_pot.graph.edges[first_edge]["ts_guess_count_hint"] = int(len(local_maxima))
             source_workspace = _create_synthetic_refine_workspace(
                 source_pot=source_pot,
                 refinement_inputs_fp=refinement_inputs_path,
@@ -4016,11 +4059,11 @@ def ts(
     data_dir = Path(os.getcwd())
 
     if name is not None:
-        results_name = data_dir / (name + ".qcio")
-        filename = data_dir / (name + ".xyz")
+        base_name = name
     else:
-        results_name = fp.stem + ".qcio"
-        filename = fp.stem + ".xyz"
+        base_name = fp.stem
+    results_name = data_dir / f"{base_name}.qcio"
+    filename = data_dir / f"{base_name}_optimized.xyz"
 
     # load the RunInputs
     if inputs is not None:
