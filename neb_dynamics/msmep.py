@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import sys
 import numpy as np
 from neb_dynamics.helper_functions import pairwise
-from typing import Tuple, List
+from typing import Any, Tuple, List
 
 from neb_dynamics.nodes.node import Node, StructureNode
 from neb_dynamics.nodes.nodehelpers import _is_connectivity_identical
@@ -153,6 +153,24 @@ def _chain_from_worker_payload(payload: dict) -> Chain:
     )
 
 
+def _structure_node_from_attempt_payload(value: Any) -> StructureNode | None:
+    if isinstance(value, StructureNode):
+        return value.copy()
+    if isinstance(value, dict) and "structure" in value:
+        try:
+            return StructureNode.from_serializable(copy.deepcopy(value))
+        except Exception:
+            return None
+    if hasattr(value, "copy"):
+        try:
+            candidate = value.copy()
+            if isinstance(candidate, StructureNode):
+                return candidate
+        except Exception:
+            return None
+    return None
+
+
 def _leaf_chain_from_tree_node(node: TreeNode) -> Chain | None:
     if node is None or getattr(node, "data", None) is None:
         return None
@@ -192,6 +210,8 @@ class MSMEP:
             assert (
                 normalized_method in PATH_METHODS
             ), f"Invalid path method: {self.inputs.path_min_method}. Allowed are: {PATH_METHODS}"
+        self._attempted_pairs_payload_ref = None
+        self._attempted_pair_cache: list[tuple[StructureNode, StructureNode, bool]] = []
 
     def _build_neb_optimizer(self):
         kwds = dict(self.inputs.optimizer_kwds or {})
@@ -217,6 +237,11 @@ class MSMEP:
     def _should_disable_graphs(self) -> bool:
         return bool(getattr(self.inputs.engine, "disable_molecular_graphs", False))
 
+    def _set_attempted_pairs_payload(self, payload: Any) -> None:
+        setattr(self.inputs.path_min_inputs, "attempted_pairs_payload", payload)
+        self._attempted_pairs_payload_ref = None
+        self._attempted_pair_cache = []
+
     def _disable_molecular_graphs(self, chain: Chain) -> None:
         if not self._should_disable_graphs():
             return
@@ -225,6 +250,79 @@ class MSMEP:
                 node.has_molecular_graph = False
             if hasattr(node, "graph"):
                 node.graph = None
+
+    def _nodes_match_for_attempt_skip(self, a: StructureNode, b: StructureNode) -> bool:
+        if a is None or b is None:
+            return False
+        try:
+            if (
+                list(a.structure.symbols) == list(b.structure.symbols)
+                and np.allclose(a.coords, b.coords)
+            ):
+                return True
+        except Exception:
+            pass
+        try:
+            a_cmp = a.copy()
+            b_cmp = b.copy()
+            setattr(a_cmp, "disable_smiles", True)
+            setattr(b_cmp, "disable_smiles", True)
+            return bool(
+                is_identical(
+                    a_cmp,
+                    b_cmp,
+                    fragment_rmsd_cutoff=self.inputs.chain_inputs.node_rms_thre,
+                    kcal_mol_cutoff=self.inputs.chain_inputs.node_ene_thre,
+                    verbose=False,
+                )
+            )
+        except Exception:
+            return False
+
+    def _refresh_attempted_pair_cache(self) -> None:
+        payload = getattr(
+            getattr(self.inputs, "path_min_inputs", None),
+            "attempted_pairs_payload",
+            None,
+        )
+        if payload is self._attempted_pairs_payload_ref:
+            return
+        self._attempted_pairs_payload_ref = payload
+        self._attempted_pair_cache = []
+        if not isinstance(payload, list):
+            return
+        for item in payload:
+            if not isinstance(item, dict):
+                continue
+            start_node = _structure_node_from_attempt_payload(item.get("start"))
+            end_node = _structure_node_from_attempt_payload(item.get("end"))
+            if start_node is None or end_node is None:
+                continue
+            directed = bool(item.get("directed", False))
+            self._attempted_pair_cache.append((start_node, end_node, directed))
+
+    def _skip_chain_due_to_attempted_history(self, input_chain: Chain) -> bool:
+        if len(input_chain) < 2:
+            return False
+        self._refresh_attempted_pair_cache()
+        if not self._attempted_pair_cache:
+            return False
+        start_node = input_chain[0]
+        end_node = input_chain[-1]
+        for attempted_start, attempted_end, directed in self._attempted_pair_cache:
+            forward_match = self._nodes_match_for_attempt_skip(
+                start_node, attempted_start
+            ) and self._nodes_match_for_attempt_skip(end_node, attempted_end)
+            if forward_match:
+                return True
+            if directed:
+                continue
+            reverse_match = self._nodes_match_for_attempt_skip(
+                start_node, attempted_end
+            ) and self._nodes_match_for_attempt_skip(end_node, attempted_start)
+            if reverse_match:
+                return True
+        return False
 
     def _endpoint_connectivity_status(self, chain: Chain) -> str:
         if len(chain) == 0:
@@ -243,7 +341,12 @@ class MSMEP:
                 )
         return "Checking endpoint connectivity"
 
-    def run_recursive_minimize(self, input_chain: Chain, tree_node_index=0) -> TreeNode:
+    def run_recursive_minimize(
+        self,
+        input_chain: Chain,
+        tree_node_index=0,
+        attempted_pairs_payload: list[dict[str, Any]] | None = None,
+    ) -> TreeNode:
         """Will take a chain as an input and run NEB minimizations until it exits out.
         NEB can exit due to the chain being converged, the chain needing to be split,
         or the maximum number of alloted steps being met.
@@ -261,7 +364,16 @@ class MSMEP:
         if isinstance(input_chain, list):
             input_chain = Chain.model_validate(
                 {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
+        if attempted_pairs_payload is not None:
+            self._set_attempted_pairs_payload(attempted_pairs_payload)
         self._disable_molecular_graphs(input_chain)
+        if self._skip_chain_due_to_attempted_history(input_chain):
+            msg = "Endpoints already attempted elsewhere. Skipping chain."
+            if _get_verbose(self.inputs):
+                print(msg)
+            else:
+                update_status(msg)
+            return _empty_leaf(tree_node_index, status="attempted_elsewhere")
 
         if getattr(self.inputs.path_min_inputs, "skip_identical_graphs", True) and input_chain[0].has_molecular_graph:
             if not _get_verbose(self.inputs):
@@ -348,6 +460,8 @@ class MSMEP:
             input_chain = Chain.model_validate(
                 {"nodes": input_chain, "parameters": self.inputs.chain_inputs})
         self._disable_molecular_graphs(input_chain)
+        if self._skip_chain_due_to_attempted_history(input_chain):
+            return _empty_leaf(tree_node_index, status="attempted_elsewhere"), []
 
         if getattr(self.inputs.path_min_inputs, "skip_identical_graphs", True) and input_chain[0].has_molecular_graph:
             if not _get_verbose(self.inputs):
@@ -395,8 +509,11 @@ class MSMEP:
         input_chain: Chain,
         tree_node_index: int = 0,
         max_workers: int | None = None,
+        attempted_pairs_payload: list[dict[str, Any]] | None = None,
     ) -> TreeNode:
         """Recursively autosplit NEBs, evaluating split branches in parallel."""
+        if attempted_pairs_payload is not None:
+            self._set_attempted_pairs_payload(attempted_pairs_payload)
         cpu_cap = max(1, int(os.cpu_count() or 1))
         if max_workers is None:
             bounded_workers = min(4, cpu_cap)

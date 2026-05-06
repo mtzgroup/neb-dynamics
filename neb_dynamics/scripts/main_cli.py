@@ -1685,6 +1685,50 @@ def _mark_path_pairs_attempted(
         attempted_pairs.add((start_index, end_index))
 
 
+def _build_attempted_pair_skip_payload(
+    *,
+    attempted_pairs: set[tuple[int, int]],
+    node_registry: list[StructureNode],
+    directed: bool,
+) -> list[dict[str, Any]]:
+    payload: list[dict[str, Any]] = []
+    for start_index, end_index in sorted(attempted_pairs):
+        if (
+            start_index < 0
+            or end_index < 0
+            or start_index >= len(node_registry)
+            or end_index >= len(node_registry)
+        ):
+            continue
+        start_node = node_registry[start_index]
+        end_node = node_registry[end_index]
+        if not hasattr(start_node, "to_serializable") or not hasattr(
+            end_node, "to_serializable"
+        ):
+            continue
+        try:
+            start_payload = start_node.to_serializable()
+            end_payload = end_node.to_serializable()
+        except Exception:
+            continue
+        payload.append(
+            {
+                "start": start_payload,
+                "end": end_payload,
+                "directed": bool(directed),
+            }
+        )
+    return payload
+
+
+def _set_runner_attempted_pairs_payload(
+    runner: Any,
+    attempted_pairs_payload: list[dict[str, Any]],
+) -> None:
+    with contextlib.suppress(Exception):
+        setattr(runner.inputs.path_min_inputs, "attempted_pairs_payload", attempted_pairs_payload)
+
+
 def _write_recursive_split_request_artifacts(
     output_dir: Path,
     request_id: int,
@@ -2010,6 +2054,9 @@ def _run_recursive_network_splits(
     resolved_parallel_workers = (
         None if parallel_workers is None else max(1, int(parallel_workers))
     )
+    attempted_pair_directed = bool(
+        getattr(program_input.path_min_inputs, "attempted_pair_skip_directed", False)
+    )
     while queue:
         request = queue.pop(0)
         existing_history = _load_recursive_split_request_history(
@@ -2057,15 +2104,41 @@ def _run_recursive_network_splits(
             }
         )
         if existing_history is None:
+            attempted_payload = _build_attempted_pair_skip_payload(
+                attempted_pairs=attempted_pairs,
+                node_registry=node_registry,
+                directed=attempted_pair_directed,
+            )
+            _set_runner_attempted_pairs_payload(
+                msmep_runner, attempted_pairs_payload=attempted_payload
+            )
             try:
                 if parallel_recursive:
-                    request_history = msmep_runner.run_parallel_recursive_minimize(
-                        request_chain,
-                        max_workers=resolved_parallel_workers,
-                    )
+                    try:
+                        request_history = msmep_runner.run_parallel_recursive_minimize(
+                            request_chain,
+                            max_workers=resolved_parallel_workers,
+                            attempted_pairs_payload=attempted_payload,
+                        )
+                    except TypeError as exc:
+                        if "attempted_pairs_payload" not in str(exc):
+                            raise
+                        request_history = msmep_runner.run_parallel_recursive_minimize(
+                            request_chain,
+                            max_workers=resolved_parallel_workers,
+                        )
                 else:
-                    request_history = msmep_runner.run_recursive_minimize(
-                        request_chain)
+                    try:
+                        request_history = msmep_runner.run_recursive_minimize(
+                            request_chain,
+                            attempted_pairs_payload=attempted_payload,
+                        )
+                    except TypeError as exc:
+                        if "attempted_pairs_payload" not in str(exc):
+                            raise
+                        request_history = msmep_runner.run_recursive_minimize(
+                            request_chain
+                        )
             except Exception:
                 _upsert_request_record(
                     request_records,
